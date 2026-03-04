@@ -14,6 +14,20 @@ function s(array $settings, string $key): string
     return isset($settings[$key]) ? (string)$settings[$key] : '';
 }
 
+function integrations_tabs(): void
+{
+    echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+    echo '<a class="btn" href="/admin_whatsapp_instances.php">WhatsApp Instâncias</a>';
+    echo '<a class="btn" href="/admin_whatsapp_console.php">WhatsApp Console</a>';
+    echo '<a class="btn" href="/admin_openai_console.php">OpenAI</a>';
+    echo '<a class="btn" href="/admin_zapsign_console.php">ZapSign</a>';
+    echo '<a class="btn btnPrimary" href="/admin_integrations.php">Credenciais APIs</a>';
+    echo '<a class="btn" href="/admin_settings.php">SMTP</a>';
+    echo '<a class="btn" href="/integration_jobs_list.php">Jobs</a>';
+    echo '<a class="btn" href="/tech_logs_list.php">Logs Técnicos</a>';
+    echo '</div>';
+}
+
 view_header('Integrações');
 
 echo '<div class="grid">';
@@ -25,10 +39,14 @@ echo '<div style="font-size:22px;font-weight:900">Integrações (Credenciais)</d
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Evolution v1, OpenAI e ZapSign (e outros stubs).</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/admin_settings.php">Config</a>';
+echo '<a class="btn" href="/admin_integrations_hub.php">Hub</a>';
 echo '<a class="btn" href="/admin_dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
+echo '</section>';
+
+echo '<section class="card col12">';
+integrations_tabs();
 echo '</section>';
 
 echo '<section class="card col12">';
@@ -37,20 +55,20 @@ echo '<form method="post" action="/admin_integrations_post.php" style="display:g
 echo '<div style="font-weight:900">Evolution API (v1)</div>';
 echo '<div class="grid">';
 echo '<div class="col6"><label>Base URL<input name="settings[evolution.base_url]" value="' . h(s($settings,'evolution.base_url')) . '" placeholder="https://seu-servidor"></label></div>';
-echo '<div class="col6"><label>API Key<input name="settings[evolution.api_key]" value="' . h(s($settings,'evolution.api_key')) . '" placeholder="apikey"></label></div>';
+echo '<div class="col6"><label>API Key<input type="password" name="settings[evolution.api_key]" value="" placeholder="(mantém se vazio)"></label></div>';
 echo '<div class="col6"><label>Instance<input name="settings[evolution.instance]" value="' . h(s($settings,'evolution.instance')) . '" placeholder="nome-da-instancia"></label></div>';
 echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:8px">OpenAI</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label>API Key<input name="settings[openai.api_key]" value="' . h(s($settings,'openai.api_key')) . '" placeholder="sk-..."></label></div>';
+echo '<div class="col6"><label>API Key<input type="password" name="settings[openai.api_key]" value="" placeholder="(mantém se vazio)"></label></div>';
 echo '<div class="col6"><label>Base URL<input name="settings[openai.base_url]" value="' . h(s($settings,'openai.base_url')) . '" placeholder="https://api.openai.com"></label></div>';
 echo '<div class="col6"><label>Model<input name="settings[openai.model]" value="' . h(s($settings,'openai.model')) . '" placeholder="gpt-4o-mini"></label></div>';
 echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:8px">ZapSign</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label>API Token<input name="settings[zapsign.api_token]" value="' . h(s($settings,'zapsign.api_token')) . '" placeholder="token"></label></div>';
+echo '<div class="col6"><label>API Token<input type="password" name="settings[zapsign.api_token]" value="" placeholder="(mantém se vazio)"></label></div>';
 echo '<div class="col6"><label>Base URL<input name="settings[zapsign.base_url]" value="' . h(s($settings,'zapsign.base_url')) . '" placeholder="https://api.zapsign.com.br"></label></div>';
 echo '</div>';
 

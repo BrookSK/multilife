@@ -12,9 +12,24 @@ if (!is_array($settings)) {
     $settings = [];
 }
 
+$sensitiveKeys = [
+    'evolution.api_key',
+    'openai.api_key',
+    'zapsign.api_token',
+];
+
 $db = db();
 $db->beginTransaction();
 try {
+    foreach ($sensitiveKeys as $k) {
+        if (array_key_exists($k, $settings)) {
+            $v = trim((string)$settings[$k]);
+            if ($v === '') {
+                unset($settings[$k]);
+            }
+        }
+    }
+
     admin_settings_set_many($settings, (int)auth_user_id());
 
     audit_log('update', 'admin_integrations', null, null, ['count' => count($settings)]);
