@@ -1,0 +1,92 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/app/bootstrap.php';
+
+$fullName = trim((string)($_POST['full_name'] ?? ''));
+$email = trim((string)($_POST['email'] ?? ''));
+$phone = trim((string)($_POST['phone'] ?? ''));
+
+if ($fullName === '' || $email === '' || $phone === '') {
+    flash_set('error', 'Preencha nome, e-mail e telefone.');
+    header('Location: /apply_professional.php');
+    exit;
+}
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    flash_set('error', 'E-mail inválido.');
+    header('Location: /apply_professional.php');
+    exit;
+}
+
+// Evita duplicidade com usuários já existentes
+$stmt = db()->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+$stmt->execute(['email' => $email]);
+if ($stmt->fetch()) {
+    flash_set('error', 'Já existe uma conta com esse e-mail.');
+    header('Location: /apply_professional.php');
+    exit;
+}
+
+$state1 = strtoupper(trim((string)($_POST['address_state'] ?? '')));
+$state2 = strtoupper(trim((string)($_POST['council_state'] ?? '')));
+
+if ($state1 !== '' && !preg_match('/^[A-Z]{2}$/', $state1)) {
+    flash_set('error', 'UF do endereço inválida.');
+    header('Location: /apply_professional.php');
+    exit;
+}
+
+if ($state2 !== '' && !preg_match('/^[A-Z]{2}$/', $state2)) {
+    flash_set('error', 'UF do conselho inválida.');
+    header('Location: /apply_professional.php');
+    exit;
+}
+
+$stmt = db()->prepare(
+    'INSERT INTO professional_applications (
+        status, full_name, email, phone,
+        cities_of_operation, marital_status, sex, religion, birthplace, nationality, education_level,
+        address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
+        rg, council_abbr, council_number, council_state,
+        bank_name, bank_agency, bank_account, bank_account_type, bank_account_holder, bank_account_holder_cpf, pix_key, pix_holder,
+        home_care_experience, years_of_experience, specializations
+     ) VALUES (
+        \'pending\', :full_name, :email, :phone,
+        :cities_of_operation, :marital_status, :sex, :religion, :birthplace, :nationality, :education_level,
+        :address_street, :address_number, :address_complement, :address_neighborhood, :address_city, :address_state, :address_zip,
+        :rg, :council_abbr, :council_number, :council_state,
+        :bank_name, :bank_agency, :bank_account, :bank_account_type, :bank_account_holder, :bank_account_holder_cpf, :pix_key, :pix_holder,
+        :home_care_experience, :years_of_experience, :specializations
+     )'
+);
+
+$fields = [
+    'full_name','email','phone','cities_of_operation','marital_status','sex','religion','birthplace','nationality','education_level',
+    'address_street','address_number','address_complement','address_neighborhood','address_city','address_zip',
+    'rg','council_abbr','council_number',
+    'bank_name','bank_agency','bank_account','bank_account_type','bank_account_holder','bank_account_holder_cpf','pix_key','pix_holder',
+    'home_care_experience','years_of_experience','specializations',
+];
+
+$params = [
+    'full_name' => $fullName,
+    'email' => $email,
+    'phone' => $phone,
+    'address_state' => $state1 !== '' ? $state1 : null,
+    'council_state' => $state2 !== '' ? $state2 : null,
+];
+
+foreach ($fields as $f) {
+    if (!array_key_exists($f, $params)) {
+        $v = trim((string)($_POST[$f] ?? ''));
+        $params[$f] = ($v !== '') ? $v : null;
+    }
+}
+
+$stmt->execute($params);
+
+flash_set('success', 'Candidatura enviada com sucesso. Aguarde avaliação.');
+header('Location: /login.php');
+exit;
