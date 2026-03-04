@@ -95,10 +95,12 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:6px">Paciente</div>';
-echo '<div style="font-size:22px;font-weight:800">' . h((string)$p['full_name']) . '</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">';
-echo '<strong>CPF:</strong> ' . h((string)($p['cpf'] ?? '-')) . ' &nbsp; <strong>Contato:</strong> ' . h($contact !== '' ? $contact : '-') . ' &nbsp; <strong>Endereço:</strong> ' . h($addrTxt);
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">Paciente</div>';
+echo '<div style="font-size:22px;font-weight:900">' . h((string)$p['full_name']) . '</div>';
+echo '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+echo '<span class="badge badgeInfo"><strong>CPF:</strong>&nbsp;' . h((string)($p['cpf'] ?? '-')) . '</span>';
+echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Contato:</strong> ' . h($contact !== '' ? $contact : '-') . '</span>';
+echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Endereço:</strong> ' . h($addrTxt) . '</span>';
 echo '</div>';
 echo '</div>';
 
@@ -118,7 +120,7 @@ echo '</section>';
 // Vínculos (somente visualização para profissional)
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Profissionais vinculados</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Profissionais vinculados</div>';
 echo '<div style="display:grid;gap:10px">';
 foreach ($linked as $l) {
     $txt = (string)$l['name'] . ' — ' . (string)$l['email'];
@@ -140,19 +142,19 @@ echo '</section>';
 // Prontuário
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Prontuário (somente leitura)</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Prontuário (somente leitura)</div>';
 echo '<div style="overflow:auto">';
-echo '<table style="width:100%;border-collapse:separate;border-spacing:0 10px">';
-echo '<thead><tr style="text-align:left;color:rgba(234,240,255,.72);font-size:12px">';
+echo '<table>';
+echo '<thead><tr>';
 echo '<th>Data</th><th>Origem</th><th>Profissional</th><th>Sessões</th><th>Observações</th>';
 echo '</tr></thead><tbody>';
 foreach ($entries as $e) {
-    echo '<tr style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">';
-    echo '<td style="padding:12px;border-top-left-radius:14px;border-bottom-left-radius:14px">' . h((string)$e['occurred_at']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$e['origin']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)($e['professional_name'] ?? '-')) . '</td>';
-    echo '<td style="padding:12px">' . h((string)($e['sessions_count'] ?? '')) . '</td>';
-    echo '<td style="padding:12px;border-top-right-radius:14px;border-bottom-right-radius:14px">' . h(mb_strimwidth((string)($e['notes'] ?? ''), 0, 140, '...')) . '</td>';
+    echo '<tr>';
+    echo '<td>' . h((string)$e['occurred_at']) . '</td>';
+    echo '<td>' . h((string)$e['origin']) . '</td>';
+    echo '<td>' . h((string)($e['professional_name'] ?? '-')) . '</td>';
+    echo '<td>' . h((string)($e['sessions_count'] ?? '')) . '</td>';
+    echo '<td>' . h(mb_strimwidth((string)($e['notes'] ?? ''), 0, 140, '...')) . '</td>';
     echo '</tr>';
 }
 if (count($entries) === 0) {

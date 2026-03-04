@@ -336,7 +336,7 @@ function h(string $value): string {
                 </div>
                 <div>
                     <div style="font-size:14px; opacity:.95;">Multilife</div>
-                    <div style="font-size:12px; color: var(--muted);">Acesso ao painel</div>
+                    <div style="font-size:12px; color: hsl(var(--muted-foreground));">Acesso ao painel</div>
                 </div>
             </div>
 
@@ -348,14 +348,14 @@ function h(string $value): string {
 
             <div class="tips">
                 <div class="tip">
-                    <div style="width:12px; height:12px; margin-top:4px; border-radius:999px; background: rgba(79,209,197,.9);"></div>
+                    <div style="width:12px; height:12px; margin-top:4px; border-radius:999px; background: hsl(var(--primary));"></div>
                     <div>
                         <strong>Segurança</strong>
                         <span>Use uma senha forte e não compartilhe suas credenciais.</span>
                     </div>
                 </div>
                 <div class="tip">
-                    <div style="width:12px; height:12px; margin-top:4px; border-radius:999px; background: rgba(109,94,252,.95);"></div>
+                    <div style="width:12px; height:12px; margin-top:4px; border-radius:999px; background: hsla(var(--primary)/.55);"></div>
                     <div>
                         <strong>Acesso rápido</strong>
                         <span>Marque “Lembrar-me” se estiver em um computador confiável.</span>

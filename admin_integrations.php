@@ -21,8 +21,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Integrações (Credenciais)</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">Evolution v1, OpenAI e ZapSign (e outros stubs).</div>';
+echo '<div style="font-size:22px;font-weight:900">Integrações (Credenciais)</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Evolution v1, OpenAI e ZapSign (e outros stubs).</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_settings.php">Config</a>';
@@ -34,29 +34,29 @@ echo '</section>';
 echo '<section class="card col12">';
 echo '<form method="post" action="/admin_integrations_post.php" style="display:grid;gap:14px;max-width:980px">';
 
-echo '<div style="font-weight:800">Evolution API (v1)</div>';
+echo '<div style="font-weight:900">Evolution API (v1)</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Base URL<input name="settings[evolution.base_url]" value="' . h(s($settings,'evolution.base_url')) . '" placeholder="https://seu-servidor" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">API Key<input name="settings[evolution.api_key]" value="' . h(s($settings,'evolution.api_key')) . '" placeholder="apikey" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Instance<input name="settings[evolution.instance]" value="' . h(s($settings,'evolution.instance')) . '" placeholder="nome-da-instancia" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>Base URL<input name="settings[evolution.base_url]" value="' . h(s($settings,'evolution.base_url')) . '" placeholder="https://seu-servidor"></label></div>';
+echo '<div class="col6"><label>API Key<input name="settings[evolution.api_key]" value="' . h(s($settings,'evolution.api_key')) . '" placeholder="apikey"></label></div>';
+echo '<div class="col6"><label>Instance<input name="settings[evolution.instance]" value="' . h(s($settings,'evolution.instance')) . '" placeholder="nome-da-instancia"></label></div>';
 echo '</div>';
 
-echo '<div style="font-weight:800;margin-top:8px">OpenAI</div>';
+echo '<div style="font-weight:900;margin-top:8px">OpenAI</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">API Key<input name="settings[openai.api_key]" value="' . h(s($settings,'openai.api_key')) . '" placeholder="sk-..." style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Base URL<input name="settings[openai.base_url]" value="' . h(s($settings,'openai.base_url')) . '" placeholder="https://api.openai.com" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Model<input name="settings[openai.model]" value="' . h(s($settings,'openai.model')) . '" placeholder="gpt-4o-mini" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>API Key<input name="settings[openai.api_key]" value="' . h(s($settings,'openai.api_key')) . '" placeholder="sk-..."></label></div>';
+echo '<div class="col6"><label>Base URL<input name="settings[openai.base_url]" value="' . h(s($settings,'openai.base_url')) . '" placeholder="https://api.openai.com"></label></div>';
+echo '<div class="col6"><label>Model<input name="settings[openai.model]" value="' . h(s($settings,'openai.model')) . '" placeholder="gpt-4o-mini"></label></div>';
 echo '</div>';
 
-echo '<div style="font-weight:800;margin-top:8px">ZapSign</div>';
+echo '<div style="font-weight:900;margin-top:8px">ZapSign</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">API Token<input name="settings[zapsign.api_token]" value="' . h(s($settings,'zapsign.api_token')) . '" placeholder="token" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Base URL<input name="settings[zapsign.base_url]" value="' . h(s($settings,'zapsign.base_url')) . '" placeholder="https://api.zapsign.com.br" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>API Token<input name="settings[zapsign.api_token]" value="' . h(s($settings,'zapsign.api_token')) . '" placeholder="token"></label></div>';
+echo '<div class="col6"><label>Base URL<input name="settings[zapsign.base_url]" value="' . h(s($settings,'zapsign.base_url')) . '" placeholder="https://api.zapsign.com.br"></label></div>';
 echo '</div>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px">';
 echo '<a class="btn" href="/integration_jobs_enqueue_demo.php">Criar job demo</a>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 
 echo '</form>';

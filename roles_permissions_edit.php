@@ -33,28 +33,30 @@ view_header('Permissões do perfil');
 echo '<div class="card">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Permissões do perfil</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.5">' . h((string)$role['name']) . ' — ' . h((string)$role['slug']) . '</div>';
+echo '<div style="font-size:22px;font-weight:900">Permissões do perfil</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">' . h((string)$role['name']) . ' — ' . h((string)$role['slug']) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/roles_list.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="post" action="/roles_permissions_edit_post.php" style="margin-top:14px;display:grid;gap:10px;max-width:720px">';
+echo '<div style="height:14px"></div>';
+
+echo '<form method="post" action="/roles_permissions_edit_post.php" style="display:grid;gap:10px;max-width:820px">';
 echo '<input type="hidden" name="id" value="' . (int)$role['id'] . '">';
 foreach ($perms as $perm) {
     $pid = (int)$perm['id'];
     $checked = isset($current[$pid]) ? ' checked' : '';
     echo '<label class="pill" style="display:flex;align-items:center;gap:10px;padding:10px 12px">';
     echo '<input type="checkbox" name="permission_ids[]" value="' . $pid . '"' . $checked . '> ';
-    echo '<span><strong>' . h((string)$perm['slug']) . '</strong> <span style="color:rgba(234,240,255,.72)">— ' . h((string)$perm['name']) . '</span></span>';
+    echo '<span><strong>' . h((string)$perm['slug']) . '</strong> <span style="color:hsl(var(--muted-foreground))">— ' . h((string)$perm['name']) . '</span></span>';
     echo '</label>';
 }
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
 echo '<a class="btn" href="/roles_list.php">Cancelar</a>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 echo '</form>';
 

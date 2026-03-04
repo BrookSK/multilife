@@ -72,7 +72,7 @@ echo '.paCard{border:1px solid hsl(var(--border));box-shadow:var(--shadow-card);
 echo '.paCard:hover{box-shadow:var(--shadow-card-hover)}';
 echo '.paCardBody{padding:16px}';
 echo '.paTop{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}';
-echo '.paTitle{font-weight:800;color:hsl(var(--foreground))}';
+echo '.paTitle{font-weight:900;color:hsl(var(--foreground))}';
 echo '.paSub{margin-top:4px;color:hsl(var(--muted-foreground));font-size:13px}';
 echo '.paStepsRow{display:flex;align-items:flex-start;gap:10px}';
 echo '.paStep{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center}';
@@ -85,14 +85,14 @@ echo '.paConnectors{display:flex;align-items:center;margin-top:-42px;margin-bott
 echo '.paConn{flex:1;height:2px;background:hsl(var(--border))}';
 echo '.paConn.isDone{background:hsl(var(--primary))}';
 
-echo '.drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.24);backdrop-filter:blur(2px);z-index:60;display:none}';
+echo '.drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:60;display:none}';
 echo '.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:92vw;background:hsl(var(--card));border-left:1px solid hsl(var(--border));z-index:70;transform:translateX(100%);transition:transform .2s ease;box-shadow:var(--shadow-elevated);display:flex;flex-direction:column}';
 echo '.drawer.isOpen{transform:translateX(0)}';
 echo '.drawerHeader{padding:16px 16px 12px;border-bottom:1px solid hsl(var(--border))}';
 echo '.drawerTitle{font-size:16px;font-weight:900}';
 echo '.drawerBody{padding:16px;overflow:auto;flex:1 1 auto}';
 echo '.tabList{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}';
-echo '.tabBtn{border:1px solid hsl(var(--border));background:hsla(var(--secondary)/.50);border-radius:10px;padding:8px 8px;font-size:11px;font-weight:800;color:hsl(var(--muted-foreground));cursor:pointer}';
+echo '.tabBtn{border:1px solid hsl(var(--border));background:hsla(var(--secondary)/.50);border-radius:10px;padding:8px 8px;font-size:11px;font-weight:900;color:hsl(var(--muted-foreground));cursor:pointer}';
 echo '.tabBtn.isActive{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(var(--primary-foreground))}';
 echo '.tabPanel{display:none;margin-top:14px}';
 echo '.tabPanel.isActive{display:block}';
@@ -136,10 +136,10 @@ echo '<div class="paFilters">';
 echo '<form method="get" action="/pre_admissao.php" class="paFilters">';
 echo '<div class="paSearch">';
 echo '<span class="paSearchIcon" aria-hidden="true"></span>';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar paciente..." style="height:36px">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar paciente...">';
 echo '</div>';
 
-echo '<select name="status" style="width:180px;height:36px">';
+echo '<select name="status" style="width:180px">';
 $opts = [
     '' => 'Todos',
     'tratamento_manual' => 'Tratamento Manual',
@@ -154,7 +154,7 @@ foreach ($opts as $k => $lab) {
 }
 echo '</select>';
 
-echo '<button class="btn" type="submit" style="height:36px">Filtrar</button>';
+echo '<button class="btn" type="submit">Filtrar</button>';
 echo '</form>';
 
 echo '</div>';
@@ -194,7 +194,7 @@ foreach ($rows as $r) {
     echo '<div class="paTitle">' . h((string)$r['title']) . '</div>';
     echo '<div class="paSub">' . h($empresa) . '</div>';
     echo '</div>';
-    echo '<div style="font-size:12px;font-weight:800;color:hsl(var(--muted-foreground))">' . $completed . '/4 etapas</div>';
+    echo '<div style="font-size:12px;font-weight:900;color:hsl(var(--muted-foreground))">' . $completed . '/4 etapas</div>';
     echo '</div>';
 
     echo '<div class="paStepsRow">';
@@ -321,7 +321,7 @@ if ($selected) {
     }
     echo '</select></label>';
     echo '<label style="flex:1;min-width:220px">Observação<input name="note" placeholder="Observação (opcional)"></label>';
-    echo '<button class="btn btnPrimary" type="submit" style="height:38px">Salvar alterações</button>';
+    echo '<button class="btn btnPrimary" type="submit">Salvar alterações</button>';
     echo '</form>';
 }
 

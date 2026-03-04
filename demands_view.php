@@ -59,10 +59,24 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:6px">Card</div>';
-echo '<div style="font-size:22px;font-weight:800">#' . (int)$d['id'] . ' — ' . h((string)$d['title']) . '</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">';
-echo '<strong>Local:</strong> ' . h($locTxt) . ' &nbsp; <strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-')) . ' &nbsp; <strong>Status:</strong> ' . h((string)$d['status']) . ' &nbsp; <strong>Responsável:</strong> ' . h($assumedBy);
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">Card</div>';
+echo '<div style="font-size:22px;font-weight:900">#' . (int)$d['id'] . ' — ' . h((string)$d['title']) . '</div>';
+
+$st = (string)$d['status'];
+$badgeCls = 'badgeInfo';
+if ($st === 'admitido') {
+    $badgeCls = 'badgeSuccess';
+} elseif ($st === 'em_captacao' || $st === 'tratamento_manual') {
+    $badgeCls = 'badgeWarn';
+} elseif ($st === 'cancelado') {
+    $badgeCls = 'badgeDanger';
+}
+
+echo '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+echo '<span class="badge ' . h($badgeCls) . '">' . h($st) . '</span>';
+echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Local:</strong> ' . h($locTxt) . '</span>';
+echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-')) . '</span>';
+echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Responsável:</strong> ' . h($assumedBy) . '</span>';
 echo '</div>';
 echo '</div>';
 
@@ -91,14 +105,14 @@ echo '</div>';
 echo '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
 echo '<form method="post" action="/demands_set_status_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
-echo '<select name="status" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<select name="status" style="min-width:220px">';
 $allowed = ['aguardando_captacao','tratamento_manual','em_captacao','admitido','cancelado'];
 foreach ($allowed as $st) {
     $sel = ((string)$d['status'] === $st) ? ' selected' : '';
     echo '<option value="' . h($st) . '"' . $sel . '>' . h($st) . '</option>';
 }
 echo '</select>';
-echo '<input name="note" placeholder="Observação (opcional)" style="min-width:240px;flex:1;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input name="note" placeholder="Observação (opcional)" style="min-width:240px;flex:1">';
 echo '<button class="btn" type="submit">Atualizar status</button>';
 echo '</form>';
 echo '</div>';
@@ -108,8 +122,8 @@ echo '</section>';
 // Descrição
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Detalhes</div>';
-echo '<div style="color:rgba(234,240,255,.72);font-size:14px;line-height:1.7">';
+echo '<div style="font-weight:900;margin-bottom:8px">Detalhes</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.7">';
 echo '<div><strong>Origem:</strong> ' . h((string)($d['origin_email'] ?? '-')) . '</div>';
 echo '<div style="margin-top:8px"><strong>Descrição:</strong></div>';
 echo '<div style="white-space:pre-wrap">' . h((string)($d['description'] ?? '')) . '</div>';
@@ -119,19 +133,19 @@ echo '</section>';
 // Logs
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Histórico de status</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Histórico de status</div>';
 echo '<div style="overflow:auto">';
-echo '<table style="width:100%;border-collapse:separate;border-spacing:0 10px">';
-echo '<thead><tr style="text-align:left;color:rgba(234,240,255,.72);font-size:12px">';
+echo '<table>';
+echo '<thead><tr>';
 echo '<th>Quando</th><th>Usuário</th><th>De</th><th>Para</th><th>Obs.</th>';
 echo '</tr></thead><tbody>';
 foreach ($statusLogs as $l) {
-    echo '<tr style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">';
-    echo '<td style="padding:12px;border-top-left-radius:14px;border-bottom-left-radius:14px">' . h((string)$l['created_at']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)($l['user_name'] ?? '-')) . '</td>';
-    echo '<td style="padding:12px">' . h((string)($l['old_status'] ?? '-')) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$l['new_status']) . '</td>';
-    echo '<td style="padding:12px;border-top-right-radius:14px;border-bottom-right-radius:14px">' . h((string)($l['note'] ?? '')) . '</td>';
+    echo '<tr>';
+    echo '<td>' . h((string)$l['created_at']) . '</td>';
+    echo '<td>' . h((string)($l['user_name'] ?? '-')) . '</td>';
+    echo '<td>' . h((string)($l['old_status'] ?? '-')) . '</td>';
+    echo '<td>' . h((string)$l['new_status']) . '</td>';
+    echo '<td>' . h((string)($l['note'] ?? '')) . '</td>';
     echo '</tr>';
 }
 
@@ -140,20 +154,20 @@ echo '</div>';
 echo '</section>';
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Disparos em grupos (logs)</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Disparos em grupos (logs)</div>';
 echo '<div style="overflow:auto">';
-echo '<table style="width:100%;border-collapse:separate;border-spacing:0 10px">';
-echo '<thead><tr style="text-align:left;color:rgba(234,240,255,.72);font-size:12px">';
+echo '<table>';
+echo '<thead><tr>';
 echo '<th>Quando</th><th>Usuário</th><th>Grupo</th><th>Status</th><th>Erro</th>';
 echo '</tr></thead><tbody>';
 foreach ($dispatchLogs as $l) {
     $g = $l['group_name'] ? (string)$l['group_name'] : '-';
-    echo '<tr style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">';
-    echo '<td style="padding:12px;border-top-left-radius:14px;border-bottom-left-radius:14px">' . h((string)$l['created_at']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)($l['dispatched_by_name'] ?? '-')) . '</td>';
-    echo '<td style="padding:12px">' . h($g) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$l['dispatch_status']) . '</td>';
-    echo '<td style="padding:12px;border-top-right-radius:14px;border-bottom-right-radius:14px">' . h((string)($l['error_message'] ?? '')) . '</td>';
+    echo '<tr>';
+    echo '<td>' . h((string)$l['created_at']) . '</td>';
+    echo '<td>' . h((string)($l['dispatched_by_name'] ?? '-')) . '</td>';
+    echo '<td>' . h($g) . '</td>';
+    echo '<td>' . h((string)$l['dispatch_status']) . '</td>';
+    echo '<td>' . h((string)($l['error_message'] ?? '')) . '</td>';
     echo '</tr>';
 }
 

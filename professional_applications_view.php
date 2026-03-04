@@ -26,9 +26,9 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:6px">Candidatura</div>';
-echo '<div style="font-size:22px;font-weight:800">#' . (int)$pa['id'] . ' — ' . h((string)$pa['full_name']) . '</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">Candidatura</div>';
+echo '<div style="font-size:22px;font-weight:900">#' . (int)$pa['id'] . ' — ' . h((string)$pa['full_name']) . '</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">';
 echo '<strong>Status:</strong> ' . h((string)$pa['status']) . ' &nbsp; <strong>E-mail:</strong> ' . h((string)$pa['email']) . ' &nbsp; <strong>Telefone:</strong> ' . h((string)$pa['phone']);
 echo '</div>';
 echo '</div>';
@@ -104,7 +104,7 @@ $sections = [
 
 foreach ($sections as $title => $fields) {
     echo '<section class="card col12">';
-    echo '<div style="font-weight:800;margin-bottom:8px">' . h($title) . '</div>';
+    echo '<div style="font-weight:900;margin-bottom:8px">' . h($title) . '</div>';
     echo '<div style="display:grid;gap:8px">';
     foreach ($fields as $label => $value) {
         $v = trim((string)$value);

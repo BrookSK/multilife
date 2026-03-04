@@ -22,31 +22,41 @@ if (!$e) {
 view_header('Editar funcionário');
 
 echo '<div class="card">';
-echo '<div style="font-size:22px;font-weight:800;margin-bottom:6px">Editar funcionário</div>';
-
-echo '<form method="post" action="/hr_employees_edit_post.php" style="display:grid;gap:12px;max-width:720px">';
-echo '<input type="hidden" name="id" value="' . (int)$e['id'] . '">';
-
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Nome completo<input name="full_name" required maxlength="160" value="' . h((string)$e['full_name']) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
-
-echo '<div class="grid">';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">E-mail<input type="email" name="email" maxlength="190" value="' . h((string)($e['email'] ?? '')) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Telefone<input name="phone" maxlength="30" value="' . h((string)($e['phone'] ?? '')) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Editar funcionário</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Atualize os dados do colaborador.</div>';
+echo '</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn" href="/hr_employees_list.php">Voltar</a>';
+echo '</div>';
 echo '</div>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Cargo/Função<input name="role_title" maxlength="120" value="' . h((string)($e['role_title'] ?? '')) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<div style="height:14px"></div>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Status<select name="status" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">';
+echo '<form method="post" action="/hr_employees_edit_post.php" style="display:grid;gap:12px;max-width:820px">';
+echo '<input type="hidden" name="id" value="' . (int)$e['id'] . '">';
+
+echo '<label>Nome completo<input name="full_name" required maxlength="160" value="' . h((string)$e['full_name']) . '" placeholder="Nome completo"></label>';
+
+echo '<div class="grid">';
+echo '<div class="col6"><label>E-mail<input type="email" name="email" maxlength="190" value="' . h((string)($e['email'] ?? '')) . '" placeholder="email@empresa.com"></label></div>';
+echo '<div class="col6"><label>Telefone<input name="phone" maxlength="30" value="' . h((string)($e['phone'] ?? '')) . '" placeholder="(00) 00000-0000"></label></div>';
+echo '</div>';
+
+echo '<label>Cargo/Função<input name="role_title" maxlength="120" value="' . h((string)($e['role_title'] ?? '')) . '" placeholder="Ex: Captador"></label>';
+
+echo '<label>Status<select name="status">';
 $st = (string)$e['status'];
 echo '<option value="active"' . ($st === 'active' ? ' selected' : '') . '>active</option>';
 echo '<option value="inactive"' . ($st === 'inactive' ? ' selected' : '') . '>inactive</option>';
 echo '</select></label>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Observações<textarea name="notes" rows="3" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">' . h((string)($e['notes'] ?? '')) . '</textarea></label>';
+echo '<label>Observações<textarea name="notes" rows="3">' . h((string)($e['notes'] ?? '')) . '</textarea></label>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="/hr_employees_list.php">Cancelar</a>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 echo '</form>';
 

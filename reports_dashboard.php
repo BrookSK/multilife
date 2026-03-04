@@ -61,8 +61,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Relatórios e BI</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">KPIs e exportações CSV.</div>';
+echo '<div style="font-size:22px;font-weight:900">Relatórios e BI</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">KPIs e exportações CSV.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
@@ -70,8 +70,8 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/reports_dashboard.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<input type="date" name="from" value="' . h($from) . '" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
-echo '<input type="date" name="to" value="' . h($to) . '" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input type="date" name="from" value="' . h($from) . '" title="De">';
+echo '<input type="date" name="to" value="' . h($to) . '" title="Até">';
 echo '<button class="btn" type="submit">Aplicar</button>';
 echo '</form>';
 
@@ -89,7 +89,7 @@ echo '<div class="grid">';
 foreach ($cards as $c) {
     echo '<div class="col6">';
     echo '<div class="pill" style="display:block;padding:14px">';
-    echo '<div style="font-size:12px;color:rgba(234,240,255,.72)">' . h((string)$c[0]) . '</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground))">' . h((string)$c[0]) . '</div>';
     echo '<div style="font-size:28px;font-weight:900;margin-top:6px">' . h((string)$c[1]) . '</div>';
     echo '</div>';
     echo '</div>';
@@ -99,7 +99,7 @@ echo '</section>';
 
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Exportações CSV</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Exportações CSV</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 
 echo '<a class="btn" href="/reports_export_appointments_csv.php?from=' . urlencode($from) . '&to=' . urlencode($to) . '">Agendamentos</a>';

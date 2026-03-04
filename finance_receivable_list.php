@@ -49,8 +49,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Contas a Receber</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">Geradas ao criar o agendamento.</div>';
+echo '<div style="font-size:22px;font-weight:900">Contas a Receber</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Geradas ao criar o agendamento.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/finance_payable_list.php">Contas a Pagar</a>';
@@ -59,7 +59,7 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/finance_receivable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<select name="status" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<select name="status" style="min-width:220px">';
 $labels = [
     '' => 'Todos',
     'pendente' => 'Pendente',
@@ -71,7 +71,7 @@ foreach ($labels as $k => $label) {
     echo '<option value="' . h($k) . '"' . $sel . '>' . h($label) . '</option>';
 }
 echo '</select>';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (paciente/profissional/agendamento)" style="flex:1;min-width:240px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (paciente/profissional/agendamento)" style="flex:1;min-width:240px">';
 echo '<button class="btn" type="submit">Filtrar</button>';
 echo '</form>';
 
@@ -80,30 +80,30 @@ echo '</section>';
 
 echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
-echo '<table style="width:100%;border-collapse:separate;border-spacing:0 10px">';
-echo '<thead><tr style="text-align:left;color:rgba(234,240,255,.72);font-size:12px">';
+echo '<table>';
+echo '<thead><tr>';
 echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Paciente</th><th>Profissional</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
-    echo '<tr style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">';
-    echo '<td style="padding:12px;border-top-left-radius:14px;border-bottom-left-radius:14px">' . (int)$r['id'] . '</td>';
-    echo '<td style="padding:12px">#' . (int)$r['appointment_id'] . '</td>';
-    echo '<td style="padding:12px">' . h((string)$r['first_at']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$r['patient_name']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$r['professional_name']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$r['amount']) . '</td>';
-    echo '<td style="padding:12px">' . h((string)$r['status']) . '</td>';
-    echo '<td style="padding:12px;border-top-right-radius:14px;border-bottom-right-radius:14px;text-align:right">';
+    echo '<tr>';
+    echo '<td>' . (int)$r['id'] . '</td>';
+    echo '<td>#' . (int)$r['appointment_id'] . '</td>';
+    echo '<td>' . h((string)$r['first_at']) . '</td>';
+    echo '<td style="font-weight:700">' . h((string)$r['patient_name']) . '</td>';
+    echo '<td>' . h((string)$r['professional_name']) . '</td>';
+    echo '<td>' . h((string)$r['amount']) . '</td>';
+    echo '<td>' . h((string)$r['status']) . '</td>';
+    echo '<td style="text-align:right">';
 
     echo '<form method="post" action="/finance_receivable_set_status_post.php" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">';
     echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
-    echo '<select name="status" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:8px 10px;outline:none;font-size:13px">';
+    echo '<select name="status" style="min-width:160px">';
     foreach (['pendente','recebido','inadimplente'] as $st) {
         $sel = ((string)$r['status'] === $st) ? ' selected' : '';
         echo '<option value="' . h($st) . '"' . $sel . '>' . h($st) . '</option>';
     }
     echo '</select>';
-    echo '<button class="btn" type="submit">Salvar</button>';
+    echo '<button class="btn" type="submit" style="height:34px">Salvar</button>';
     echo '</form>';
 
     echo '</td>';

@@ -27,8 +27,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Formulário #' . (int)$d['id'] . '</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">';
+echo '<div style="font-size:22px;font-weight:900">Formulário #' . (int)$d['id'] . '</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">';
 echo '<strong>Status:</strong> ' . h((string)$d['status']) . ' &nbsp; <strong>Vence em:</strong> ' . h((string)($d['due_at'] ?? ''));
 echo '</div>';
 echo '</div>';
@@ -46,19 +46,19 @@ echo '<section class="card col12">';
 echo '<form method="post" action="/professional_docs_edit_post.php" style="display:grid;gap:12px;max-width:720px">';
 echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Paciente (referência)<input name="patient_ref" required maxlength="160" value="' . h((string)$d['patient_ref']) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Paciente (referência)<input name="patient_ref" required maxlength="160" value="' . h((string)$d['patient_ref']) . '"></label>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Quantidade de atendimentos<input type="number" name="sessions_count" min="1" value="' . (int)$d['sessions_count'] . '" required style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Quantidade de atendimentos<input type="number" name="sessions_count" min="1" value="' . (int)$d['sessions_count'] . '" required></label>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Documentos de faturamento<textarea name="billing_docs" rows="3" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">' . h((string)($d['billing_docs'] ?? '')) . '</textarea></label>';
+echo '<label>Documentos de faturamento<textarea name="billing_docs" rows="3">' . h((string)($d['billing_docs'] ?? '')) . '</textarea></label>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Documentos de produtividade<textarea name="productivity_docs" rows="3" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">' . h((string)($d['productivity_docs'] ?? '')) . '</textarea></label>';
+echo '<label>Documentos de produtividade<textarea name="productivity_docs" rows="3">' . h((string)($d['productivity_docs'] ?? '')) . '</textarea></label>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Observações<textarea name="notes" rows="3" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">' . h((string)($d['notes'] ?? '')) . '</textarea></label>';
+echo '<label>Observações<textarea name="notes" rows="3">' . h((string)($d['notes'] ?? '')) . '</textarea></label>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<button class="btn" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="/professional_docs_list.php">Cancelar</a>';
+echo '<button class="btn" type="submit">Salvar</button>';
 echo '</div>';
 
 echo '</form>';

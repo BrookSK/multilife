@@ -22,18 +22,28 @@ if (!$g) {
 view_header('Editar grupo');
 
 echo '<div class="card">';
-echo '<div style="font-size:22px;font-weight:800;margin-bottom:6px">Editar grupo WhatsApp</div>';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Editar grupo WhatsApp</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Atualize filtros: especialidade + cidade/UF.</div>';
+echo '</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn" href="/whatsapp_groups_list.php">Voltar</a>';
+echo '</div>';
+echo '</div>';
 
-echo '<form method="post" action="/whatsapp_groups_edit_post.php" style="display:grid;gap:12px;max-width:720px">';
+echo '<div style="height:14px"></div>';
+
+echo '<form method="post" action="/whatsapp_groups_edit_post.php" style="display:grid;gap:12px;max-width:820px">';
 echo '<input type="hidden" name="id" value="' . (int)$g['id'] . '">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Nome<input name="name" required maxlength="160" value="' . h((string)$g['name']) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Nome<input name="name" required maxlength="160" value="' . h((string)$g['name']) . '" placeholder="Nome do grupo"></label>';
 
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Especialidade (opcional)<input name="specialty" maxlength="120" value="' . h((string)($g['specialty'] ?? '')) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Especialidade (opcional)<input name="specialty" maxlength="120" value="' . h((string)($g['specialty'] ?? '')) . '" placeholder="Ex: Fisioterapia"></label>';
 echo '</div>';
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Status<select name="status" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">';
+echo '<label>Status<select name="status">';
 $st = (string)$g['status'];
 echo '<option value="active"' . ($st === 'active' ? ' selected' : '') . '>active</option>';
 echo '<option value="inactive"' . ($st === 'inactive' ? ' selected' : '') . '>inactive</option>';
@@ -43,16 +53,16 @@ echo '</div>';
 
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Cidade (opcional)<input name="city" maxlength="120" value="' . h((string)($g['city'] ?? '')) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Cidade (opcional)<input name="city" maxlength="120" value="' . h((string)($g['city'] ?? '')) . '" placeholder="Ex: São Paulo"></label>';
 echo '</div>';
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">UF (opcional)<input name="state" maxlength="2" value="' . h((string)($g['state'] ?? '')) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px;text-transform:uppercase"></label>';
+echo '<label>UF (opcional)<input name="state" maxlength="2" value="' . h((string)($g['state'] ?? '')) . '" placeholder="SP" style="text-transform:uppercase"></label>';
 echo '</div>';
 echo '</div>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="/whatsapp_groups_list.php">Cancelar</a>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 echo '</form>';
 

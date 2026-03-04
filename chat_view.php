@@ -45,9 +45,9 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:6px">Conversa</div>';
-echo '<div style="font-size:22px;font-weight:800">#' . (int)$c['id'] . ' — ' . h((string)$c['external_phone']) . '</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">Conversa</div>';
+echo '<div style="font-size:22px;font-weight:900">#' . (int)$c['id'] . ' — ' . h((string)$c['external_phone']) . '</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">';
 echo '<strong>Status:</strong> ' . h((string)$c['status']) . ' &nbsp; <strong>Responsável:</strong> ' . h($assigned) . ' &nbsp; <strong>Tipo:</strong> ' . h((string)$c['contact_kind']);
 echo '</div>';
 echo '</div>';
@@ -79,20 +79,20 @@ echo '<div class="grid">';
 
 echo '<div class="col12" style="grid-column:span 8">';
 echo '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">';
-echo '<div style="font-weight:800">Mensagens</div>';
+echo '<div style="font-weight:900">Mensagens</div>';
 echo '<div class="pill">Conversa iniciada externamente</div>';
 echo '</div>';
 
-echo '<div style="height:420px;overflow:auto;padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(10,14,28,.35)">';
+echo '<div style="height:420px;overflow:auto;padding:10px;border-radius:14px;border:1px solid hsl(var(--border));background:hsl(var(--muted)/.25)">';
 foreach ($messages as $m) {
     $isOut = ((string)$m['direction'] === 'out');
     $align = $isOut ? 'flex-end' : 'flex-start';
-    $bg = $isOut ? 'rgba(109,94,252,.22)' : 'rgba(255,255,255,.08)';
+    $bg = $isOut ? 'hsl(var(--primary)/.18)' : 'hsl(var(--muted)/.55)';
 
     echo '<div style="display:flex;justify-content:' . $align . ';margin:10px 0">';
-    echo '<div style="max-width:78%;padding:10px 12px;border-radius:14px;background:' . $bg . ';border:1px solid rgba(255,255,255,.12)">';
+    echo '<div style="max-width:78%;padding:10px 12px;border-radius:14px;background:' . $bg . ';border:1px solid hsl(var(--border))">';
     echo '<div style="white-space:pre-wrap;font-size:14px;line-height:1.5">' . h((string)$m['body']) . '</div>';
-    echo '<div style="margin-top:6px;font-size:12px;color:rgba(234,240,255,.65)">';
+    echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">';
     echo h((string)$m['created_at']);
     if ($isOut) {
         echo ' — ' . h((string)($m['user_name'] ?? '')); 
@@ -108,7 +108,7 @@ echo '</div>';
 
 echo '<form method="post" action="/chat_send_post.php" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">';
 echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
-echo '<textarea name="body" rows="2" required placeholder="Digite sua resposta..." style="flex:1;min-width:260px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px"></textarea>';
+echo '<textarea name="body" rows="2" required placeholder="Digite sua resposta..." style="flex:1;min-width:260px"></textarea>';
 echo '<button class="btn btnPrimary" type="submit">Enviar</button>';
 echo '</form>';
 
@@ -117,7 +117,7 @@ echo '</div>';
 // Painel do contato / ações
 
 echo '<div class="col12" style="grid-column:span 4">';
-echo '<div style="font-weight:800;margin-bottom:10px">Contato</div>';
+echo '<div style="font-weight:900;margin-bottom:10px">Contato</div>';
 echo '<div class="pill" style="display:block;margin-bottom:10px">Telefone: ' . h((string)$c['external_phone']) . '</div>';
 echo '<div class="pill" style="display:block;margin-bottom:10px">Tipo: ' . h((string)$c['contact_kind']) . '</div>';
 if ($c['contact_ref_id'] !== null) {
@@ -126,16 +126,16 @@ if ($c['contact_ref_id'] !== null) {
     echo '<div class="pill" style="display:block;margin-bottom:10px">Contato não identificado</div>';
 }
 
-echo '<div style="font-weight:800;margin:14px 0 10px">Transferir</div>';
+echo '<div style="font-weight:900;margin:14px 0 10px">Transferir</div>';
 echo '<form method="post" action="/chat_transfer_post.php" style="display:grid;gap:10px">';
 echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
-echo '<select name="to_user_id" required style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<select name="to_user_id" required>'; 
 echo '<option value="">Selecione um usuário</option>';
 foreach ($users as $u) {
     echo '<option value="' . (int)$u['id'] . '">' . h((string)$u['name']) . ' — ' . h((string)$u['email']) . '</option>';
 }
 echo '</select>';
-echo '<input name="note" placeholder="Observação (opcional)" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input name="note" placeholder="Observação (opcional)">';
 echo '<button class="btn" type="submit">Transferir</button>';
 echo '</form>';
 

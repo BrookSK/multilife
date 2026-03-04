@@ -28,20 +28,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 view_header('Criar job (demo)');
 
 echo '<div class="card">';
-echo '<div style="font-size:22px;font-weight:800;margin-bottom:6px">Criar job (demo)</div>';
-echo '<div style="color:rgba(234,240,255,.72);font-size:14px;line-height:1.6;margin-bottom:14px">Usado para testar logs e retentativas sem chamar APIs externas.</div>';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Criar job (demo)</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Usado para testar logs e retentativas sem chamar APIs externas.</div>';
+echo '</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn" href="/integration_jobs_list.php">Voltar</a>';
+echo '</div>';
+echo '</div>';
 
-echo '<form method="post" action="/integration_jobs_enqueue_demo.php" style="display:grid;gap:12px;max-width:560px">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Provider<input name="provider" required placeholder="OpenAI/Evolution/ZapSign/SMTP" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Action<input name="action" required placeholder="send_message / parse_email" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<div style="height:14px"></div>';
+
+echo '<form method="post" action="/integration_jobs_enqueue_demo.php" style="display:grid;gap:12px;max-width:820px">';
+echo '<div class="grid" style="gap:12px">';
+echo '<div class="col6"><label>Provider<input name="provider" required placeholder="OpenAI/Evolution/ZapSign/SMTP"></label></div>';
+echo '<div class="col6"><label>Action<input name="action" required placeholder="send_message / parse_email"></label></div>';
+echo '</div>';
 
 echo '<label class="pill" style="display:flex;align-items:center;gap:10px;padding:12px">';
 echo '<input type="checkbox" name="force_error" value="1"> Simular erro (force_error)';
 echo '</label>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
+echo '<a class="btn" href="/integration_jobs_list.php">Cancelar</a>';
 echo '<button class="btn btnPrimary" type="submit">Criar job</button>';
-echo '<a class="btn" href="/integration_jobs_list.php">Voltar</a>';
 echo '</div>';
 
 echo '</form>';

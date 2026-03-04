@@ -24,8 +24,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">WhatsApp (Evolution)</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">Instâncias, QR code, status e ações.</div>';
+echo '<div style="font-size:22px;font-weight:900">WhatsApp (Evolution)</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Instâncias, QR code, status e ações.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_integrations.php">Credenciais</a>';
@@ -34,7 +34,7 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/admin_whatsapp_instances.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<input name="instance" value="' . h($instanceFilter) . '" placeholder="Filtrar por instanceName" style="flex:1;min-width:240px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input name="instance" value="' . h($instanceFilter) . '" placeholder="Filtrar por instanceName" style="flex:1;min-width:240px">';
 echo '<button class="btn" type="submit">Filtrar</button>';
 echo '</form>';
 
@@ -43,18 +43,18 @@ echo '</section>';
 // Criar instância
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Criar instância</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Criar instância</div>';
 
 echo '<form method="post" action="/admin_whatsapp_instance_create_post.php" style="display:grid;gap:12px;max-width:920px">';
 
 echo '<div class="grid">';
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Instance name<input name="instanceName" required placeholder="ex: multilife" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>Instance name<input name="instanceName" required placeholder="ex: multilife"></label></div>';
 
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Token (opcional)<input name="token" placeholder="deixe vazio para gerar" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>Token (opcional)<input name="token" placeholder="deixe vazio para gerar"></label></div>';
 
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Número dono (com DDI)<input name="number" placeholder="559999999999" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>Número dono (com DDI)<input name="number" placeholder="559999999999"></label></div>';
 
-echo '<div class="col6"><label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Webhook URL (opcional)<input name="webhook" placeholder="https://..." style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label></div>';
+echo '<div class="col6"><label>Webhook URL (opcional)<input name="webhook" placeholder="https://..."></label></div>';
 
 echo '</div>';
 
@@ -62,7 +62,7 @@ echo '<label class="pill" style="display:flex;align-items:center;gap:10px;paddin
 echo '<input type="checkbox" name="qrcode" value="1" checked> Gerar QR Code ao criar';
 echo '</label>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<button class="btn btnPrimary" type="submit">Criar</button>';
 echo '</div>';
 
@@ -72,11 +72,11 @@ echo '</section>';
 // Lista
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:800;margin-bottom:8px">Instâncias</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Instâncias</div>';
 
 echo '<div style="overflow:auto">';
-echo '<table style="width:100%;border-collapse:separate;border-spacing:0 10px">';
-echo '<thead><tr style="text-align:left;color:rgba(234,240,255,.72);font-size:12px">';
+echo '<table>';
+echo '<thead><tr>';
 echo '<th>Instance</th><th>Status</th><th>Dono</th><th>Engine</th><th>Webhook</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 
@@ -96,13 +96,13 @@ foreach ($instances as $row) {
         $wh = (string)($i['integration']['webhook_wa_business'] ?? '');
     }
 
-    echo '<tr style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">';
-    echo '<td style="padding:12px;border-top-left-radius:14px;border-bottom-left-radius:14px">' . h($name) . '</td>';
-    echo '<td style="padding:12px">' . h($status) . '</td>';
-    echo '<td style="padding:12px">' . h($owner) . '</td>';
-    echo '<td style="padding:12px">' . h($engine) . '</td>';
-    echo '<td style="padding:12px">' . h($wh) . '</td>';
-    echo '<td style="padding:12px;border-top-right-radius:14px;border-bottom-right-radius:14px;text-align:right">';
+    echo '<tr>';
+    echo '<td style="font-weight:700">' . h($name) . '</td>';
+    echo '<td>' . h($status) . '</td>';
+    echo '<td>' . h($owner) . '</td>';
+    echo '<td>' . h($engine) . '</td>';
+    echo '<td>' . h($wh) . '</td>';
+    echo '<td style="text-align:right">';
 
     echo '<a class="btn" href="/admin_whatsapp_instance_view.php?instance=' . urlencode($name) . '">Abrir</a> ';
 

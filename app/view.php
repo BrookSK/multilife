@@ -39,8 +39,8 @@ function view_header(string $title): void
     echo '*{box-sizing:border-box;border-color:hsl(var(--border))}';
     echo 'html,body{height:100%}';
     echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));}';
-    echo 'body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(135deg,#fff 0%,#fff 55%,hsla(var(--primary)/.10) 100%);}';
-    echo 'body:after{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(380px 380px at 85% 15%,hsla(var(--primary)/.08),transparent 60%),radial-gradient(420px 420px at 12% 90%,hsla(var(--primary)/.05),transparent 62%);}';
+    echo 'body:before{display:none}';
+    echo 'body:after{display:none}';
     echo 'a{color:hsl(var(--foreground));text-decoration:none} a:hover{text-decoration:underline}';
     echo '.appShell{display:flex;min-height:100vh}';
     echo '.sidebar{position:fixed;left:0;top:0;z-index:40;height:100vh;width:260px;background:hsl(var(--card));border-right:1px solid hsl(var(--border));display:flex;flex-direction:column;transition:width .3s ease}';
@@ -67,7 +67,7 @@ function view_header(string $title): void
     echo '.sidebar.isCollapsed .collapseChevron{transform:rotate(180deg)}';
     echo '.mainCol{flex:1 1 auto;margin-left:260px;transition:margin-left .3s ease}';
     echo '.mainCol.isCollapsed{margin-left:72px}';
-    echo '.topbar{position:sticky;top:0;z-index:30;height:64px;background:hsla(var(--card)/.80);backdrop-filter:blur(10px);border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between;padding:0 24px}';
+    echo '.topbar{position:sticky;top:0;z-index:30;height:64px;background:hsl(var(--card));border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between;padding:0 24px}';
     echo '.topbarTitle{font-size:16px;font-weight:800;color:hsl(var(--foreground))}';
     echo '.topbarActions{display:flex;align-items:center;gap:14px}';
     echo '.notifDot{width:8px;height:8px;border-radius:999px;background:hsl(var(--destructive));display:inline-block;margin-left:-6px;margin-top:-10px}';

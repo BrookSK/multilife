@@ -38,15 +38,17 @@ view_header('Vínculos');
 echo '<div class="card">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Vínculo Paciente ↔ Profissional</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">' . h((string)$p['full_name']) . '</div>';
+echo '<div style="font-size:22px;font-weight:900">Vínculo Paciente ↔ Profissional</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">' . h((string)$p['full_name']) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/patients_view.php?id=' . (int)$p['id'] . '">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="post" action="/patients_links_edit_post.php" style="margin-top:14px;display:grid;gap:10px">';
+echo '<div style="height:14px"></div>';
+
+echo '<form method="post" action="/patients_links_edit_post.php" style="display:grid;gap:10px">';
 echo '<input type="hidden" name="patient_id" value="' . (int)$p['id'] . '">';
 
 foreach ($professionals as $pro) {
@@ -58,12 +60,12 @@ foreach ($professionals as $pro) {
     echo '<div class="pill" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px">';
     echo '<label style="display:flex;align-items:center;gap:10px">';
     echo '<input type="checkbox" name="professional_ids[]" value="' . $pid . '"' . $checked . '> ';
-    echo '<strong>' . h((string)$pro['name']) . '</strong> <span style="color:rgba(234,240,255,.72)">(' . h((string)$pro['email']) . ')</span>';
+    echo '<strong>' . h((string)$pro['name']) . '</strong> <span style="color:hsl(var(--muted-foreground))">(' . h((string)$pro['email']) . ')</span>';
     echo '</label>';
 
-    echo '<input name="specialty_' . $pid . '" placeholder="Especialidade (opcional)" value="' . h($spec) . '" style="flex:1;min-width:200px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+    echo '<input name="specialty_' . $pid . '" placeholder="Especialidade (opcional)" value="' . h($spec) . '" style="flex:1;min-width:200px">';
 
-    echo '<select name="is_active_' . $pid . '" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+    echo '<select name="is_active_' . $pid . '" style="min-width:120px">';
     echo '<option value="1"' . ($active === 1 ? ' selected' : '') . '>ativo</option>';
     echo '<option value="0"' . ($active !== 1 ? ' selected' : '') . '>inativo</option>';
     echo '</select>';

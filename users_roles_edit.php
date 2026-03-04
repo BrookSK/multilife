@@ -33,28 +33,30 @@ view_header('Perfis do usuário');
 echo '<div class="card">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Perfis do usuário</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.5">' . h((string)$user['name']) . ' — ' . h((string)$user['email']) . '</div>';
+echo '<div style="font-size:22px;font-weight:900">Perfis do usuário</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">' . h((string)$user['name']) . ' — ' . h((string)$user['email']) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/users_list.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="post" action="/users_roles_edit_post.php" style="margin-top:14px;display:grid;gap:10px;max-width:560px">';
+echo '<div style="height:14px"></div>';
+
+echo '<form method="post" action="/users_roles_edit_post.php" style="display:grid;gap:10px;max-width:680px">';
 echo '<input type="hidden" name="id" value="' . (int)$user['id'] . '">';
 foreach ($roles as $role) {
     $rid = (int)$role['id'];
     $checked = isset($current[$rid]) ? ' checked' : '';
     echo '<label class="pill" style="display:flex;align-items:center;gap:10px;padding:10px 12px">';
     echo '<input type="checkbox" name="role_ids[]" value="' . $rid . '"' . $checked . '> ';
-    echo '<span><strong>' . h((string)$role['name']) . '</strong> <span style="color:rgba(234,240,255,.72)">(' . h((string)$role['slug']) . ')</span></span>';
+    echo '<span><strong>' . h((string)$role['name']) . '</strong> <span style="color:hsl(var(--muted-foreground))">(' . h((string)$role['slug']) . ')</span></span>';
     echo '</label>';
 }
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
 echo '<a class="btn" href="/users_list.php">Cancelar</a>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 echo '</form>';
 

@@ -27,7 +27,18 @@ $professionals = db()->query(
 view_header('Editar agendamento');
 
 echo '<div class="card">';
-echo '<div style="font-size:22px;font-weight:800;margin-bottom:6px">Editar agendamento</div>';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Editar agendamento</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Atualize dados do agendamento.</div>';
+echo '</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn" href="/appointments_list.php">Voltar</a>';
+echo '<a class="btn" href="/appointments_view.php?id=' . (int)$a['id'] . '">Ver detalhes</a>';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="height:14px"></div>';
 
 echo '<form method="post" action="/appointments_edit_post.php" style="display:grid;gap:12px;max-width:900px">';
 echo '<input type="hidden" name="id" value="' . (int)$a['id'] . '">';
@@ -35,7 +46,7 @@ echo '<input type="hidden" name="id" value="' . (int)$a['id'] . '">';
 echo '<div class="grid">';
 
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Paciente<select name="patient_id" required style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">';
+echo '<label>Paciente<select name="patient_id" required>';
 foreach ($patients as $p) {
     $sel = ((int)$a['patient_id'] === (int)$p['id']) ? ' selected' : '';
     echo '<option value="' . (int)$p['id'] . '"' . $sel . '>' . h((string)$p['full_name']) . ' (#' . (int)$p['id'] . ')</option>';
@@ -44,7 +55,7 @@ echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Profissional<select name="professional_user_id" required style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">';
+echo '<label>Profissional<select name="professional_user_id" required>';
 foreach ($professionals as $u) {
     $sel = ((int)$a['professional_user_id'] === (int)$u['id']) ? ' selected' : '';
     echo '<option value="' . (int)$u['id'] . '"' . $sel . '>' . h((string)$u['name']) . ' — ' . h((string)$u['email']) . '</option>';
@@ -55,11 +66,11 @@ echo '</div>';
 echo '<div class="col6">';
 $dt = DateTime::createFromFormat('Y-m-d H:i:s', (string)$a['first_at']);
 $val = $dt ? $dt->format('Y-m-d\TH:i') : '';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Data/hora do 1º atendimento<input type="datetime-local" name="first_at" required value="' . h($val) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Data/hora do 1º atendimento<input type="datetime-local" name="first_at" required value="' . h($val) . '"></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Frequência<select name="recurrence_type" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">';
+echo '<label>Frequência<select name="recurrence_type">';
 $types = ['single','weekly','monthly','custom'];
 foreach ($types as $t) {
     $sel = ((string)$a['recurrence_type'] === $t) ? ' selected' : '';
@@ -69,18 +80,18 @@ echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col12">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Regra de recorrência<textarea name="recurrence_rule" rows="2" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">' . h((string)($a['recurrence_rule'] ?? '')) . '</textarea></label>';
+echo '<label>Regra de recorrência<textarea name="recurrence_rule" rows="2">' . h((string)($a['recurrence_rule'] ?? '')) . '</textarea></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Valor por sessão<input type="number" step="0.01" min="0" name="value_per_session" required value="' . h((string)$a['value_per_session']) . '" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<label>Valor por sessão<input type="number" step="0.01" min="0" name="value_per_session" required value="' . h((string)$a['value_per_session']) . '"></label>';
 echo '</div>';
 
 echo '</div>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
 echo '<a class="btn" href="/appointments_view.php?id=' . (int)$a['id'] . '">Cancelar</a>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 
 echo '</form>';

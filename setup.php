@@ -70,21 +70,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 view_header('Setup');
 
 echo '<div class="card">';
-echo '<div style="font-size:18px;font-weight:800;margin-bottom:6px">Setup inicial</div>';
-echo '<div style="color:rgba(234,240,255,.72);font-size:14px;line-height:1.6;margin-bottom:14px">Crie o primeiro usuário Admin do sistema.</div>';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Setup inicial</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Crie o primeiro usuário Admin do sistema.</div>';
+echo '</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn" href="/login.php">Voltar</a>';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="height:14px"></div>';
 
 if ($error !== '') {
     echo '<div class="alert alertError" role="alert">' . h($error) . '</div>';
 }
 
-echo '<form method="post" action="/setup.php" style="display:grid;gap:12px;max-width:520px">';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Nome<input name="name" required style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">E-mail<input type="email" name="email" required style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Senha<input type="password" name="password" required minlength="8" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px"></label>';
+echo '<form method="post" action="/setup.php" style="display:grid;gap:12px;max-width:680px">';
+echo '<label>Nome<input name="name" required placeholder="Nome completo"></label>';
+echo '<label>E-mail<input type="email" name="email" required placeholder="email@empresa.com"></label>';
+echo '<label>Senha<input type="password" name="password" required minlength="8" placeholder="Mínimo 8 caracteres"></label>';
+echo '<div style="display:flex;justify-content:flex-end">';
 echo '<button class="btn btnPrimary" type="submit">Criar Admin</button>';
+echo '</div>';
 echo '</form>';
 
-echo '<div style="margin-top:14px;color:rgba(234,240,255,.72);font-size:13px;line-height:1.6">Depois do primeiro Admin criado, este setup não será mais acessível sem login.</div>';
+echo '<div style="margin-top:14px;color:hsl(var(--muted-foreground));font-size:13px;line-height:1.6">Depois do primeiro Admin criado, este setup não será mais acessível sem login.</div>';
 echo '</div>';
 
 view_footer();

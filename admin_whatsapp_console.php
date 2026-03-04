@@ -16,8 +16,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Console Evolution API v1</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">Executa qualquer método do SDK. Todas as chamadas geram log em Logs TI (provider=evolution).</div>';
+echo '<div style="font-size:22px;font-weight:900">Console Evolution API v1</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Executa qualquer método do SDK. Todas as chamadas geram log em Logs TI (provider=evolution).</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/tech_logs_list.php?provider=evolution">Logs TI</a>';
@@ -117,23 +117,23 @@ $prefillJson = json_encode($prefill, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
 echo '<section class="card col12">';
 echo '<form method="post" action="/admin_whatsapp_console_post.php" style="display:grid;gap:12px;max-width:980px">';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Método<select name="method" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:14px">';
+echo '<label>Método<select name="method">';
 foreach ($methods as $k => $label) {
     echo '<option value="' . h($k) . '">' . h($label) . '</option>';
 }
 echo '</select></label>';
 
-echo '<label style="display:grid;gap:7px;font-size:13px;color:rgba(234,240,255,.85)">Payload JSON<textarea name="payload_json" rows="14" style="width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:12px 12px;outline:none;font-size:13px">' . h($prefillJson !== false ? $prefillJson : $defaultPayload) . '</textarea></label>';
+echo '<label>Payload JSON<textarea name="payload_json" rows="14">' . h($prefillJson !== false ? $prefillJson : $defaultPayload) . '</textarea></label>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<button class="btn btnPrimary" type="submit">Executar</button>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="/admin_whatsapp_instance_view.php?instance=' . urlencode($instance) . '">Voltar instância</a>';
+echo '<button class="btn btnPrimary" type="submit">Executar</button>';
 echo '</div>';
 
 echo '</form>';
 
 echo '<div style="margin-top:14px" class="pill">';
-echo '<div style="font-weight:800;margin-bottom:8px">Exemplos (copie/cole)</div>';
+echo '<div style="font-weight:900;margin-bottom:8px">Exemplos (copie/cole)</div>';
 echo '<pre style="white-space:pre-wrap">' . h($exampleJson !== false ? $exampleJson : '') . '</pre>';
 echo '</div>';
 

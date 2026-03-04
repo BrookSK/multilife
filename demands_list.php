@@ -72,8 +72,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Demandas</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.5">Cards de captação: e-mail → card → assumir → disparo em grupos.</div>';
+echo '<div style="font-size:22px;font-weight:900">Demandas</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">Cards de captação: e-mail → card → assumir → disparo em grupos.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/demands_create.php">Novo card</a>';
@@ -83,7 +83,7 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/demands_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<select name="status" style="border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<select name="status">';
 $opts = [
     '' => 'Todos os status',
     'aguardando_captacao' => 'Aguardando Captação',
@@ -97,7 +97,7 @@ foreach ($opts as $k => $label) {
     echo '<option value="' . h($k) . '"' . $sel . '>' . h($label) . '</option>';
 }
 echo '</select>';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (título, especialidade, cidade, origem)" style="flex:1;min-width:240px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (título, especialidade, cidade, origem)" style="flex:1;min-width:240px">';
 echo '<button class="btn" type="submit">Filtrar</button>';
 echo '</form>';
 
@@ -163,7 +163,7 @@ echo '</div>';
 
 echo '<button class="fab" type="button" id="newDemandFab" aria-label="Novo card">+</button>';
 
-echo '<div id="newDemandOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.24);backdrop-filter:blur(2px);z-index:70"></div>';
+echo '<div id="newDemandOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:70"></div>';
 echo '<div id="newDemandModal" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-width:92vw;z-index:80">';
 echo '<section class="card" style="box-shadow:var(--shadow-elevated)">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';

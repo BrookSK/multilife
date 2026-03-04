@@ -34,8 +34,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:800">Meus pacientes</div>';
-echo '<div style="margin-top:6px;color:rgba(234,240,255,.72);font-size:14px;line-height:1.6">Apenas pacientes vinculados ao seu perfil.</div>';
+echo '<div style="font-size:22px;font-weight:900">Meus pacientes</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Apenas pacientes vinculados ao seu perfil.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
@@ -43,7 +43,7 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/professional_my_patients_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar" style="flex:1;min-width:240px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(10,14,28,.55);color:var(--text);padding:10px 12px;outline:none;font-size:14px">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar" style="flex:1;min-width:240px">';
 echo '<button class="btn" type="submit">Buscar</button>';
 echo '</form>';
 
@@ -52,8 +52,8 @@ echo '</section>';
 
 echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
-echo '<table style="width:100%;border-collapse:separate;border-spacing:0 10px">';
-echo '<thead><tr style="text-align:left;color:rgba(234,240,255,.72);font-size:12px">';
+echo '<table>';
+echo '<thead><tr>';
 echo '<th>Nome</th><th>Contato</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
@@ -68,10 +68,10 @@ foreach ($rows as $r) {
         $contact = '-';
     }
 
-    echo '<tr style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10)">';
-    echo '<td style="padding:12px;border-top-left-radius:14px;border-bottom-left-radius:14px">' . h((string)$r['full_name']) . '</td>';
-    echo '<td style="padding:12px">' . h($contact) . '</td>';
-    echo '<td style="padding:12px;border-top-right-radius:14px;border-bottom-right-radius:14px;text-align:right">';
+    echo '<tr>';
+    echo '<td style="font-weight:700">' . h((string)$r['full_name']) . '</td>';
+    echo '<td>' . h($contact) . '</td>';
+    echo '<td style="text-align:right">';
     echo '<a class="btn" href="/patients_view.php?id=' . (int)$r['id'] . '">Abrir</a>';
     echo '</td>';
     echo '</tr>';
