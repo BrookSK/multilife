@@ -14,18 +14,27 @@ function h(string $value): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login</title>
     <style>
-        :root {
-            --bg1: #0b1020;
-            --bg2: #111a33;
-            --card: rgba(255, 255, 255, 0.08);
-            --cardBorder: rgba(255, 255, 255, 0.14);
-            --text: #eaf0ff;
-            --muted: rgba(234, 240, 255, 0.72);
-            --primary: #6d5efc;
-            --primary2: #4fd1c5;
-            --danger: #ff5b7a;
-            --shadow: 0 20px 60px rgba(0,0,0,0.45);
-            --radius: 18px;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        :root{
+            --background:216 33% 97%;
+            --foreground:210 36% 17%;
+            --card:0 0% 100%;
+            --card-foreground:210 36% 17%;
+            --primary:180 65% 46%;
+            --primary-foreground:0 0% 100%;
+            --primary-dark:180 71% 36%;
+            --primary-darker:180 71% 28%;
+            --secondary:216 33% 97%;
+            --muted:216 33% 97%;
+            --muted-foreground:216 18% 61%;
+            --border:216 20% 90%;
+            --input:216 20% 90%;
+            --ring:180 65% 46%;
+            --radius:0.625rem;
+            --shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);
+            --shadow-card-hover:0 4px 12px 0 rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.06);
+            --shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);
         }
 
         * { box-sizing: border-box; }
@@ -36,16 +45,32 @@ function h(string $value): string {
 
         body {
             margin: 0;
-            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-            color: var(--text);
-            background:
-                radial-gradient(900px 500px at 12% 18%, rgba(109, 94, 252, 0.35), transparent 55%),
-                radial-gradient(700px 500px at 88% 20%, rgba(79, 209, 197, 0.26), transparent 55%),
-                radial-gradient(900px 700px at 60% 110%, rgba(255, 91, 122, 0.18), transparent 60%),
-                linear-gradient(180deg, var(--bg1), var(--bg2));
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            color: hsl(var(--foreground));
+            background: hsl(var(--background));
             display: grid;
             place-items: center;
             padding: 28px 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        body:before{
+            content:"";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(135deg,#fff 0%,#fff 55%,hsla(var(--primary)/.10) 100%);
+        }
+
+        body:after{
+            content:"";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(380px 380px at 85% 15%,hsla(var(--primary)/.08),transparent 60%),
+                radial-gradient(420px 420px at 12% 90%,hsla(var(--primary)/.05),transparent 62%);
         }
 
         .wrap {
@@ -55,14 +80,16 @@ function h(string $value): string {
             grid-template-columns: 1.1fr 0.9fr;
             gap: 22px;
             align-items: stretch;
+            position: relative;
+            z-index: 1;
         }
 
         .brand {
             padding: 34px;
-            border-radius: var(--radius);
-            background: linear-gradient(135deg, rgba(109, 94, 252, 0.18), rgba(79, 209, 197, 0.08));
-            border: 1px solid rgba(255,255,255,0.10);
-            box-shadow: var(--shadow);
+            border-radius: calc(var(--radius) + 10px);
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-elevated);
             position: relative;
             overflow: hidden;
         }
@@ -71,9 +98,7 @@ function h(string $value): string {
             content: "";
             position: absolute;
             inset: -2px;
-            background:
-                radial-gradient(500px 300px at 20% 20%, rgba(109, 94, 252, 0.35), transparent 60%),
-                radial-gradient(420px 260px at 85% 35%, rgba(79, 209, 197, 0.28), transparent 60%);
+            background: radial-gradient(520px 360px at 18% 18%,hsla(var(--primary)/.14),transparent 62%);
             filter: blur(6px);
             opacity: 0.9;
             pointer-events: none;
@@ -87,8 +112,8 @@ function h(string $value): string {
             display: inline-flex;
             align-items: center;
             gap: 12px;
-            font-weight: 700;
-            letter-spacing: 0.2px;
+            font-weight: 800;
+            letter-spacing: -0.2px;
             margin-bottom: 18px;
         }
 
@@ -96,8 +121,8 @@ function h(string $value): string {
             width: 44px;
             height: 44px;
             border-radius: 14px;
-            background: linear-gradient(135deg, rgba(109, 94, 252, 0.95), rgba(79, 209, 197, 0.9));
-            box-shadow: 0 18px 40px rgba(109, 94, 252, 0.25);
+            background: hsla(var(--primary)/.10);
+            border: 1px solid hsla(var(--primary)/.20);
             display: grid;
             place-items: center;
         }
@@ -105,7 +130,7 @@ function h(string $value): string {
         .mark svg {
             width: 22px;
             height: 22px;
-            color: white;
+            color: hsl(var(--primary));
         }
 
         .brand h1 {
@@ -116,7 +141,7 @@ function h(string $value): string {
 
         .brand p {
             margin: 0;
-            color: var(--muted);
+            color: hsl(var(--muted-foreground));
             font-size: 15px;
             line-height: 1.6;
             max-width: 55ch;
@@ -133,8 +158,8 @@ function h(string $value): string {
             gap: 12px;
             padding: 12px 14px;
             border-radius: 14px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.10);
+            background: hsla(var(--primary)/.06);
+            border: 1px solid hsla(var(--primary)/.14);
         }
 
         .tip strong {
@@ -146,17 +171,16 @@ function h(string $value): string {
         .tip span {
             display: block;
             font-size: 13px;
-            color: var(--muted);
+            color: hsl(var(--muted-foreground));
             line-height: 1.45;
         }
 
         .card {
-            border-radius: var(--radius);
-            background: var(--card);
-            border: 1px solid var(--cardBorder);
-            box-shadow: var(--shadow);
+            border-radius: calc(var(--radius) + 10px);
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-elevated);
             padding: 26px;
-            backdrop-filter: blur(10px);
         }
 
         .card h2 {
@@ -166,7 +190,7 @@ function h(string $value): string {
 
         .card .subtitle {
             margin: 0 0 18px;
-            color: var(--muted);
+            color: hsl(var(--muted-foreground));
             font-size: 14px;
             line-height: 1.5;
         }
@@ -175,9 +199,9 @@ function h(string $value): string {
             margin: 0 0 14px;
             padding: 12px 12px;
             border-radius: 14px;
-            background: rgba(255, 91, 122, 0.14);
-            border: 1px solid rgba(255, 91, 122, 0.35);
-            color: rgba(255, 235, 241, 0.95);
+            background: hsla(var(--destructive)/.10);
+            border: 1px solid hsla(var(--destructive)/.20);
+            color: hsl(var(--foreground));
             font-size: 13px;
             line-height: 1.4;
         }
@@ -191,7 +215,7 @@ function h(string $value): string {
             display: grid;
             gap: 7px;
             font-size: 13px;
-            color: rgba(234, 240, 255, 0.85);
+            color: hsl(var(--foreground));
         }
 
         .input {
@@ -201,10 +225,10 @@ function h(string $value): string {
         input[type="email"],
         input[type="password"] {
             width: 100%;
-            border-radius: 14px;
-            border: 1px solid rgba(255,255,255,0.18);
-            background: rgba(10, 14, 28, 0.55);
-            color: var(--text);
+            border-radius: 10px;
+            border: 1px solid hsl(var(--input));
+            background: hsla(var(--secondary)/.50);
+            color: hsl(var(--foreground));
             padding: 12px 12px;
             outline: none;
             transition: border-color .15s ease, box-shadow .15s ease;
@@ -212,12 +236,13 @@ function h(string $value): string {
         }
 
         input::placeholder {
-            color: rgba(234, 240, 255, 0.45);
+            color: hsl(var(--muted-foreground));
         }
 
         input:focus {
-            border-color: rgba(109, 94, 252, 0.75);
-            box-shadow: 0 0 0 4px rgba(109, 94, 252, 0.18);
+            background: hsl(var(--card));
+            border-color: hsla(var(--ring)/.55);
+            box-shadow: 0 0 0 4px hsla(var(--ring)/.15);
         }
 
         .row {
@@ -233,7 +258,7 @@ function h(string $value): string {
             align-items: center;
             gap: 8px;
             font-size: 13px;
-            color: rgba(234, 240, 255, 0.82);
+            color: hsl(var(--muted-foreground));
             user-select: none;
         }
 
@@ -243,7 +268,7 @@ function h(string $value): string {
         }
 
         a {
-            color: rgba(234, 240, 255, 0.85);
+            color: hsl(var(--primary));
             text-decoration: none;
             font-size: 13px;
         }
@@ -260,14 +285,19 @@ function h(string $value): string {
             gap: 10px;
             width: 100%;
             padding: 12px 14px;
-            border-radius: 14px;
-            border: none;
+            border-radius: 10px;
+            border: 1px solid transparent;
             cursor: pointer;
             font-weight: 700;
-            color: white;
-            background: linear-gradient(135deg, rgba(109, 94, 252, 0.95), rgba(79, 209, 197, 0.9));
-            box-shadow: 0 18px 42px rgba(0,0,0,0.35);
+            color: hsl(var(--primary-foreground));
+            background: hsl(var(--primary));
+            box-shadow: var(--shadow-card);
             transition: transform .06s ease, filter .15s ease;
+        }
+
+        .btn:hover{
+            box-shadow: var(--shadow-card-hover);
+            background: hsl(var(--primary-dark));
         }
 
         .btn:active {
@@ -277,11 +307,11 @@ function h(string $value): string {
         .foot {
             margin-top: 14px;
             font-size: 13px;
-            color: var(--muted);
+            color: hsl(var(--muted-foreground));
             text-align: center;
         }
 
-        .foot a { color: rgba(234, 240, 255, 0.92); }
+        .foot a { color: hsl(var(--primary)); }
 
         @media (max-width: 880px) {
             .wrap {

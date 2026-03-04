@@ -27,9 +27,9 @@ return [
     'db' => [
         'host' => $env('DB_HOST', 'localhost'),
         'port' => $envInt('DB_PORT', 3306),
-        'name' => $env('DB_NAME', 'wp_hmimd'),
-        'user' => $env('DB_USER', 'wp_xv2ov'),
-        'pass' => $env('DB_PASS', '33537095a'),
+        'name' => $env('DB_NAME', 'multilife'),
+        'user' => $env('DB_USER', 'multilife'),
+        'pass' => $env('DB_PASS', '&Xqn4Qiiv&a3Jh8m'),
         'charset' => 'utf8mb4',
     ],
     'app' => [
