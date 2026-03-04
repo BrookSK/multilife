@@ -53,6 +53,12 @@ if ($password !== '' && mb_strlen($password) < 8) {
     exit;
 }
 
+if ($password !== '' && (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password))) {
+    flash_set('error', 'Nova senha deve conter letras e números.');
+    header('Location: /users_edit.php?id=' . $id);
+    exit;
+}
+
 db()->beginTransaction();
 try {
     if ($password !== '') {

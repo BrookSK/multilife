@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS inbound_emails (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  mailbox_key VARCHAR(120) NOT NULL DEFAULT 'demands',
+  message_id VARCHAR(255) NULL,
+  from_email VARCHAR(190) NULL,
+  from_name VARCHAR(190) NULL,
+  subject VARCHAR(255) NULL,
+  body_text MEDIUMTEXT NULL,
+  body_html MEDIUMTEXT NULL,
+  received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status ENUM('received','ai_pending','ai_processed','archived','error') NOT NULL DEFAULT 'received',
+  linked_demand_id BIGINT UNSIGNED NULL,
+  error_message VARCHAR(255) NULL,
+  processed_at DATETIME NULL,
+  archived_at DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_inbound_emails_message_id (message_id),
+  KEY idx_inbound_emails_status (status),
+  KEY idx_inbound_emails_received_at (received_at),
+  KEY idx_inbound_emails_mailbox_key (mailbox_key),
+  KEY idx_inbound_emails_linked_demand_id (linked_demand_id),
+  CONSTRAINT fk_inbound_emails_demand FOREIGN KEY (linked_demand_id) REFERENCES demands(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

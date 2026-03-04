@@ -30,6 +30,12 @@ if (mb_strlen($password) < 8) {
     exit;
 }
 
+if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
+    flash_set('error', 'Senha deve conter letras e números.');
+    header('Location: /users_create.php');
+    exit;
+}
+
 if (!in_array($status, ['active', 'inactive'], true)) {
     $status = 'active';
 }

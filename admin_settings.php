@@ -35,13 +35,37 @@ $fields = [
     'docs.reminder_days_before_due' => 'Dias antes para lembrete de formulário',
     'finance.repasse_cycle_days' => 'Ciclo de repasse (dias)',
     'demands.assume_timeout_hours' => 'Timeout para assumir demanda (horas)',
+    'app.session_lifetime_seconds' => 'Sessão expira após (segundos)',
+    'cron.token' => 'Token do CRON (segredo)',
+
+    'smtp.in.host' => 'SMTP/IMAP Entrada - Host',
+    'smtp.in.port' => 'SMTP/IMAP Entrada - Porta',
+    'smtp.in.encryption' => 'SMTP/IMAP Entrada - Encryption (ssl/tls/none)',
+    'smtp.in.username' => 'SMTP/IMAP Entrada - Usuário',
+    'smtp.in.password' => 'SMTP/IMAP Entrada - Senha',
+    'smtp.in.mailbox' => 'SMTP/IMAP Entrada - Mailbox (ex: INBOX)',
+    'smtp.in.poll_minutes' => 'SMTP/IMAP Entrada - Intervalo (min)',
+    'smtp.demands.to_address' => 'Endereço de demandas (ex: demandas@multilife.sistema)',
+
+    'smtp.out.host' => 'SMTP Saída - Host',
+    'smtp.out.port' => 'SMTP Saída - Porta',
+    'smtp.out.encryption' => 'SMTP Saída - Encryption (ssl/tls/none)',
+    'smtp.out.username' => 'SMTP Saída - Usuário',
+    'smtp.out.password' => 'SMTP Saída - Senha',
+    'smtp.out.from_email' => 'SMTP Saída - From e-mail',
+    'smtp.out.from_name' => 'SMTP Saída - From nome',
 ];
 
 echo '<section class="card col12">';
 echo '<form method="post" action="/admin_settings_post.php" style="display:grid;gap:12px;max-width:720px">';
 foreach ($fields as $key => $label) {
     $val = $settings[$key] ?? '';
-    echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
+    $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password'], true);
+    if ($isSensitive) {
+        echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"></label>';
+    } else {
+        echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
+    }
 }
 
 echo '<div style="display:flex;justify-content:flex-end">';

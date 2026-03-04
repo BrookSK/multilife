@@ -30,3 +30,21 @@ require_once __DIR__ . '/zapsign_api.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/rbac.php';
 require_once __DIR__ . '/view.php';
+
+$sessionLifetime = (int)admin_setting_get('app.session_lifetime_seconds', (string)(int)$config['app']['session_lifetime_seconds']);
+if ($sessionLifetime <= 0) {
+    $sessionLifetime = (int)$config['app']['session_lifetime_seconds'];
+}
+
+if (isset($_SESSION['auth_user_id'])) {
+    $last = isset($_SESSION['_last_activity']) ? (int)$_SESSION['_last_activity'] : 0;
+    $now = time();
+    if ($last > 0 && ($now - $last) > $sessionLifetime) {
+        auth_logout();
+        unset($_SESSION['_last_activity']);
+        flash_set('error', 'Sessão expirada. Faça login novamente.');
+        header('Location: /login.php');
+        exit;
+    }
+    $_SESSION['_last_activity'] = $now;
+}
