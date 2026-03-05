@@ -65,7 +65,6 @@ echo '  .then(data=>{';
 echo '    console.log("Dados recebidos:", data);';
 echo '    console.log("Dados JSON:", JSON.stringify(data, null, 2));';
 echo '    const container=document.getElementById("qrcode-container");';
-echo '    ';
 echo '    // Verificar diferentes formatos de resposta da Evolution API';
 echo '    if(data.base64){';
 echo '      console.log("QR Code base64 encontrado");';
