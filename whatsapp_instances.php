@@ -59,7 +59,12 @@ if (!$instanceExists) {
             
             flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
         } else {
-            $error = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
+            $errorMsg = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
+            if (isset($createRes['json']['message'])) {
+                $errorMsg .= ' - ' . (is_array($createRes['json']['message']) ? implode(', ', $createRes['json']['message']) : $createRes['json']['message']);
+            }
+            $errorMsg .= '<br><br><strong>Debug - Resposta completa da API:</strong><br><pre style="background:#000;color:#0f0;padding:10px;border-radius:5px;overflow:auto;max-height:300px">' . json_encode($createRes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . '</pre>';
+            $error = $errorMsg;
         }
     } catch (Throwable $e) {
         $error = 'Erro ao criar instância: ' . $e->getMessage();
@@ -117,6 +122,7 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
                     if (isset($createRes['json']['message'])) {
                         $errorMsg .= ' - ' . (is_array($createRes['json']['message']) ? implode(', ', $createRes['json']['message']) : $createRes['json']['message']);
                     }
+                    $errorMsg .= '<br><br><strong>Debug - Resposta completa da API:</strong><br><pre style="background:#000;color:#0f0;padding:10px;border-radius:5px;overflow:auto;max-height:300px">' . json_encode($createRes, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . '</pre>';
                     $error = $errorMsg;
                 }
             } catch (Throwable $e) {
