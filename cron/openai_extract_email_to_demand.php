@@ -136,97 +136,175 @@ foreach ($emails as $e) {
         continue;
     }
 
-    $systemPrompt = (string)admin_setting_get(
-        'openai.extract_prompt',
-        "Você é um assistente que extrai dados de solicitações de atendimento domiciliar (home care) a partir de e-mails.\n"
-        . "Retorne SOMENTE um JSON válido no seguinte formato:\n"
-        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"description\":string|null,\"origin\":string|null,\"procedure_value\":number|null,\"ai_summary\":string|null}\n\n"
+    // CHAMADA 1: Extrair dados básicos (título, localização, especialidade, valor, urgência)
+    $systemPrompt1 = "Você é um assistente que extrai dados estruturados de e-mails de solicitação de atendimento domiciliar (home care).\n"
+        . "Analise o e-mail e extraia SOMENTE os dados básicos.\n\n"
+        . "Retorne um JSON válido no formato:\n"
+        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null}\n\n"
         . "Campos:\n"
-        . "- title: Título resumido da solicitação\n"
+        . "- title: Título curto e objetivo (máx 60 caracteres)\n"
         . "- location_city: Cidade do atendimento\n"
-        . "- location_state: UF do atendimento (sempre 2 letras maiúsculas)\n"
-        . "- specialty: Especialidade médica necessária\n"
-        . "- description: Descrição completa extraída do e-mail\n"
-        . "- origin: E-mail ou origem da solicitação\n"
-        . "- procedure_value: Valor do procedimento em reais (apenas número, sem R$)\n"
-        . "- ai_summary: Resumo objetivo da necessidade do paciente em 2-3 frases\n\n"
+        . "- location_state: UF com 2 letras maiúsculas (ex: SP, RJ)\n"
+        . "- specialty: Especialidade médica (ex: Fisioterapia, Enfermagem, Fonoaudiologia)\n"
+        . "- procedure_value: Valor em reais como número decimal (ex: 1500.00)\n"
+        . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n\n"
         . "Regras:\n"
-        . "- UF sempre com 2 letras maiúsculas quando existir\n"
-        . "- procedure_value deve ser número decimal (ex: 1500.00)\n"
-        . "- ai_summary deve ser claro, objetivo e focado na necessidade do paciente\n"
-        . "- Se não conseguir identificar um campo, use null"
-    );
+        . "- Seja preciso e objetivo\n"
+        . "- UF sempre 2 letras maiúsculas\n"
+        . "- Se não encontrar, use null\n"
+        . "- Responda SOMENTE com JSON válido";
 
-    $systemPrompt .= "\n\nResponda somente com json válido.";
-
-    $userPrompt = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\n" . $content;
+    $userPrompt1 = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . $content;
 
     try {
-        $res = $api->chatCompletions(
+        // Primeira chamada: dados básicos
+        $res1 = $api->chatCompletions(
             [
-                ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $userPrompt],
+                ['role' => 'system', 'content' => $systemPrompt1],
+                ['role' => 'user', 'content' => $userPrompt1],
             ],
             null,
             [
-                'temperature' => 0.2,
+                'temperature' => 0.1,
                 'response_format' => ['type' => 'json_object'],
             ]
         );
 
-        $statusCode = (int)($res['status'] ?? 0);
-        if ($statusCode < 200 || $statusCode >= 300) {
+        $statusCode1 = (int)($res1['status'] ?? 0);
+        if ($statusCode1 < 200 || $statusCode1 >= 300) {
             $msg = '';
-            $json = $res['json'] ?? null;
+            $json = $res1['json'] ?? null;
             if (is_array($json)) {
                 $msg = (string)($json['error']['message'] ?? '');
             }
             if ($msg === '') {
-                $msg = (string)($res['body_raw'] ?? '');
+                $msg = (string)($res1['body_raw'] ?? '');
             }
             $msg = trim($msg);
             if ($msg === '') {
-                $msg = 'HTTP ' . (string)$statusCode;
+                $msg = 'HTTP ' . (string)$statusCode1;
             }
-            throw new RuntimeException('OpenAI error: ' . $msg);
+            throw new RuntimeException('OpenAI error (chamada 1): ' . $msg);
         }
 
-        $json = $res['json'] ?? null;
-        $raw = '';
-        if (is_array($json)) {
-            $raw = (string)($json['choices'][0]['message']['content'] ?? '');
+        $json1 = $res1['json'] ?? null;
+        $raw1 = '';
+        if (is_array($json1)) {
+            $raw1 = (string)($json1['choices'][0]['message']['content'] ?? '');
         }
-        $raw = trim($raw);
+        $raw1 = trim($raw1);
 
-        if ($raw === '') {
-            throw new RuntimeException('OpenAI retornou vazio.');
+        if ($raw1 === '') {
+            throw new RuntimeException('OpenAI retornou vazio (chamada 1).');
         }
 
-        $parsed = json_decode($raw, true);
-        if (!is_array($parsed)) {
-            $start = strpos($raw, '{');
-            $end = strrpos($raw, '}');
+        $parsed1 = json_decode($raw1, true);
+        if (!is_array($parsed1)) {
+            $start = strpos($raw1, '{');
+            $end = strrpos($raw1, '}');
             if ($start !== false && $end !== false && $end > $start) {
-                $maybe = substr($raw, $start, $end - $start + 1);
+                $maybe = substr($raw1, $start, $end - $start + 1);
                 $maybeParsed = json_decode($maybe, true);
                 if (is_array($maybeParsed)) {
-                    $parsed = $maybeParsed;
+                    $parsed1 = $maybeParsed;
                 }
             }
         }
-        if (!is_array($parsed)) {
-            throw new RuntimeException('OpenAI não retornou JSON válido. Conteúdo: ' . mb_strimwidth($raw, 0, 180, '')); 
+        if (!is_array($parsed1)) {
+            throw new RuntimeException('OpenAI não retornou JSON válido (chamada 1). Conteúdo: ' . mb_strimwidth($raw1, 0, 180, '')); 
         }
 
-        $title = trim((string)($parsed['title'] ?? ''));
-        $city = trim((string)($parsed['location_city'] ?? ''));
-        $state = strtoupper(trim((string)($parsed['location_state'] ?? '')));
-        $specialty = trim((string)($parsed['specialty'] ?? ''));
-        $desc = trim((string)($parsed['description'] ?? ''));
-        $origin = trim((string)($parsed['origin'] ?? ''));
-        $procedureValue = isset($parsed['procedure_value']) && $parsed['procedure_value'] !== null ? (float)$parsed['procedure_value'] : null;
-        $aiSummary = trim((string)($parsed['ai_summary'] ?? ''));
+        // Extrair dados básicos
+        $title = trim((string)($parsed1['title'] ?? ''));
+        $city = trim((string)($parsed1['location_city'] ?? ''));
+        $state = strtoupper(trim((string)($parsed1['location_state'] ?? '')));
+        $specialty = trim((string)($parsed1['specialty'] ?? ''));
+        $procedureValue = isset($parsed1['procedure_value']) && $parsed1['procedure_value'] !== null ? (float)$parsed1['procedure_value'] : null;
+        $urgency = trim((string)($parsed1['urgency'] ?? ''));
 
+        // CHAMADA 2: Gerar resumo detalhado e descrição do card
+        $systemPrompt2 = "Você é um assistente especializado em criar resumos de solicitações de atendimento domiciliar (home care).\n"
+            . "Analise o e-mail completo e crie um resumo estruturado e profissional.\n\n"
+            . "Retorne um JSON válido no formato:\n"
+            . "{\"description\":string,\"ai_summary\":string}\n\n"
+            . "Campos:\n"
+            . "- description: Descrição completa e detalhada extraída do e-mail (todos os detalhes relevantes)\n"
+            . "- ai_summary: Resumo executivo em 2-4 frases, focado na necessidade do paciente e ação necessária\n\n"
+            . "Regras para description:\n"
+            . "- Incluir TODOS os detalhes médicos relevantes\n"
+            . "- Incluir dados do paciente (nome, idade, diagnóstico)\n"
+            . "- Incluir serviços solicitados e frequência\n"
+            . "- Manter formatação clara e profissional\n\n"
+            . "Regras para ai_summary:\n"
+            . "- Ser objetivo e direto\n"
+            . "- Focar na necessidade principal\n"
+            . "- Incluir urgência se mencionada\n"
+            . "- Máximo 4 frases\n\n"
+            . "Responda SOMENTE com JSON válido";
+
+        $userPrompt2 = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . $content;
+
+        $res2 = $api->chatCompletions(
+            [
+                ['role' => 'system', 'content' => $systemPrompt2],
+                ['role' => 'user', 'content' => $userPrompt2],
+            ],
+            null,
+            [
+                'temperature' => 0.3,
+                'response_format' => ['type' => 'json_object'],
+            ]
+        );
+
+        $statusCode2 = (int)($res2['status'] ?? 0);
+        if ($statusCode2 < 200 || $statusCode2 >= 300) {
+            $msg = '';
+            $json = $res2['json'] ?? null;
+            if (is_array($json)) {
+                $msg = (string)($json['error']['message'] ?? '');
+            }
+            if ($msg === '') {
+                $msg = (string)($res2['body_raw'] ?? '');
+            }
+            $msg = trim($msg);
+            if ($msg === '') {
+                $msg = 'HTTP ' . (string)$statusCode2;
+            }
+            throw new RuntimeException('OpenAI error (chamada 2): ' . $msg);
+        }
+
+        $json2 = $res2['json'] ?? null;
+        $raw2 = '';
+        if (is_array($json2)) {
+            $raw2 = (string)($json2['choices'][0]['message']['content'] ?? '');
+        }
+        $raw2 = trim($raw2);
+
+        if ($raw2 === '') {
+            throw new RuntimeException('OpenAI retornou vazio (chamada 2).');
+        }
+
+        $parsed2 = json_decode($raw2, true);
+        if (!is_array($parsed2)) {
+            $start = strpos($raw2, '{');
+            $end = strrpos($raw2, '}');
+            if ($start !== false && $end !== false && $end > $start) {
+                $maybe = substr($raw2, $start, $end - $start + 1);
+                $maybeParsed = json_decode($maybe, true);
+                if (is_array($maybeParsed)) {
+                    $parsed2 = $maybeParsed;
+                }
+            }
+        }
+        if (!is_array($parsed2)) {
+            throw new RuntimeException('OpenAI não retornou JSON válido (chamada 2). Conteúdo: ' . mb_strimwidth($raw2, 0, 180, '')); 
+        }
+
+        // Extrair descrição e resumo
+        $desc = trim((string)($parsed2['description'] ?? ''));
+        $aiSummary = trim((string)($parsed2['ai_summary'] ?? ''));
+
+        // Validações e defaults
         if ($title === '') {
             $title = $subject !== '' ? $subject : 'Demanda recebida por e-mail';
         }
@@ -235,10 +313,16 @@ foreach ($emails as $e) {
             $state = '';
         }
 
+        // Determinar status baseado em completude dos dados
         $status = 'aguardando_captacao';
         $needsManual = ($city === '' || $state === '' || $specialty === '');
         if ($needsManual) {
             $status = 'tratamento_manual';
+        }
+        
+        // Se urgente, priorizar
+        if ($urgency === 'urgente' && !$needsManual) {
+            $status = 'aguardando_captacao';
         }
 
         $db->beginTransaction();
@@ -249,7 +333,7 @@ foreach ($emails as $e) {
                 's' => $state !== '' ? $state : null,
                 'sp' => $specialty !== '' ? $specialty : null,
                 'd' => $desc !== '' ? $desc : null,
-                'o' => $fromEmail !== '' ? $fromEmail : ($origin !== '' ? $origin : null),
+                'o' => $fromEmail !== '' ? $fromEmail : null,
                 'st' => $status,
                 'pv' => $procedureValue,
                 'as' => $aiSummary !== '' ? $aiSummary : null,
