@@ -11,6 +11,24 @@ if ($limit <= 0 || $limit > 100) {
 
 $db = db();
 
+$colsStmt = $db->prepare('SHOW COLUMNS FROM inbound_emails');
+$colsStmt->execute();
+$cols = [];
+foreach ($colsStmt->fetchAll() as $c) {
+    if (isset($c['Field'])) {
+        $cols[(string)$c['Field']] = true;
+    }
+}
+
+$hasMailboxKey = isset($cols['mailbox_key']);
+$hasLinkedDemandId = isset($cols['linked_demand_id']);
+$hasFromEmail = isset($cols['from_email']);
+$hasFromAddress = isset($cols['from_address']);
+
+$pendingStatus = $hasMailboxKey ? 'ai_pending' : 'received';
+$doneStatus = $hasMailboxKey ? 'ai_processed' : 'processed';
+$selectFromField = $hasFromEmail ? 'from_email' : ($hasFromAddress ? 'from_address' : null);
+
 $db->beginTransaction();
 try {
     $stmt = $db->prepare(
@@ -29,9 +47,9 @@ try {
         exit;
     }
 
-    $markPending = $db->prepare("UPDATE inbound_emails SET status = 'ai_pending' WHERE id = :id");
+    $markPending = $db->prepare("UPDATE inbound_emails SET status = :st WHERE id = :id");
     foreach ($emails as $e) {
-        $markPending->execute(['id' => (int)$e['id']]);
+        $markPending->execute(['id' => (int)$e['id'], 'st' => $pendingStatus]);
     }
 
     $db->commit();
@@ -42,9 +60,14 @@ try {
 
 $api = new OpenAiApi();
 
+$okSet = "status = :st, processed_at = :pa, error_message = NULL";
+if ($hasLinkedDemandId) {
+    $okSet .= ", linked_demand_id = :did";
+}
+
 $updOk = $db->prepare(
     "UPDATE inbound_emails\n"
-    . "SET status = :st, linked_demand_id = :did, processed_at = :pa, error_message = NULL\n"
+    . "SET $okSet\n"
     . "WHERE id = :id"
 );
 $updErr = $db->prepare(
@@ -69,7 +92,10 @@ $errors = 0;
 foreach ($emails as $e) {
     $id = (int)$e['id'];
     $subject = (string)($e['subject'] ?? '');
-    $fromEmail = (string)($e['from_email'] ?? '');
+    $fromEmail = '';
+    if ($selectFromField !== null) {
+        $fromEmail = (string)($e[$selectFromField] ?? '');
+    }
     $bodyText = (string)($e['body_text'] ?? '');
     $bodyHtml = (string)($e['body_html'] ?? '');
 
@@ -155,7 +181,7 @@ foreach ($emails as $e) {
                 'sp' => $specialty !== '' ? $specialty : null,
                 'd' => $desc !== '' ? $desc : null,
                 'o' => $fromEmail !== '' ? $fromEmail : ($origin !== '' ? $origin : null),
-                'st' => $status,
+                'st' => 'new',
             ]);
             $demandId = (int)$db->lastInsertId();
 
@@ -179,14 +205,16 @@ foreach ($emails as $e) {
                 'note' => $note,
             ]);
 
-            $updOk->execute([
-                'st' => 'ai_processed',
-                'did' => $demandId,
+            $updParams = [
+                'st' => $doneStatus,
                 'pa' => date('Y-m-d H:i:s'),
                 'id' => $id,
-            ]);
-
-            $db->commit();
+            ];
+            if ($hasLinkedDemandId) {
+                $updParams['did'] = $demandId;
+            }
+            $updOk->execute($updParams);
+            $ok++;
         } catch (Throwable $e2) {
             $db->rollBack();
             throw $e2;
@@ -194,17 +222,14 @@ foreach ($emails as $e) {
 
         if ($needsManual) {
             $manual++;
-        } else {
-            $ok++;
         }
     } catch (Throwable $ex) {
         $errors++;
         $updErr->execute([
-            'err' => mb_strimwidth($ex->getMessage(), 0, 255, ''),
+            'err' => mb_strimwidth((string)$ex->getMessage(), 0, 250, '...'),
             'pa' => date('Y-m-d H:i:s'),
             'id' => $id,
         ]);
-        continue;
     }
 }
 

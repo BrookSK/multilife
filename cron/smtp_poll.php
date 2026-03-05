@@ -28,6 +28,7 @@ $user = trim((string)admin_setting_get('smtp.in.username', ''));
 $pass = (string)admin_setting_get('smtp.in.password', '');
 $mailbox = trim((string)admin_setting_get('smtp.in.mailbox', 'INBOX'));
 $archiveMailbox = trim((string)admin_setting_get('smtp.in.archive_mailbox', 'INBOX.Archive'));
+$demandsTo = trim((string)admin_setting_get('smtp.demands.to_address', ''));
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 if ($limit <= 0 || $limit > 200) {
@@ -39,6 +40,61 @@ if ($host === '' || $user === '' || $pass === '') {
     echo "ERROR: SMTP/IMAP inbound not configured (host/username/password).\n";
     exit;
 }
+
+$colsStmt = db()->prepare('SHOW COLUMNS FROM inbound_emails');
+$colsStmt->execute();
+$cols = [];
+foreach ($colsStmt->fetchAll() as $c) {
+    if (isset($c['Field'])) {
+        $cols[(string)$c['Field']] = true;
+    }
+}
+
+$hasMailboxKey = isset($cols['mailbox_key']);
+$hasFromEmail = isset($cols['from_email']);
+$hasFromName = isset($cols['from_name']);
+$hasFromAddress = isset($cols['from_address']);
+$hasToAddress = isset($cols['to_address']);
+
+$insertColumns = [];
+$insertValues = [];
+
+if ($hasMailboxKey) {
+    $insertColumns[] = 'mailbox_key';
+    $insertValues[] = ':mailbox_key';
+}
+
+$insertColumns[] = 'message_id';
+$insertValues[] = ':message_id';
+
+if ($hasFromEmail) {
+    $insertColumns[] = 'from_email';
+    $insertValues[] = ':from_email';
+} elseif ($hasFromAddress) {
+    $insertColumns[] = 'from_address';
+    $insertValues[] = ':from_address';
+}
+
+if ($hasFromName) {
+    $insertColumns[] = 'from_name';
+    $insertValues[] = ':from_name';
+}
+
+if ($hasToAddress) {
+    $insertColumns[] = 'to_address';
+    $insertValues[] = ':to_address';
+}
+
+$insertColumns[] = 'subject';
+$insertValues[] = ':subject';
+$insertColumns[] = 'body_text';
+$insertValues[] = ':body_text';
+$insertColumns[] = 'body_html';
+$insertValues[] = ':body_html';
+$insertColumns[] = 'received_at';
+$insertValues[] = ':received_at';
+$insertColumns[] = 'status';
+$insertValues[] = ':status';
 
 $flags = [];
 if ($enc === 'ssl') {
@@ -81,8 +137,8 @@ try {
     $db = db();
 
     $ins = $db->prepare(
-        'INSERT INTO inbound_emails (mailbox_key, message_id, from_email, from_name, subject, body_text, body_html, received_at, status)\n'
-        . 'VALUES (:mailbox_key, :message_id, :from_email, :from_name, :subject, :body_text, :body_html, :received_at, :status)'
+        'INSERT INTO inbound_emails (' . implode(',', $insertColumns) . ")\n"
+        . 'VALUES (' . implode(',', $insertValues) . ')'
     );
 
     $seen = 0;
@@ -119,6 +175,10 @@ try {
                 }
                 $fromName = isset($a->personal) ? (string)imap_utf8((string)$a->personal) : '';
             }
+        }
+
+        if ($messageId === '') {
+            $messageId = 'uid-' . (string)$uid . '-' . (string)time();
         }
 
         $subjectUtf8 = $subject !== '' ? (string)imap_utf8($subject) : '';
@@ -181,17 +241,34 @@ try {
 
         $db->beginTransaction();
         try {
-            $ins->execute([
-                'mailbox_key' => 'demands',
-                'message_id' => $messageId !== '' ? $messageId : null,
-                'from_email' => $fromEmail !== '' ? $fromEmail : null,
-                'from_name' => $fromName !== '' ? $fromName : null,
+            $insParams = [
+                'message_id' => $messageId,
                 'subject' => $subjectUtf8 !== '' ? $subjectUtf8 : null,
                 'body_text' => $bodyText !== '' ? $bodyText : null,
                 'body_html' => $bodyHtml !== '' ? $bodyHtml : null,
                 'received_at' => $receivedAt,
                 'status' => 'received',
-            ]);
+            ];
+
+            if ($hasMailboxKey) {
+                $insParams['mailbox_key'] = 'demands';
+            }
+
+            if ($hasFromEmail) {
+                $insParams['from_email'] = $fromEmail !== '' ? $fromEmail : null;
+            } elseif ($hasFromAddress) {
+                $insParams['from_address'] = $fromEmail !== '' ? $fromEmail : null;
+            }
+
+            if ($hasFromName) {
+                $insParams['from_name'] = $fromName !== '' ? $fromName : null;
+            }
+
+            if ($hasToAddress) {
+                $insParams['to_address'] = $demandsTo !== '' ? $demandsTo : null;
+            }
+
+            $ins->execute($insParams);
 
             $db->commit();
         } catch (Throwable $e) {
