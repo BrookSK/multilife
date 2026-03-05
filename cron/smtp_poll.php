@@ -216,24 +216,25 @@ try {
         $bodyText = '';
         $bodyHtml = '';
 
-        $structure = imap_fetchstructure($imap, (string)$uid, FT_UID);
+        $uidInt = (int)$uid;
+        $structure = imap_fetchstructure($imap, $uidInt, FT_UID);
         if ($structure) {
             // Best-effort: attempt common parts
-            $raw = imap_fetchbody($imap, (string)$uid, '1', FT_UID);
+            $raw = imap_fetchbody($imap, $uidInt, '1', FT_UID);
             if ($raw === false || $raw === '') {
-                $raw = imap_body($imap, (string)$uid, FT_UID);
+                $raw = imap_body($imap, $uidInt, FT_UID);
             }
             if (is_string($raw)) {
                 $bodyText = imap_utf8($raw);
             }
 
             // Try HTML part if multipart
-            $rawHtml = imap_fetchbody($imap, (string)$uid, '1.2', FT_UID);
+            $rawHtml = imap_fetchbody($imap, $uidInt, '1.2', FT_UID);
             if (is_string($rawHtml) && $rawHtml !== '') {
                 $bodyHtml = $rawHtml;
             }
         } else {
-            $raw = imap_body($imap, (string)$uid, FT_UID);
+            $raw = imap_body($imap, $uidInt, FT_UID);
             if (is_string($raw)) {
                 $bodyText = imap_utf8($raw);
             }
