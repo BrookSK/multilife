@@ -75,16 +75,50 @@ if ($instanceExists && $error === null) {
 
 // Gerar QR Code se solicitado
 if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === null) {
+    // Verificar novamente se a instância existe antes de gerar QR
+    $canGenerateQr = false;
     try {
-        $qrResponse = $api->generateQrCode();
-        // A resposta vem em $qrResponse['json']
-        if (isset($qrResponse['json'])) {
-            $qrCode = $qrResponse['json'];
+        $checkRes = $api->fetchInstances($instance);
+        if (isset($checkRes['json']) && is_array($checkRes['json']) && count($checkRes['json']) > 0) {
+            $canGenerateQr = true;
         } else {
-            $qrCode = $qrResponse;
+            // Instância não existe, tentar criar agora
+            try {
+                $createPayload = [
+                    'instanceName' => $instance,
+                    'qrcode' => true,
+                    'integration' => 'WHATSAPP-BAILEYS',
+                ];
+                $createRes = $api->createInstanceBasic($createPayload);
+                
+                if (isset($createRes['status']) && $createRes['status'] >= 200 && $createRes['status'] < 300) {
+                    sleep(3);
+                    $canGenerateQr = true;
+                    flash_set('success', 'Instância "' . $instance . '" criada! Gerando QR Code...');
+                } else {
+                    $error = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
+                }
+            } catch (Throwable $e) {
+                $error = 'Erro ao criar instância: ' . $e->getMessage();
+            }
         }
     } catch (Throwable $e) {
-        $error = $e->getMessage();
+        $error = 'Erro ao verificar instância: ' . $e->getMessage();
+    }
+    
+    // Só gerar QR Code se a instância existe/foi criada
+    if ($canGenerateQr && $error === null) {
+        try {
+            $qrResponse = $api->generateQrCode();
+            // A resposta vem em $qrResponse['json']
+            if (isset($qrResponse['json'])) {
+                $qrCode = $qrResponse['json'];
+            } else {
+                $qrCode = $qrResponse;
+            }
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
     }
 }
 
