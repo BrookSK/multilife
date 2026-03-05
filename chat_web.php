@@ -5,274 +5,379 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('chat.manage');
+// Qualquer usuário logado pode acessar o chat
+// rbac_require_permission('chat.manage');
 
-$status = isset($_GET['status']) ? (string)$_GET['status'] : 'open';
-$q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
-$selectedId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$prefDemandId = isset($_GET['demand_id']) ? (int)$_GET['demand_id'] : 0;
+$selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
+$chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all'; // all, groups, private
+$searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
-if (!in_array($status, ['open', 'closed'], true)) {
-    $status = 'open';
-}
+// Buscar configurações da Evolution API
+$baseUrl = admin_setting_get('evolution.base_url');
+$apiKey = admin_setting_get('evolution.api_key');
+$instanceName = admin_setting_get('evolution.instance');
 
-// conversations list + unread count per conversation (per current user)
-$sql = "SELECT
-            c.id,
-            c.external_phone,
-            c.contact_kind,
-            c.contact_ref_id,
-            c.status,
-            c.assigned_user_id,
-            c.last_message_at,
-            c.last_message_preview,
-            c.created_at,
-            u.name AS assigned_user_name,
-            (SELECT MAX(m.id) FROM chat_messages m WHERE m.conversation_id = c.id) AS last_message_id,
-            (SELECT r.last_read_message_id FROM chat_conversation_reads r WHERE r.conversation_id = c.id AND r.user_id = :uid) AS last_read_message_id
-        FROM chat_conversations c
-        LEFT JOIN users u ON u.id = c.assigned_user_id
-        WHERE c.status = :status";
-
-$params = [
-    'status' => $status,
-    'uid' => auth_user_id(),
-];
-
-if ($q !== '') {
-    $sql .= ' AND (c.external_phone LIKE :q OR c.last_message_preview LIKE :q)';
-    $params['q'] = '%' . $q . '%';
-}
-
-$sql .= ' ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC';
-
-$stmt = db()->prepare($sql);
-$stmt->execute($params);
-$conversations = $stmt->fetchAll();
-
-if ($selectedId === 0 && count($conversations) > 0) {
-    $selectedId = (int)$conversations[0]['id'];
-}
-
-$selected = null;
+$chats = [];
 $messages = [];
-$users = [];
-$contact = null;
+$selectedChatData = null;
 
-if ($selectedId > 0) {
-    $stmt = db()->prepare(
-        'SELECT c.*, u.name AS assigned_user_name\n'
-        . 'FROM chat_conversations c\n'
-        . 'LEFT JOIN users u ON u.id = c.assigned_user_id\n'
-        . 'WHERE c.id = :id'
-    );
-    $stmt->execute(['id' => $selectedId]);
-    $selected = $stmt->fetch();
-
-    if ($selected) {
-        $stmt = db()->prepare(
-            'SELECT m.id, m.direction, m.body, m.created_at, u.name AS user_name\n'
-            . 'FROM chat_messages m\n'
-            . 'LEFT JOIN users u ON u.id = m.sent_by_user_id\n'
-            . 'WHERE m.conversation_id = :cid\n'
-            . 'ORDER BY m.id ASC'
-        );
-        $stmt->execute(['cid' => $selectedId]);
-        $messages = $stmt->fetchAll();
-
-        $users = db()->query("SELECT id, name, email FROM users WHERE status = 'active' ORDER BY name ASC")->fetchAll();
-
-        // Try to resolve contact info by phone
-        $phone = (string)$selected['external_phone'];
-        $phoneDigits = preg_replace('/\D+/', '', $phone);
-
-        // Patient by whatsapp / phones
-        $stmt = db()->prepare(
-            "SELECT id, full_name, email, whatsapp, phone_primary, phone_secondary\n"
-            . "FROM patients\n"
-            . "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
-            . "   OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone_primary,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
-            . "   OR REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone_secondary,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
-            . "LIMIT 1"
-        );
-        $stmt->execute(['p' => '%' . $phoneDigits . '%']);
-        $p = $stmt->fetch();
-        if ($p) {
-            $contact = [
-                'kind' => 'patient',
-                'id' => (int)$p['id'],
-                'name' => (string)$p['full_name'],
-                'email' => (string)($p['email'] ?? ''),
-            ];
-        } else {
-            // Professional by users.phone (role profissional)
-            $stmt = db()->prepare(
-                "SELECT u.id, u.name, u.email\n"
-                . "FROM users u\n"
-                . "INNER JOIN user_roles ur ON ur.user_id = u.id\n"
-                . "INNER JOIN roles r ON r.id = ur.role_id\n"
-                . "WHERE u.status='active' AND r.slug='profissional'\n"
-                . "  AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(u.phone,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
-                . "ORDER BY u.id DESC\n"
-                . "LIMIT 1"
-            );
-            $stmt->execute(['p' => '%' . $phoneDigits . '%']);
-            $pu = $stmt->fetch();
-            if ($pu) {
-                $contact = [
-                    'kind' => 'professional_user',
-                    'id' => (int)$pu['id'],
-                    'name' => (string)$pu['name'],
-                    'email' => (string)($pu['email'] ?? ''),
-                ];
+// Buscar conversas via Evolution API
+if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+    try {
+        $ch = curl_init($baseUrl . '/chat/findChats/' . urlencode($instanceName));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($httpCode === 200) {
+            $data = json_decode($response, true);
+            if (isset($data) && is_array($data)) {
+                $chats = $data;
+                
+                // Filtrar por tipo
+                if ($chatType === 'groups') {
+                    $chats = array_filter($chats, function($chat) {
+                        return isset($chat['id']) && strpos($chat['id'], '@g.us') !== false;
+                    });
+                } elseif ($chatType === 'private') {
+                    $chats = array_filter($chats, function($chat) {
+                        return isset($chat['id']) && strpos($chat['id'], '@s.whatsapp.net') !== false;
+                    });
+                }
+                
+                // Filtrar por busca
+                if (!empty($searchQuery)) {
+                    $chats = array_filter($chats, function($chat) use ($searchQuery) {
+                        $name = $chat['name'] ?? $chat['id'] ?? '';
+                        return stripos($name, $searchQuery) !== false;
+                    });
+                }
+                
+                // Selecionar primeiro chat se nenhum selecionado
+                if (empty($selectedChat) && !empty($chats)) {
+                    $firstChat = reset($chats);
+                    $selectedChat = $firstChat['id'] ?? '';
+                }
             }
         }
-
-        // Mark read for current user
-        $lastMsgId = 0;
-        if (count($messages) > 0) {
-            $lastMsgId = (int)$messages[count($messages) - 1]['id'];
-        }
-        if ($lastMsgId > 0) {
-            $stmt = db()->prepare(
-                'INSERT INTO chat_conversation_reads (conversation_id, user_id, last_read_message_id, last_read_at)\n'
-                . 'VALUES (:cid, :uid, :mid, NOW())\n'
-                . 'ON DUPLICATE KEY UPDATE last_read_message_id = VALUES(last_read_message_id), last_read_at = VALUES(last_read_at)'
-            );
-            $stmt->execute(['cid' => $selectedId, 'uid' => auth_user_id(), 'mid' => $lastMsgId]);
-        }
+    } catch (Exception $e) {
+        // Erro ao buscar chats
     }
 }
 
-view_header('Comunicação');
+// Buscar mensagens do chat selecionado
+if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+    try {
+        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName) . '?remoteJid=' . urlencode($selectedChat));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($httpCode === 200) {
+            $data = json_decode($response, true);
+            if (isset($data) && is_array($data)) {
+                $messages = $data;
+            }
+        }
+        
+        // Buscar dados do chat selecionado
+        foreach ($chats as $chat) {
+            if (($chat['id'] ?? '') === $selectedChat) {
+                $selectedChatData = $chat;
+                break;
+            }
+        }
+    } catch (Exception $e) {
+        // Erro ao buscar mensagens
+    }
+}
 
-$activeTabCls = $status === 'open' ? 'btn btnPrimary' : 'btn';
-$histTabCls = $status === 'closed' ? 'btn btnPrimary' : 'btn';
+view_header('Chat ao Vivo');
 
-echo '<div class="grid">';
+// CSS customizado para WhatsApp Web
+echo '<style>';
+echo '.whatsapp-container{display:flex;height:calc(100vh - 64px);background:#f0f2f5;overflow:hidden}';
+echo '.whatsapp-sidebar{width:420px;background:#fff;border-right:1px solid #d1d7db;display:flex;flex-direction:column}';
+echo '.whatsapp-header{padding:16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
+echo '.whatsapp-search{padding:8px 16px;background:#fff}';
+echo '.whatsapp-search input{width:100%;padding:8px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px}';
+echo '.whatsapp-tabs{display:flex;gap:4px;padding:0 16px;background:#fff;border-bottom:1px solid #d1d7db}';
+echo '.whatsapp-tab{padding:12px 16px;font-size:14px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}';
+echo '.whatsapp-tab:hover{background:#f5f6f6}';
+echo '.whatsapp-tab.active{color:#00a884;border-bottom-color:#00a884}';
+echo '.whatsapp-chats{flex:1;overflow-y:auto;background:#fff}';
+echo '.whatsapp-chat-item{padding:12px 16px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:background .2s;display:flex;gap:12px;align-items:flex-start}';
+echo '.whatsapp-chat-item:hover{background:#f5f6f6}';
+echo '.whatsapp-chat-item.active{background:#f0f2f5}';
+echo '.whatsapp-chat-avatar{width:48px;height:48px;border-radius:50%;background:#dfe5e7;display:flex;align-items:center;justify-content:center;font-weight:600;color:#54656f;flex-shrink:0}';
+echo '.whatsapp-chat-info{flex:1;min-width:0}';
+echo '.whatsapp-chat-name{font-size:16px;font-weight:500;color:#111b21;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
+echo '.whatsapp-chat-preview{font-size:14px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
+echo '.whatsapp-chat-meta{text-align:right;font-size:12px;color:#667781;flex-shrink:0}';
+echo '.whatsapp-main{flex:1;display:flex;flex-direction:column;background:#efeae2}';
+echo '.whatsapp-chat-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
+echo '.whatsapp-chat-header-info{display:flex;align-items:center;gap:12px}';
+echo '.whatsapp-chat-header-actions{display:flex;gap:8px}';
+echo '.whatsapp-action-btn{width:40px;height:40px;border-radius:50%;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#54656f;transition:background .2s}';
+echo '.whatsapp-action-btn:hover{background:#f5f6f6}';
+echo '.whatsapp-messages{flex:1;overflow-y:auto;padding:20px;background-image:url("data:image/svg+xml,%3Csvg width=\\'100%25\\' height=\\'100%25\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Cdefs%3E%3Cpattern id=\\'pattern\\' x=\\'0\\' y=\\'0\\' width=\\'40\\' height=\\'40\\' patternUnits=\\'userSpaceOnUse\\'%3E%3Cpath d=\\'M0 20h40M20 0v40\\' stroke=\\'%23e9edef\\' stroke-width=\\'0.5\\' fill=\\'none\\'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\\'100%25\\' height=\\'100%25\\' fill=\\'url(%23pattern)\\'/%3E%3C/svg%3E")}';
+echo '.whatsapp-message{margin-bottom:12px;display:flex}';
+echo '.whatsapp-message.out{justify-content:flex-end}';
+echo '.whatsapp-message.in{justify-content:flex-start}';
+echo '.whatsapp-message-bubble{max-width:65%;padding:8px 12px;border-radius:8px;position:relative}';
+echo '.whatsapp-message.out .whatsapp-message-bubble{background:#d9fdd3;border-bottom-right-radius:0}';
+echo '.whatsapp-message.in .whatsapp-message-bubble{background:#fff;border-bottom-left-radius:0;box-shadow:0 1px 0.5px rgba(0,0,0,.13)}';
+echo '.whatsapp-message-text{font-size:14px;color:#111b21;line-height:1.5;word-wrap:break-word}';
+echo '.whatsapp-message-time{font-size:11px;color:#667781;margin-top:4px;text-align:right}';
+echo '.whatsapp-input-area{padding:12px 16px;background:#f0f2f5;border-top:1px solid #d1d7db;display:flex;gap:8px;align-items:flex-end}';
+echo '.whatsapp-input{flex:1;padding:10px 12px;border:none;border-radius:8px;font-size:15px;resize:none;max-height:120px;font-family:inherit}';
+echo '.whatsapp-send-btn{width:48px;height:48px;border-radius:50%;background:#00a884;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;transition:background .2s}';
+echo '.whatsapp-send-btn:hover{background:#06cf9c}';
+echo '.whatsapp-send-btn:disabled{background:#d1d7db;cursor:not-allowed}';
+echo '.whatsapp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#667781}';
+echo '.whatsapp-empty svg{width:360px;height:360px;opacity:.6;margin-bottom:24px}';
+echo '.whatsapp-empty h2{font-size:32px;font-weight:300;margin-bottom:16px}';
+echo '.whatsapp-empty p{font-size:14px;line-height:1.5;text-align:center;max-width:480px}';
+echo '.whatsapp-dropdown{position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);min-width:200px;z-index:1000;display:none}';
+echo '.whatsapp-dropdown.show{display:block}';
+echo '.whatsapp-dropdown-item{padding:12px 16px;font-size:14px;color:#3b4a54;cursor:pointer;transition:background .2s;display:flex;align-items:center;gap:12px}';
+echo '.whatsapp-dropdown-item:hover{background:#f5f6f6}';
+echo '.whatsapp-dropdown-item:first-child{border-radius:8px 8px 0 0}';
+echo '.whatsapp-dropdown-item:last-child{border-radius:0 0 8px 8px}';
+echo '.whatsapp-group-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#e9edef;border-radius:12px;font-size:12px;color:#54656f;margin-left:8px}';
+echo '</style>';
 
-echo '<section class="card col12">';
-echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
-echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">Comunicação</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">Chat estilo WhatsApp Web. Conversas pvt sempre iniciadas externamente.</div>';
+echo '<div class="whatsapp-container">';
+
+// Sidebar esquerda - Lista de conversas
+echo '<div class="whatsapp-sidebar">';
+
+// Header com avatar do usuário
+echo '<div class="whatsapp-header">';
+echo '<div class="whatsapp-chat-avatar">' . strtoupper(substr(auth_user()['name'] ?? 'U', 0, 1)) . '</div>';
+echo '<div style="position:relative">';
+echo '<button class="whatsapp-action-btn" onclick="toggleActionsMenu(event)">';
+echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+echo '</button>';
+echo '<div id="actionsMenu" class="whatsapp-dropdown">';
+echo '<div class="whatsapp-dropdown-item" onclick="window.location.href=\'/chat_create_group.php\'">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+echo 'Criar Grupo';
 echo '</div>';
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/dashboard.php">Voltar</a>';
+echo '<div class="whatsapp-dropdown-item" onclick="syncWhatsApp()">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.2"/></svg>';
+echo 'Sincronizar WhatsApp';
+echo '</div>';
+echo '<div class="whatsapp-dropdown-item" onclick="window.location.href=\'/evolution_qrcode.php\'">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
+echo 'Conectar via QR Code';
 echo '</div>';
 echo '</div>';
-echo '</section>';
-
-echo '<section class="card col12">';
-// WhatsApp Web-ish layout (3 columns)
-echo '<div style="display:grid;grid-template-columns:360px 1fr 360px;gap:14px;align-items:stretch">';
-
-// Left: conversation list
-echo '<div style="min-height:640px;display:flex;flex-direction:column">';
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
-echo '<a class="' . $activeTabCls . '" href="/chat_web.php?status=open">Ativas</a>';
-echo '<a class="' . $histTabCls . '" href="/chat_web.php?status=closed">Histórico</a>';
+echo '</div>';
 echo '</div>';
 
-echo '<form method="get" action="/chat_web.php" style="display:flex;gap:10px;margin-bottom:10px">';
-echo '<input type="hidden" name="status" value="' . h($status) . '">';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar por telefone ou mensagem">';
-echo '<button class="btn" type="submit">Buscar</button>';
+// Busca
+echo '<div class="whatsapp-search">';
+echo '<form method="get" action="/chat_web.php">';
+echo '<input type="hidden" name="type" value="' . h($chatType) . '">';
+if (!empty($selectedChat)) {
+    echo '<input type="hidden" name="chat" value="' . h($selectedChat) . '">';
+}
+echo '<input type="text" name="q" value="' . h($searchQuery) . '" placeholder="Pesquisar ou começar uma nova conversa">';
 echo '</form>';
+echo '</div>';
 
-echo '<div style="flex:1;overflow:auto;border:1px solid hsl(var(--border));border-radius:14px;background:hsl(var(--muted)/.15)">';
-if (count($conversations) === 0) {
-    echo '<div style="padding:14px;color:hsl(var(--muted-foreground));font-size:13px">Nenhuma conversa.</div>';
-}
-foreach ($conversations as $c) {
-    $cid = (int)$c['id'];
-    $isSel = $selectedId === $cid;
-    $lastAt = $c['last_message_at'] ? (string)$c['last_message_at'] : (string)$c['created_at'];
-    $preview = $c['last_message_preview'] ? (string)$c['last_message_preview'] : '';
+// Abas de filtro
+echo '<div class="whatsapp-tabs">';
+$allActive = $chatType === 'all' ? ' active' : '';
+$groupsActive = $chatType === 'groups' ? ' active' : '';
+$privateActive = $chatType === 'private' ? ' active' : '';
+echo '<a href="/chat_web.php?type=all" class="whatsapp-tab' . $allActive . '">Todas</a>';
+echo '<a href="/chat_web.php?type=groups" class="whatsapp-tab' . $groupsActive . '">Grupos</a>';
+echo '<a href="/chat_web.php?type=private" class="whatsapp-tab' . $privateActive . '">Conversas</a>';
+echo '</div>';
 
-    $lastMsgId = $c['last_message_id'] !== null ? (int)$c['last_message_id'] : 0;
-    $lastRead = $c['last_read_message_id'] !== null ? (int)$c['last_read_message_id'] : 0;
-    $unread = ($lastMsgId > 0 && $lastMsgId > $lastRead);
-
-    $bg = $isSel ? 'hsl(var(--accent))' : 'transparent';
-
-    echo '<a href="/chat_web.php?status=' . h($status) . '&q=' . urlencode($q) . '&id=' . $cid . '" style="display:block;padding:12px 12px;border-bottom:1px solid hsl(var(--border));background:' . $bg . ';text-decoration:none">';
-    echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">';
-    echo '<div style="min-width:0">';
-    echo '<div style="font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . h((string)$c['external_phone']) . '</div>';
-    echo '<div style="margin-top:4px;color:hsl(var(--muted-foreground));font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . h(mb_strimwidth($preview, 0, 60, '...')) . '</div>';
-    echo '</div>';
-    echo '<div style="text-align:right;flex:0 0 auto">';
-    echo '<div style="color:hsl(var(--muted-foreground));font-size:11px">' . h($lastAt) . '</div>';
-    if ($unread) {
-        echo '<div style="margin-top:6px"><span class="badge badgeDanger">Nova</span></div>';
+// Lista de conversas
+echo '<div class="whatsapp-chats">';
+if (empty($chats)) {
+    echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
+    echo '<p>Nenhuma conversa encontrada.</p>';
+    if (empty($baseUrl) || empty($apiKey)) {
+        echo '<p style="margin-top:12px;font-size:13px">Configure as credenciais da Evolution API em Configurações.</p>';
     }
     echo '</div>';
-    echo '</div>';
-    echo '</a>';
-}
-
-echo '</div>';
-
-echo '</div>';
-
-// Middle: messages
-echo '<div style="min-height:640px;display:flex;flex-direction:column">';
-if (!$selected) {
-    echo '<div style="padding:14px;color:hsl(var(--muted-foreground));font-size:13px">Selecione uma conversa.</div>';
 } else {
-    $assigned = $selected['assigned_user_name'] ? (string)$selected['assigned_user_name'] : '-';
-
-    echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">';
-    echo '<div>';
-    echo '<div style="font-weight:900">' . h((string)$selected['external_phone']) . '</div>';
-    echo '<div style="margin-top:4px;color:hsl(var(--muted-foreground));font-size:12px">Status: ' . h((string)$selected['status']) . ' | Responsável: ' . h($assigned) . '</div>';
-    echo '</div>';
-    echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-    echo '<form method="post" action="/chat_finalize_post.php" style="display:inline">';
-    echo '<input type="hidden" name="id" value="' . (int)$selected['id'] . '">';
-    echo '<button class="btn" type="submit">Finalizar</button>';
-    echo '</form>';
-    echo '<form method="post" action="/chat_reopen_post.php" style="display:inline">';
-    echo '<input type="hidden" name="id" value="' . (int)$selected['id'] . '">';
-    echo '<button class="btn" type="submit">Reabrir</button>';
-    echo '</form>';
-    echo '</div>';
-    echo '</div>';
-
-    echo '<div style="flex:1;overflow:auto;padding:10px;border-radius:14px;border:1px solid hsl(var(--border));background:hsl(var(--muted)/.25)">';
-    foreach ($messages as $m) {
-        $isOut = ((string)$m['direction'] === 'out');
-        $align = $isOut ? 'flex-end' : 'flex-start';
-        $bg = $isOut ? 'hsl(var(--primary)/.18)' : 'hsl(var(--muted)/.55)';
-
-        echo '<div style="display:flex;justify-content:' . $align . ';margin:10px 0">';
-        echo '<div style="max-width:78%;padding:10px 12px;border-radius:14px;background:' . $bg . ';border:1px solid hsl(var(--border))">';
-        echo '<div style="white-space:pre-wrap;font-size:14px;line-height:1.5">' . h((string)$m['body']) . '</div>';
-        echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">';
-        echo h((string)$m['created_at']);
-        if ($isOut) {
-            echo ' — ' . h((string)($m['user_name'] ?? ''));
+    foreach ($chats as $chat) {
+        $chatId = $chat['id'] ?? '';
+        $chatName = $chat['name'] ?? $chatId;
+        $isGroup = strpos($chatId, '@g.us') !== false;
+        $isActive = $selectedChat === $chatId ? ' active' : '';
+        $lastMsg = $chat['lastMessage']['message'] ?? '';
+        $lastTime = isset($chat['lastMessage']['messageTimestamp']) ? date('H:i', $chat['lastMessage']['messageTimestamp']) : '';
+        
+        $initials = strtoupper(substr($chatName, 0, 2));
+        
+        echo '<a href="/chat_web.php?type=' . h($chatType) . '&chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
+        echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+        echo '<div class="whatsapp-chat-info">';
+        echo '<div class="whatsapp-chat-name">' . h($chatName);
+        if ($isGroup) {
+            echo '<span class="whatsapp-group-badge">';
+            echo '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+            echo 'Grupo';
+            echo '</span>';
         }
         echo '</div>';
+        echo '<div class="whatsapp-chat-preview">' . h(mb_strimwidth($lastMsg, 0, 50, '...')) . '</div>';
         echo '</div>';
-        echo '</div>';
+        echo '<div class="whatsapp-chat-meta">' . h($lastTime) . '</div>';
+        echo '</a>';
+    }
+}
+echo '</div>';
+
+echo '</div>';
+
+// Área principal - Chat
+echo '<div class="whatsapp-main">';
+
+if (empty($selectedChat)) {
+    // Tela vazia quando nenhum chat selecionado
+    echo '<div class="whatsapp-empty">';
+    echo '<svg viewBox="0 0 303 172"><path fill="#DFE5E7" d="M170.5 0c-20.8 0-37.7 16.9-37.7 37.7 0 8.2 2.6 15.8 7 22l-7 25.9 26.6-7c6 4.1 13.3 6.5 21.1 6.5 20.8 0 37.7-16.9 37.7-37.7S191.3 0 170.5 0zm0 67.5c-16.4 0-29.8-13.4-29.8-29.8s13.4-29.8 29.8-29.8 29.8 13.4 29.8 29.8-13.4 29.8-29.8 29.8z"/><path fill="#DFE5E7" d="M87.2 117.5c-20.8 0-37.7 16.9-37.7 37.7 0 8.2 2.6 15.8 7 22l-7 25.9 26.6-7c6 4.1 13.3 6.5 21.1 6.5 20.8 0 37.7-16.9 37.7-37.7s-16.9-37.4-37.7-37.4zm0 67.5c-16.4 0-29.8-13.4-29.8-29.8s13.4-29.8 29.8-29.8 29.8 13.4 29.8 29.8-13.4 29.8-29.8 29.8z"/></svg>';
+    echo '<h2>WhatsApp Web</h2>';
+    echo '<p>Envie e receba mensagens sem manter seu celular conectado.<br>Use o WhatsApp em até 4 dispositivos vinculados e 1 celular ao mesmo tempo.</p>';
+    echo '</div>';
+} else {
+    $chatName = $selectedChatData['name'] ?? $selectedChat;
+    $isGroup = strpos($selectedChat, '@g.us') !== false;
+
+    // Cabeçalho do chat
+    echo '<div class="whatsapp-chat-header">';
+    echo '<div class="whatsapp-chat-header-info">';
+    $initials = strtoupper(substr($chatName, 0, 2));
+    echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+    echo '<div>';
+    echo '<div style="font-weight:600;font-size:16px;color:#111b21">' . h($chatName) . '</div>';
+    if ($isGroup) {
+        $participantCount = count($selectedChatData['participants'] ?? []);
+        echo '<div style="font-size:13px;color:#667781">' . $participantCount . ' participantes</div>';
+    } else {
+        echo '<div style="font-size:13px;color:#667781">online</div>';
     }
     echo '</div>';
-
-    echo '<form method="post" action="/chat_send_post.php" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">';
-    echo '<input type="hidden" name="id" value="' . (int)$selected['id'] . '">';
-    echo '<textarea name="body" rows="2" required placeholder="Digite sua resposta..." style="flex:1;min-width:260px"></textarea>';
-    echo '<button class="btn btnPrimary" type="submit">Enviar</button>';
+    echo '</div>';
+    echo '<div class="whatsapp-chat-header-actions">';
+    echo '<button class="whatsapp-action-btn" onclick="searchInChat()">';
+    echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>';
+    echo '</button>';
+    if ($isGroup) {
+        echo '<button class="whatsapp-action-btn" onclick="window.location.href=\'/chat_manage_group.php?id=' . urlencode($selectedChat) . '\'">';
+        echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+        echo '</button>';
+    }
+    echo '<button class="whatsapp-action-btn" onclick="toggleChatMenu(event)">';
+    echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+    echo '</button>';
+    echo '</div>';
+    echo '</div>';
+    
+    // Área de mensagens
+    echo '<div class="whatsapp-messages" id="messagesContainer">';
+    if (empty($messages)) {
+        echo '<div style="text-align:center;padding:40px;color:#667781">';
+        echo '<p>Nenhuma mensagem ainda.</p>';
+        echo '</div>';
+    } else {
+        foreach ($messages as $msg) {
+            $isFromMe = isset($msg['key']['fromMe']) && $msg['key']['fromMe'] === true;
+            $messageClass = $isFromMe ? 'out' : 'in';
+            $messageText = $msg['message']['conversation'] ?? $msg['message']['extendedTextMessage']['text'] ?? '';
+            $timestamp = isset($msg['messageTimestamp']) ? date('H:i', $msg['messageTimestamp']) : '';
+            
+            echo '<div class="whatsapp-message ' . $messageClass . '">';
+            echo '<div class="whatsapp-message-bubble">';
+            echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+            echo '<div class="whatsapp-message-time">' . h($timestamp) . '</div>';
+            echo '</div>';
+            echo '</div>';
+        }
+    }
+    echo '</div>';
+    
+    // Formulário de envio
+    echo '<div class="whatsapp-input-area">';
+    echo '<form method="post" action="/chat_send_message.php" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
+    echo '<input type="hidden" name="chat_id" value="' . h($selectedChat) . '">';
+    echo '<textarea class="whatsapp-input" name="message" placeholder="Digite uma mensagem" rows="1" required></textarea>';
+    echo '<button type="submit" class="whatsapp-send-btn">';
+    echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+    echo '</button>';
     echo '</form>';
+    echo '</div>';
 }
 
 echo '</div>';
 
-// Right: contact panel
-echo '<div style="min-height:640px;display:flex;flex-direction:column">';
-if ($selected) {
-    // Show demand context if available
+echo '</div>'; // Fecha whatsapp-container
+
+// JavaScript para funcionalidades
+echo '<script>';
+echo 'function toggleActionsMenu(e){';
+echo '  e.stopPropagation();';
+echo '  const menu=document.getElementById("actionsMenu");';
+echo '  menu.classList.toggle("show");';
+echo '}';
+echo 'function toggleChatMenu(e){';
+echo '  e.stopPropagation();';
+echo '  alert("Menu do chat em desenvolvimento");';
+echo '}';
+echo 'function searchInChat(){';
+echo '  alert("Busca no chat em desenvolvimento");';
+echo '}';
+echo 'function syncWhatsApp(){';
+echo '  if(confirm("Sincronizar todas as conversas e grupos do WhatsApp?")){';
+echo '    window.location.href="/chat_sync_whatsapp.php";';
+echo '  }';
+echo '}';
+echo 'document.addEventListener("click",function(){';
+echo '  const menu=document.getElementById("actionsMenu");';
+echo '  if(menu)menu.classList.remove("show");';
+echo '});';
+echo 'const messagesContainer=document.getElementById("messagesContainer");';
+echo 'if(messagesContainer){';
+echo '  messagesContainer.scrollTop=messagesContainer.scrollHeight;';
+echo '}';
+echo 'const textarea=document.querySelector(".whatsapp-input");';
+echo 'if(textarea){';
+echo '  textarea.addEventListener("input",function(){';
+echo '    this.style.height="auto";';
+echo '    this.style.height=this.scrollHeight+"px";';
+echo '  });';
+echo '  textarea.addEventListener("keydown",function(e){';
+echo '    if(e.key==="Enter"&&!e.shiftKey){';
+echo '      e.preventDefault();';
+echo '      document.getElementById("sendMessageForm").submit();';
+echo '    }';
+echo '  });';
+echo '}';
+echo '</script>';
+
+view_footer();
+exit;
+
+// Código antigo removido abaixo
+if (false) {
     if ($prefDemandId > 0) {
         $stmt = db()->prepare('SELECT id, title, specialty, location_city, location_state, status FROM demands WHERE id = :id');
         $stmt->execute(['id' => $prefDemandId]);
