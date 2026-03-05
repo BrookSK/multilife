@@ -21,6 +21,8 @@ if (!$pa) {
 
 view_header('Candidatura #' . (string)$pa['id']);
 
+echo '<style>.pill{border:none !important;padding:6px 0 !important}</style>';
+
 echo '<div class="grid">';
 
 echo '<section class="card col12">';
