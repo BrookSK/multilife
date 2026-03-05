@@ -98,9 +98,7 @@ function h(string $value): string {
             content: "";
             position: absolute;
             inset: -2px;
-            background: radial-gradient(520px 360px at 18% 18%,hsla(var(--primary)/.14),transparent 62%);
-            filter: blur(6px);
-            opacity: 0.9;
+            background: transparent;
             pointer-events: none;
         }
 
@@ -109,8 +107,9 @@ function h(string $value): string {
         }
 
         .logo {
-            display: inline-flex;
+            display: flex;
             align-items: center;
+            justify-content: center;
             gap: 12px;
             font-weight: 800;
             letter-spacing: -0.2px;
@@ -352,7 +351,7 @@ function h(string $value): string {
                 
                 if (!empty($logoUrl)):
                 ?>
-                    <img src="<?= h($logoUrl) ?>" alt="Logo" style="max-height:60px;max-width:100%;object-fit:contain">
+                    <img src="<?= h($logoUrl) ?>" alt="Logo" style="max-height:90px;max-width:100%;object-fit:contain">
                 <?php else: ?>
                     <div class="mark" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
