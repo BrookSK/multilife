@@ -7,6 +7,16 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp.manage');
 
+// Verificar se Evolution API está configurada
+$baseUrl = admin_setting_get('evolution.base_url', '');
+$apiKey = admin_setting_get('evolution.api_key', '');
+
+if ($baseUrl === '' || $apiKey === '') {
+    flash_set('error', 'Evolution API não configurada. Configure em Configurações.');
+    header('Location: /admin_settings.php');
+    exit;
+}
+
 $instance = trim((string)($_POST['instance'] ?? ''));
 $number = trim((string)($_POST['number'] ?? ''));
 
