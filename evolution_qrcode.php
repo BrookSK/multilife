@@ -91,7 +91,7 @@ echo '      container.innerHTML=`<div style="color:red;padding:20px">${errorMsg}
 echo '    }else{';
 echo '      console.error("Resposta inesperada:", data);';
 echo '      console.error("Propriedades do objeto:", Object.keys(data));';
-echo '      container.innerHTML=`<div style="color:orange;padding:20px">Resposta da API em formato inesperado.<br><small>Verifique o console para detalhes.</small><br><pre style="text-align:left;font-size:11px;margin-top:10px">${JSON.stringify(data, null, 2)}</pre></div>`;';
+echo '      container.innerHTML=`<div style="color:orange;padding:20px">Resposta da API em formato inesperado.<br><small>Verifique o console para detalhes.</small><br><pre style="text-align:left;font-size:11px;margin-top:10px">\${JSON.stringify(data, null, 2)}</pre></div>`;';
 echo '    }';
 echo '  })';
 echo '  .catch(e=>{';
