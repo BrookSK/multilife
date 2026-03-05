@@ -64,12 +64,18 @@ echo '</div>';
 echo '<div style="height:14px"></div>';
 
 // Exibir mensagens flash
-$flash = flash_get();
-if ($flash) {
-    $bgColor = $flash['type'] === 'success' ? 'hsl(142,76%,36%)' : 'hsl(0,84%,60%)';
-    $textColor = '#fff';
-    echo '<div style="padding:12px 16px;border-radius:10px;background:' . $bgColor . ';color:' . $textColor . ';font-weight:600;margin-bottom:14px">';
-    echo h($flash['message']);
+$successMsg = flash_get('success');
+$errorMsg = flash_get('error');
+
+if ($successMsg !== '') {
+    echo '<div style="padding:12px 16px;border-radius:10px;background:hsl(142,76%,36%);color:#fff;font-weight:600;margin-bottom:14px">';
+    echo h($successMsg);
+    echo '</div>';
+}
+
+if ($errorMsg !== '') {
+    echo '<div style="padding:12px 16px;border-radius:10px;background:hsl(0,84%,60%);color:#fff;font-weight:600;margin-bottom:14px">';
+    echo h($errorMsg);
     echo '</div>';
 }
 
