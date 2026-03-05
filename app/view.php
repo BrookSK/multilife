@@ -38,10 +38,10 @@ function view_header(string $title): void
     echo '<title>' . h($title) . '</title>';
     echo '<style>';
     echo "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');";
-    echo ':root{--background:216 33% 97%;--foreground:210 36% 17%;--card:0 0% 100%;--card-foreground:210 36% 17%;--popover:0 0% 100%;--popover-foreground:210 36% 17%;--primary:180 65% 46%;--primary-foreground:0 0% 100%;--primary-dark:180 71% 36%;--primary-darker:180 71% 28%;--secondary:216 33% 97%;--secondary-foreground:210 36% 17%;--muted:216 33% 97%;--muted-foreground:216 18% 61%;--accent:180 65% 95%;--accent-foreground:180 71% 28%;--destructive:0 65% 55%;--destructive-foreground:0 0% 100%;--warning:36 90% 55%;--warning-foreground:0 0% 100%;--info:210 70% 55%;--info-foreground:0 0% 100%;--success:180 65% 46%;--success-foreground:0 0% 100%;--border:216 20% 90%;--input:216 20% 90%;--ring:180 65% 46%;--radius:0.625rem;--shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);--shadow-card-hover:0 4px 12px 0 rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.06);--shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);--text:hsl(var(--foreground));--mutedText:hsl(var(--muted-foreground));--cardBorder:hsl(var(--border));}';
+    echo ':root{--background:216 33% 97%;--foreground:0 0% 0%;--card:0 0% 100%;--card-foreground:0 0% 0%;--popover:0 0% 100%;--popover-foreground:0 0% 0%;--primary:180 65% 46%;--primary-foreground:0 0% 100%;--primary-dark:180 71% 36%;--primary-darker:180 71% 28%;--secondary:216 33% 97%;--secondary-foreground:0 0% 0%;--muted:216 33% 97%;--muted-foreground:0 0% 35%;--accent:180 65% 95%;--accent-foreground:180 71% 28%;--destructive:0 65% 55%;--destructive-foreground:0 0% 100%;--warning:36 90% 55%;--warning-foreground:0 0% 100%;--info:210 70% 55%;--info-foreground:0 0% 100%;--success:180 65% 46%;--success-foreground:0 0% 100%;--border:216 20% 90%;--input:216 20% 90%;--ring:180 65% 46%;--radius:0.625rem;--shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);--shadow-card-hover:0 4px 12px 0 rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.06);--shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);--text:hsl(var(--foreground));--mutedText:hsl(var(--muted-foreground));--cardBorder:hsl(var(--border));}';
     echo '*{box-sizing:border-box;border-color:hsl(var(--border))}';
     echo 'html,body{height:100%}';
-    echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));}';
+    echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));font-size:20px;}';
     echo 'body:before{display:none}';
     echo 'body:after{display:none}';
     echo 'a{color:hsl(var(--foreground));text-decoration:none} a:hover{text-decoration:underline}';
@@ -92,15 +92,15 @@ function view_header(string $title): void
     echo '.alertError{background:hsla(var(--destructive)/.10);border-color:hsla(var(--destructive)/.20);color:hsl(var(--foreground))}';
     echo '.alertSuccess{background:hsla(var(--success)/.10);border-color:hsla(var(--success)/.20);color:hsl(var(--foreground))}';
     echo 'input,select,textarea{font-family:inherit}';
-    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--secondary)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
+    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsl(var(--card));color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:20px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
     echo 'textarea{min-height:96px;resize:vertical}';
     echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
     echo '::placeholder{color:hsl(var(--muted-foreground))}';
 
     echo 'table{width:100%;border-collapse:separate;border-spacing:0}';
-    echo 'th,td{padding:12px 12px;border-bottom:1px solid hsl(var(--border));text-align:left;font-size:13px}';
-    echo 'th{font-size:12px;color:hsl(var(--muted-foreground));font-weight:700}';
-    echo 'tr:hover td{background:hsla(var(--accent)/.35)}';
+    echo 'th,td{padding:12px 12px;border-bottom:1px solid hsl(var(--border));text-align:left;font-size:18px;background:transparent}';
+    echo 'th{font-size:17px;color:hsl(var(--foreground));font-weight:700;background:transparent}';
+    echo 'tr:hover td{background:hsl(var(--background))}';
     echo 'thead tr:hover td, thead tr:hover th{background:transparent}';
 
     echo '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid hsla(var(--primary)/.20);background:hsla(var(--primary)/.10);color:hsl(var(--primary-darker));font-size:12px;font-weight:700}';
@@ -109,9 +109,9 @@ function view_header(string $title): void
     echo '.badgeInfo{border-color:hsla(var(--info)/.20);background:hsla(var(--info)/.10);color:hsl(var(--info))}';
     echo '.badgeSuccess{border-color:hsla(var(--success)/.20);background:hsla(var(--success)/.10);color:hsl(var(--success))}';
 
-    echo 'label{display:grid;gap:7px;font-size:13px;font-weight:600;color:hsl(var(--foreground))}';
-    echo 'label[style]{display:grid !important;gap:7px !important;font-size:13px !important;font-weight:600 !important;color:hsl(var(--foreground)) !important}';
-    echo 'input[style]:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select[style],textarea[style]{border-radius:10px !important;border:1px solid hsl(var(--input)) !important;background:hsla(var(--secondary)/.50) !important;color:hsl(var(--foreground)) !important;padding:10px 12px !important;outline:none !important;font-size:14px !important;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease !important}';
+    echo 'label{display:grid;gap:7px;font-size:18px;font-weight:600;color:hsl(var(--foreground))}';
+    echo 'label[style]{display:grid !important;gap:7px !important;font-size:18px !important;font-weight:600 !important;color:hsl(var(--foreground)) !important}';
+    echo 'input[style]:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select[style],textarea[style]{border-radius:10px !important;border:1px solid hsl(var(--input)) !important;background:hsl(var(--card)) !important;color:hsl(var(--foreground)) !important;padding:10px 12px !important;outline:none !important;font-size:20px !important;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease !important}';
     echo 'input[style]:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,select[style]:focus,textarea[style]:focus{background:hsl(var(--card)) !important;border-color:hsla(var(--ring)/.55) !important;box-shadow:0 0 0 4px hsla(var(--ring)/.15) !important}';
     
     // Checkbox/Radio/File com style inline também
@@ -143,8 +143,8 @@ function view_header(string $title): void
     echo 'form .grid{gap:14px}';
     echo 'fieldset{border:1px solid hsl(var(--border));border-radius:12px;padding:18px;margin:0}';
     echo 'legend{font-size:14px;font-weight:700;color:hsl(var(--foreground));padding:0 8px}';
-    echo '.formSection{padding:18px;border-radius:12px;background:hsla(var(--muted)/.25);border:1px solid hsl(var(--border));margin-bottom:14px}';
-    echo '.formSectionTitle{font-size:15px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
+    echo '.formSection{padding:18px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));margin-bottom:14px}';
+    echo '.formSectionTitle{font-size:21px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
     echo 'div[style*="color:rgba(234,240,255,.72)"],span[style*="color:rgba(234,240,255,.72)"]{color:hsl(var(--muted-foreground)) !important}';
     echo 'div[style*="color:rgba(234,240,255,.85)"],span[style*="color:rgba(234,240,255,.85)"]{color:hsl(var(--foreground)) !important}';
     echo 'div[style*="background:rgba(10,14,28,.55)"],span[style*="background:rgba(10,14,28,.55)"]{background:hsla(var(--secondary)/.50) !important}';

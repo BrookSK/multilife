@@ -22,16 +22,16 @@ if ($isPublic) {
     echo '<title>Candidatura de Profissional - MultiLife Care</title>';
     echo '<style>';
     echo "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');";
-    echo ':root{--background:216 33% 97%;--foreground:210 36% 17%;--card:0 0% 100%;--card-foreground:210 36% 17%;--primary:180 65% 46%;--primary-foreground:0 0% 100%;--primary-dark:180 71% 36%;--muted:216 33% 97%;--muted-foreground:216 18% 61%;--border:216 20% 90%;--input:216 20% 90%;--ring:180 65% 46%;--radius:0.625rem;--shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);--shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);}';
+    echo ':root{--background:216 33% 97%;--foreground:0 0% 0%;--card:0 0% 100%;--card-foreground:0 0% 0%;--primary:180 65% 46%;--primary-foreground:0 0% 100%;--primary-dark:180 71% 36%;--muted:216 33% 97%;--muted-foreground:0 0% 35%;--border:216 20% 90%;--input:216 20% 90%;--ring:180 65% 46%;--radius:0.625rem;--shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);--shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);}';
     echo '*{box-sizing:border-box;border-color:hsl(var(--border))}';
     echo 'html,body{height:100%}';
-    echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));}';
+    echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));font-size:20px;}';
     echo 'input,select,textarea{font-family:inherit}';
-    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--muted)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
+    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsl(var(--card));color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:20px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
     echo 'textarea{min-height:96px;resize:vertical}';
     echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
     echo '::placeholder{color:hsl(var(--muted-foreground))}';
-    echo 'label{display:grid;gap:7px;font-size:13px;font-weight:600;color:hsl(var(--foreground))}';
+    echo 'label{display:grid;gap:7px;font-size:18px;font-weight:600;color:hsl(var(--foreground))}';
     
     // Checkbox moderno
     echo 'input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid hsl(var(--input));border-radius:4px;background:hsl(var(--card));cursor:pointer;position:relative;transition:all .15s ease;margin:0}';
@@ -54,8 +54,8 @@ if ($isPublic) {
     echo 'input[type="file"]::file-selector-button:hover{background:hsl(var(--primary-dark))}';
     
     echo 'form{display:grid;gap:14px}';
-    echo '.formSection{padding:18px;border-radius:12px;background:hsla(var(--muted)/.25);border:1px solid hsl(var(--border));margin-bottom:14px}';
-    echo '.formSectionTitle{font-size:15px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
+    echo '.formSection{padding:18px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));margin-bottom:14px}';
+    echo '.formSectionTitle{font-size:21px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
     echo '.card{background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:var(--shadow-elevated);border-radius:calc(var(--radius) + 6px);padding:18px;color:hsl(var(--card-foreground))}';
     echo '.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}';
     echo '.col6{grid-column:span 6}';
