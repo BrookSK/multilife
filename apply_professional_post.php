@@ -44,22 +44,9 @@ if ($stmt->fetch()) {
     exit;
 }
 
-$state1 = strtoupper(trim((string)($_POST['address_state'] ?? '')));
-$state2 = strtoupper(trim((string)($_POST['council_state'] ?? '')));
-
-if ($state1 !== '' && !preg_match('/^[A-Z]{2}$/', $state1)) {
-    error_log("ERRO: UF do endereço inválida: '$state1'");
-    flash_set('error', 'UF do endereço inválida. Use 2 letras (ex: SP).');
-    header('Location: /apply_professional.php');
-    exit;
-}
-
-if ($state2 !== '' && !preg_match('/^[A-Z]{2}$/', $state2)) {
-    error_log("ERRO: UF do conselho inválida: '$state2'");
-    flash_set('error', 'UF do conselho inválida. Use 2 letras (ex: SP).');
-    header('Location: /apply_professional.php');
-    exit;
-}
+// UF agora vem de dropdown, já está validado
+$state1 = trim((string)($_POST['address_state'] ?? ''));
+$state2 = trim((string)($_POST['council_state'] ?? ''));
 
 $stmt = db()->prepare(
     'INSERT INTO professional_applications (

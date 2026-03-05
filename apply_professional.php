@@ -98,12 +98,12 @@ echo '</div>';
 echo '<div style="font-weight:900;margin-top:6px">Identificação</div>';
 
 echo '<div class="grid">';
-echo '<div class="col6"><label>Estado civil<input name="marital_status" maxlength="40"></label></div>';
-echo '<div class="col6"><label>Sexo<input name="sex" maxlength="20"></label></div>';
+echo '<div class="col6"><label>Estado civil<select name="marital_status"><option value="">Selecione...</option><option value="Solteiro(a)">Solteiro(a)</option><option value="Casado(a)">Casado(a)</option><option value="Divorciado(a)">Divorciado(a)</option><option value="Viúvo(a)">Viúvo(a)</option><option value="União Estável">União Estável</option></select></label></div>';
+echo '<div class="col6"><label>Sexo<select name="sex"><option value="">Selecione...</option><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option><option value="Outro">Outro</option></select></label></div>';
 echo '<div class="col6"><label>Religião<input name="religion" maxlength="60"></label></div>';
 echo '<div class="col6"><label>Naturalidade<input name="birthplace" maxlength="120"></label></div>';
 echo '<div class="col6"><label>Nacionalidade<input name="nationality" maxlength="80"></label></div>';
-echo '<div class="col6"><label>Escolaridade<input name="education_level" maxlength="80"></label></div>';
+echo '<div class="col6"><label>Escolaridade<select name="education_level"><option value="">Selecione...</option><option value="Ensino Fundamental">Ensino Fundamental</option><option value="Ensino Médio">Ensino Médio</option><option value="Ensino Superior">Ensino Superior</option><option value="Pós-graduação">Pós-graduação</option><option value="Mestrado">Mestrado</option><option value="Doutorado">Doutorado</option></select></label></div>';
 echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:6px">Endereço</div>';
@@ -113,8 +113,8 @@ echo '<div class="col6"><label>Logradouro<input name="address_street" maxlength=
 echo '<div class="col6"><label>Número<input name="address_number" maxlength="20"></label></div>';
 echo '<div class="col6"><label>Complemento<input name="address_complement" maxlength="80"></label></div>';
 echo '<div class="col6"><label>Bairro<input name="address_neighborhood" maxlength="80"></label></div>';
-echo '<div class="col6"><label>Cidade<input name="address_city" maxlength="120"></label></div>';
-echo '<div class="col6"><label>UF (2 letras)<input name="address_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
+echo '<div class="col6"><label>UF<select name="address_state" id="address_state"><option value="">Selecione...</option><option value="AC">AC - Acre</option><option value="AL">AL - Alagoas</option><option value="AP">AP - Amapá</option><option value="AM">AM - Amazonas</option><option value="BA">BA - Bahia</option><option value="CE">CE - Ceará</option><option value="DF">DF - Distrito Federal</option><option value="ES">ES - Espírito Santo</option><option value="GO">GO - Goiás</option><option value="MA">MA - Maranhão</option><option value="MT">MT - Mato Grosso</option><option value="MS">MS - Mato Grosso do Sul</option><option value="MG">MG - Minas Gerais</option><option value="PA">PA - Pará</option><option value="PB">PB - Paraíba</option><option value="PR">PR - Paraná</option><option value="PE">PE - Pernambuco</option><option value="PI">PI - Piauí</option><option value="RJ">RJ - Rio de Janeiro</option><option value="RN">RN - Rio Grande do Norte</option><option value="RS">RS - Rio Grande do Sul</option><option value="RO">RO - Rondônia</option><option value="RR">RR - Roraima</option><option value="SC">SC - Santa Catarina</option><option value="SP">SP - São Paulo</option><option value="SE">SE - Sergipe</option><option value="TO">TO - Tocantins</option></select></label></div>';
+echo '<div class="col6"><label>Cidade<select name="address_city" id="address_city"><option value="">Selecione o estado primeiro...</option></select></label></div>';
 echo '<div class="col6"><label>CEP<input name="address_zip" maxlength="12" placeholder="00000-000"></label></div>';
 echo '</div>';
 
@@ -122,9 +122,9 @@ echo '<div style="font-weight:900;margin-top:6px">Documentos</div>';
 
 echo '<div class="grid">';
 echo '<div class="col6"><label>RG<input name="rg" maxlength="30"></label></div>';
-echo '<div class="col6"><label>Sigla do Conselho<input name="council_abbr" maxlength="20" placeholder="COREN, CRM"></label></div>';
+echo '<div class="col6"><label>Sigla do Conselho<select name="council_abbr"><option value="">Selecione...</option><option value="COREN">COREN - Enfermagem</option><option value="CRM">CRM - Medicina</option><option value="CRF">CRF - Farmácia</option><option value="CREFITO">CREFITO - Fisioterapia/Terapia Ocupacional</option><option value="CRN">CRN - Nutrição</option><option value="CREFONO">CREFONO - Fonoaudiologia</option><option value="CRP">CRP - Psicologia</option><option value="CRBM">CRBM - Biomedicina</option><option value="Outro">Outro</option></select></label></div>';
 echo '<div class="col6"><label>Número do Conselho<input name="council_number" maxlength="30"></label></div>';
-echo '<div class="col6"><label>UF do Conselho (2 letras)<input name="council_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
+echo '<div class="col6"><label>UF do Conselho<select name="council_state"><option value="">Selecione...</option><option value="AC">AC - Acre</option><option value="AL">AL - Alagoas</option><option value="AP">AP - Amapá</option><option value="AM">AM - Amazonas</option><option value="BA">BA - Bahia</option><option value="CE">CE - Ceará</option><option value="DF">DF - Distrito Federal</option><option value="ES">ES - Espírito Santo</option><option value="GO">GO - Goiás</option><option value="MA">MA - Maranhão</option><option value="MT">MT - Mato Grosso</option><option value="MS">MS - Mato Grosso do Sul</option><option value="MG">MG - Minas Gerais</option><option value="PA">PA - Pará</option><option value="PB">PB - Paraíba</option><option value="PR">PR - Paraná</option><option value="PE">PE - Pernambuco</option><option value="PI">PI - Piauí</option><option value="RJ">RJ - Rio de Janeiro</option><option value="RN">RN - Rio Grande do Norte</option><option value="RS">RS - Rio Grande do Sul</option><option value="RO">RO - Rondônia</option><option value="RR">RR - Roraima</option><option value="SC">SC - Santa Catarina</option><option value="SP">SP - São Paulo</option><option value="SE">SE - Sergipe</option><option value="TO">TO - Tocantins</option></select></label></div>';
 echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:6px">Dados bancários</div>';
@@ -133,7 +133,7 @@ echo '<div class="grid">';
 echo '<div class="col6"><label>Banco<input name="bank_name" maxlength="80"></label></div>';
 echo '<div class="col6"><label>Agência<input name="bank_agency" maxlength="20"></label></div>';
 echo '<div class="col6"><label>Conta<input name="bank_account" maxlength="30"></label></div>';
-echo '<div class="col6"><label>Tipo de conta<input name="bank_account_type" maxlength="20" placeholder="corrente/poupança"></label></div>';
+echo '<div class="col6"><label>Tipo de conta<select name="bank_account_type"><option value="">Selecione...</option><option value="Corrente">Corrente</option><option value="Poupança">Poupança</option><option value="Salário">Salário</option></select></label></div>';
 echo '<div class="col6"><label>Titular<input name="bank_account_holder" maxlength="160"></label></div>';
 echo '<div class="col6"><label>CPF do titular<input name="bank_account_holder_cpf" maxlength="20"></label></div>';
 echo '<div class="col6"><label>PIX<input name="pix_key" maxlength="120"></label></div>';
@@ -161,6 +161,55 @@ echo '</div>';
 echo '</form>';
 
 echo '</div>';
+
+// JavaScript para popular cidades baseado no estado
+echo '<script>';
+echo 'const cidadesPorEstado = {';
+echo '"SP": ["São Paulo","Guarulhos","Campinas","São Bernardo do Campo","Santo André","Osasco","São José dos Campos","Ribeirão Preto","Sorocaba","Santos","Mauá","São José do Rio Preto","Diadema","Jundiaí","Piracicaba","Carapicuíba","Bauru","Itaquaquecetuba","São Vicente","Franca","Praia Grande","Limeira","Suzano","Taboão da Serra","Sumaré","Americana","Araraquara","Jacareí","Indaiatuba","Taubaté","Embu das Artes","Cotia","Marília","Presidente Prudente","Hortolândia","Sertãozinho","Outra"],';
+echo '"RJ": ["Rio de Janeiro","São Gonçalo","Duque de Caxias","Nova Iguaçu","Niterói","Belford Roxo","Campos dos Goytacazes","São João de Meriti","Petrópolis","Volta Redonda","Magé","Itaboraí","Macaé","Cabo Frio","Nova Friburgo","Barra Mansa","Angra dos Reis","Teresópolis","Mesquita","Nilópolis","Outra"],';
+echo '"MG": ["Belo Horizonte","Uberlândia","Contagem","Juiz de Fora","Betim","Montes Claros","Ribeirão das Neves","Uberaba","Governador Valadares","Ipatinga","Santa Luzia","Sete Lagoas","Divinópolis","Ibirité","Poços de Caldas","Patos de Minas","Teófilo Otoni","Sabará","Pouso Alegre","Barbacena","Varginha","Outra"],';
+echo '"BA": ["Salvador","Feira de Santana","Vitória da Conquista","Camaçari","Itabuna","Juazeiro","Lauro de Freitas","Ilhéus","Jequié","Teixeira de Freitas","Alagoinhas","Barreiras","Porto Seguro","Simões Filho","Paulo Afonso","Eunápolis","Santo Antônio de Jesus","Valença","Candeias","Guanambi","Outra"],';
+echo '"PR": ["Curitiba","Londrina","Maringá","Ponta Grossa","Cascavel","São José dos Pinhais","Foz do Iguaçu","Colombo","Guarapuava","Paranaguá","Araucária","Toledo","Apucarana","Pinhais","Campo Largo","Almirante Tamandaré","Umuarama","Paranavaí","Piraquara","Cambé","Outra"],';
+echo '"RS": ["Porto Alegre","Caxias do Sul","Pelotas","Canoas","Santa Maria","Gravataí","Viamão","Novo Hamburgo","São Leopoldo","Rio Grande","Alvorada","Passo Fundo","Sapucaia do Sul","Uruguaiana","Santa Cruz do Sul","Cachoeirinha","Bagé","Bento Gonçalves","Erechim","Guaíba","Outra"],';
+echo '"PE": ["Recife","Jaboatão dos Guararapes","Olinda","Caruaru","Petrolina","Paulista","Cabo de Santo Agostinho","Camaragibe","Garanhuns","Vitória de Santo Antão","Igarassu","São Lourenço da Mata","Abreu e Lima","Santa Cruz do Capibaribe","Ipojuca","Serra Talhada","Araripina","Palmares","Escada","Outra"],';
+echo '"CE": ["Fortaleza","Caucaia","Juazeiro do Norte","Maracanaú","Sobral","Crato","Itapipoca","Maranguape","Iguatu","Quixadá","Canindé","Pacajus","Aquiraz","Quixeramobim","Cascavel","Pacatuba","Horizonte","Russas","Crateús","Tianguá","Outra"],';
+echo '"PA": ["Belém","Ananindeua","Santarém","Marabá","Castanhal","Parauapebas","Itaituba","Cametá","Bragança","Abaetetuba","Marituba","Altamira","Tucuruí","Barcarena","Paragominas","Breves","Tailândia","Benevides","Outra"],';
+echo '"SC": ["Florianópolis","Joinville","Blumenau","São José","Criciúma","Chapecó","Itajaí","Jaraguá do Sul","Lages","Palhoça","Balneário Camboriú","Brusque","Tubarão","São Bento do Sul","Caçador","Camboriú","Navegantes","Concórdia","Rio do Sul","Araranguá","Outra"],';
+echo '"GO": ["Goiânia","Aparecida de Goiânia","Anápolis","Rio Verde","Luziânia","Águas Lindas de Goiás","Valparaíso de Goiás","Trindade","Formosa","Novo Gama","Itumbiara","Senador Canedo","Catalão","Jataí","Planaltina","Caldas Novas","Santo Antônio do Descoberto","Outra"],';
+echo '"MA": ["São Luís","Imperatriz","São José de Ribamar","Timon","Caxias","Codó","Paço do Lumiar","Açailândia","Bacabal","Balsas","Santa Inês","Pinheiro","Pedreiras","Chapadinha","São Mateus","Barra do Corda","Outra"],';
+echo '"PB": ["João Pessoa","Campina Grande","Santa Rita","Patos","Bayeux","Sousa","Cajazeiras","Cabedelo","Guarabira","Mamanguape","Monteiro","Pombal","Itabaiana","Esperança","Outra"],';
+echo '"ES": ["Vila Velha","Serra","Cariacica","Vitória","Cachoeiro de Itapemirim","Linhares","São Mateus","Colatina","Guarapari","Aracruz","Viana","Nova Venécia","Barra de São Francisco","Outra"],';
+echo '"AM": ["Manaus","Parintins","Itacoatiara","Manacapuru","Coari","Tefé","Tabatinga","Maués","Humaitá","São Gabriel da Cachoeira","Outra"],';
+echo '"RN": ["Natal","Mossoró","Parnamirim","São Gonçalo do Amarante","Macaíba","Ceará-Mirim","Caicó","Assu","Currais Novos","São José de Mipibu","Outra"],';
+echo '"AL": ["Maceió","Arapiraca","Rio Largo","Palmeira dos Índios","União dos Palmares","Penedo","São Miguel dos Campos","Santana do Ipanema","Delmiro Gouveia","Coruripe","Outra"],';
+echo '"MT": ["Cuiabá","Várzea Grande","Rondonópolis","Sinop","Tangará da Serra","Cáceres","Sorriso","Lucas do Rio Verde","Barra do Garças","Alta Floresta","Outra"],';
+echo '"MS": ["Campo Grande","Dourados","Três Lagoas","Corumbá","Ponta Porã","Sidrolândia","Naviraí","Nova Andradina","Aquidauana","Paranaíba","Outra"],';
+echo '"DF": ["Brasília","Ceilândia","Taguatinga","Samambaia","Planaltina","Águas Claras","Gama","Santa Maria","São Sebastião","Recanto das Emas","Sobradinho","Outra"],';
+echo '"SE": ["Aracaju","Nossa Senhora do Socorro","Lagarto","Itabaiana","Estância","São Cristóvão","Tobias Barreto","Simão Dias","Propriá","Outra"],';
+echo '"RO": ["Porto Velho","Ji-Paraná","Ariquemes","Vilhena","Cacoal","Jaru","Rolim de Moura","Guajará-Mirim","Pimenta Bueno","Outra"],';
+echo '"TO": ["Palmas","Araguaína","Gurupi","Porto Nacional","Paraíso do Tocantins","Colinas do Tocantins","Guaraí","Miracema do Tocantins","Outra"],';
+echo '"AC": ["Rio Branco","Cruzeiro do Sul","Sena Madureira","Tarauacá","Feijó","Brasiléia","Outra"],';
+echo '"AP": ["Macapá","Santana","Laranjal do Jari","Oiapoque","Mazagão","Outra"],';
+echo '"RR": ["Boa Vista","Rorainópolis","Caracaraí","Mucajaí","Pacaraima","Outra"],';
+echo '"PI": ["Teresina","Parnaíba","Picos","Piripiri","Floriano","Campo Maior","Barras","Altos","Outra"]';
+echo '};';
+echo 'const ufSelect = document.getElementById("address_state");';
+echo 'const cidadeSelect = document.getElementById("address_city");';
+echo 'if(ufSelect && cidadeSelect){';
+echo 'ufSelect.addEventListener("change", function(){';
+echo 'const uf = this.value;';
+echo 'cidadeSelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
+echo 'if(uf && cidadesPorEstado[uf]){';
+echo 'cidadesPorEstado[uf].forEach(function(cidade){';
+echo 'const opt = document.createElement("option");';
+echo 'opt.value = cidade;';
+echo 'opt.textContent = cidade;';
+echo 'cidadeSelect.appendChild(opt);';
+echo '});';
+echo '}';
+echo '});';
+echo '}';
+echo '</script>';
 
 if ($isPublic) {
     echo '</div>';
