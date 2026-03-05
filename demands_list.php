@@ -28,6 +28,10 @@ $params = [];
 if ($status !== '') {
     $where[] = 'd.status = :status';
     $params['status'] = $status;
+} else {
+    // Por padrão, não mostrar demandas canceladas
+    $where[] = 'd.status != :excluded_status';
+    $params['excluded_status'] = 'cancelado';
 }
 
 if ($q !== '') {

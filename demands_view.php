@@ -121,10 +121,11 @@ echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
 echo '<button class="btn btnPrimary" type="submit">Realizar Captação</button>';
 echo '</form>';
 
-echo '<form method="post" action="/demands_cancel_post.php" style="display:inline" onsubmit="return confirm(\'Tem certeza que deseja cancelar este card?\')">';
-echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
-echo '<button class="btn" type="submit" style="background:hsl(0,84%,60%);color:#fff">Cancelar Card</button>';
-echo '</form>';
+if ($st !== 'cancelado') {
+    echo '<a class="btn" href="/demands_cancel.php?id=' . (int)$d['id'] . '" style="background:hsl(0,84%,60%);color:#fff">Cancelar Card</a>';
+} else {
+    echo '<a class="btn btnPrimary" href="/demands_reactivate.php?id=' . (int)$d['id'] . '">Reativar Card</a>';
+}
 
 echo '</div>';
 echo '</div>';
@@ -145,6 +146,51 @@ echo '</form>';
 echo '</div>';
 
 echo '</section>';
+
+// Informações de Cancelamento/Reativação
+if ($st === 'cancelado' && !empty($d['cancellation_reason'])) {
+    echo '<section class="card col12">';
+    echo '<div style="font-weight:900;margin-bottom:12px;color:hsl(var(--destructive))">Informações do Cancelamento</div>';
+    echo '<div style="padding:12px;background:hsla(var(--destructive)/.05);border:1px solid hsl(var(--border));border-radius:8px">';
+    echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));line-height:1.6">';
+    echo '<strong>Motivo:</strong> ' . h((string)$d['cancellation_reason']) . '<br>';
+    if (!empty($d['cancelled_at'])) {
+        echo '<strong>Cancelado em:</strong> ' . h((string)$d['cancelled_at']) . '<br>';
+    }
+    if (!empty($d['cancelled_by_user_id'])) {
+        $cancelledByStmt = db()->prepare('SELECT name FROM users WHERE id = :id');
+        $cancelledByStmt->execute(['id' => $d['cancelled_by_user_id']]);
+        $cancelledByName = $cancelledByStmt->fetchColumn();
+        if ($cancelledByName) {
+            echo '<strong>Cancelado por:</strong> ' . h((string)$cancelledByName);
+        }
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</section>';
+}
+
+if (!empty($d['reactivation_reason'])) {
+    echo '<section class="card col12">';
+    echo '<div style="font-weight:900;margin-bottom:12px;color:hsl(var(--primary))">Informações da Reativação</div>';
+    echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px">';
+    echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));line-height:1.6">';
+    echo '<strong>Justificativa:</strong> ' . h((string)$d['reactivation_reason']) . '<br>';
+    if (!empty($d['reactivated_at'])) {
+        echo '<strong>Reativado em:</strong> ' . h((string)$d['reactivated_at']) . '<br>';
+    }
+    if (!empty($d['reactivated_by_user_id'])) {
+        $reactivatedByStmt = db()->prepare('SELECT name FROM users WHERE id = :id');
+        $reactivatedByStmt->execute(['id' => $d['reactivated_by_user_id']]);
+        $reactivatedByName = $reactivatedByStmt->fetchColumn();
+        if ($reactivatedByName) {
+            echo '<strong>Reativado por:</strong> ' . h((string)$reactivatedByName);
+        }
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</section>';
+}
 
 // Detalhes
 

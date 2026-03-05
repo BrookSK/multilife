@@ -76,6 +76,92 @@ $stmt->execute($params);
 $custoAtendimentos = (float)$stmt->fetchColumn();
 
 $margemOperacional = $faturamentoTotal - $custoAtendimentos;
+$lucroLiquido = $margemOperacional; // Simplificado - pode incluir outras despesas operacionais
+
+// Número de atendimentos
+$stmt = $db->prepare(
+    "SELECT COUNT(*) AS total
+     FROM appointments a
+     INNER JOIN patients p ON p.id = a.patient_id
+     WHERE $whereClause"
+);
+$stmt->execute($params);
+$numAtendimentos = (int)$stmt->fetchColumn();
+
+// Atendimentos cancelados
+$stmt = $db->prepare(
+    "SELECT COUNT(*) AS total
+     FROM appointments a
+     INNER JOIN patients p ON p.id = a.patient_id
+     WHERE a.status = 'cancelado' AND $whereClause"
+);
+$stmt->execute($params);
+$numCancelados = (int)$stmt->fetchColumn();
+
+// Atendimentos por especialidade
+$stmt = $db->prepare(
+    "SELECT a.specialty, COUNT(*) as count
+     FROM appointments a
+     INNER JOIN patients p ON p.id = a.patient_id
+     WHERE $whereClause
+     GROUP BY a.specialty
+     ORDER BY count DESC
+     LIMIT 10"
+);
+$stmt->execute($params);
+$atendimentosPorEspecialidade = $stmt->fetchAll();
+
+// Dados do período anterior (últimos 30 dias antes do período atual)
+$previousDateFilter = '';
+switch ($period) {
+    case 'day':
+        $previousDateFilter = 'DATE(a.first_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
+        break;
+    case 'week':
+        $previousDateFilter = 'YEARWEEK(a.first_at, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
+        break;
+    case 'month':
+        $previousDateFilter = 'YEAR(a.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND MONTH(a.first_at) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
+        break;
+    case 'year':
+        $previousDateFilter = 'YEAR(a.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
+        break;
+}
+
+$previousWhere = array_merge([$previousDateFilter], array_slice($baseWhere, 1));
+$previousWhereClause = implode(' AND ', $previousWhere);
+
+// Faturamento período anterior
+$stmt = $db->prepare(
+    "SELECT COALESCE(SUM(ar.amount), 0) AS total
+     FROM finance_accounts_receivable ar
+     INNER JOIN appointments a ON a.id = ar.appointment_id
+     INNER JOIN patients p ON p.id = ar.patient_id
+     WHERE ar.status IN ('recebido') AND $previousWhereClause"
+);
+$stmt->execute($params);
+$faturamentoPrevious = (float)$stmt->fetchColumn();
+
+// Calcular crescimento
+$crescimentoFaturamento = 0;
+if ($faturamentoPrevious > 0) {
+    $crescimentoFaturamento = (($faturamentoTotal - $faturamentoPrevious) / $faturamentoPrevious) * 100;
+}
+
+// Número de atendimentos período anterior
+$stmt = $db->prepare(
+    "SELECT COUNT(*) AS total
+     FROM appointments a
+     INNER JOIN patients p ON p.id = a.patient_id
+     WHERE $previousWhereClause"
+);
+$stmt->execute($params);
+$numAtendimentosPrevious = (int)$stmt->fetchColumn();
+
+$crescimentoAtendimentos = 0;
+if ($numAtendimentosPrevious > 0) {
+    $crescimentoAtendimentos = (($numAtendimentos - $numAtendimentosPrevious) / $numAtendimentosPrevious) * 100;
+}
 
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(ar.amount), 0) AS total
@@ -176,41 +262,123 @@ echo '</form>';
 
 echo '</section>';
 
+// Cards principais - Linha 1
+echo '<section class="card col3">';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Número de Atendimentos</div>';
+echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--foreground))">' . $numAtendimentos . '</div>';
+$crescAtendIcon = $crescimentoAtendimentos >= 0 ? '↑' : '↓';
+$crescAtendColor = $crescimentoAtendimentos >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(var(--destructive))';
+echo '<div style="margin-top:6px;font-size:13px;color:' . $crescAtendColor . ';font-weight:600">';
+echo $crescAtendIcon . ' ' . number_format(abs($crescimentoAtendimentos), 1) . '% vs período anterior';
+echo '</div>';
+echo '</section>';
+
+echo '<section class="card col3">';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Atendimentos Cancelados</div>';
+echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--destructive))">' . $numCancelados . '</div>';
+$taxaCancelamento = $numAtendimentos > 0 ? ($numCancelados / $numAtendimentos) * 100 : 0;
+echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">';
+echo number_format($taxaCancelamento, 1) . '% do total';
+echo '</div>';
+echo '</section>';
+
+echo '<section class="card col3">';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Faturamento Total</div>';
+echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--primary))">R$ ' . number_format($faturamentoTotal, 2, ',', '.') . '</div>';
+$crescFatIcon = $crescimentoFaturamento >= 0 ? '↑' : '↓';
+$crescFatColor = $crescimentoFaturamento >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(var(--destructive))';
+echo '<div style="margin-top:6px;font-size:13px;color:' . $crescFatColor . ';font-weight:600">';
+echo $crescFatIcon . ' ' . number_format(abs($crescimentoFaturamento), 1) . '% vs período anterior';
+echo '</div>';
+echo '</section>';
+
+echo '<section class="card col3">';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Custo Total</div>';
+echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--destructive))">R$ ' . number_format($custoAtendimentos, 2, ',', '.') . '</div>';
+echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Repasses pagos</div>';
+echo '</section>';
+
+// Cards secundários - Linha 2
 echo '<section class="card col4">';
-echo '<div style="font-size:14px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Faturamento Total</div>';
-echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--primary))">R$ ' . number_format($faturamentoTotal, 2, ',', '.') . '</div>';
-echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Contas recebidas no período</div>';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Lucro Líquido Real</div>';
+$lucroColor = $lucroLiquido >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(var(--destructive))';
+echo '<div style="font-size:28px;font-weight:900;color:' . $lucroColor . '">R$ ' . number_format($lucroLiquido, 2, ',', '.') . '</div>';
+$margemPercentual = $faturamentoTotal > 0 ? ($lucroLiquido / $faturamentoTotal) * 100 : 0;
+echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Margem: ' . number_format($margemPercentual, 1) . '%</div>';
 echo '</section>';
 
 echo '<section class="card col4">';
-echo '<div style="font-size:14px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Custo de Atendimentos</div>';
-echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--destructive))">R$ ' . number_format($custoAtendimentos, 2, ',', '.') . '</div>';
-echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Repasses pagos no período</div>';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Contas a Receber</div>';
+echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--foreground))">R$ ' . number_format($contasReceber, 2, ',', '.') . '</div>';
+echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Pendente de recebimento</div>';
 echo '</section>';
 
 echo '<section class="card col4">';
-echo '<div style="font-size:14px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Margem Operacional</div>';
-$margemColor = $margemOperacional >= 0 ? 'hsl(var(--primary))' : 'hsl(var(--destructive))';
-echo '<div style="font-size:28px;font-weight:900;color:' . $margemColor . '">R$ ' . number_format($margemOperacional, 2, ',', '.') . '</div>';
-echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Faturamento - Custos</div>';
+echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Contas a Pagar</div>';
+echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--foreground))">R$ ' . number_format($contasPagar, 2, ',', '.') . '</div>';
+echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Pendente de pagamento</div>';
 echo '</section>';
 
-echo '<section class="card col4">';
-echo '<div style="font-size:14px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Contas a Receber</div>';
-echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($contasReceber, 2, ',', '.') . '</div>';
-echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Valores pendentes de recebimento</div>';
+// Atendimentos por Especialidade
+echo '<section class="card col6">';
+echo '<div style="font-weight:700;font-size:16px;margin-bottom:16px">Atendimentos por Especialidade</div>';
+if (empty($atendimentosPorEspecialidade)) {
+    echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum atendimento no período</div>';
+} else {
+    $maxCount = max(array_column($atendimentosPorEspecialidade, 'count'));
+    foreach ($atendimentosPorEspecialidade as $spec) {
+        $specialty = $spec['specialty'] ?? 'Não especificado';
+        $count = (int)$spec['count'];
+        $percentage = $maxCount > 0 ? ($count / $maxCount) * 100 : 0;
+        
+        echo '<div style="margin-bottom:12px">';
+        echo '<div style="display:flex;justify-content:space-between;margin-bottom:4px">';
+        echo '<span style="font-size:13px;font-weight:600">' . h($specialty) . '</span>';
+        echo '<span style="font-size:13px;color:hsl(var(--muted-foreground))">' . $count . ' atendimentos</span>';
+        echo '</div>';
+        echo '<div style="height:8px;background:hsl(var(--accent));border-radius:4px;overflow:hidden">';
+        echo '<div style="height:100%;background:hsl(var(--primary));width:' . $percentage . '%"></div>';
+        echo '</div>';
+        echo '</div>';
+    }
+}
 echo '</section>';
 
-echo '<section class="card col4">';
-echo '<div style="font-size:14px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Contas a Pagar</div>';
-echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($contasPagar, 2, ',', '.') . '</div>';
-echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Repasses pendentes de pagamento</div>';
-echo '</section>';
+// Balanço de Movimentações
+echo '<section class="card col6">';
+echo '<div style="font-weight:700;font-size:16px;margin-bottom:16px">Balanço de Movimentações</div>';
+echo '<div style="display:grid;gap:10px">';
 
-echo '<section class="card col4">';
-echo '<div style="font-size:14px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Inadimplência</div>';
-echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--destructive))">R$ ' . number_format($inadimplencia, 2, ',', '.') . '</div>';
-echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Contas vencidas não recebidas</div>';
+echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsla(var(--primary)/.05);border-radius:8px">';
+echo '<span style="font-size:14px;font-weight:600">Entradas (Recebido)</span>';
+echo '<span style="font-size:14px;font-weight:700;color:hsl(142, 76%, 36%)">+ R$ ' . number_format($faturamentoTotal, 2, ',', '.') . '</span>';
+echo '</div>';
+
+echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsla(var(--destructive)/.05);border-radius:8px">';
+echo '<span style="font-size:14px;font-weight:600">Saídas (Pago)</span>';
+echo '<span style="font-size:14px;font-weight:700;color:hsl(var(--destructive))">- R$ ' . number_format($custoAtendimentos, 2, ',', '.') . '</span>';
+echo '</div>';
+
+echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsl(var(--accent));border-radius:8px">';
+echo '<span style="font-size:14px;font-weight:600">A Receber (Pendente)</span>';
+echo '<span style="font-size:14px;font-weight:700">R$ ' . number_format($contasReceber, 2, ',', '.') . '</span>';
+echo '</div>';
+
+echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsl(var(--accent));border-radius:8px">';
+echo '<span style="font-size:14px;font-weight:600">A Pagar (Pendente)</span>';
+echo '<span style="font-size:14px;font-weight:700">R$ ' . number_format($contasPagar, 2, ',', '.') . '</span>';
+echo '</div>';
+
+echo '<div style="height:1px;background:hsl(var(--border));margin:8px 0"></div>';
+
+$saldoFinal = $faturamentoTotal - $custoAtendimentos + $contasReceber - $contasPagar;
+$saldoColor = $saldoFinal >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(var(--destructive))';
+echo '<div style="display:flex;justify-content:space-between;padding:12px;background:hsla(var(--primary)/.08);border-radius:8px">';
+echo '<span style="font-size:15px;font-weight:700">Saldo Projetado</span>';
+echo '<span style="font-size:15px;font-weight:900;color:' . $saldoColor . '">R$ ' . number_format($saldoFinal, 2, ',', '.') . '</span>';
+echo '</div>';
+
+echo '</div>';
 echo '</section>';
 
 echo '</div>';

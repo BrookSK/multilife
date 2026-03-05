@@ -8,7 +8,7 @@ auth_require_login();
 rbac_require_permission('demands.manage');
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
-$cancellationReason = trim((string)($_POST['cancellation_reason'] ?? ''));
+$reactivationReason = trim((string)($_POST['reactivation_reason'] ?? ''));
 
 if ($id <= 0) {
     flash_set('error', 'ID inválido.');
@@ -16,9 +16,9 @@ if ($id <= 0) {
     exit;
 }
 
-if ($cancellationReason === '') {
-    flash_set('error', 'O motivo do cancelamento é obrigatório.');
-    header('Location: /demands_cancel.php?id=' . $id);
+if ($reactivationReason === '') {
+    flash_set('error', 'A justificativa da reativação é obrigatória.');
+    header('Location: /demands_reactivate.php?id=' . $id);
     exit;
 }
 
@@ -33,15 +33,21 @@ if (!$d) {
     exit;
 }
 
+if ($d['status'] !== 'cancelado') {
+    flash_set('error', 'Esta demanda não está cancelada.');
+    header('Location: /demands_view.php?id=' . $id);
+    exit;
+}
+
 $oldStatus = (string)$d['status'];
-$newStatus = 'cancelado';
+$newStatus = 'em_captacao';
 
 $db->beginTransaction();
 try {
-    $upd = $db->prepare('UPDATE demands SET status = :status, cancellation_reason = :reason, cancelled_at = NOW(), cancelled_by_user_id = :uid WHERE id = :id');
+    $upd = $db->prepare('UPDATE demands SET status = :status, reactivation_reason = :reason, reactivated_at = NOW(), reactivated_by_user_id = :uid WHERE id = :id');
     $upd->execute([
         'status' => $newStatus,
-        'reason' => $cancellationReason,
+        'reason' => $reactivationReason,
         'uid' => auth_user_id(),
         'id' => $id
     ]);
@@ -55,17 +61,17 @@ try {
         'old' => $oldStatus,
         'new' => $newStatus,
         'uid' => auth_user_id(),
-        'note' => 'Cancelado: ' . $cancellationReason,
+        'note' => 'Reativado: ' . $reactivationReason,
     ]);
 
-    audit_log('cancel', 'demands', (string)$id, ['old_status' => $oldStatus, 'new_status' => $newStatus, 'reason' => $cancellationReason], null);
+    audit_log('reactivate', 'demands', (string)$id, ['old_status' => $oldStatus, 'new_status' => $newStatus, 'reason' => $reactivationReason], null);
 
     $db->commit();
 
-    flash_set('success', 'Card cancelado com sucesso.');
+    flash_set('success', 'Card reativado com sucesso!');
 } catch (Exception $e) {
     $db->rollBack();
-    flash_set('error', 'Erro ao cancelar card: ' . $e->getMessage());
+    flash_set('error', 'Erro ao reativar card: ' . $e->getMessage());
 }
 
 header('Location: /demands_view.php?id=' . $id);

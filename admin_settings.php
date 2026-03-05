@@ -137,7 +137,7 @@ $sections = [
     ],
     'Evolution' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
-        'keys' => ['evolution.base_url', 'evolution.api_key', 'evolution.instance']
+        'keys' => ['evolution.base_url', 'evolution.api_key', 'evolution.instance', '_evolution_manage_']
     ],
     'ZapSign' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
@@ -319,6 +319,53 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo '</div>';
             echo '</div>';
         }
+        
+        echo '</div>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Evolution') {
+        // Aba especial de Evolution com gerenciamento de instâncias
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Configurações Evolution API</div>';
+        echo '<div style="display:grid;gap:12px">';
+        
+        // Campos de configuração normais
+        foreach ($sectionData['keys'] as $key) {
+            if ($key === '_evolution_manage_') continue;
+            if (!isset($fields[$key])) continue;
+            $label = $fields[$key];
+            $val = $settings[$key] ?? '';
+            $isSensitive = $key === 'evolution.api_key';
+            
+            if ($isSensitive) {
+                echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
+            } else {
+                echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
+            }
+        }
+        
+        echo '</div>';
+        echo '</div>';
+        
+        // Seção de gerenciamento de instâncias
+        echo '<div class="formSection" style="margin-top:20px">';
+        echo '<div class="formSectionTitle">Gerenciamento de Instâncias</div>';
+        echo '<div style="display:grid;gap:12px;margin-top:12px">';
+        
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<a class="btn btnPrimary" href="/evolution_instances.php">Gerenciar Instâncias</a>';
+        echo '<a class="btn" href="/evolution_qrcode.php">Ver QR Code</a>';
+        echo '<a class="btn" href="/whatsapp_groups_list.php">Gerenciar Grupos WhatsApp</a>';
+        echo '</div>';
+        
+        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Criar e excluir instâncias WhatsApp<br>';
+        echo '• Gerar QR Code para conectar dispositivo<br>';
+        echo '• Verificar status de conexão<br>';
+        echo '• Gerenciar grupos e membros';
+        echo '</div>';
+        echo '</div>';
         
         echo '</div>';
         echo '</div>';

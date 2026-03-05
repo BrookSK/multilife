@@ -7,29 +7,44 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp_groups.manage');
 
-$subject = trim((string)($_POST['subject'] ?? ''));
+$specialtyId = isset($_POST['specialty_id']) ? (int)$_POST['specialty_id'] : 0;
+$location = strtoupper(trim((string)($_POST['location'] ?? '')));
 $professionalUserIds = $_POST['professional_user_ids'] ?? [];
 $description = trim((string)($_POST['description'] ?? ''));
-
-$specialty = trim((string)($_POST['specialty'] ?? ''));
-$city = trim((string)($_POST['city'] ?? ''));
-$state = strtoupper(trim((string)($_POST['state'] ?? '')));
 $status = (string)($_POST['status'] ?? 'active');
 
-if ($subject === '') {
-    flash_set('error', 'Informe o nome do grupo.');
+if ($specialtyId === 0) {
+    flash_set('error', 'Selecione a especialidade.');
     header('Location: /whatsapp_groups_create_evolution.php');
     exit;
 }
+
+if ($location === '') {
+    flash_set('error', 'Selecione a localização.');
+    header('Location: /whatsapp_groups_create_evolution.php');
+    exit;
+}
+
+// Buscar nome da especialidade
+$specStmt = db()->prepare('SELECT name FROM specialties WHERE id = :id');
+$specStmt->execute(['id' => $specialtyId]);
+$specialty = $specStmt->fetchColumn();
+
+if (!$specialty) {
+    flash_set('error', 'Especialidade não encontrada.');
+    header('Location: /whatsapp_groups_create_evolution.php');
+    exit;
+}
+
+// Gerar nome do grupo com número sequencial
+$countStmt = db()->prepare('SELECT COUNT(*) FROM whatsapp_groups WHERE specialty_id = :sid AND state = :loc');
+$countStmt->execute(['sid' => $specialtyId, 'loc' => $location]);
+$groupNumber = (int)$countStmt->fetchColumn() + 1;
+
+$subject = $specialty . ' - ' . $location . ' - ' . $groupNumber;
 
 if (!is_array($professionalUserIds) || count($professionalUserIds) === 0) {
     flash_set('error', 'Selecione ao menos um profissional participante.');
-    header('Location: /whatsapp_groups_create_evolution.php');
-    exit;
-}
-
-if ($state !== '' && !preg_match('/^[A-Z]{2}$/', $state)) {
-    flash_set('error', 'UF inválida.');
     header('Location: /whatsapp_groups_create_evolution.php');
     exit;
 }
@@ -114,14 +129,14 @@ if ($jid === '') {
     exit;
 }
 
-$stmt = db()->prepare('INSERT INTO whatsapp_groups (name, evolution_group_jid, contacts_count, specialty, city, state, status) VALUES (:n,:jid,:cc,:sp,:c,:s,:st)');
+$stmt = db()->prepare('INSERT INTO whatsapp_groups (name, evolution_group_jid, contacts_count, specialty_id, specialty, state, status) VALUES (:n,:jid,:cc,:sid,:sp,:s,:st)');
 $stmt->execute([
     'n' => $subject,
     'jid' => $jid,
     'cc' => count($participants),
-    'sp' => $specialty !== '' ? $specialty : null,
-    'c' => $city !== '' ? $city : null,
-    's' => $state !== '' ? $state : null,
+    'sid' => $specialtyId,
+    'sp' => $specialty,
+    's' => $location,
     'st' => $status,
 ]);
 
