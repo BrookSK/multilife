@@ -40,10 +40,10 @@ try {
 // Se não existe, criar a instância automaticamente
 if (!$instanceExists) {
     try {
+        // Payload mínimo conforme documentação
         $createPayload = [
             'instanceName' => $instance,
             'qrcode' => true,
-            'integration' => 'WHATSAPP-BAILEYS',
         ];
         $createRes = $api->createInstanceBasic($createPayload);
         
@@ -52,6 +52,8 @@ if (!$instanceExists) {
             sleep(3);
             $instanceExists = true;
             flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
+        } else {
+            $error = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
         }
     } catch (Throwable $e) {
         $error = 'Erro ao criar instância: ' . $e->getMessage();
@@ -84,10 +86,10 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
         } else {
             // Instância não existe, tentar criar agora
             try {
+                // Payload mínimo conforme documentação
                 $createPayload = [
                     'instanceName' => $instance,
                     'qrcode' => true,
-                    'integration' => 'WHATSAPP-BAILEYS',
                 ];
                 $createRes = $api->createInstanceBasic($createPayload);
                 
@@ -96,7 +98,11 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
                     $canGenerateQr = true;
                     flash_set('success', 'Instância "' . $instance . '" criada! Gerando QR Code...');
                 } else {
-                    $error = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
+                    $errorMsg = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
+                    if (isset($createRes['json']['message'])) {
+                        $errorMsg .= ' - ' . (is_array($createRes['json']['message']) ? implode(', ', $createRes['json']['message']) : $createRes['json']['message']);
+                    }
+                    $error = $errorMsg;
                 }
             } catch (Throwable $e) {
                 $error = 'Erro ao criar instância: ' . $e->getMessage();
