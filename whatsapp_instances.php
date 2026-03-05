@@ -31,9 +31,11 @@ $debugInfo = [];
 try {
     $fetchRes = $api->fetchInstances($instance);
     $debugInfo[] = 'fetchInstances executado - Status: ' . ($fetchRes['status'] ?? 'N/A');
+    
+    // Mesmo com erro 500, se retornou dados, a instância existe
     if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
         $instanceExists = true;
-        $debugInfo[] = 'Instância encontrada: SIM';
+        $debugInfo[] = 'Instância encontrada: SIM (ignorando erro 500 se houver)';
     } else {
         $debugInfo[] = 'Instância encontrada: NÃO';
     }
@@ -177,6 +179,15 @@ if (!empty($debugInfo)) {
         echo '<div style="margin-bottom:4px">• ' . h($info) . '</div>';
     }
     echo '</div>';
+    
+    // Se instância existe, mostrar mensagem positiva
+    if ($instanceExists) {
+        echo '<div style="margin-top:12px;padding:10px;background:hsla(var(--success)/.10);border:1px solid hsla(var(--success)/.20);border-radius:8px;color:hsl(var(--success))">';
+        echo '<strong>✓ Boa notícia!</strong> A instância "' . h($instance) . '" já existe na Evolution API.';
+        echo '<br>Clique em "Gerar QR Code" abaixo para conectar.';
+        echo '</div>';
+    }
+    
     echo '</section>';
 }
 
