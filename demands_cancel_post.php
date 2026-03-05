@@ -45,7 +45,7 @@ try {
         'note' => 'Card cancelado pelo usuário',
     ]);
 
-    audit_log('demands', 'cancel', $id, ['old_status' => $oldStatus, 'new_status' => $newStatus]);
+    audit_log('cancel', 'demands', (string)$id, ['old_status' => $oldStatus, 'new_status' => $newStatus], null);
 
     $db->commit();
 

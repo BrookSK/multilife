@@ -235,13 +235,20 @@ echo '</div>';
 $drawerOpen = $selected !== null;
 echo '<div class="drawerOverlay" id="drawerOverlay"' . ($drawerOpen ? ' style="display:block"' : '') . '></div>';
 
-echo '<aside class="drawer" id="drawer"' . ($drawerOpen ? ' class="drawer isOpen"' : '') . '>';
+echo '<aside class="drawer' . ($drawerOpen ? ' isOpen' : '') . '" id="drawer">';
 
 echo '<div class="drawerHeader">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">';
 echo '<div class="drawerTitle">' . h($selected ? (string)($selected['title'] ?? '') : '') . '</div>';
 
-echo '<a class="btn" href="/pre_admissao.php" id="drawerCloseBtn" style="height:34px">Fechar</a>';
+$closeBtnUrl = '/pre_admissao.php';
+if ($q !== '' || $status !== '') {
+    $closeBtnParams = [];
+    if ($q !== '') $closeBtnParams[] = 'q=' . urlencode($q);
+    if ($status !== '') $closeBtnParams[] = 'status=' . urlencode($status);
+    $closeBtnUrl .= '?' . implode('&', $closeBtnParams);
+}
+echo '<a class="btn" href="' . h($closeBtnUrl) . '" id="drawerCloseBtn" style="height:34px">Fechar</a>';
 echo '</div>';
 
 echo '<div class="tabList" id="tabList">';
@@ -333,7 +340,14 @@ echo '<script>';
 echo '(function(){var drawer=document.getElementById("drawer");var overlay=document.getElementById("drawerOverlay");if(!drawer||!overlay)return;';
 echo 'var open=' . ($drawerOpen ? 'true' : 'false') . ';';
 echo 'var setOpen=function(v){open=v; if(v){drawer.classList.add("isOpen"); overlay.style.display="block";} else {drawer.classList.remove("isOpen"); overlay.style.display="none";}};';
-echo 'overlay.addEventListener("click", function(){window.location.href="/pre_admissao.php";});';
+$closeUrl = '/pre_admissao.php';
+if ($q !== '' || $status !== '') {
+    $closeParams = [];
+    if ($q !== '') $closeParams[] = 'q=' . urlencode($q);
+    if ($status !== '') $closeParams[] = 'status=' . urlencode($status);
+    $closeUrl .= '?' . implode('&', $closeParams);
+}
+echo 'overlay.addEventListener("click", function(){window.location.href="' . h($closeUrl) . '";});';
 echo 'var tabBtns=drawer.querySelectorAll(".tabBtn"); var panels=drawer.querySelectorAll(".tabPanel");';
 echo 'var activate=function(key){tabBtns.forEach(function(b){b.classList.toggle("isActive", b.getAttribute("data-tab")===key);}); panels.forEach(function(p){p.classList.toggle("isActive", p.getAttribute("data-panel")===key);});};';
 echo 'tabBtns.forEach(function(b){b.addEventListener("click", function(){activate(b.getAttribute("data-tab"));});});';
