@@ -16,11 +16,8 @@ $phone = trim((string)($_POST['phone'] ?? ''));
 $citiesArray = $_POST['cities_of_operation'] ?? [];
 $citiesOfOperation = is_array($citiesArray) ? implode(', ', array_filter($citiesArray)) : '';
 
-// Processar especializações (vem como array de campos de texto dinâmicos)
-$specializationsArray = $_POST['specializations'] ?? [];
-// Filtrar valores vazios e remover espaços extras
-$specializationsFiltered = array_filter(array_map('trim', is_array($specializationsArray) ? $specializationsArray : []));
-$specializations = !empty($specializationsFiltered) ? implode(', ', $specializationsFiltered) : '';
+// Processar especializações (vem como textarea livre)
+$specializations = trim((string)($_POST['specializations'] ?? ''));
 
 error_log("Dados recebidos - Nome: $fullName, Email: $email, Phone: $phone, Cidades: $citiesOfOperation, Especialidades: $specializations");
 
