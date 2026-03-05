@@ -4,9 +4,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
 
+// Debug: verificar se POST está sendo recebido
+error_log('=== APPLY PROFESSIONAL POST INICIADO ===');
+error_log('POST data: ' . print_r($_POST, true));
+
 $fullName = trim((string)($_POST['full_name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
 $phone = trim((string)($_POST['phone'] ?? ''));
+
+error_log("Dados recebidos - Nome: $fullName, Email: $email, Phone: $phone");
 
 if ($fullName === '' || $email === '' || $phone === '') {
     flash_set('error', 'Preencha nome, e-mail e telefone.');
@@ -94,8 +100,12 @@ foreach ($fields as $f) {
     }
 }
 
+error_log('Tentando inserir candidatura no banco...');
+error_log('Params: ' . print_r($params, true));
+
 try {
     $stmt->execute($params);
+    error_log('Candidatura inserida com sucesso! ID: ' . db()->lastInsertId());
     flash_set('success', 'Candidatura enviada com sucesso! Aguarde a avaliação da nossa equipe.');
     header('Location: /login.php');
     exit;
