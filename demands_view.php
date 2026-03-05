@@ -145,32 +145,34 @@ echo '</section>';
 
 echo '<section class="card col12">';
 
-// Cabeçalho com título e valor do procedimento
-$procedureValue = $d['procedure_value'] !== null ? (float)$d['procedure_value'] : null;
-echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px">';
-echo '<div style="font-weight:900">Detalhes</div>';
-if ($procedureValue !== null && $procedureValue > 0) {
-    echo '<div style="font-weight:700;color:hsl(var(--success));font-size:16px">💰 R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
-}
-echo '</div>';
+echo '<div style="font-weight:900;margin-bottom:12px">Detalhes</div>';
 
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.7">';
 echo '<div><strong>Origem:</strong> ' . h((string)($d['origin_email'] ?? '-')) . '</div>';
 
+// Valor do serviço
+$procedureValue = $d['procedure_value'] !== null ? (float)$d['procedure_value'] : null;
+if ($procedureValue !== null && $procedureValue > 0) {
+    echo '<div style="margin-top:8px"><strong>Valor do Serviço:</strong> R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
+}
+
 // Resumo da IA (se disponível)
 $aiSummary = trim((string)($d['ai_summary'] ?? ''));
 if ($aiSummary !== '') {
-    echo '<div style="margin-top:12px;padding:12px;background:hsla(var(--primary)/.05);border-left:3px solid hsl(var(--primary));border-radius:6px">';
-    echo '<div style="font-weight:700;color:hsl(var(--primary));margin-bottom:6px">📋 Resumo da Necessidade (IA)</div>';
+    echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--primary)/.05);border-left:3px solid hsl(var(--primary));border-radius:6px">';
+    echo '<div style="font-weight:700;color:hsl(var(--primary));margin-bottom:6px">Resumo da Necessidade (IA)</div>';
     echo '<div style="white-space:pre-wrap;color:hsl(var(--foreground))">' . h($aiSummary) . '</div>';
     echo '</div>';
 }
 
-// E-mail original completo (já incluído na description pelo processamento)
+// Separador
+echo '<hr style="margin:20px 0;border:none;border-top:1px solid hsl(var(--border))">';
+
+// E-mail original completo
 $description = trim((string)($d['description'] ?? ''));
 if ($description !== '') {
-    echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--muted-foreground)/.05);border-radius:6px">';
-    echo '<div style="font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:6px">📧 E-mail Original</div>';
+    echo '<div style="margin-top:16px">';
+    echo '<div style="font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">E-mail Original</div>';
     echo '<div style="white-space:pre-wrap;font-size:13px;color:hsl(var(--foreground))">' . h($description) . '</div>';
     echo '</div>';
 }

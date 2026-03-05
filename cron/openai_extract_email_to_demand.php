@@ -306,12 +306,8 @@ foreach ($emails as $e) {
         $desc = trim((string)($parsed2['description'] ?? ''));
         $aiSummary = trim((string)($parsed2['ai_summary'] ?? ''));
         
-        // Adicionar corpo do e-mail original completo abaixo do resumo
-        if ($desc !== '') {
-            $desc .= "\n\n--- E-MAIL ORIGINAL ---\n\n" . $content;
-        } else {
-            $desc = $content;
-        }
+        // Salvar apenas o e-mail original completo (sem duplicar a descrição da IA)
+        $desc = $content;
 
         // Validações e defaults
         if ($title === '') {
