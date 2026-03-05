@@ -29,6 +29,8 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_settings.php">Configurações</a>';
+echo '<a class="btn" href="/audit_logs_list.php">Auditoria</a>';
+echo '<a class="btn" href="/patient_access_logs_list.php">Acessos a prontuário</a>';
 echo '<a class="btn" href="/hr_employees_list.php">RH</a>';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';

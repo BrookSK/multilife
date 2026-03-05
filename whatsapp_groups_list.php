@@ -9,7 +9,7 @@ rbac_require_permission('whatsapp_groups.manage');
 
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
-$sql = 'SELECT id, name, specialty, city, state, status, created_at FROM whatsapp_groups';
+$sql = 'SELECT id, name, evolution_group_jid, contacts_count, specialty, city, state, status, created_at FROM whatsapp_groups';
 $params = [];
 if ($q !== '') {
     $sql .= ' WHERE name LIKE :q OR specialty LIKE :q OR city LIKE :q OR state LIKE :q';
@@ -48,7 +48,7 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Nome</th><th>Especialidade</th><th>Cidade/UF</th><th>Status</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Nome</th><th>JID</th><th>Contatos</th><th>Especialidade</th><th>Cidade/UF</th><th>Status</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     $loc = trim((string)($r['city'] ?? ''));
@@ -58,6 +58,8 @@ foreach ($rows as $r) {
     echo '<tr>';
     echo '<td>' . (int)$r['id'] . '</td>';
     echo '<td style="font-weight:700">' . h((string)$r['name']) . '</td>';
+    echo '<td>' . h((string)($r['evolution_group_jid'] ?? '')) . '</td>';
+    echo '<td>' . h((string)($r['contacts_count'] ?? '')) . '</td>';
     echo '<td>' . h((string)($r['specialty'] ?? '')) . '</td>';
     echo '<td>' . h($locTxt) . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';

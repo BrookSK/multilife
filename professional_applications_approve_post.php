@@ -62,6 +62,36 @@ try {
         'id' => $id,
     ]);
 
+    // Enfileira onboarding (WhatsApp + e-mail) - executado via CRON integration_jobs_run
+    $loginUrl = (string)admin_setting_get('app.login_url', '');
+    if ($loginUrl === '') {
+        $loginUrl = (isset($_SERVER['HTTP_HOST']) ? ('https://' . (string)$_SERVER['HTTP_HOST'] . '/login.php') : '/login.php');
+    }
+    $payload = [
+        'application_id' => $id,
+        'user_id' => $userId,
+        'name' => (string)$pa['full_name'],
+        'email' => (string)$pa['email'],
+        'phone' => (string)$pa['phone'],
+        'tmp_password' => $tmpPassword,
+        'login_url' => $loginUrl,
+    ];
+
+    integration_job_enqueue('evolution', 'professional_onboarding_credentials', $payload, null);
+    integration_job_enqueue('smtp', 'professional_onboarding_email', $payload, null);
+
+    // Pendência de acompanhamento
+    $stmt = $db->prepare(
+        "INSERT INTO pending_items (type, status, title, detail, related_table, related_id, assigned_user_id)"
+        . " VALUES ('professional_onboarding','open',:title,:detail,'professional_applications',:rid,:uid)"
+    );
+    $stmt->execute([
+        'title' => 'Onboarding profissional: ' . (string)$pa['full_name'],
+        'detail' => 'Credenciais enfileiradas para envio (WhatsApp/e-mail).',
+        'rid' => $id,
+        'uid' => auth_user_id(),
+    ]);
+
     audit_log('create', 'users_from_application', (string)$id, null, ['created_user_id' => $userId]);
 
     $db->commit();
@@ -70,6 +100,6 @@ try {
     throw $e;
 }
 
-flash_set('success', 'Aprovado. Senha provisória: ' . $tmpPassword);
+flash_set('success', 'Aprovado. Credenciais foram enfileiradas para envio por WhatsApp/e-mail.');
 header('Location: /professional_applications_view.php?id=' . $id);
 exit;

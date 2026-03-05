@@ -7,6 +7,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
+$chatId = (int)($_POST['chat_id'] ?? 0);
 $patientId = (int)($_POST['patient_id'] ?? 0);
 $professionalUserId = (int)($_POST['professional_user_id'] ?? 0);
 $specialty = trim((string)($_POST['specialty'] ?? ''));
@@ -14,11 +15,19 @@ $firstAt = trim((string)($_POST['first_at'] ?? ''));
 $recurrenceType = (string)($_POST['recurrence_type'] ?? 'single');
 $recurrenceRule = trim((string)($_POST['recurrence_rule'] ?? ''));
 $valuePerSession = (string)($_POST['value_per_session'] ?? '0');
-$demandId = (int)($_POST['demand_id'] ?? 0);
+$note = trim((string)($_POST['note'] ?? ''));
+$demandIdRaw = trim((string)($_POST['demand_id'] ?? ''));
+$demandId = $demandIdRaw !== '' ? (int)$demandIdRaw : 0;
+
+if ($chatId <= 0) {
+    flash_set('error', 'Conversa inválida.');
+    header('Location: /chat_web.php');
+    exit;
+}
 
 if ($patientId <= 0 || $professionalUserId <= 0 || $specialty === '' || $firstAt === '') {
     flash_set('error', 'Preencha paciente, profissional e data/hora.');
-    header('Location: /appointments_create.php');
+    header('Location: /chat_confirm_admission.php?chat_id=' . $chatId);
     exit;
 }
 
@@ -30,22 +39,39 @@ if (!in_array($recurrenceType, $allowedRec, true)) {
 $dt = DateTime::createFromFormat('Y-m-d\TH:i', $firstAt);
 if (!$dt) {
     flash_set('error', 'Data/hora inválida.');
-    header('Location: /appointments_create.php');
+    header('Location: /chat_confirm_admission.php?chat_id=' . $chatId);
     exit;
 }
 
 $firstAtDb = $dt->format('Y-m-d H:i:00');
 
-$stmt = db()->prepare('SELECT id, full_name FROM patients WHERE id = :id AND deleted_at IS NULL');
+$demandIdDb = null;
+if ($demandId > 0) {
+    $stmt = db()->prepare('SELECT id FROM demands WHERE id = :id');
+    $stmt->execute(['id' => $demandId]);
+    if ($stmt->fetch()) {
+        $demandIdDb = $demandId;
+    }
+}
+
+$stmt = db()->prepare('SELECT id, external_phone FROM chat_conversations WHERE id = :id');
+$stmt->execute(['id' => $chatId]);
+$chat = $stmt->fetch();
+if (!$chat) {
+    flash_set('error', 'Conversa não encontrada.');
+    header('Location: /chat_web.php');
+    exit;
+}
+
+$stmt = db()->prepare('SELECT id, full_name, email FROM patients WHERE id = :id AND deleted_at IS NULL');
 $stmt->execute(['id' => $patientId]);
 $patient = $stmt->fetch();
 if (!$patient) {
     flash_set('error', 'Paciente inválido.');
-    header('Location: /appointments_create.php');
+    header('Location: /chat_confirm_admission.php?chat_id=' . $chatId);
     exit;
 }
 
-// Valida profissional (role profissional)
 $stmt = db()->prepare(
     "SELECT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE u.id = :id AND u.status='active' AND r.slug='profissional' LIMIT 1"
 );
@@ -53,7 +79,7 @@ $stmt->execute(['id' => $professionalUserId]);
 $prof = $stmt->fetch();
 if (!$prof) {
     flash_set('error', 'Profissional inválido.');
-    header('Location: /appointments_create.php');
+    header('Location: /chat_confirm_admission.php?chat_id=' . $chatId);
     exit;
 }
 
@@ -93,7 +119,7 @@ $stmt = db()->prepare($sql);
 $stmt->execute($params);
 if ($stmt->fetch()) {
     flash_set('error', 'Profissional com documento vencido. Regularize para permitir novos agendamentos.');
-    header('Location: /appointments_create.php');
+    header('Location: /chat_confirm_admission.php?chat_id=' . $chatId);
     exit;
 }
 
@@ -111,25 +137,15 @@ $minRow = $stmt->fetch();
 if ($minRow) {
     $minValue = (float)$minRow['minimum_value'];
     if ($valueFloat < $minValue) {
-        // cria solicitação de autorização e não cria agendamento ainda
         $db = db();
         $db->beginTransaction();
         try {
-            $demandIdDbTmp = null;
-            if ($demandId > 0) {
-                $stmt2 = $db->prepare('SELECT id FROM demands WHERE id = :id');
-                $stmt2->execute(['id' => $demandId]);
-                if ($stmt2->fetch()) {
-                    $demandIdDbTmp = $demandId;
-                }
-            }
-
             $stmt2 = $db->prepare(
                 'INSERT INTO appointment_value_authorizations (status, demand_id, patient_id, professional_user_id, specialty, first_at, recurrence_type, recurrence_rule, requested_value, minimum_value, requested_by_user_id)'
                 . ' VALUES (\'pending\', :demand_id, :patient_id, :professional_user_id, :specialty, :first_at, :recurrence_type, :recurrence_rule, :requested_value, :minimum_value, :requested_by_user_id)'
             );
             $stmt2->execute([
-                'demand_id' => $demandIdDbTmp,
+                'demand_id' => $demandIdDb,
                 'patient_id' => $patientId,
                 'professional_user_id' => $professionalUserId,
                 'specialty' => $specialty,
@@ -167,23 +183,12 @@ if ($minRow) {
     }
 }
 
-// Demand optional
-$demandIdDb = null;
-if ($demandId > 0) {
-    $stmt = db()->prepare('SELECT id, status FROM demands WHERE id = :id');
-    $stmt->execute(['id' => $demandId]);
-    $demand = $stmt->fetch();
-    if ($demand) {
-        $demandIdDb = $demandId;
-    }
-}
-
 $db = db();
 $db->beginTransaction();
 try {
     $stmt = $db->prepare(
-        'INSERT INTO appointments (demand_id, patient_id, professional_user_id, specialty, first_at, recurrence_type, recurrence_rule, value_per_session, status, created_by_user_id)
-         VALUES (:demand_id, :patient_id, :professional_user_id, :specialty, :first_at, :recurrence_type, :recurrence_rule, :value_per_session, :status, :created_by_user_id)'
+        'INSERT INTO appointments (demand_id, patient_id, professional_user_id, specialty, first_at, recurrence_type, recurrence_rule, value_per_session, status, created_by_user_id)'
+        . ' VALUES (:demand_id, :patient_id, :professional_user_id, :specialty, :first_at, :recurrence_type, :recurrence_rule, :value_per_session, :status, :created_by_user_id)'
     );
     $stmt->execute([
         'demand_id' => $demandIdDb,
@@ -205,14 +210,13 @@ try {
         'aid' => $appointmentId,
         'ns' => 'pendente_formulario',
         'uid' => auth_user_id(),
-        'note' => 'criação',
+        'note' => $note !== '' ? $note : 'criação (via chat)',
     ]);
 
-    // Gera pendência do formulário (Módulo 6) vinculada ao agendamento
     $patientRef = (string)$patient['full_name'] . ' (#' . (int)$patient['id'] . ')';
     $stmt = $db->prepare(
-        "INSERT INTO professional_documentations (professional_user_id, appointment_id, patient_ref, sessions_count, status, due_at)
-         VALUES (:uid, :appointment_id, :patient_ref, :sessions_count, 'draft', DATE_ADD(NOW(), INTERVAL 48 HOUR))"
+        "INSERT INTO professional_documentations (professional_user_id, appointment_id, patient_ref, sessions_count, status, due_at)"
+        . " VALUES (:uid, :appointment_id, :patient_ref, :sessions_count, 'draft', DATE_ADD(NOW(), INTERVAL 48 HOUR))"
     );
     $stmt->execute([
         'uid' => $professionalUserId,
@@ -221,10 +225,9 @@ try {
         'sessions_count' => 1,
     ]);
 
-    // Financeiro: cria Conta a Receber vinculada ao agendamento
     $stmt = $db->prepare(
-        "INSERT INTO finance_accounts_receivable (appointment_id, patient_id, professional_user_id, amount, due_at, status)
-         VALUES (:aid, :pid, :puid, :amount, DATE_ADD(:first_at, INTERVAL 30 DAY), 'pendente')"
+        "INSERT INTO finance_accounts_receivable (appointment_id, patient_id, professional_user_id, amount, due_at, status)"
+        . " VALUES (:aid, :pid, :puid, :amount, DATE_ADD(:first_at, INTERVAL 30 DAY), 'pendente')"
     );
     $stmt->execute([
         'aid' => $appointmentId,
@@ -234,7 +237,6 @@ try {
         'first_at' => $firstAtDb,
     ]);
 
-    // Atualiza card/demanda para admitido (se vinculado)
     if ($demandIdDb !== null) {
         $stmt = $db->prepare('SELECT status FROM demands WHERE id = :id');
         $stmt->execute(['id' => $demandIdDb]);
@@ -250,19 +252,43 @@ try {
             'os' => $oldStatus,
             'ns' => 'admitido',
             'uid' => auth_user_id(),
-            'note' => 'agendamento criado',
+            'note' => 'admissão confirmada via chat (agendamento criado)',
         ]);
     }
 
-    audit_log('create', 'appointments', (string)$appointmentId, null, ['patient_id' => $patientId, 'professional_user_id' => $professionalUserId]);
-    audit_log('create', 'finance_accounts_receivable', (string)$appointmentId, null, ['appointment_id' => $appointmentId, 'amount' => $valuePerSession]);
+    // Jobs de notificação (serão executados via CRON runner)
+    $payload = [
+        'appointment_id' => $appointmentId,
+        'patient_id' => $patientId,
+        'professional_user_id' => $professionalUserId,
+        'first_at' => $firstAtDb,
+        'patient_email' => (string)($patient['email'] ?? ''),
+        'patient_phone' => (string)($chat['external_phone'] ?? ''),
+    ];
+
+    integration_job_enqueue('evolution', 'patient_notify_appointment', $payload, null);
+    integration_job_enqueue('smtp', 'send_email_confirmation', $payload, null);
+
+    // Pendência operacional visível
+    $stmt = $db->prepare(
+        "INSERT INTO pending_items (type, status, title, detail, related_table, related_id, assigned_user_id)"
+        . " VALUES ('appointment_confirmed','open',:title,:detail,'appointments',:rid,:uid)"
+    );
+    $stmt->execute([
+        'title' => 'Notificar paciente do agendamento #' . $appointmentId,
+        'detail' => 'Agendamento criado via chat. Notificações (WhatsApp/e-mail) foram enfileiradas.',
+        'rid' => $appointmentId,
+        'uid' => auth_user_id(),
+    ]);
+
+    audit_log('create', 'appointments', (string)$appointmentId, null, ['patient_id' => $patientId, 'professional_user_id' => $professionalUserId, 'chat_id' => $chatId]);
 
     $db->commit();
+
+    flash_set('success', 'Admissão confirmada: agendamento criado e notificações enfileiradas.');
+    header('Location: /appointments_view.php?id=' . $appointmentId);
+    exit;
 } catch (Throwable $e) {
     $db->rollBack();
     throw $e;
 }
-
-flash_set('success', 'Agendamento criado e pendência gerada para o profissional.');
-header('Location: /appointments_view.php?id=' . $appointmentId);
-exit;

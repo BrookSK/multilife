@@ -35,6 +35,8 @@ echo '</div>';
 echo '<div style="font-weight:900;margin-top:6px">Contato</div>';
 echo '<div class="grid">';
 echo '<div class="col6"><label>WhatsApp<input name="whatsapp" maxlength="30" placeholder="5511999999999"></label></div>';
+echo '<div class="col6"><label>Telefone principal<input name="phone_primary" maxlength="30" placeholder="5511999999999"></label></div>';
+echo '<div class="col6"><label>Telefone secundário<input name="phone_secondary" maxlength="30" placeholder="5511999999999"></label></div>';
 echo '<div class="col6"><label>E-mail<input type="email" name="email" maxlength="190" placeholder="email@exemplo.com"></label></div>';
 echo '</div>';
 

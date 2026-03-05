@@ -47,6 +47,14 @@ try {
     $stmt = $db->prepare('UPDATE chat_conversations SET last_message_at = NOW(), last_message_preview = :p WHERE id = :id');
     $stmt->execute(['p' => $preview, 'id' => $id]);
 
+    $stmt = $db->prepare(
+        "UPDATE pending_items\n"
+        . "SET status = 'done', resolved_at = NOW()\n"
+        . "WHERE status = 'open' AND type = 'chat_unanswered'\n"
+        . "  AND related_table = 'chat_conversations' AND related_id = :rid"
+    );
+    $stmt->execute(['rid' => $id]);
+
     audit_log('create', 'chat_messages', (string)$id, null, ['direction' => 'out', 'body' => $preview]);
 
     $db->commit();

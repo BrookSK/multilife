@@ -7,6 +7,8 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('chat.manage');
 
+$uid = (int)auth_user_id();
+
 $status = isset($_GET['status']) ? (string)$_GET['status'] : 'open';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
@@ -15,11 +17,13 @@ if (!in_array($status, ['open', 'closed'], true)) {
 }
 
 $sql = 'SELECT c.id, c.external_phone, c.contact_kind, c.status, c.assigned_user_id, c.last_message_at, c.last_message_preview, c.created_at,
-               u.name AS assigned_user_name
+               u.name AS assigned_user_name,
+               (SELECT MAX(m.id) FROM chat_messages m WHERE m.conversation_id = c.id) AS last_message_id,
+               (SELECT r.last_read_message_id FROM chat_conversation_reads r WHERE r.conversation_id = c.id AND r.user_id = :uid) AS last_read_message_id
         FROM chat_conversations c
         LEFT JOIN users u ON u.id = c.assigned_user_id
         WHERE c.status = :status';
-$params = ['status' => $status];
+$params = ['status' => $status, 'uid' => $uid];
 
 if ($q !== '') {
     $sql .= ' AND (c.external_phone LIKE :q OR c.last_message_preview LIKE :q)';
@@ -69,13 +73,22 @@ foreach ($conversations as $c) {
     $lastAt = $c['last_message_at'] ? (string)$c['last_message_at'] : (string)$c['created_at'];
     $preview = $c['last_message_preview'] ? (string)$c['last_message_preview'] : '';
 
+    $lastMsgId = $c['last_message_id'] !== null ? (int)$c['last_message_id'] : 0;
+    $lastRead = $c['last_read_message_id'] !== null ? (int)$c['last_read_message_id'] : 0;
+    $unread = ($lastMsgId > 0 && $lastMsgId > $lastRead);
+
     echo '<tr>';
     echo '<td>' . (int)$c['id'] . '</td>';
     echo '<td style="font-weight:700">' . h((string)$c['external_phone']) . '</td>';
     echo '<td>' . h((string)$c['contact_kind']) . '</td>';
     echo '<td>' . h($assigned) . '</td>';
     echo '<td>' . h($lastAt) . '</td>';
-    echo '<td>' . h(mb_strimwidth($preview, 0, 90, '...')) . '</td>';
+    echo '<td>';
+    echo h(mb_strimwidth($preview, 0, 90, '...'));
+    if ($unread) {
+        echo ' <span class="badge badgeDanger">Nova</span>';
+    }
+    echo '</td>';
     echo '<td style="text-align:right">';
     echo '<a class="btn" href="/chat_view.php?id=' . (int)$c['id'] . '">Abrir</a>';
     echo '</td>';

@@ -50,6 +50,10 @@ echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
+echo '<label>Especialidade<input name="specialty" required maxlength="120" placeholder="Ex: Fisioterapia"></label>';
+echo '</div>';
+
+echo '<div class="col6">';
 echo '<label>Data/hora do 1º atendimento<input type="datetime-local" name="first_at" required></label>';
 echo '</div>';
 

@@ -20,6 +20,8 @@ if (!$old) {
 }
 
 $name = trim((string)($_POST['name'] ?? ''));
+$evolutionGroupJid = trim((string)($_POST['evolution_group_jid'] ?? ''));
+$contactsCountRaw = trim((string)($_POST['contacts_count'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
 $city = trim((string)($_POST['city'] ?? ''));
 $state = strtoupper(trim((string)($_POST['state'] ?? '')));
@@ -29,6 +31,21 @@ if ($name === '') {
     flash_set('error', 'Informe o nome.');
     header('Location: /whatsapp_groups_edit.php?id=' . $id);
     exit;
+}
+
+if ($evolutionGroupJid === '') {
+    flash_set('error', 'Informe o Evolution Group JID.');
+    header('Location: /whatsapp_groups_edit.php?id=' . $id);
+    exit;
+}
+
+$contactsCount = null;
+if ($contactsCountRaw !== '') {
+    $n = (int)$contactsCountRaw;
+    if ($n < 0) {
+        $n = 0;
+    }
+    $contactsCount = $n;
 }
 
 if ($state !== '' && !preg_match('/^[A-Z]{2}$/', $state)) {
@@ -41,9 +58,11 @@ if (!in_array($status, ['active','inactive'], true)) {
     $status = 'active';
 }
 
-$stmt = db()->prepare('UPDATE whatsapp_groups SET name = :n, specialty = :sp, city = :c, state = :s, status = :st WHERE id = :id');
+$stmt = db()->prepare('UPDATE whatsapp_groups SET name = :n, evolution_group_jid = :jid, contacts_count = :cc, specialty = :sp, city = :c, state = :s, status = :st WHERE id = :id');
 $stmt->execute([
     'n' => $name,
+    'jid' => $evolutionGroupJid,
+    'cc' => $contactsCount,
     'sp' => $specialty !== '' ? $specialty : null,
     'c' => $city !== '' ? $city : null,
     's' => $state !== '' ? $state : null,
@@ -51,7 +70,7 @@ $stmt->execute([
     'id' => $id,
 ]);
 
-audit_log('update', 'whatsapp_groups', (string)$id, $old, ['name' => $name, 'status' => $status, 'specialty' => $specialty, 'city' => $city, 'state' => $state]);
+audit_log('update', 'whatsapp_groups', (string)$id, $old, ['name' => $name, 'status' => $status, 'specialty' => $specialty, 'city' => $city, 'state' => $state, 'evolution_group_jid' => $evolutionGroupJid, 'contacts_count' => $contactsCount]);
 
 flash_set('success', 'Grupo atualizado.');
 header('Location: /whatsapp_groups_list.php');

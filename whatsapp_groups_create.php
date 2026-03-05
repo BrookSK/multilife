@@ -27,6 +27,15 @@ echo '<label>Nome<input name="name" required maxlength="160" placeholder="Nome d
 
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6">';
+echo '<label>Evolution Group JID (obrigatório)<input name="evolution_group_jid" required maxlength="120" placeholder="Ex: 1203xxxxxx@g.us"></label>';
+echo '</div>';
+echo '<div class="col6">';
+echo '<label>Número de contatos (opcional)<input type="number" name="contacts_count" min="0" placeholder="Ex: 256"></label>';
+echo '</div>';
+echo '</div>';
+
+echo '<div class="grid" style="gap:12px">';
+echo '<div class="col6">';
 echo '<label>Especialidade (opcional)<input name="specialty" maxlength="120" placeholder="Ex: Fisioterapia"></label>';
 echo '</div>';
 echo '<div class="col6">';

@@ -8,8 +8,12 @@ auth_require_login();
 rbac_require_permission('patients.manage');
 
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$status = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
+$unit = isset($_GET['unit']) ? trim((string)$_GET['unit']) : '';
+$insurance = isset($_GET['insurance']) ? trim((string)$_GET['insurance']) : '';
 
-$sql = 'SELECT id, full_name, cpf, whatsapp, phone_primary, email, created_at
+$sql = 'SELECT id, full_name, cpf, whatsapp, phone_primary, email, created_at,
+               admin_status, unit, insurance_name
         FROM patients
         WHERE deleted_at IS NULL';
 $params = [];
@@ -17,6 +21,21 @@ $params = [];
 if ($q !== '') {
     $sql .= ' AND (full_name LIKE :q OR cpf LIKE :q OR whatsapp LIKE :q OR phone_primary LIKE :q OR email LIKE :q)';
     $params['q'] = '%' . $q . '%';
+}
+
+if ($status !== '') {
+    $sql .= ' AND admin_status = :st';
+    $params['st'] = $status;
+}
+
+if ($unit !== '') {
+    $sql .= ' AND unit LIKE :unit';
+    $params['unit'] = '%' . $unit . '%';
+}
+
+if ($insurance !== '') {
+    $sql .= ' AND insurance_name LIKE :ins';
+    $params['ins'] = '%' . $insurance . '%';
 }
 
 $sql .= ' ORDER BY id DESC';
@@ -42,8 +61,13 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/patients_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+
 echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (nome, CPF, WhatsApp, telefone, e-mail)" style="flex:1;min-width:240px">';
-echo '<button class="btn" type="submit">Buscar</button>';
+echo '<input name="status" value="' . h($status) . '" placeholder="Status" style="width:160px">';
+echo '<input name="unit" value="' . h($unit) . '" placeholder="Unidade" style="width:180px">';
+echo '<input name="insurance" value="' . h($insurance) . '" placeholder="Convênio" style="width:180px">';
+
+echo '<button class="btn" type="submit">Filtrar</button>';
 echo '</form>';
 
 echo '</section>';
@@ -53,7 +77,7 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Nome</th><th>CPF</th><th>Contato</th><th>Criado</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Nome</th><th>CPF</th><th>Contato</th><th>Status</th><th>Unidade</th><th>Convênio</th><th>Criado</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     $contact = trim((string)($r['whatsapp'] ?? ''));
@@ -72,6 +96,9 @@ foreach ($rows as $r) {
     echo '<td style="font-weight:700">' . h((string)$r['full_name']) . '</td>';
     echo '<td>' . h((string)($r['cpf'] ?? '')) . '</td>';
     echo '<td>' . h($contact) . '</td>';
+    echo '<td>' . h((string)($r['admin_status'] ?? '')) . '</td>';
+    echo '<td>' . h((string)($r['unit'] ?? '')) . '</td>';
+    echo '<td>' . h((string)($r['insurance_name'] ?? '')) . '</td>';
     echo '<td>' . h((string)$r['created_at']) . '</td>';
     echo '<td style="text-align:right">';
     echo '<a class="btn" href="/patients_view.php?id=' . (int)$r['id'] . '">Abrir</a> ';

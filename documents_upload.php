@@ -7,6 +7,24 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('documents.manage');
 
+$prefEntityType = isset($_GET['entity_type']) ? (string)$_GET['entity_type'] : '';
+$prefEntityId = isset($_GET['entity_id']) ? trim((string)$_GET['entity_id']) : '';
+$returnTo = isset($_GET['return_to']) ? (string)$_GET['return_to'] : '';
+
+$allowedTypes = ['', 'patient', 'professional', 'company'];
+if (!in_array($prefEntityType, $allowedTypes, true)) {
+    $prefEntityType = '';
+}
+
+if ($prefEntityId !== '' && !ctype_digit($prefEntityId)) {
+    $prefEntityId = '';
+}
+
+$backHref = '/documents_list.php';
+if ($returnTo !== '' && str_starts_with($returnTo, '/')) {
+    $backHref = $returnTo;
+}
+
 view_header('Novo documento');
 
 echo '<div class="card">';
@@ -16,7 +34,7 @@ echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Novo documen
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">O envio cria a versão v1. Atualizações criam v2, v3...</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/documents_list.php">Voltar</a>';
+echo '<a class="btn" href="' . h($backHref) . '">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
@@ -28,14 +46,17 @@ echo '<div class="grid">';
 
 echo '<div class="col6">';
 echo '<label>Tipo de entidade<select name="entity_type" required>';
-echo '<option value="patient">patient</option>';
-echo '<option value="professional">professional</option>';
-echo '<option value="company">company</option>';
+$selPatient = ($prefEntityType === 'patient') ? ' selected' : '';
+$selProf = ($prefEntityType === 'professional') ? ' selected' : '';
+$selCompany = ($prefEntityType === 'company') ? ' selected' : '';
+echo '<option value="patient"' . $selPatient . '>patient</option>';
+echo '<option value="professional"' . $selProf . '>professional</option>';
+echo '<option value="company"' . $selCompany . '>company</option>';
 echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>ID da entidade (vazio para company)<input name="entity_id" placeholder="Ex: 123"></label>';
+echo '<label>ID da entidade (vazio para company)<input name="entity_id" placeholder="Ex: 123" value="' . h($prefEntityId) . '"></label>';
 echo '</div>';
 
 echo '<div class="col6">';
@@ -57,7 +78,7 @@ echo '</div>';
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
-echo '<a class="btn" href="/documents_list.php">Cancelar</a>';
+echo '<a class="btn" href="' . h($backHref) . '">Cancelar</a>';
 echo '<button class="btn btnPrimary" type="submit">Enviar</button>';
 echo '</div>';
 

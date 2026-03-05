@@ -23,6 +23,8 @@ function integrations_tabs(): void
     echo '<a class="btn" href="/admin_zapsign_console.php">ZapSign</a>';
     echo '<a class="btn btnPrimary" href="/admin_integrations.php">Credenciais APIs</a>';
     echo '<a class="btn" href="/admin_settings.php">SMTP</a>';
+    echo '<a class="btn" href="/specialty_minimums_list.php">Mínimos</a>';
+    echo '<a class="btn" href="/appointment_value_authorizations_list.php">Autorizações</a>';
     echo '<a class="btn" href="/integration_jobs_list.php">Jobs</a>';
     echo '<a class="btn" href="/tech_logs_list.php">Logs Técnicos</a>';
     echo '</div>';

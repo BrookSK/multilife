@@ -17,6 +17,8 @@ $tabs = [
     ['key' => 'zapsign', 'label' => 'ZapSign', 'href' => '/admin_zapsign_console.php'],
     ['key' => 'credentials', 'label' => 'Credenciais APIs', 'href' => '/admin_integrations.php'],
     ['key' => 'smtp', 'label' => 'SMTP', 'href' => '/admin_settings.php'],
+    ['key' => 'minimums', 'label' => 'Mínimos', 'href' => '/specialty_minimums_list.php'],
+    ['key' => 'authorizations', 'label' => 'Autorizações', 'href' => '/appointment_value_authorizations_list.php'],
     ['key' => 'jobs', 'label' => 'Jobs', 'href' => '/integration_jobs_list.php'],
     ['key' => 'logs', 'label' => 'Logs Técnicos', 'href' => '/tech_logs_list.php'],
 ];

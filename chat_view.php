@@ -34,6 +34,20 @@ $stmt = db()->prepare(
 $stmt->execute(['cid' => $id]);
 $messages = $stmt->fetchAll();
 
+// Mark read for current user
+$lastMsgId = 0;
+if (count($messages) > 0) {
+    $lastMsgId = (int)$messages[count($messages) - 1]['id'];
+}
+if ($lastMsgId > 0) {
+    $stmt = db()->prepare(
+        'INSERT INTO chat_conversation_reads (conversation_id, user_id, last_read_message_id, last_read_at)\n'
+        . 'VALUES (:cid, :uid, :mid, NOW())\n'
+        . 'ON DUPLICATE KEY UPDATE last_read_message_id = VALUES(last_read_message_id), last_read_at = VALUES(last_read_at)'
+    );
+    $stmt->execute(['cid' => $id, 'uid' => auth_user_id(), 'mid' => $lastMsgId]);
+}
+
 $users = db()->query('SELECT id, name, email FROM users WHERE status = \'active\' ORDER BY name ASC')->fetchAll();
 
 $assigned = $c['assigned_user_name'] ? (string)$c['assigned_user_name'] : '-';

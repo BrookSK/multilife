@@ -24,7 +24,7 @@ $state = (string)($d['location_state'] ?? '');
 $specialty = (string)($d['specialty'] ?? '');
 
 // Seleção automática conforme doc: especialidade + cidade/estado
-$sql = 'SELECT id, name FROM whatsapp_groups WHERE status = \'active\'';
+$sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'';
 $where = [];
 $params = [];
 
@@ -59,14 +59,22 @@ if (count($groups) === 0) {
     exit;
 }
 
-// Mensagem configurável será implementada no módulo Admin. Por agora, gera um template.
-$msg = "[CAPTAÇÃO]\n" . (string)$d['title'] . "\n";
-if ($city !== '' || $state !== '') {
-    $msg .= "Local: " . trim($city . ' ' . $state) . "\n";
-}
-if ($specialty !== '') {
-    $msg .= "Especialidade: " . $specialty . "\n";
-}
+$tpl = (string)admin_setting_get(
+    'demands.whatsapp_template',
+    "[CAPTAÇÃO #{id}]\n{title}\nLocal: {city}/{state}\nEspecialidade: {specialty}\n\n{description}\nOrigem: {origin}"
+);
+
+$repl = [
+    '{id}' => (string)$d['id'],
+    '{title}' => (string)$d['title'],
+    '{city}' => $city !== '' ? $city : '-',
+    '{state}' => $state !== '' ? $state : '-',
+    '{specialty}' => $specialty !== '' ? $specialty : '-',
+    '{description}' => (string)($d['description'] ?? ''),
+    '{origin}' => (string)($d['origin_email'] ?? ''),
+];
+
+$msg = strtr($tpl, $repl);
 
 $db = db();
 $db->beginTransaction();
@@ -78,7 +86,7 @@ try {
             'gid' => (int)$g['id'],
             'uid' => auth_user_id(),
             'msg' => $msg,
-            'st' => 'sent',
+            'st' => 'queued',
         ]);
     }
 
@@ -105,6 +113,61 @@ try {
     throw $e;
 }
 
-flash_set('success', 'Captação registrada nos logs (envio via Evolution será integrado depois).');
+// Envio via Evolution (fora da transação)
+$api = null;
+try {
+    $api = new EvolutionApiV1();
+} catch (Throwable $e) {
+    // registra erro em todos
+    $upd = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = :err WHERE demand_id = :did AND dispatch_status = \'queued\'');
+    $upd->execute(['err' => 'Evolution API não configurada: ' . mb_strimwidth($e->getMessage(), 0, 220, ''), 'did' => $id]);
+    flash_set('error', 'Falha ao enviar: Evolution API não configurada.');
+    header('Location: /demands_view.php?id=' . $id);
+    exit;
+}
+
+$selLogs = db()->prepare(
+    'SELECT dl.id, g.evolution_group_jid FROM demand_dispatch_logs dl LEFT JOIN whatsapp_groups g ON g.id = dl.group_id WHERE dl.demand_id = :did AND dl.dispatch_status = \'queued\''
+);
+$selLogs->execute(['did' => $id]);
+$toSend = $selLogs->fetchAll();
+
+$updOne = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = :st, error_message = :err WHERE id = :id');
+
+$sent = 0;
+$errCount = 0;
+foreach ($toSend as $row) {
+    $logId = (int)$row['id'];
+    $jid = (string)($row['evolution_group_jid'] ?? '');
+    if ($jid === '') {
+        $updOne->execute(['st' => 'error', 'err' => 'Grupo sem evolution_group_jid configurado.', 'id' => $logId]);
+        $errCount++;
+        continue;
+    }
+
+    try {
+        $res = $api->sendText($jid, $msg);
+        $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+        if ($ok) {
+            $updOne->execute(['st' => 'sent', 'err' => null, 'id' => $logId]);
+            $sent++;
+        } else {
+            $updOne->execute(['st' => 'error', 'err' => 'HTTP ' . (string)($res['status'] ?? ''), 'id' => $logId]);
+            $errCount++;
+        }
+    } catch (Throwable $e) {
+        $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($e->getMessage(), 0, 255, ''), 'id' => $logId]);
+        $errCount++;
+        continue;
+    }
+}
+
+if ($sent > 0 && $errCount === 0) {
+    flash_set('success', 'Captação enviada via WhatsApp.');
+} elseif ($sent > 0) {
+    flash_set('error', 'Captação enviada para alguns grupos, mas houve erros em outros.');
+} else {
+    flash_set('error', 'Falha ao enviar captação via WhatsApp. Verifique os logs.');
+}
 header('Location: /demands_view.php?id=' . $id);
 exit;
