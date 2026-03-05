@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 final class OpenAiApi
 {
-    private string $baseUrl;
-    private string $apiKey;
-    private string $model;
+    private $baseUrl;
+    private $apiKey;
+    private $model;
 
     public function __construct(?string $baseUrl = null, ?string $apiKey = null, ?string $model = null)
     {

@@ -7,13 +7,20 @@ $config = require __DIR__ . '/../config/config.php';
 date_default_timezone_set('America/Sao_Paulo');
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    $httpsVal = $_SERVER['HTTPS'] ?? '';
+    $isSecure = false;
+    if (is_string($httpsVal) || is_int($httpsVal) || is_bool($httpsVal)) {
+        $httpsStr = strtolower(trim((string)$httpsVal));
+        $isSecure = ($httpsStr !== '' && $httpsStr !== 'off' && $httpsStr !== '0');
+    }
+
     session_name($config['app']['session_name']);
     session_set_cookie_params([
         'lifetime' => (int)$config['app']['session_lifetime_seconds'],
         'path' => '/',
         'httponly' => true,
         'samesite' => 'Lax',
-        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+        'secure' => $isSecure,
     ]);
     session_start();
 }

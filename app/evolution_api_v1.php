@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 final class EvolutionApiV1
 {
-    private string $baseUrl;
-    private string $apiKey;
-    private string $instance;
+    private $baseUrl;
+    private $apiKey;
+    private $instance;
 
     public function __construct(?string $baseUrl = null, ?string $apiKey = null, ?string $instance = null)
     {

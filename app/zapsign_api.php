@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 final class ZapSignApi
 {
-    private string $baseUrl;
-    private string $apiToken;
+    private $baseUrl;
+    private $apiToken;
 
     public function __construct(?string $baseUrl = null, ?string $apiToken = null)
     {

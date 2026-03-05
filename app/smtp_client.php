@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 final class SmtpClient
 {
-    private string $host;
-    private int $port;
-    private string $encryption;
-    private string $username;
-    private string $password;
+    private $host;
+    private $port;
+    private $encryption;
+    private $username;
+    private $password;
 
     public function __construct(?string $host = null, ?int $port = null, ?string $encryption = null, ?string $username = null, ?string $password = null)
     {
