@@ -332,11 +332,12 @@ function h(string $value): string {
                 // Buscar logo da tela de login sem carregar bootstrap
                 $logoUrl = '';
                 try {
-                    $dbConfig = require __DIR__ . '/config/config.php';
+                    $config = require __DIR__ . '/config/config.php';
+                    $dbConfig = $config['db'];
                     $pdo = new PDO(
-                        "mysql:host={$dbConfig['db_host']};dbname={$dbConfig['db_name']};charset=utf8mb4",
-                        $dbConfig['db_user'],
-                        $dbConfig['db_pass'],
+                        "mysql:host={$dbConfig['host']};dbname={$dbConfig['name']};charset=utf8mb4",
+                        $dbConfig['user'],
+                        $dbConfig['pass'],
                         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
                     );
                     $stmt = $pdo->prepare('SELECT setting_value FROM admin_settings WHERE setting_key = :key LIMIT 1');
@@ -346,13 +347,8 @@ function h(string $value): string {
                         $logoUrl = (string)$result['setting_value'];
                     }
                 } catch (Exception $e) {
-                    // Mostrar erro se houver
-                    echo '<!-- ERRO AO BUSCAR LOGO: ' . htmlspecialchars($e->getMessage()) . ' -->';
+                    // Ignorar erro se não conseguir carregar
                 }
-                
-                // Debug ativo: mostrar URL da logo
-                echo '<!-- Logo URL encontrada: "' . htmlspecialchars($logoUrl) . '" -->';
-                echo '<!-- Logo vazia? ' . (empty($logoUrl) ? 'SIM' : 'NÃO') . ' -->';
                 
                 if (!empty($logoUrl)):
                 ?>
