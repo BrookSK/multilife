@@ -31,13 +31,18 @@ $debugInfo = [];
 try {
     $fetchRes = $api->fetchInstances($instance);
     $debugInfo[] = 'fetchInstances executado - Status: ' . ($fetchRes['status'] ?? 'N/A');
+    $debugInfo[] = 'fetchInstances JSON: ' . json_encode($fetchRes['json'] ?? null);
     
-    // Mesmo com erro 500, se retornou dados, a instância existe
-    if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
-        $instanceExists = true;
-        $debugInfo[] = 'Instância encontrada: SIM (ignorando erro 500 se houver)';
+    // Só considerar que existe se status for 2xx E tiver dados
+    if (isset($fetchRes['status']) && $fetchRes['status'] >= 200 && $fetchRes['status'] < 300) {
+        if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
+            $instanceExists = true;
+            $debugInfo[] = 'Instância encontrada: SIM';
+        } else {
+            $debugInfo[] = 'Instância encontrada: NÃO (resposta vazia)';
+        }
     } else {
-        $debugInfo[] = 'Instância encontrada: NÃO';
+        $debugInfo[] = 'Instância encontrada: NÃO (status ' . ($fetchRes['status'] ?? 'N/A') . ' indica erro)';
     }
 } catch (Throwable $e) {
     // Instância não existe ou erro ao buscar
