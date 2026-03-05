@@ -229,32 +229,87 @@ try {
             }
         }
 
-        // Body
+        // Body - Extrair e decodificar corretamente
         $bodyText = '';
         $bodyHtml = '';
 
         $uidInt = (int)$uid;
         $structure = imap_fetchstructure($imap, $uidInt, FT_UID);
+        
+        // Função helper para decodificar corpo baseado no encoding
+        $decodeBody = function($body, $encoding) {
+            switch ($encoding) {
+                case 3: // BASE64
+                    return base64_decode($body);
+                case 4: // QUOTED-PRINTABLE
+                    return quoted_printable_decode($body);
+                case 1: // 8BIT
+                case 2: // BINARY
+                case 5: // 7BIT
+                default:
+                    return $body;
+            }
+        };
+        
         if ($structure) {
-            // Best-effort: attempt common parts
-            $raw = imap_fetchbody($imap, $uidInt, '1', FT_UID);
-            if ($raw === false || $raw === '') {
-                $raw = imap_body($imap, $uidInt, FT_UID);
-            }
-            if (is_string($raw)) {
-                $bodyText = imap_utf8($raw);
-            }
-
-            // Try HTML part if multipart
-            $rawHtml = imap_fetchbody($imap, $uidInt, '1.2', FT_UID);
-            if (is_string($rawHtml) && $rawHtml !== '') {
-                $bodyHtml = $rawHtml;
+            // Processar estrutura MIME
+            $parts = [];
+            
+            // Se for multipart, processar partes
+            if (isset($structure->parts) && is_array($structure->parts)) {
+                foreach ($structure->parts as $partNum => $part) {
+                    $partIndex = (string)($partNum + 1);
+                    $data = imap_fetchbody($imap, $uidInt, $partIndex, FT_UID);
+                    
+                    if ($data === false || $data === '') {
+                        continue;
+                    }
+                    
+                    // Decodificar baseado no encoding
+                    $encoding = isset($part->encoding) ? (int)$part->encoding : 0;
+                    $decoded = $decodeBody($data, $encoding);
+                    
+                    // Verificar tipo MIME
+                    $mimeType = '';
+                    if (isset($part->type)) {
+                        $type = (int)$part->type;
+                        $subtype = isset($part->subtype) ? strtolower((string)$part->subtype) : '';
+                        
+                        if ($type === 0 && $subtype === 'plain') {
+                            $mimeType = 'text/plain';
+                        } elseif ($type === 0 && $subtype === 'html') {
+                            $mimeType = 'text/html';
+                        }
+                    }
+                    
+                    if ($mimeType === 'text/plain' && $bodyText === '') {
+                        $bodyText = $decoded;
+                    } elseif ($mimeType === 'text/html' && $bodyHtml === '') {
+                        $bodyHtml = $decoded;
+                    }
+                }
+            } else {
+                // Mensagem simples (não multipart)
+                $data = imap_body($imap, $uidInt, FT_UID);
+                if (is_string($data) && $data !== '') {
+                    $encoding = isset($structure->encoding) ? (int)$structure->encoding : 0;
+                    $bodyText = $decodeBody($data, $encoding);
+                }
             }
         } else {
+            // Fallback: tentar pegar corpo direto
             $raw = imap_body($imap, $uidInt, FT_UID);
             if (is_string($raw)) {
-                $bodyText = imap_utf8($raw);
+                $bodyText = $raw;
             }
+        }
+        
+        // Converter para UTF-8 se necessário
+        if ($bodyText !== '') {
+            $bodyText = mb_convert_encoding($bodyText, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
+        }
+        if ($bodyHtml !== '') {
+            $bodyHtml = mb_convert_encoding($bodyHtml, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
         }
 
         $db->beginTransaction();
