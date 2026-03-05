@@ -93,8 +93,8 @@ $updErr = $db->prepare(
 );
 
 $insDemand = $db->prepare(
-    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary)'
-    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as)'
+    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary, urgency)'
+    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as,:urg)'
 );
 $insDemandLog = $db->prepare(
     'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)'
@@ -346,6 +346,7 @@ foreach ($emails as $e) {
                 'st' => $status,
                 'pv' => $procedureValue,
                 'as' => $aiSummary !== '' ? $aiSummary : null,
+                'urg' => $urgency !== '' ? $urgency : null,
             ]);
             $demandId = (int)$db->lastInsertId();
 

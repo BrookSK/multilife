@@ -18,7 +18,7 @@ if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
 
-$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.ai_summary, d.procedure_value, u.name AS assumed_by_name
+$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name
         FROM demands d
         LEFT JOIN users u ON u.id = d.assumed_by_user_id';
 
@@ -212,7 +212,22 @@ foreach ($columns as $col) {
             }
             
             echo '<div class="kanbanMeta">' . h($assumed) . ' • ' . h((string)$r['created_at']) . '</div>';
+            
+            // Badges de status, urgência e valor
+            echo '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
             echo '<span class="badge ' . h($badgeCls) . '">' . h((string)$r['status']) . '</span>';
+            
+            // Badge de urgência
+            $urgency = trim((string)($r['urgency'] ?? ''));
+            if ($urgency === 'urgente') {
+                echo '<span class="badge badgeDanger" style="background:hsl(0,84%,60%);color:#fff;font-weight:700">🚨 URGENTE</span>';
+            } elseif ($urgency === 'normal') {
+                echo '<span class="badge badgeWarn" style="font-size:11px">⏱️ Normal</span>';
+            } elseif ($urgency === 'baixa') {
+                echo '<span class="badge badgeInfo" style="font-size:11px">📅 Baixa</span>';
+            }
+            
+            echo '</div>';
             echo '</div>';
             echo '</a>';
         }

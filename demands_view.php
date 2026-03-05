@@ -85,6 +85,17 @@ if ($st === 'admitido') {
 
 echo '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
 echo '<span class="badge ' . h($badgeCls) . '">' . h($st) . '</span>';
+
+// Badge de urgência
+$urgency = trim((string)($d['urgency'] ?? ''));
+if ($urgency === 'urgente') {
+    echo '<span class="badge badgeDanger" style="background:hsl(0,84%,60%);color:#fff;font-weight:700;font-size:13px">🚨 URGENTE</span>';
+} elseif ($urgency === 'normal') {
+    echo '<span class="badge badgeWarn" style="font-size:12px">⏱️ Normal</span>';
+} elseif ($urgency === 'baixa') {
+    echo '<span class="badge badgeInfo" style="font-size:12px">📅 Baixa</span>';
+}
+
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Local:</strong> ' . h($locTxt) . '</span>';
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-')) . '</span>';
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Responsável:</strong> ' . h($assumedBy) . '</span>';
