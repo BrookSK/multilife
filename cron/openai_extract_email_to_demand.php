@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_bootstrap.php';
 
+$idFilter = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$retryErrors = isset($_GET['retry_errors']) && ((string)$_GET['retry_errors'] === '1' || strtolower((string)$_GET['retry_errors']) === 'true');
+
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 if ($limit <= 0 || $limit > 100) {
     $limit = 10;
@@ -33,14 +36,25 @@ $selectFromField = $hasFromEmail ? 'from_email' : ($hasFromAddress ? 'from_addre
 
 $db->beginTransaction();
 try {
+    $statusList = "'received','ai_pending'";
+    if ($retryErrors) {
+        $statusList .= ",'error'";
+    }
+
     $stmt = $db->prepare(
         "SELECT * FROM inbound_emails\n"
-        . "WHERE status IN ('received','ai_pending')\n"
+        . "WHERE status IN ($statusList)\n"
+        . ($idFilter > 0 ? "AND id = :id\n" : '')
         . "ORDER BY received_at ASC, id ASC\n"
         . "LIMIT $limit\n"
         . "FOR UPDATE"
     );
-    $stmt->execute();
+
+    $params = [];
+    if ($idFilter > 0) {
+        $params['id'] = $idFilter;
+    }
+    $stmt->execute($params);
     $emails = $stmt->fetchAll();
 
     if (count($emails) === 0) {
@@ -135,7 +149,10 @@ foreach ($emails as $e) {
                 ['role' => 'user', 'content' => $userPrompt],
             ],
             null,
-            ['temperature' => 0.2]
+            [
+                'temperature' => 0.2,
+                'response_format' => ['type' => 'json_object'],
+            ]
         );
 
         $statusCode = (int)($res['status'] ?? 0);
@@ -167,6 +184,17 @@ foreach ($emails as $e) {
         }
 
         $parsed = json_decode($raw, true);
+        if (!is_array($parsed)) {
+            $start = strpos($raw, '{');
+            $end = strrpos($raw, '}');
+            if ($start !== false && $end !== false && $end > $start) {
+                $maybe = substr($raw, $start, $end - $start + 1);
+                $maybeParsed = json_decode($maybe, true);
+                if (is_array($maybeParsed)) {
+                    $parsed = $maybeParsed;
+                }
+            }
+        }
         if (!is_array($parsed)) {
             throw new RuntimeException('OpenAI não retornou JSON válido. Conteúdo: ' . mb_strimwidth($raw, 0, 180, '')); 
         }
