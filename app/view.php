@@ -66,7 +66,7 @@ function view_header(string $title): void
     echo '.navChevron{font-size:10px;margin-left:auto;transition:transform .2s ease;color:currentColor}';
     echo '.navItemWithSubmenu{position:relative}';
     echo '.navItemWithSubmenu:hover .navSubmenu{display:block}';
-    echo '.navSubmenu{display:none;position:absolute;left:100%;top:0;min-width:200px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:8px;box-shadow:var(--shadow-elevated);padding:6px;margin-left:8px;z-index:100}';
+    echo '.navSubmenu{display:none;position:absolute;left:calc(100% + 4px);top:0;min-width:220px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:8px;z-index:1000}';
     echo '.navSubItem{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;color:hsl(var(--muted-foreground));transition:background .15s ease,color .15s ease;text-decoration:none;font-size:14px;font-weight:500}';
     echo '.navSubItem:hover{background:hsla(var(--primary)/.08);color:hsl(var(--foreground));text-decoration:none}';
     echo '.navSubItem.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}';
