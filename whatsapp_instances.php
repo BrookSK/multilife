@@ -51,6 +51,12 @@ if (!$instanceExists) {
             // Aguardar criação
             sleep(3);
             $instanceExists = true;
+            
+            // Verificar se QR Code veio na resposta
+            if (isset($createRes['json']['qrcode'])) {
+                $qrCode = $createRes['json'];
+            }
+            
             flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
         } else {
             $error = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
@@ -94,9 +100,18 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
                 $createRes = $api->createInstanceBasic($createPayload);
                 
                 if (isset($createRes['status']) && $createRes['status'] >= 200 && $createRes['status'] < 300) {
-                    sleep(3);
-                    $canGenerateQr = true;
-                    flash_set('success', 'Instância "' . $instance . '" criada! Gerando QR Code...');
+                    // Instância criada com sucesso
+                    // O QR Code pode vir na resposta da criação se qrcode:true
+                    if (isset($createRes['json']['qrcode'])) {
+                        $qrCode = $createRes['json'];
+                        $canGenerateQr = false; // Não precisa gerar, já veio
+                        flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
+                    } else {
+                        // QR Code não veio, aguardar e tentar conectar
+                        sleep(5);
+                        $canGenerateQr = true;
+                        flash_set('success', 'Instância "' . $instance . '" criada! Conectando...');
+                    }
                 } else {
                     $errorMsg = 'Falha ao criar instância. Status: ' . ($createRes['status'] ?? 'desconhecido');
                     if (isset($createRes['json']['message'])) {
@@ -116,11 +131,17 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
     if ($canGenerateQr && $error === null) {
         try {
             $qrResponse = $api->generateQrCode();
-            // A resposta vem em $qrResponse['json']
-            if (isset($qrResponse['json'])) {
-                $qrCode = $qrResponse['json'];
+            
+            // Verificar se houve erro 404
+            if (isset($qrResponse['status']) && $qrResponse['status'] === 404) {
+                $error = 'A instância "' . $instance . '" não existe na Evolution API. Tente recarregar a página para criá-la automaticamente.';
             } else {
-                $qrCode = $qrResponse;
+                // A resposta vem em $qrResponse['json']
+                if (isset($qrResponse['json'])) {
+                    $qrCode = $qrResponse['json'];
+                } else {
+                    $qrCode = $qrResponse;
+                }
             }
         } catch (Throwable $e) {
             $error = $e->getMessage();
@@ -157,12 +178,30 @@ if ($error !== null) {
     echo '<div class="alertError">';
     echo '<strong>Erro:</strong> ' . h($error);
     echo '</div>';
+    echo '<div style="margin-top:14px;padding:12px;background:hsla(var(--muted)/.25);border-radius:8px">';
+    echo '<strong>Solução:</strong> A instância "' . h($instance) . '" precisa ser criada manualmente na Evolution API.';
+    echo '<br><br>';
+    echo '<strong>Opção 1:</strong> Acesse o painel da Evolution API em: <a href="http://31.97.83.150:8080/manager/" target="_blank" style="color:hsl(var(--primary))">http://31.97.83.150:8080/manager/</a>';
+    echo '<br><strong>Opção 2:</strong> Use a página de administração: <a href="/admin_whatsapp_instances.php" class="btn" style="display:inline-flex;margin-top:8px">Gerenciar Instâncias</a>';
+    echo '</div>';
     echo '</section>';
 }
 
 // Status da conexão
 echo '<section class="card col12">';
 echo '<div style="font-weight:900;margin-bottom:14px">Status da Instância: ' . h($instance) . '</div>';
+
+// Mostrar aviso se instância não existe
+if (!$instanceExists && $error === null) {
+    echo '<div style="padding:12px;border-radius:10px;background:hsla(var(--warning)/.10);border:1px solid hsla(var(--warning)/.20);margin-bottom:14px">';
+    echo '<div style="font-weight:700;color:hsl(var(--warning));margin-bottom:6px">⚠ Instância Não Encontrada</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--foreground))">';
+    echo 'A instância "' . h($instance) . '" não existe na Evolution API.<br>';
+    echo 'Clique em "Gerar QR Code" abaixo para criar automaticamente.';
+    echo '</div>';
+    echo '</div>';
+}
+
 
 if ($connectionStatus !== null && isset($connectionStatus['state'])) {
     $state = (string)$connectionStatus['state'];
