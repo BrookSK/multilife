@@ -140,6 +140,8 @@ foreach ($emails as $e) {
         . "Se não conseguir identificar um campo, use null."
     );
 
+    $systemPrompt .= "\n\nResponda somente com json válido.";
+
     $userPrompt = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\n" . $content;
 
     try {
