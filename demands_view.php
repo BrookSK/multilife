@@ -121,6 +121,11 @@ echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
 echo '<button class="btn btnPrimary" type="submit">Realizar Captação</button>';
 echo '</form>';
 
+echo '<form method="post" action="/demands_cancel_post.php" style="display:inline" onsubmit="return confirm(\'Tem certeza que deseja cancelar este card?\')">';
+echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
+echo '<button class="btn" type="submit" style="background:hsl(0,84%,60%);color:#fff">Cancelar Card</button>';
+echo '</form>';
+
 echo '</div>';
 echo '</div>';
 
@@ -128,7 +133,7 @@ echo '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
 echo '<form method="post" action="/demands_set_status_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
 echo '<select name="status" style="min-width:220px">';
-$allowed = ['aguardando_captacao','tratamento_manual','em_captacao','admitido','cancelado'];
+$allowed = ['aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 foreach ($allowed as $st) {
     $sel = ((string)$d['status'] === $st) ? ' selected' : '';
     echo '<option value="' . h($st) . '"' . $sel . '>' . h($st) . '</option>';

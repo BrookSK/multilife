@@ -13,7 +13,7 @@ $specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
 $assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : '';
 
-$allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','cancelado'];
+$allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
@@ -67,6 +67,7 @@ $columns = [
     ['id' => 'tratamento_manual', 'title' => 'Tratamento Manual', 'emoji' => '📋'],
     ['id' => 'em_captacao', 'title' => 'Em Captação', 'emoji' => '🔗'],
     ['id' => 'admitido', 'title' => 'Admitido', 'emoji' => '✅'],
+    ['id' => 'concluido', 'title' => 'Concluídos', 'emoji' => '🎉'],
     ['id' => 'cancelado', 'title' => 'Cancelado', 'emoji' => '⛔'],
 ];
 
@@ -75,6 +76,7 @@ $byStatus = [
     'tratamento_manual' => [],
     'em_captacao' => [],
     'admitido' => [],
+    'concluido' => [],
     'cancelado' => [],
 ];
 
@@ -109,6 +111,7 @@ $opts = [
     'tratamento_manual' => 'Tratamento Manual',
     'em_captacao' => 'Em Captação',
     'admitido' => 'Admitido',
+    'concluido' => 'Concluídos',
     'cancelado' => 'Cancelado',
 ];
 foreach ($opts as $k => $label) {
@@ -160,6 +163,18 @@ echo '<div class="kanbanRow">';
 foreach ($columns as $col) {
     $colId = (string)$col['id'];
     $items = $byStatus[$colId] ?? [];
+    
+    // Coluna "Concluídos": apenas últimos 7 dias, máximo 10 cards
+    if ($colId === 'concluido') {
+        $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $filtered = [];
+        foreach ($items as $item) {
+            if ($item['created_at'] >= $sevenDaysAgo) {
+                $filtered[] = $item;
+            }
+        }
+        $items = array_slice($filtered, 0, 10);
+    }
 
     echo '<div class="kanbanCol">';
     echo '<div class="kanbanColHead">';
@@ -187,8 +202,19 @@ foreach ($columns as $col) {
             } elseif ($colId === 'cancelado') {
                 $badgeCls = 'badgeDanger';
             }
+            
+            // Borda vermelha em cards aguardando_captacao com mais de 10 minutos sem assumir
+            $cardStyle = '';
+            if ($colId === 'aguardando_captacao' && !$r['assumed_by_user_id']) {
+                $createdTime = strtotime((string)$r['created_at']);
+                $now = time();
+                $minutesWaiting = ($now - $createdTime) / 60;
+                if ($minutesWaiting > 10) {
+                    $cardStyle = ' style="border:2px solid hsl(0,84%,60%);box-shadow:0 0 8px hsla(0,84%,60%,.3)"';
+                }
+            }
 
-            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '">';
+            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '"' . $cardStyle . '>';
             echo '<div class="kanbanCardBody">';
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle">' . h((string)$r['title']) . '</div>';
