@@ -52,68 +52,74 @@ echo '<div id="status-message" style="margin-top:20px;font-size:14px;color:hsl(v
 echo '</div>';
 echo '</section>';
 
-echo '<script>';
-echo 'let checkInterval;';
-echo 'function loadQRCode(){';
-echo '  console.log("Iniciando carregamento do QR Code...");';
-echo '  fetch("/evolution_proxy.php?action=connect&instance=' . urlencode($instanceName) . '")';
-echo '  .then(r=>{';
-echo '    console.log("Resposta recebida, status:", r.status);';
-echo '    return r.json();';
-echo '  })';
-echo '  .then(data=>{';
-echo '    console.log("Dados recebidos:", data);';
-echo '    console.log("Dados JSON:", JSON.stringify(data, null, 2));';
-echo '    const container=document.getElementById("qrcode-container");';
-echo '    // Verificar diferentes formatos de resposta da Evolution API';
-echo '    if(data.base64){';
-echo '      console.log("QR Code base64 encontrado");';
-echo '      container.innerHTML=`<img src="${data.base64}" alt="QR Code" style="max-width:300px;width:100%">`;';
-echo '      document.getElementById("status-message").innerHTML="Escaneie o QR Code com seu WhatsApp";';
-echo '      startStatusCheck();';
-echo '    }else if(data.qrcode && data.qrcode.base64){';
-echo '      console.log("QR Code em data.qrcode.base64");';
-echo '      container.innerHTML=`<img src="${data.qrcode.base64}" alt="QR Code" style="max-width:300px;width:100%">`;';
-echo '      document.getElementById("status-message").innerHTML="Escaneie o QR Code com seu WhatsApp";';
-echo '      startStatusCheck();';
-echo '    }else if(data.qrcode && data.qrcode.code){';
-echo '      console.log("QR Code em data.qrcode.code");';
-echo '      container.innerHTML=`<img src="${data.qrcode.code}" alt="QR Code" style="max-width:300px;width:100%">`;';
-echo '      document.getElementById("status-message").innerHTML="Escaneie o QR Code com seu WhatsApp";';
-echo '      startStatusCheck();';
-echo '    }else if(data.error){';
-echo '      console.error("Erro da API:", data.error);';
-echo '      let errorMsg = data.error;';
-echo '      if(data.url) errorMsg += "<br><small>URL: " + data.url + "</small>";';
-echo '      if(data.response) errorMsg += "<br><small>Resposta: " + data.response + "</small>";';
-echo '      container.innerHTML=`<div style="color:red;padding:20px">${errorMsg}</div>`;';
-echo '    }else{';
-echo '      console.error("Resposta inesperada:", data);';
-echo '      console.error("Propriedades do objeto:", Object.keys(data));';
-echo '      container.innerHTML=`<div style="color:orange;padding:20px">Resposta da API em formato inesperado.<br><small>Verifique o console para detalhes.</small><br><pre style="text-align:left;font-size:11px;margin-top:10px">\${JSON.stringify(data, null, 2)}</pre></div>`;';
-echo '    }';
-echo '  })';
-echo '  .catch(e=>{';
-echo '    console.error("Erro ao carregar QR Code:", e);';
-echo '    document.getElementById("qrcode-container").innerHTML=`<div style="color:red;padding:20px">Erro ao carregar QR Code: ${e.message}</div>`;';
-echo '  });';
-echo '}';
-echo 'function checkStatus(){';
-echo '  fetch("/evolution_proxy.php?action=status&instance=' . urlencode($instanceName) . '")';
-echo '  .then(r=>r.json())';
-echo '  .then(data=>{';
-echo '    if(data.state==="open"){';
-echo '      clearInterval(checkInterval);';
-echo '      document.getElementById("status-message").innerHTML=`<span style="color:hsl(142,76%,36%);font-weight:600">✓ Conectado com sucesso!</span>`;';
-echo '      setTimeout(()=>window.location.href="/evolution_instances.php",2000);';
-echo '    }';
-echo '  });';
-echo '}';
-echo 'function startStatusCheck(){';
-echo '  checkInterval=setInterval(checkStatus,3000);';
-echo '}';
-echo 'loadQRCode();';
-echo '</script>';
+?>
+<script>
+let checkInterval;
+
+function loadQRCode(){
+  console.log("Iniciando carregamento do QR Code...");
+  fetch("/evolution_proxy.php?action=connect&instance=<?= urlencode($instanceName) ?>")
+  .then(r => {
+    console.log("Resposta recebida, status:", r.status);
+    return r.json();
+  })
+  .then(data => {
+    console.log("Dados recebidos:", data);
+    console.log("Dados JSON:", JSON.stringify(data, null, 2));
+    const container = document.getElementById("qrcode-container");
+    
+    if(data.base64){
+      console.log("QR Code base64 encontrado");
+      container.innerHTML = `<img src="${data.base64}" alt="QR Code" style="max-width:300px;width:100%">`;
+      document.getElementById("status-message").innerHTML = "Escaneie o QR Code com seu WhatsApp";
+      startStatusCheck();
+    } else if(data.qrcode && data.qrcode.base64){
+      console.log("QR Code em data.qrcode.base64");
+      container.innerHTML = `<img src="${data.qrcode.base64}" alt="QR Code" style="max-width:300px;width:100%">`;
+      document.getElementById("status-message").innerHTML = "Escaneie o QR Code com seu WhatsApp";
+      startStatusCheck();
+    } else if(data.qrcode && data.qrcode.code){
+      console.log("QR Code em data.qrcode.code");
+      container.innerHTML = `<img src="${data.qrcode.code}" alt="QR Code" style="max-width:300px;width:100%">`;
+      document.getElementById("status-message").innerHTML = "Escaneie o QR Code com seu WhatsApp";
+      startStatusCheck();
+    } else if(data.error){
+      console.error("Erro da API:", data.error);
+      let errorMsg = data.error;
+      if(data.url) errorMsg += "<br><small>URL: " + data.url + "</small>";
+      if(data.response) errorMsg += "<br><small>Resposta: " + data.response + "</small>";
+      container.innerHTML = `<div style="color:red;padding:20px">${errorMsg}</div>`;
+    } else {
+      console.error("Resposta inesperada:", data);
+      console.error("Propriedades do objeto:", Object.keys(data));
+      container.innerHTML = `<div style="color:orange;padding:20px">Resposta da API em formato inesperado.<br><small>Verifique o console para detalhes.</small><br><pre style="text-align:left;font-size:11px;margin-top:10px">${JSON.stringify(data, null, 2)}</pre></div>`;
+    }
+  })
+  .catch(e => {
+    console.error("Erro ao carregar QR Code:", e);
+    document.getElementById("qrcode-container").innerHTML = `<div style="color:red;padding:20px">Erro ao carregar QR Code: ${e.message}</div>`;
+  });
+}
+
+function checkStatus(){
+  fetch("/evolution_proxy.php?action=status&instance=<?= urlencode($instanceName) ?>")
+  .then(r => r.json())
+  .then(data => {
+    if(data.state === "open"){
+      clearInterval(checkInterval);
+      document.getElementById("status-message").innerHTML = `<span style="color:hsl(142,76%,36%);font-weight:600">✓ Conectado com sucesso!</span>`;
+      setTimeout(() => window.location.href = "/evolution_instances.php", 2000);
+    }
+  });
+}
+
+function startStatusCheck(){
+  checkInterval = setInterval(checkStatus, 3000);
+}
+
+loadQRCode();
+</script>
+<?php
 
 echo '</div>';
 
