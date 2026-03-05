@@ -45,7 +45,7 @@ try {
         }
         
         flash_set('success', "Sincronização concluída! Total: $totalChats conversas ($groups grupos, $private conversas privadas)");
-        audit_log('whatsapp_sync', "WhatsApp sincronizado: $totalChats conversas");
+        audit_log('sync', 'whatsapp', '0', null, ['total_chats' => $totalChats, 'groups' => $groups, 'private' => $private]);
     } else {
         flash_set('error', 'Erro ao sincronizar. Código: ' . $httpCode);
     }

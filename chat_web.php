@@ -21,7 +21,9 @@ $chats = [];
 $messages = [];
 $selectedChatData = null;
 
-// Buscar conversas via Evolution API
+// Buscar conversas da Evolution API
+$chats = [];
+$selectedChatData = [];
 if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         $ch = curl_init($baseUrl . '/chat/findChats/' . urlencode($instanceName));
@@ -35,34 +37,48 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
         curl_close($ch);
         
         if ($httpCode === 200) {
-            $data = json_decode($response, true);
-            if (isset($data) && is_array($data)) {
-                $chats = $data;
-                
-                // Filtrar por tipo
-                if ($chatType === 'groups') {
-                    $chats = array_filter($chats, function($chat) {
-                        return isset($chat['id']) && strpos($chat['id'], '@g.us') !== false;
-                    });
-                } elseif ($chatType === 'private') {
-                    $chats = array_filter($chats, function($chat) {
-                        return isset($chat['id']) && strpos($chat['id'], '@s.whatsapp.net') !== false;
-                    });
+            $chats = json_decode($response, true);
+            if (!is_array($chats)) {
+                $chats = [];
+            }
+            
+            // Enriquecer dados dos chats com nomes
+            foreach ($chats as &$chat) {
+                if (!isset($chat['name']) || empty($chat['name'])) {
+                    // Tentar buscar nome do contato
+                    $chatId = $chat['id'] ?? '';
+                    if (!empty($chatId)) {
+                        // Usar pushName se disponível
+                        if (isset($chat['pushName']) && !empty($chat['pushName'])) {
+                            $chat['name'] = $chat['pushName'];
+                        } else {
+                            // Extrair número do ID
+                            $number = str_replace(['@s.whatsapp.net', '@g.us'], '', $chatId);
+                            $chat['name'] = $number;
+                        }
+                    }
                 }
-                
-                // Filtrar por busca
-                if (!empty($searchQuery)) {
-                    $chats = array_filter($chats, function($chat) use ($searchQuery) {
-                        $name = $chat['name'] ?? $chat['id'] ?? '';
-                        return stripos($name, $searchQuery) !== false;
-                    });
-                }
-                
-                // Selecionar primeiro chat se nenhum selecionado
-                if (empty($selectedChat) && !empty($chats)) {
-                    $firstChat = reset($chats);
-                    $selectedChat = $firstChat['id'] ?? '';
-                }
+            }
+            unset($chat);
+            
+            // Filtrar por tipo se especificado
+            if ($chatType === 'groups') {
+                $chats = array_filter($chats, function($chat) {
+                    return isset($chat['id']) && strpos($chat['id'], '@g.us') !== false;
+                });
+            } else if ($chatType === 'private') {
+                $chats = array_filter($chats, function($chat) {
+                    return isset($chat['id']) && strpos($chat['id'], '@g.us') === false;
+                });
+            }
+            
+            // Filtrar por busca
+            if (!empty($searchQuery)) {
+                $chats = array_filter($chats, function($chat) use ($searchQuery) {
+                    $name = $chat['name'] ?? $chat['id'] ?? '';
+                    $id = $chat['id'] ?? '';
+                    return stripos($name, $searchQuery) !== false || stripos($id, $searchQuery) !== false;
+                });
             }
         }
     } catch (Exception $e) {

@@ -8,27 +8,44 @@ auth_require_login();
 rbac_require_permission('users.manage');
 
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$roleFilter = isset($_GET['role']) ? trim((string)$_GET['role']) : '';
 
-$sql = 'SELECT id, name, email, status, created_at FROM users';
+$sql = 'SELECT u.id, u.name, u.email, u.status, u.created_at FROM users u';
 $params = [];
+$where = [];
+
+if ($roleFilter !== '') {
+    $sql .= ' LEFT JOIN user_roles ur ON ur.user_id = u.id LEFT JOIN roles r ON r.id = ur.role_id';
+    $where[] = 'r.slug = :role';
+    $params['role'] = $roleFilter;
+}
+
 if ($q !== '') {
-    $sql .= ' WHERE name LIKE :q OR email LIKE :q';
+    $where[] = '(u.name LIKE :q OR u.email LIKE :q)';
     $params['q'] = '%' . $q . '%';
 }
-$sql .= ' ORDER BY id DESC';
+
+if (!empty($where)) {
+    $sql .= ' WHERE ' . implode(' AND ', $where);
+}
+
+$sql .= ' GROUP BY u.id ORDER BY u.id DESC';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-view_header('Usuários');
+$pageTitle = $roleFilter === 'profissional' ? 'Profissionais' : 'Usuários';
+$pageDescription = $roleFilter === 'profissional' ? 'Gerencie profissionais e seus acessos.' : 'Gerencie usuários e seus acessos.';
+
+view_header($pageTitle);
 
 echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">Usuários</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">Gerencie usuários e seus acessos.</div>';
+echo '<div style="font-size:22px;font-weight:900">' . h($pageTitle) . '</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">' . h($pageDescription) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn btnPrimary" href="/users_create.php">Novo usuário</a>';
@@ -37,6 +54,9 @@ echo '</div>';
 echo '</div>';
 
 echo '<form method="get" action="/users_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+if ($roleFilter !== '') {
+    echo '<input type="hidden" name="role" value="' . h($roleFilter) . '">';
+}
 echo '<input name="q" value="' . h($q) . '" placeholder="Buscar por nome ou e-mail" style="flex:1;min-width:220px">';
 echo '<button class="btn" type="submit">Buscar</button>';
 echo '</form>';
