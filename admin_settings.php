@@ -348,7 +348,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<label>Token (API Key)<input type="password" name="settings[evolution.api_key]" value="" placeholder="Cole o token da Evolution API aqui"><span class="helpText">Deixe vazio para manter o valor atual. Token de autenticação da API.</span></label>';
         
-        echo '<label>Nome da Instância Padrão<input name="settings[evolution.instance]" value="' . h($instanceVal) . '" placeholder="multilife_whatsapp"><span class="helpText">Nome da instância WhatsApp padrão</span></label>';
+        echo '<label>Nome da Instância Padrão<input name="settings[evolution.instance]" value="' . h($instanceVal) . '" placeholder="multilife"><span class="helpText">Nome da instância WhatsApp padrão</span></label>';
         
         echo '</div>';
         echo '</div>';

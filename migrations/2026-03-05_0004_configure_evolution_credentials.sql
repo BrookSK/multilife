@@ -14,5 +14,5 @@ ON DUPLICATE KEY UPDATE setting_value = 'd0b9eb5a5fe4993598b4ef2b51b98d3d4fa8209
 
 -- Opcional: Definir nome da instância padrão (você pode alterar conforme necessário)
 INSERT INTO admin_settings (setting_key, setting_value, created_at, updated_at)
-VALUES ('evolution.instance', 'multilife_whatsapp', NOW(), NOW())
-ON DUPLICATE KEY UPDATE setting_value = 'multilife_whatsapp', updated_at = NOW();
+VALUES ('evolution.instance', 'multilife', NOW(), NOW())
+ON DUPLICATE KEY UPDATE setting_value = 'multilife', updated_at = NOW();
