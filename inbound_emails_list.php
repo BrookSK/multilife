@@ -10,23 +10,66 @@ rbac_require_permission('demands.manage');
 $status = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
-$allowed = ['', 'received', 'ai_pending', 'ai_processed', 'archived', 'error'];
+$colsStmt = db()->prepare('SHOW COLUMNS FROM inbound_emails');
+$colsStmt->execute();
+$cols = [];
+foreach ($colsStmt->fetchAll() as $c) {
+    if (isset($c['Field'])) {
+        $cols[(string)$c['Field']] = true;
+    }
+}
+
+$hasMailboxKey = isset($cols['mailbox_key']);
+$hasFromEmail = isset($cols['from_email']);
+$hasFromAddress = isset($cols['from_address']);
+$hasLinkedDemandId = isset($cols['linked_demand_id']);
+
+$allowed = ['', 'received', 'ai_pending', 'ai_processed', 'archived', 'processed', 'error'];
 if (!in_array($status, $allowed, true)) {
     $status = '';
 }
 
-$sql = "SELECT e.id, e.mailbox_key, e.message_id, e.from_email, e.from_name, e.subject, e.received_at, e.status, e.linked_demand_id, e.error_message, e.processed_at
+$selectMailboxKey = $hasMailboxKey ? 'e.mailbox_key' : "'demands' AS mailbox_key";
+$selectFromEmail = $hasFromEmail ? 'e.from_email' : ($hasFromAddress ? 'e.from_address AS from_email' : 'NULL AS from_email');
+$selectFromName = isset($cols['from_name']) ? 'e.from_name' : 'NULL AS from_name';
+$selectLinkedDemandId = $hasLinkedDemandId ? 'e.linked_demand_id' : 'NULL AS linked_demand_id';
+$selectProcessedAt = isset($cols['processed_at']) ? 'e.processed_at' : 'NULL AS processed_at';
+
+$sql = "SELECT e.id, $selectMailboxKey, e.message_id, $selectFromEmail, $selectFromName, e.subject, e.received_at, e.status, $selectLinkedDemandId, e.error_message, $selectProcessedAt
         FROM inbound_emails e
-        WHERE e.mailbox_key = 'demands'";
+        WHERE 1=1";
+
+if ($hasMailboxKey) {
+    $sql .= " AND e.mailbox_key = 'demands'";
+}
 $params = [];
 
 if ($status !== '') {
+    $st = $status;
+    if (!$hasMailboxKey) {
+        if ($st === 'ai_processed') {
+            $st = 'processed';
+        } elseif ($st === 'ai_pending') {
+            $st = 'received';
+        } elseif ($st === 'archived') {
+            $st = 'processed';
+        }
+    }
     $sql .= ' AND e.status = :st';
-    $params['st'] = $status;
+    $params['st'] = $st;
 }
 
 if ($q !== '') {
-    $sql .= ' AND (e.from_email LIKE :q OR e.subject LIKE :q OR e.message_id LIKE :q OR CAST(e.body_text AS CHAR) LIKE :q)';
+    $fromField = $hasFromEmail ? 'e.from_email' : ($hasFromAddress ? 'e.from_address' : '');
+    $sql .= ' AND (';
+    $parts = [];
+    if ($fromField !== '') {
+        $parts[] = "$fromField LIKE :q";
+    }
+    $parts[] = 'e.subject LIKE :q';
+    $parts[] = 'e.message_id LIKE :q';
+    $parts[] = 'CAST(e.body_text AS CHAR) LIKE :q';
+    $sql .= implode(' OR ', $parts) . ')';
     $params['q'] = '%' . $q . '%';
 }
 
