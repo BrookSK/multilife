@@ -41,12 +41,46 @@ try {
 // Gerar QR Code se solicitado
 if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1') {
     try {
-        $qrResponse = $api->generateQrCode();
-        // A resposta vem em $qrResponse['json']
-        if (isset($qrResponse['json'])) {
-            $qrCode = $qrResponse['json'];
-        } else {
-            $qrCode = $qrResponse;
+        // Primeiro, verificar se a instância existe
+        $instanceExists = false;
+        try {
+            $fetchRes = $api->fetchInstances($instance);
+            if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
+                $instanceExists = true;
+            }
+        } catch (Throwable $e) {
+            // Instância não existe
+            $instanceExists = false;
+        }
+        
+        // Se não existe, criar a instância
+        if (!$instanceExists) {
+            try {
+                $createPayload = [
+                    'instanceName' => $instance,
+                    'qrcode' => true,
+                    'integration' => 'WHATSAPP-BAILEYS',
+                ];
+                $createRes = $api->createInstanceBasic($createPayload);
+                
+                // Aguardar um momento para a instância ser criada
+                sleep(2);
+                
+                flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
+            } catch (Throwable $e) {
+                $error = 'Erro ao criar instância: ' . $e->getMessage();
+            }
+        }
+        
+        // Agora tentar gerar o QR Code
+        if ($error === null) {
+            $qrResponse = $api->generateQrCode();
+            // A resposta vem em $qrResponse['json']
+            if (isset($qrResponse['json'])) {
+                $qrCode = $qrResponse['json'];
+            } else {
+                $qrCode = $qrResponse;
+            }
         }
     } catch (Throwable $e) {
         $error = $e->getMessage();
@@ -67,6 +101,13 @@ echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/whatsapp_hub.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
+
+// Exibir mensagem de sucesso se houver
+$flashSuccess = flash_get('success');
+if ($flashSuccess !== null) {
+    echo '<div class="alertSuccess" style="margin-top:14px">' . h($flashSuccess) . '</div>';
+}
+
 echo '</section>';
 
 // Exibir erro se houver
