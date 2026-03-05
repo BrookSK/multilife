@@ -12,14 +12,35 @@ API Token: d0b9eb5a5fe4993598b4ef2b51b98d3d4fa8209e464e9988cf6fe86f9c1a194e
 
 ### 1. Rodar Migrations
 
-Execute as seguintes migrations no banco de dados:
+Execute as seguintes migrations no banco de dados **NA ORDEM**:
 
 ```bash
-# Migration para tabela inbound_emails
+# 1. Migration para tabela inbound_emails
 migrations/2026-03-04_0037_inbound_emails.sql
+
+# 2. Migration para configuração padrão Evolution API (IMPORTANTE!)
+migrations/2026-03-04_0038_evolution_api_default_config.sql
 ```
 
+**Nota:** A migration 0038 já configura automaticamente as credenciais da Evolution API.
+
 ### 2. Configurar Evolution API no Sistema
+
+**OPÇÃO 1: Configuração Automática (Recomendado)**
+
+Execute a migration que já contém as credenciais pré-configuradas:
+
+```bash
+# Execute no banco de dados:
+migrations/2026-03-04_0038_evolution_api_default_config.sql
+```
+
+As seguintes configurações serão aplicadas automaticamente:
+- **Base URL:** http://31.97.83.150:8080
+- **API Key:** d0b9eb5a5fe4993598b4ef2b51b98d3d4fa8209e464e9988cf6fe86f9c1a194e
+- **Instance:** multilife
+
+**OPÇÃO 2: Configuração Manual**
 
 1. Acesse: **Configurações** (`/admin_settings.php`)
 2. Localize a seção **"Evolution API"**
@@ -28,7 +49,7 @@ migrations/2026-03-04_0037_inbound_emails.sql
 ```
 Evolution - Base URL: http://31.97.83.150:8080
 Evolution - API Key: d0b9eb5a5fe4993598b4ef2b51b98d3d4fa8209e464e9988cf6fe86f9c1a194e
-Evolution - Instance: multilife (ou nome desejado)
+Evolution - Instance: multilife
 ```
 
 4. Clique em **"Salvar Configurações"**

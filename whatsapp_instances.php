@@ -27,7 +27,13 @@ $error = null;
 
 // Tentar obter status da conexão
 try {
-    $connectionStatus = $api->getConnectionStatus();
+    $statusResponse = $api->getConnectionStatus();
+    // A resposta vem em $statusResponse['json']
+    if (isset($statusResponse['json'])) {
+        $connectionStatus = $statusResponse['json'];
+    } else {
+        $connectionStatus = $statusResponse;
+    }
 } catch (Throwable $e) {
     $error = $e->getMessage();
 }
@@ -35,7 +41,13 @@ try {
 // Gerar QR Code se solicitado
 if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1') {
     try {
-        $qrCode = $api->generateQrCode();
+        $qrResponse = $api->generateQrCode();
+        // A resposta vem em $qrResponse['json']
+        if (isset($qrResponse['json'])) {
+            $qrCode = $qrResponse['json'];
+        } else {
+            $qrCode = $qrResponse;
+        }
     } catch (Throwable $e) {
         $error = $e->getMessage();
     }
@@ -113,19 +125,71 @@ if ($qrCode !== null) {
     echo '<div style="font-weight:900;margin-bottom:14px">QR Code para Conexão</div>';
     echo '<div style="padding:20px;text-align:center;background:hsl(var(--card));border-radius:12px">';
     
-    if (isset($qrCode['base64'])) {
-        echo '<img src="data:image/png;base64,' . h((string)$qrCode['base64']) . '" alt="QR Code" style="max-width:400px;border:1px solid hsl(var(--border));border-radius:10px">';
+    // Tentar extrair QR Code de diferentes formatos possíveis
+    $qrBase64 = null;
+    $qrCodeText = null;
+    $pairingCode = null;
+    
+    // Formato 1: qrcode.base64
+    if (isset($qrCode['qrcode']['base64'])) {
+        $qrBase64 = (string)$qrCode['qrcode']['base64'];
+    }
+    // Formato 2: base64 direto
+    elseif (isset($qrCode['base64'])) {
+        $qrBase64 = (string)$qrCode['base64'];
+    }
+    
+    // Formato 3: qrcode.code
+    if (isset($qrCode['qrcode']['code'])) {
+        $qrCodeText = (string)$qrCode['qrcode']['code'];
+    }
+    // Formato 4: code direto
+    elseif (isset($qrCode['code'])) {
+        $qrCodeText = (string)$qrCode['code'];
+    }
+    
+    // Formato 5: pairingCode
+    if (isset($qrCode['pairingCode'])) {
+        $pairingCode = (string)$qrCode['pairingCode'];
+    }
+    
+    // Exibir QR Code em imagem se disponível
+    if ($qrBase64 !== null && $qrBase64 !== '') {
+        echo '<img src="data:image/png;base64,' . h($qrBase64) . '" alt="QR Code" style="max-width:400px;border:1px solid hsl(var(--border));border-radius:10px">';
         echo '<div style="margin-top:14px;color:hsl(var(--muted-foreground));font-size:13px">Escaneie este QR Code com o WhatsApp do seu celular</div>';
         echo '<div style="margin-top:10px">';
         echo '<a class="btn" href="/whatsapp_instances.php">Atualizar Status</a>';
         echo '</div>';
-    } elseif (isset($qrCode['code'])) {
+    }
+    // Exibir código de texto se disponível
+    elseif ($qrCodeText !== null && $qrCodeText !== '') {
         echo '<div style="font-family:monospace;font-size:11px;word-break:break-all;padding:12px;background:hsla(var(--muted)/.25);border-radius:8px">';
-        echo h((string)$qrCode['code']);
+        echo h($qrCodeText);
         echo '</div>';
         echo '<div style="margin-top:14px;color:hsl(var(--muted-foreground));font-size:13px">Use este código no WhatsApp do seu celular</div>';
-    } else {
+        echo '<div style="margin-top:10px">';
+        echo '<a class="btn" href="/whatsapp_instances.php">Atualizar Status</a>';
+        echo '</div>';
+    }
+    // Exibir pairing code se disponível
+    elseif ($pairingCode !== null && $pairingCode !== '') {
+        echo '<div style="padding:20px;background:hsla(var(--primary)/.10);border-radius:12px;border:2px solid hsl(var(--primary))">';
+        echo '<div style="font-size:32px;font-weight:900;letter-spacing:8px;color:hsl(var(--primary))">' . h($pairingCode) . '</div>';
+        echo '</div>';
+        echo '<div style="margin-top:14px;color:hsl(var(--muted-foreground));font-size:13px">Digite este código no WhatsApp do seu celular</div>';
+        echo '<div style="margin-top:10px">';
+        echo '<a class="btn" href="/whatsapp_instances.php">Atualizar Status</a>';
+        echo '</div>';
+    }
+    // Debug: mostrar estrutura da resposta
+    else {
         echo '<div class="alertError">QR Code não disponível no formato esperado.</div>';
+        echo '<details style="margin-top:14px;text-align:left">';
+        echo '<summary style="cursor:pointer;font-weight:700">Debug: Ver resposta da API</summary>';
+        echo '<pre style="background:hsla(var(--muted)/.25);padding:12px;border-radius:8px;overflow:auto;font-size:11px;margin-top:10px">';
+        echo h(json_encode($qrCode, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        echo '</pre>';
+        echo '</details>';
     }
     
     echo '</div>';
