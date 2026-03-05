@@ -10,7 +10,15 @@ final class OpenAiApi
 
     public function __construct(?string $baseUrl = null, ?string $apiKey = null, ?string $model = null)
     {
-        $this->baseUrl = rtrim((string)($baseUrl ?? admin_setting_get('openai.base_url', 'https://api.openai.com')), '/');
+        $rawBase = (string)($baseUrl ?? admin_setting_get('openai.base_url', 'https://api.openai.com'));
+        $rawBase = trim($rawBase);
+        if ($rawBase === '') {
+            $rawBase = 'https://api.openai.com';
+        }
+        if (!preg_match('~^https?://~i', $rawBase)) {
+            $rawBase = 'https://api.openai.com';
+        }
+        $this->baseUrl = rtrim($rawBase, '/');
         $this->apiKey = (string)($apiKey ?? admin_setting_get('openai.api_key', ''));
         $this->model = (string)($model ?? admin_setting_get('openai.model', 'gpt-4o-mini'));
 
