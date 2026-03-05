@@ -49,7 +49,7 @@ function view_header(string $title): void
     echo '.sidebar{position:fixed;left:0;top:0;z-index:40;height:100vh;width:260px;background:hsl(var(--card));border-right:1px solid hsl(var(--border));display:flex;flex-direction:column;transition:width .3s ease}';
     echo '.sidebar.isCollapsed{width:72px}';
     echo '.sidebarHeader{display:flex;align-items:center;gap:12px;padding:0 18px;height:64px;border-bottom:1px solid hsl(var(--border));flex:0 0 auto}';
-    echo '.logoMark{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:12px;background:hsla(var(--primary)/.10);flex:0 0 auto}';
+    echo '.logoMark{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));flex:0 0 auto}';
     echo '.logoMark span{display:block;width:18px;height:18px;border-radius:6px;background:hsl(var(--primary))}';
     echo '.logoText{font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
     echo '.logoText em{font-style:normal;color:hsl(var(--primary))}';
@@ -57,10 +57,10 @@ function view_header(string $title): void
     echo '.navItem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;font-size:13px;font-weight:600;color:hsl(var(--muted-foreground));transition:background .15s ease,color .15s ease}';
     echo '.navItem:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));text-decoration:none}';
     echo '.navItem.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 1px 2px rgba(0,0,0,.06)}';
-    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:hsla(var(--primary)/.14);flex:0 0 auto}';
+    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:transparent;border:1px solid hsl(var(--border));flex:0 0 auto}';
     echo '.sidebarUser{border-top:1px solid hsl(var(--border));padding:12px;flex:0 0 auto}';
     echo '.userRow{display:flex;align-items:center;gap:12px}';
-    echo '.avatar{width:36px;height:36px;border-radius:12px;background:hsla(var(--primary)/.10);display:flex;align-items:center;justify-content:center;color:hsl(var(--primary));font-weight:800;font-size:12px;flex:0 0 auto}';
+    echo '.avatar{width:36px;height:36px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:center;color:hsl(var(--foreground));font-weight:800;font-size:12px;flex:0 0 auto}';
     echo '.userMeta{min-width:0}';
     echo '.userName{font-size:13px;font-weight:700;color:hsl(var(--foreground));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
     echo '.userEmail{font-size:12px;color:hsl(var(--muted-foreground));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
@@ -77,7 +77,7 @@ function view_header(string $title): void
     echo '.contentPad{padding:24px}';
     echo '.top{max-width:1100px;margin:0 auto;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative;z-index:1}';
     echo '.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.2px}';
-    echo '.pill{padding:6px 10px;border-radius:999px;background:hsla(var(--primary)/.10);border:1px solid hsla(var(--primary)/.20);font-size:12px;color:hsl(var(--primary-darker))}';
+    echo '.pill{padding:6px 10px;border-radius:999px;background:transparent;border:1px solid hsl(var(--border));font-size:17px;color:hsl(var(--foreground))}';
     echo '.nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap}';
     echo '.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border-radius:10px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--foreground));font-weight:600;font-size:13px;box-shadow:var(--shadow-card);transition:box-shadow .15s ease,transform .06s ease,background .15s ease}';
     echo '.btn:hover{box-shadow:var(--shadow-card-hover);text-decoration:none}';
@@ -103,11 +103,11 @@ function view_header(string $title): void
     echo 'tr:hover td{background:hsl(var(--background))}';
     echo 'thead tr:hover td, thead tr:hover th{background:transparent}';
 
-    echo '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid hsla(var(--primary)/.20);background:hsla(var(--primary)/.10);color:hsl(var(--primary-darker));font-size:12px;font-weight:700}';
-    echo '.badgeDanger{border-color:hsla(var(--destructive)/.20);background:hsla(var(--destructive)/.10);color:hsl(var(--destructive))}';
-    echo '.badgeWarn{border-color:hsla(var(--warning)/.20);background:hsla(var(--warning)/.10);color:hsl(var(--warning))}';
-    echo '.badgeInfo{border-color:hsla(var(--info)/.20);background:hsla(var(--info)/.10);color:hsl(var(--info))}';
-    echo '.badgeSuccess{border-color:hsla(var(--success)/.20);background:hsla(var(--success)/.10);color:hsl(var(--success))}';
+    echo '.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid hsl(var(--border));background:transparent;color:hsl(var(--foreground));font-size:17px;font-weight:700}';
+    echo '.badgeDanger{border-color:hsl(var(--border));background:transparent;color:hsl(var(--foreground))}';
+    echo '.badgeWarn{border-color:hsl(var(--border));background:transparent;color:hsl(var(--foreground))}';
+    echo '.badgeInfo{border-color:hsl(var(--border));background:transparent;color:hsl(var(--foreground))}';
+    echo '.badgeSuccess{border-color:hsl(var(--border));background:transparent;color:hsl(var(--foreground))}';
 
     echo 'label{display:grid;gap:7px;font-size:18px;font-weight:600;color:hsl(var(--foreground))}';
     echo 'label[style]{display:grid !important;gap:7px !important;font-size:18px !important;font-weight:600 !important;color:hsl(var(--foreground)) !important}';
@@ -147,7 +147,7 @@ function view_header(string $title): void
     echo '.formSectionTitle{font-size:21px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
     echo 'div[style*="color:rgba(234,240,255,.72)"],span[style*="color:rgba(234,240,255,.72)"]{color:hsl(var(--muted-foreground)) !important}';
     echo 'div[style*="color:rgba(234,240,255,.85)"],span[style*="color:rgba(234,240,255,.85)"]{color:hsl(var(--foreground)) !important}';
-    echo 'div[style*="background:rgba(10,14,28,.55)"],span[style*="background:rgba(10,14,28,.55)"]{background:hsla(var(--secondary)/.50) !important}';
+    echo 'div[style*="background:rgba(10,14,28,.55)"],span[style*="background:rgba(10,14,28,.55)"]{background:transparent !important}';
     echo 'div[style*="border-radius:14px"],input[style*="border-radius:14px"],textarea[style*="border-radius:14px"],select[style*="border-radius:14px"]{border-radius:10px !important}';
     echo 'button.btn[style]{box-shadow:var(--shadow-card) !important}';
     echo '.helpText{font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px;line-height:1.4}';
@@ -175,7 +175,7 @@ function view_header(string $title): void
     echo '.kpiCard:hover{box-shadow:var(--shadow-card-hover)}';
     echo '.kpiBody{padding:16px}';
     echo '.kpiTop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}';
-    echo '.kpiIcon{width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:hsla(var(--primary)/.10);color:hsl(var(--primary));font-weight:900;font-size:14px}';
+    echo '.kpiIcon{width:34px;height:34px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid hsl(var(--border));color:hsl(var(--foreground));font-weight:900;font-size:14px}';
     echo '.kpiChange{font-size:12px;font-weight:700;color:hsl(var(--muted-foreground))}';
     echo '.kpiValue{font-size:20px;font-weight:900;color:hsl(var(--foreground));line-height:1.1}';
     echo '.kpiLabel{margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground));line-height:1.25}';
