@@ -105,7 +105,7 @@ error_log('Params: ' . print_r($params, true));
 try {
     $stmt->execute($params);
     error_log('Candidatura inserida com sucesso! ID: ' . db()->lastInsertId());
-    header('Location: /apply_professional.php?success=1');
+    header('Location: /application_success.php');
     exit;
 } catch (Exception $e) {
     error_log('Erro ao inserir candidatura: ' . $e->getMessage());

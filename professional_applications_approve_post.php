@@ -96,11 +96,15 @@ try {
     audit_log('create', 'users_from_application', (string)$id, null, ['created_user_id' => $userId]);
 
     $db->commit();
+    
+    flash_set('success', 'Aprovado. Credenciais foram enfileiradas para envio por WhatsApp/e-mail.');
+    header('Location: /professional_applications_view.php?id=' . $id);
+    exit;
 } catch (Throwable $e) {
     $db->rollBack();
-    throw $e;
+    error_log('Erro ao aprovar candidatura ID ' . $id . ': ' . $e->getMessage());
+    error_log('Stack trace: ' . $e->getTraceAsString());
+    flash_set('error', 'Erro ao aprovar candidatura: ' . $e->getMessage());
+    header('Location: /professional_applications_view.php?id=' . $id);
+    exit;
 }
-
-flash_set('success', 'Aprovado. Credenciais foram enfileiradas para envio por WhatsApp/e-mail.');
-header('Location: /professional_applications_view.php?id=' . $id);
-exit;

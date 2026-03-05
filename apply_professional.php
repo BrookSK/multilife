@@ -182,30 +182,8 @@ echo '</form>';
 
 echo '</div>';
 
-// Pop-up de sucesso
-$showSuccess = isset($_GET['success']) && $_GET['success'] === '1';
-if ($showSuccess) {
-    echo '<div id="successModal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .3s ease">';
-    echo '<div style="background:#fff;border-radius:20px;padding:40px;text-align:center;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:slideUp .4s ease">';
-    echo '<div style="width:80px;height:80px;margin:0 auto 20px;border-radius:50%;background:linear-gradient(135deg,hsl(142,76%,36%),hsl(142,76%,46%));display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px hsla(142,76%,36%,.3)">';
-    echo '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-    echo '</div>';
-    echo '<h2 style="margin:0 0 12px;font-size:24px;font-weight:800;color:hsl(var(--foreground))">Candidatura Enviada!</h2>';
-    echo '<p style="margin:0;color:hsl(var(--muted-foreground));font-size:15px;line-height:1.6">Sua candidatura foi recebida com sucesso. Aguarde a avaliação da nossa equipe.</p>';
-    echo '<p style="margin:16px 0 0;color:hsl(var(--muted-foreground));font-size:13px">Redirecionando para o login...</p>';
-    echo '</div>';
-    echo '</div>';
-    echo '<style>';
-    echo '@keyframes fadeIn{from{opacity:0}to{opacity:1}}';
-    echo '@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}';
-    echo '</style>';
-}
-
 // JavaScript para buscar cidades da API do IBGE
 echo '<script>';
-if ($showSuccess) {
-    echo 'setTimeout(function(){ window.location.href = "/login.php"; }, 3000);';
-}
 
 echo 'async function loadCities(uf, selectElement, placeholder = "Selecione...") {';
 echo '  selectElement.innerHTML = "<option value=\\"\\">Carregando...</option>";';
