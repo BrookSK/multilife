@@ -356,7 +356,9 @@ function view_header(string $title): void
         echo '<div style="padding:12px 16px;border-top:1px solid hsl(var(--border));text-align:center"><a href="/notifications_list.php" style="font-size:13px;color:hsl(var(--primary))">Ver todas</a></div>';
         echo '</div>';
         echo '</div>';
-        echo '</div>';n class="wrap">';
+        echo '</div>';
+        echo '</header>';
+        echo '<main class="wrap">';
     }
 
     if ($flashError !== '') {
