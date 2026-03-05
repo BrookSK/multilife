@@ -23,6 +23,7 @@ function view_header(string $title): void
         ['title' => 'Financeiro', 'path' => '/finance_receivable_list.php'],
         ['title' => 'RH', 'path' => '/hr_employees_list.php'],
         ['title' => 'Comunicação', 'path' => '/chat_web.php'],
+        ['title' => 'WhatsApp', 'path' => '/whatsapp_hub.php'],
         ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
         ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
         ['title' => 'Permissões', 'path' => '/permissions_list.php'],

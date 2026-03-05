@@ -98,6 +98,16 @@ final class EvolutionApiV1
         return $this->request('GET', '/instance/connectionState/' . urlencode($this->inst($instanceName)));
     }
 
+    public function getConnectionStatus(?string $instanceName = null): array
+    {
+        return $this->connectionState($instanceName);
+    }
+
+    public function generateQrCode(?string $instanceName = null): array
+    {
+        return $this->connectInstance($instanceName);
+    }
+
     public function restartInstance(?string $instanceName = null): array
     {
         return $this->request('PUT', '/instance/restart/' . urlencode($this->inst($instanceName)));

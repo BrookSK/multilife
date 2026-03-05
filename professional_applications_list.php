@@ -43,7 +43,7 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
-echo '<a class="btn" href="/apply_professional.php">Link público</a>';
+echo '<a class="btn btnPrimary" href="/public/apply_professional.php" target="_blank" rel="noopener noreferrer">🔗 Abrir Link Público de Candidatura</a>';
 echo '</div>';
 echo '</div>';
 

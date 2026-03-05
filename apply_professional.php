@@ -4,17 +4,61 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
 
-view_header('Candidatura de Profissional');
+// Página pública - não requer autenticação
+$user = auth_user();
+$isPublic = ($user === null);
+
+if ($isPublic) {
+    // Renderizar header público sem menu
+    echo '<!doctype html>';
+    echo '<html lang="pt-BR">';
+    echo '<head>';
+    echo '<meta charset="utf-8">';
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<title>Candidatura de Profissional - MultiLife Care</title>';
+    echo '<style>';
+    echo "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');";
+    echo ':root{--background:216 33% 97%;--foreground:210 36% 17%;--card:0 0% 100%;--card-foreground:210 36% 17%;--primary:180 65% 46%;--primary-foreground:0 0% 100%;--primary-dark:180 71% 36%;--muted:216 33% 97%;--muted-foreground:216 18% 61%;--border:216 20% 90%;--input:216 20% 90%;--ring:180 65% 46%;--radius:0.625rem;--shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);--shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);}';
+    echo '*{box-sizing:border-box;border-color:hsl(var(--border))}';
+    echo 'html,body{height:100%}';
+    echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));}';
+    echo 'input,select,textarea{font-family:inherit}';
+    echo 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--muted)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
+    echo 'textarea{min-height:96px;resize:vertical}';
+    echo 'input:focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
+    echo '::placeholder{color:hsl(var(--muted-foreground))}';
+    echo 'label{display:grid;gap:7px;font-size:13px;font-weight:600;color:hsl(var(--foreground))}';
+    echo 'form{display:grid;gap:14px}';
+    echo '.formSection{padding:18px;border-radius:12px;background:hsla(var(--muted)/.25);border:1px solid hsl(var(--border));margin-bottom:14px}';
+    echo '.formSectionTitle{font-size:15px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
+    echo '.card{background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:var(--shadow-elevated);border-radius:calc(var(--radius) + 6px);padding:18px;color:hsl(var(--card-foreground))}';
+    echo '.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}';
+    echo '.col6{grid-column:span 6}';
+    echo '.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border-radius:10px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--foreground));font-weight:600;font-size:13px;box-shadow:var(--shadow-card);transition:box-shadow .15s ease,transform .06s ease,background .15s ease;text-decoration:none}';
+    echo '.btn:hover{box-shadow:0 4px 12px 0 rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.06);text-decoration:none}';
+    echo '.btn:active{transform:translateY(1px)}';
+    echo '.btnPrimary{border-color:transparent;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}';
+    echo '.btnPrimary:hover{background:hsl(var(--primary-dark))}';
+    echo '@media(max-width:860px){.col6{grid-column:span 12}}';
+    echo '</style>';
+    echo '</head>';
+    echo '<body>';
+    echo '<div style="max-width:1100px;margin:0 auto;padding:24px">';
+} else {
+    view_header('Candidatura de Profissional');
+}
 
 echo '<div class="card">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Candidatura de Profissional</div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Candidatura de Profissional - MultiLife Care</div>';
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Preencha seus dados para avaliação. Após aprovação, você receberá acesso ao sistema.</div>';
 echo '</div>';
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/login.php">Voltar</a>';
-echo '</div>';
+if (!$isPublic) {
+    echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+    echo '<a class="btn" href="/professional_applications_list.php">Voltar</a>';
+    echo '</div>';
+}
 echo '</div>';
 
 echo '<div style="height:14px"></div>';
@@ -96,12 +140,22 @@ echo '<div class="col6"><label>Especializações/Pós<textarea name="specializat
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
-echo '<a class="btn" href="/login.php">Cancelar</a>';
-echo '<button class="btn btnPrimary" type="submit">Enviar candidatura</button>';
+if ($isPublic) {
+    echo '<button class="btn btnPrimary" type="submit" style="font-size:15px;padding:12px 24px">Enviar Candidatura</button>';
+} else {
+    echo '<a class="btn" href="/professional_applications_list.php">Cancelar</a>';
+    echo '<button class="btn btnPrimary" type="submit">Enviar candidatura</button>';
+}
 echo '</div>';
 
 echo '</form>';
 
 echo '</div>';
 
-view_footer();
+if ($isPublic) {
+    echo '</div>';
+    echo '</body>';
+    echo '</html>';
+} else {
+    view_footer();
+}
