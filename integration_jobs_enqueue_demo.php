@@ -40,7 +40,7 @@ echo '</div>';
 
 echo '<div style="height:14px"></div>';
 
-echo '<form method="post" action="/integration_jobs_enqueue_demo.php" style="display:grid;gap:12px;max-width:820px">';
+echo '<form method="post" action="/integration_jobs_enqueue_demo.php" style="display:grid;gap:12px">';
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6"><label>Provider<input name="provider" required placeholder="OpenAI/Evolution/ZapSign/SMTP"></label></div>';
 echo '<div class="col6"><label>Action<input name="action" required placeholder="send_message / parse_email"></label></div>';

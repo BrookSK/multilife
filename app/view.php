@@ -213,8 +213,15 @@ function view_header(string $title): void
         echo '<div class="appShell">';
         echo '<aside class="sidebar" id="appSidebar">';
         echo '<div class="sidebarHeader">';
-        echo '<div class="logoMark" aria-hidden="true"><span></span></div>';
-        echo '<div class="logoText" id="logoText">Multi<em>Life</em> Care</div>';
+        
+        $logoUrl = admin_setting_get('app.logo_url');
+        if (!empty($logoUrl)) {
+            echo '<img src="' . h($logoUrl) . '" alt="Logo" style="max-height:40px;max-width:100%;object-fit:contain">';
+        } else {
+            echo '<div class="logoMark" aria-hidden="true"><span></span></div>';
+            echo '<div class="logoText" id="logoText">Multi<em>Life</em> Care</div>';
+        }
+        
         echo '</div>';
 
         echo '<nav class="sidebarNav">';

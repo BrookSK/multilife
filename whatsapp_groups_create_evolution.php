@@ -33,7 +33,7 @@ echo '</div>';
 
 echo '<div style="height:14px"></div>';
 
-echo '<form method="post" action="/whatsapp_groups_create_evolution_post.php" style="display:grid;gap:12px;max-width:860px">';
+echo '<form method="post" action="/whatsapp_groups_create_evolution_post.php" style="display:grid;gap:12px">';
 echo '<label>Nome do grupo (subject)<input name="subject" required maxlength="160" placeholder="Ex: Fisio - SP"></label>';
 echo '<label>Profissionais participantes (cadastro interno)<select name="professional_user_ids[]" multiple required size="10">';
 foreach ($professionals as $p) {

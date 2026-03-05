@@ -33,7 +33,7 @@ echo '</section>';
 echo '<section class="card col12">';
 echo '<div style="font-weight:900;margin-bottom:8px">Criar documento (POST /api/v1/docs/)</div>';
 
-echo '<form method="post" action="/admin_zapsign_create_doc_post.php" style="display:grid;gap:12px;max-width:980px">';
+echo '<form method="post" action="/admin_zapsign_create_doc_post.php" style="display:grid;gap:12px">';
 
 echo '<div class="grid">';
 echo '<div class="col6"><label>Nome<input name="name" required maxlength="255" placeholder="Contrato"></label></div>';

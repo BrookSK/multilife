@@ -52,7 +52,7 @@ integrations_tabs();
 echo '</section>';
 
 echo '<section class="card col12">';
-echo '<form method="post" action="/admin_integrations_post.php" style="display:grid;gap:14px;max-width:980px">';
+echo '<form method="post" action="/admin_integrations_post.php" style="display:grid;gap:14px">';
 
 echo '<div style="font-weight:900">Evolution API (v1)</div>';
 echo '<div class="grid">';

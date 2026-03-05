@@ -26,13 +26,15 @@ echo '<div style="font-size:22px;font-weight:900">Configurações do Sistema</di
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Parâmetros operacionais, integrações e valores.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn btnPrimary" href="/specialties_list.php">Gerenciar Especialidades</a>';
+echo '<a class="btn btnPrimary" href="/admin_logo_upload.php">Upload de Logo</a>';
+echo '<a class="btn" href="/specialties_list.php">Gerenciar Especialidades</a>';
 echo '<a class="btn" href="/admin_dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 echo '</section>';
 
 $fields = [
+    'app.logo_url' => 'Logo da Empresa (URL da imagem - ex: /uploads/logo.png)',
     'docs.reminder_days_before_due' => 'Dias antes para lembrete de formulário',
     'finance.repasse_cycle_days' => 'Ciclo de repasse (dias)',
     'demands.assume_timeout_hours' => 'Timeout para assumir demanda (horas)',
@@ -98,28 +100,80 @@ $fields = [
 ];
 
 echo '<section class="card col12">';
-echo '<form method="post" action="/admin_settings_post.php" style="max-width:980px">';
+echo '<style>';
+echo '.configTabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;border-bottom:2px solid hsl(var(--border));padding-bottom:8px}';
+echo '.configTab{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px 8px 0 0;background:transparent;border:none;cursor:pointer;font-size:14px;font-weight:600;color:hsl(var(--muted-foreground));transition:all .15s ease}';
+echo '.configTab:hover{background:hsla(var(--primary)/.05);color:hsl(var(--foreground))}';
+echo '.configTab.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 2px 4px rgba(0,0,0,.1)}';
+echo '.configTab svg{width:16px;height:16px;flex-shrink:0}';
+echo '.configPanel{display:none}';
+echo '.configPanel.isActive{display:block}';
+echo '</style>';
+echo '<form method="post" action="/admin_settings_post.php">';
 
 $sections = [
-    'Operacional' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'chat.unanswered_timeout_minutes', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url'],
-    'SMTP Entrada (IMAP)' => ['smtp.in.host', 'smtp.in.port', 'smtp.in.encryption', 'smtp.in.username', 'smtp.in.password', 'smtp.in.mailbox', 'smtp.in.archive_mailbox', 'smtp.in.poll_minutes', 'smtp.demands.to_address'],
-    'SMTP Saída' => ['smtp.out.host', 'smtp.out.port', 'smtp.out.encryption', 'smtp.out.username', 'smtp.out.password', 'smtp.out.from_email', 'smtp.out.from_name'],
-    'OpenAI API' => ['openai.base_url', 'openai.api_key', 'openai.model', 'openai.extract_prompt'],
-    'Evolution API' => ['evolution.base_url', 'evolution.api_key', 'evolution.instance'],
-    'ZapSign API' => ['zapsign.base_url', 'zapsign.api_token'],
-    'Templates WhatsApp' => ['demands.whatsapp_template', 'appointments.patient_whatsapp_template', 'professional.onboarding_whatsapp_template', 'professional.application_need_more_info_whatsapp_template', 'professional.application_rejected_whatsapp_template', 'professional.docs_reminder_whatsapp_template', 'professional.docs_overdue_whatsapp_template', 'professional.docs_approved_whatsapp_template'],
-    'Templates E-mail' => ['appointments.email_subject_template', 'appointments.email_body_template', 'professional.onboarding_email_subject_template', 'professional.onboarding_email_body_template', 'professional.application_need_more_info_email_subject_template', 'professional.application_need_more_info_email_body_template', 'professional.application_rejected_email_subject_template', 'professional.application_rejected_email_body_template', 'professional.docs_reminder_email_subject_template', 'professional.docs_reminder_email_body_template', 'professional.docs_overdue_email_subject_template', 'professional.docs_overdue_email_body_template', 'professional.docs_approved_email_subject_template', 'professional.docs_approved_email_body_template'],
+    'Aparência' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+        'keys' => ['app.logo_url']
+    ],
+    'Operacional' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
+        'keys' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'chat.unanswered_timeout_minutes', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url']
+    ],
+    'SMTP Entrada' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+        'keys' => ['smtp.in.host', 'smtp.in.port', 'smtp.in.encryption', 'smtp.in.username', 'smtp.in.password', 'smtp.in.mailbox', 'smtp.in.archive_mailbox', 'smtp.in.poll_minutes', 'smtp.demands.to_address']
+    ],
+    'SMTP Saída' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+        'keys' => ['smtp.out.host', 'smtp.out.port', 'smtp.out.encryption', 'smtp.out.username', 'smtp.out.password', 'smtp.out.from_email', 'smtp.out.from_name']
+    ],
+    'OpenAI' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+        'keys' => ['openai.base_url', 'openai.api_key', 'openai.model', 'openai.extract_prompt']
+    ],
+    'Evolution' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
+        'keys' => ['evolution.base_url', 'evolution.api_key', 'evolution.instance']
+    ],
+    'ZapSign' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+        'keys' => ['zapsign.base_url', 'zapsign.api_token']
+    ],
+    'WhatsApp' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+        'keys' => ['demands.whatsapp_template', 'appointments.patient_whatsapp_template', 'professional.onboarding_whatsapp_template', 'professional.application_need_more_info_whatsapp_template', 'professional.application_rejected_whatsapp_template', 'professional.docs_reminder_whatsapp_template', 'professional.docs_overdue_whatsapp_template', 'professional.docs_approved_whatsapp_template']
+    ],
+    'E-mail' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+        'keys' => ['appointments.email_subject_template', 'appointments.email_body_template', 'professional.onboarding_email_subject_template', 'professional.onboarding_email_body_template', 'professional.application_need_more_info_email_subject_template', 'professional.application_need_more_info_email_body_template', 'professional.application_rejected_email_subject_template', 'professional.application_rejected_email_body_template', 'professional.docs_reminder_email_subject_template', 'professional.docs_reminder_email_body_template', 'professional.docs_overdue_email_subject_template', 'professional.docs_overdue_email_body_template', 'professional.docs_approved_email_subject_template', 'professional.docs_approved_email_body_template']
+    ],
 ];
 
 $fieldsAdded = ['zapsign.base_url' => 'ZapSign - Base URL', 'zapsign.api_token' => 'ZapSign - API Token'];
 $fields = array_merge($fields, $fieldsAdded);
 
-foreach ($sections as $sectionTitle => $sectionKeys) {
+echo '<div class="configTabs">';
+$idx = 0;
+foreach ($sections as $sectionTitle => $sectionData) {
+    $isActive = $idx === 0 ? 'isActive' : '';
+    echo '<button type="button" class="configTab ' . $isActive . '" data-tab="tab' . $idx . '">';
+    echo $sectionData['icon'];
+    echo '<span>' . h($sectionTitle) . '</span>';
+    echo '</button>';
+    $idx++;
+}
+echo '</div>';
+
+$idx = 0;
+foreach ($sections as $sectionTitle => $sectionData) {
+    $isActive = $idx === 0 ? 'isActive' : '';
+    echo '<div class="configPanel ' . $isActive . '" id="tab' . $idx . '">';
     echo '<div class="formSection">';
     echo '<div class="formSectionTitle">' . h($sectionTitle) . '</div>';
     echo '<div style="display:grid;gap:12px">';
     
-    foreach ($sectionKeys as $key) {
+    foreach ($sectionData['keys'] as $key) {
         if (!isset($fields[$key])) continue;
         $label = $fields[$key];
         $val = $settings[$key] ?? '';
@@ -137,12 +191,27 @@ foreach ($sections as $sectionTitle => $sectionKeys) {
     
     echo '</div>';
     echo '</div>';
+    echo '</div>';
+    $idx++;
 }
 
-echo '<div style="display:flex;justify-content:flex-end;margin-top:6px">';
+echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
 echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
 echo '</div>';
 echo '</form>';
+
+echo '<script>';
+echo 'document.querySelectorAll(".configTab").forEach(function(tab){';
+echo '  tab.addEventListener("click", function(){';
+echo '    const targetId = this.getAttribute("data-tab");';
+echo '    document.querySelectorAll(".configTab").forEach(function(t){ t.classList.remove("isActive"); });';
+echo '    document.querySelectorAll(".configPanel").forEach(function(p){ p.classList.remove("isActive"); });';
+echo '    this.classList.add("isActive");';
+echo '    document.getElementById(targetId).classList.add("isActive");';
+echo '  });';
+echo '});';
+echo '</script>';
+
 echo '</section>';
 
 echo '</div>';

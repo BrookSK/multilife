@@ -126,7 +126,7 @@ echo '<div style="font-weight:900;margin-bottom:10px">Adicionar profissionais ao
 if (count($availablePros) === 0) {
     echo '<div class="pill" style="display:block">Nenhum profissional disponível para adicionar.</div>';
 } else {
-    echo '<form method="post" action="/whatsapp_groups_members_evolution_post.php" style="display:grid;gap:10px;max-width:860px">';
+    echo '<form method="post" action="/whatsapp_groups_members_evolution_post.php" style="display:grid;gap:10px">';
     echo '<input type="hidden" name="id" value="' . (int)$g['id'] . '">';
     echo '<input type="hidden" name="action" value="add">';
     echo '<label>Profissionais<select name="professional_user_ids[]" multiple required size="10">';
@@ -154,7 +154,7 @@ echo '<div style="font-weight:900;margin-bottom:10px">Remover profissionais do g
 if (count($currentPros) === 0) {
     echo '<div class="pill" style="display:block">Nenhum profissional cadastrado do sistema encontrado no grupo.</div>';
 } else {
-    echo '<form method="post" action="/whatsapp_groups_members_evolution_post.php" style="display:grid;gap:10px;max-width:860px">';
+    echo '<form method="post" action="/whatsapp_groups_members_evolution_post.php" style="display:grid;gap:10px">';
     echo '<input type="hidden" name="id" value="' . (int)$g['id'] . '">';
     echo '<input type="hidden" name="action" value="remove">';
     echo '<label>Profissionais<select name="professional_user_ids[]" multiple required size="10">';

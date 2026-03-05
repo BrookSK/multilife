@@ -115,7 +115,7 @@ $prefillJson = json_encode($prefill, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
 
 
 echo '<section class="card col12">';
-echo '<form method="post" action="/admin_whatsapp_console_post.php" style="display:grid;gap:12px;max-width:980px">';
+echo '<form method="post" action="/admin_whatsapp_console_post.php" style="display:grid;gap:12px">';
 
 echo '<label>Método<select name="method">';
 foreach ($methods as $k => $label) {

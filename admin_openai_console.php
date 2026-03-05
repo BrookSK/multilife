@@ -28,7 +28,7 @@ echo '</div>';
 echo '</section>';
 
 echo '<section class="card col12">';
-echo '<form method="post" action="/admin_openai_console_post.php" style="display:grid;gap:12px;max-width:980px">';
+echo '<form method="post" action="/admin_openai_console_post.php" style="display:grid;gap:12px">';
 
 echo '<div style="font-weight:900">Modo 1: Chat</div>';
 
