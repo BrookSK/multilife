@@ -231,7 +231,7 @@ foreach ($emails as $e) {
                 'sp' => $specialty !== '' ? $specialty : null,
                 'd' => $desc !== '' ? $desc : null,
                 'o' => $fromEmail !== '' ? $fromEmail : ($origin !== '' ? $origin : null),
-                'st' => 'new',
+                'st' => $status,
             ]);
             $demandId = (int)$db->lastInsertId();
 
