@@ -15,6 +15,18 @@ require_once __DIR__ . '/app/bootstrap.php';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Candidatura Enviada com Sucesso!</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --background: 216 33% 97%;
+            --foreground: 210 36% 17%;
+            --card: 0 0% 100%;
+            --primary: 180 65% 46%;
+            --primary-foreground: 0 0% 100%;
+            --muted-foreground: 216 18% 61%;
+            --border: 216 20% 90%;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -22,24 +34,23 @@ require_once __DIR__ . '/app/bootstrap.php';
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            background: hsl(var(--background));
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
-            overflow: hidden;
         }
 
         .container {
             max-width: 600px;
             width: 100%;
-            background: white;
+            background: hsl(var(--card));
             border-radius: 24px;
             padding: 60px 40px;
             text-align: center;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
             animation: slideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
             position: relative;
         }
@@ -66,10 +77,10 @@ require_once __DIR__ . '/app/bootstrap.php';
             width: 120px;
             height: 120px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            background: hsl(var(--primary));
             position: relative;
             animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
-            box-shadow: 0 10px 30px rgba(17, 153, 142, 0.4);
+            box-shadow: 0 10px 30px hsla(var(--primary), 0.3);
         }
 
         @keyframes scaleIn {
@@ -91,7 +102,7 @@ require_once __DIR__ . '/app/bootstrap.php';
         }
 
         .checkmark-path {
-            stroke: white;
+            stroke: hsl(var(--primary-foreground));
             stroke-width: 6;
             stroke-linecap: round;
             stroke-linejoin: round;
@@ -107,25 +118,11 @@ require_once __DIR__ . '/app/bootstrap.php';
             }
         }
 
-        .confetti {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background: #f0f;
-            animation: confettiFall 3s linear forwards;
-        }
-
-        @keyframes confettiFall {
-            to {
-                transform: translateY(100vh) rotate(360deg);
-                opacity: 0;
-            }
-        }
 
         h1 {
             font-size: 32px;
             font-weight: 800;
-            color: #1a202c;
+            color: hsl(var(--foreground));
             margin-bottom: 16px;
             animation: fadeIn 0.6s ease 0.8s both;
         }
@@ -143,7 +140,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
         .subtitle {
             font-size: 18px;
-            color: #4a5568;
+            color: hsl(var(--foreground));
             margin-bottom: 12px;
             line-height: 1.6;
             animation: fadeIn 0.6s ease 1s both;
@@ -151,14 +148,15 @@ require_once __DIR__ . '/app/bootstrap.php';
 
         .message {
             font-size: 15px;
-            color: #718096;
+            color: hsl(var(--muted-foreground));
             margin-bottom: 32px;
             line-height: 1.8;
             animation: fadeIn 0.6s ease 1.2s both;
         }
 
         .info-box {
-            background: linear-gradient(135deg, #f6f8fb 0%, #e9ecef 100%);
+            background: hsl(var(--background));
+            border: 1px solid hsl(var(--border));
             border-radius: 16px;
             padding: 24px;
             margin-bottom: 32px;
@@ -172,7 +170,7 @@ require_once __DIR__ . '/app/bootstrap.php';
             gap: 12px;
             margin-bottom: 12px;
             font-size: 15px;
-            color: #2d3748;
+            color: hsl(var(--foreground));
         }
 
         .info-item:last-child {
@@ -182,28 +180,34 @@ require_once __DIR__ . '/app/bootstrap.php';
         .info-icon {
             width: 24px;
             height: 24px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: hsl(var(--primary));
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
+            color: hsl(var(--primary-foreground));
             font-weight: bold;
             flex-shrink: 0;
         }
 
         .redirect-message {
             font-size: 14px;
-            color: #a0aec0;
+            color: hsl(var(--muted-foreground));
             animation: fadeIn 0.6s ease 1.6s both;
+            margin-bottom: 20px;
+        }
+
+        .countdown {
+            font-weight: 600;
+            color: hsl(var(--primary));
         }
 
         .spinner {
             display: inline-block;
             width: 14px;
             height: 14px;
-            border: 2px solid #e2e8f0;
-            border-top-color: #667eea;
+            border: 2px solid hsl(var(--border));
+            border-top-color: hsl(var(--primary));
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin-left: 8px;
@@ -219,20 +223,21 @@ require_once __DIR__ . '/app/bootstrap.php';
         .btn {
             display: inline-block;
             padding: 14px 32px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
             text-decoration: none;
             border-radius: 12px;
             font-weight: 600;
             font-size: 15px;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 15px hsla(var(--primary), 0.3);
             animation: fadeIn 0.6s ease 1.8s both;
         }
 
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            box-shadow: 0 6px 20px hsla(var(--primary), 0.4);
+            opacity: 0.9;
         }
 
         @media (max-width: 640px) {
@@ -300,36 +305,28 @@ require_once __DIR__ . '/app/bootstrap.php';
         </div>
 
         <p class="redirect-message">
-            Redirecionando para a página de login<span class="spinner"></span>
+            Redirecionando para a página de login em <span class="countdown" id="countdown">10</span> segundos<span class="spinner"></span>
         </p>
 
         <a href="/login.php" class="btn">Ir para Login Agora</a>
     </div>
 
     <script>
-        // Confetti animation
-        function createConfetti() {
-            const colors = ['#667eea', '#764ba2', '#11998e', '#38ef7d', '#f093fb', '#f5576c'];
-            for (let i = 0; i < 50; i++) {
-                const confetti = document.createElement('div');
-                confetti.className = 'confetti';
-                confetti.style.left = Math.random() * 100 + 'vw';
-                confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
-                confetti.style.animationDelay = Math.random() * 0.5 + 's';
-                confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
-                document.body.appendChild(confetti);
-                
-                setTimeout(() => confetti.remove(), 3000);
+        // Countdown timer
+        let seconds = 10;
+        const countdownEl = document.getElementById('countdown');
+        
+        const countdownInterval = setInterval(() => {
+            seconds--;
+            if (countdownEl) {
+                countdownEl.textContent = seconds;
             }
-        }
-
-        // Trigger confetti after checkmark animation
-        setTimeout(createConfetti, 800);
-
-        // Auto redirect after 5 seconds
-        setTimeout(() => {
-            window.location.href = '/login.php';
-        }, 5000);
+            
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                window.location.href = '/login.php';
+            }
+        }, 1000);
     </script>
 </body>
 </html>
