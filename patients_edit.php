@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('patients.manage');
 
+// Buscar especialidades cadastradas
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 $stmt = db()->prepare('SELECT * FROM patients WHERE id = :id AND deleted_at IS NULL');
@@ -158,8 +162,17 @@ echo '<div class="col6"><label>Logradouro<input name="address_street" maxlength=
 echo '<div class="col6"><label>Número<input name="address_number" maxlength="20" value="' . h((string)($p['address_number'] ?? '')) . '"></label></div>';
 echo '<div class="col6"><label>Complemento<input name="address_complement" maxlength="80" value="' . h((string)($p['address_complement'] ?? '')) . '"></label></div>';
 echo '<div class="col6"><label>Bairro<input name="address_neighborhood" maxlength="80" value="' . h((string)($p['address_neighborhood'] ?? '')) . '"></label></div>';
-echo '<div class="col6"><label>Cidade<input name="address_city" maxlength="120" value="' . h((string)($p['address_city'] ?? '')) . '"></label></div>';
-echo '<div class="col6"><label>UF<input name="address_state" maxlength="2" value="' . h((string)($p['address_state'] ?? '')) . '" style="text-transform:uppercase"></label></div>';
+$currentAddressState = (string)($p['address_state'] ?? '');
+$currentAddressCity = (string)($p['address_city'] ?? '');
+$states = ['AC'=>'Acre','AL'=>'Alagoas','AP'=>'Amapá','AM'=>'Amazonas','BA'=>'Bahia','CE'=>'Ceará','DF'=>'Distrito Federal','ES'=>'Espírito Santo','GO'=>'Goiás','MA'=>'Maranhão','MT'=>'Mato Grosso','MS'=>'Mato Grosso do Sul','MG'=>'Minas Gerais','PA'=>'Pará','PB'=>'Paraíba','PR'=>'Paraná','PE'=>'Pernambuco','PI'=>'Piauí','RJ'=>'Rio de Janeiro','RN'=>'Rio Grande do Norte','RS'=>'Rio Grande do Sul','RO'=>'Rondônia','RR'=>'Roraima','SC'=>'Santa Catarina','SP'=>'São Paulo','SE'=>'Sergipe','TO'=>'Tocantins'];
+
+echo '<div class="col6"><label>UF<select name="address_state" id="edit_address_state"><option value="">Selecione...</option>';
+foreach ($states as $uf => $nome) {
+    $selected = ($currentAddressState === $uf) ? ' selected' : '';
+    echo '<option value="' . $uf . '"' . $selected . '>' . $uf . ' - ' . $nome . '</option>';
+}
+echo '</select></label></div>';
+echo '<div class="col6"><label>Cidade<select name="address_city" id="edit_address_city"><option value="">Carregando...</option></select></label></div>';
 echo '<div class="col6"><label>País<input name="address_country" maxlength="60" value="' . h((string)($p['address_country'] ?? '')) . '"></label></div>';
 echo '</div>';
 echo '</div>';
@@ -273,6 +286,41 @@ echo '</div>';
 echo '</form>';
 echo '</section>';
 
-echo '</div>';
+echo '<script>';
+echo 'const editAddressState = ' . json_encode($currentAddressState) . ';';
+echo 'const editAddressCity = ' . json_encode($currentAddressCity) . ';';
+echo 'const editAddressStateSelect = document.getElementById("edit_address_state");';
+echo 'const editAddressCitySelect = document.getElementById("edit_address_city");';
+echo 'async function loadEditPatientCities(uf, preselect = "") {';
+echo '  if(!editAddressCitySelect) return;';
+echo '  editAddressCitySelect.innerHTML = "<option value=\\"\\">Carregando...</option>";';
+echo '  editAddressCitySelect.disabled = true;';
+echo '  if(!uf){';
+echo '    editAddressCitySelect.innerHTML = "<option value=\\"\\">Selecione o estado primeiro...</option>";';
+echo '    editAddressCitySelect.disabled = false;';
+echo '    return;';
+echo '  }';
+echo '  try{';
+echo '    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
+echo '    const cidades = await response.json();';
+echo '    editAddressCitySelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
+echo '    cidades.forEach(function(cidade){';
+echo '      const opt = document.createElement("option");';
+echo '      opt.value = cidade.nome;';
+echo '      opt.textContent = cidade.nome;';
+echo '      if(cidade.nome === preselect) opt.selected = true;';
+echo '      editAddressCitySelect.appendChild(opt);';
+echo '    });';
+echo '    editAddressCitySelect.disabled = false;';
+echo '  }catch(err){';
+echo '    console.error("Erro ao buscar cidades:", err);';
+echo '    editAddressCitySelect.innerHTML = "<option value=\\"\\">Erro ao carregar cidades</option>";';
+echo '    editAddressCitySelect.disabled = false;';
+echo '  }';
+echo '}';
+echo 'if(editAddressState) loadEditPatientCities(editAddressState, editAddressCity);';
+echo 'else if(editAddressCitySelect) editAddressCitySelect.innerHTML = "<option value=\\"\\">Selecione o estado primeiro...</option>";';
+echo 'if(editAddressStateSelect) editAddressStateSelect.addEventListener("change", function(){ loadEditPatientCities(this.value); });';
+echo '</script>';
 
 view_footer();

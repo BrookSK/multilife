@@ -12,7 +12,15 @@ $fullName = trim((string)($_POST['full_name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
 $phone = trim((string)($_POST['phone'] ?? ''));
 
-error_log("Dados recebidos - Nome: $fullName, Email: $email, Phone: $phone");
+// Processar cidades de atuação (vem como array do select múltiplo)
+$citiesArray = $_POST['cities_of_operation'] ?? [];
+$citiesOfOperation = is_array($citiesArray) ? implode(', ', array_filter($citiesArray)) : '';
+
+// Processar especializações (vem como array do select múltiplo)
+$specializationsArray = $_POST['specializations'] ?? [];
+$specializations = is_array($specializationsArray) ? implode(', ', array_filter($specializationsArray)) : '';
+
+error_log("Dados recebidos - Nome: $fullName, Email: $email, Phone: $phone, Cidades: $citiesOfOperation, Especialidades: $specializations");
 
 if ($fullName === '' || $email === '' || $phone === '') {
     flash_set('error', 'Preencha nome, e-mail e telefone.');
@@ -78,6 +86,8 @@ $params = [
     'full_name' => $fullName,
     'email' => $email,
     'phone' => $phone,
+    'cities_of_operation' => $citiesOfOperation !== '' ? $citiesOfOperation : null,
+    'specializations' => $specializations !== '' ? $specializations : null,
     'address_state' => $state1 !== '' ? $state1 : null,
     'council_state' => $state2 !== '' ? $state2 : null,
 ];
@@ -95,8 +105,7 @@ error_log('Params: ' . print_r($params, true));
 try {
     $stmt->execute($params);
     error_log('Candidatura inserida com sucesso! ID: ' . db()->lastInsertId());
-    flash_set('success', 'Candidatura enviada com sucesso! Aguarde a avaliação da nossa equipe. Você pode fazer login após aprovação.');
-    header('Location: /apply_professional.php');
+    header('Location: /apply_professional.php?success=1');
     exit;
 } catch (Exception $e) {
     error_log('Erro ao inserir candidatura: ' . $e->getMessage());

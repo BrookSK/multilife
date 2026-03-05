@@ -8,6 +8,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 $user = auth_user();
 $isPublic = ($user === null);
 
+// Buscar especialidades cadastradas no sistema
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 if ($isPublic) {
     // Renderizar header público sem menu
     echo '<!doctype html>';
@@ -34,6 +38,7 @@ if ($isPublic) {
     echo '.card{background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:var(--shadow-elevated);border-radius:calc(var(--radius) + 6px);padding:18px;color:hsl(var(--card-foreground))}';
     echo '.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}';
     echo '.col6{grid-column:span 6}';
+echo '.col12{grid-column:span 12}';
     echo '.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 12px;border-radius:10px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--foreground));font-weight:600;font-size:13px;box-shadow:var(--shadow-card);transition:box-shadow .15s ease,transform .06s ease,background .15s ease;text-decoration:none}';
     echo '.btn:hover{box-shadow:0 4px 12px 0 rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.06);text-decoration:none}';
     echo '.btn:active{transform:translateY(1px)}';
@@ -97,7 +102,11 @@ echo '<label>Telefone/WhatsApp<input name="phone" required maxlength="30" placeh
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>Cidades de atuação<textarea name="cities_of_operation" rows="2" placeholder="Ex: São Paulo, Guarulhos"></textarea></label>';
+echo '<label>UF de atuação<select name="operation_state" id="operation_state"><option value="">Selecione...</option><option value="AC">AC - Acre</option><option value="AL">AL - Alagoas</option><option value="AP">AP - Amapá</option><option value="AM">AM - Amazonas</option><option value="BA">BA - Bahia</option><option value="CE">CE - Ceará</option><option value="DF">DF - Distrito Federal</option><option value="ES">ES - Espírito Santo</option><option value="GO">GO - Goiás</option><option value="MA">MA - Maranhão</option><option value="MT">MT - Mato Grosso</option><option value="MS">MS - Mato Grosso do Sul</option><option value="MG">MG - Minas Gerais</option><option value="PA">PA - Pará</option><option value="PB">PB - Paraíba</option><option value="PR">PR - Paraná</option><option value="PE">PE - Pernambuco</option><option value="PI">PI - Piauí</option><option value="RJ">RJ - Rio de Janeiro</option><option value="RN">RN - Rio Grande do Norte</option><option value="RS">RS - Rio Grande do Sul</option><option value="RO">RO - Rondônia</option><option value="RR">RR - Roraima</option><option value="SC">SC - Santa Catarina</option><option value="SP">SP - São Paulo</option><option value="SE">SE - Sergipe</option><option value="TO">TO - Tocantins</option></select></label>';
+echo '</div>';
+
+echo '<div class="col12">';
+echo '<label>Cidades de atuação (segure Ctrl para selecionar múltiplas)<select name="cities_of_operation[]" id="cities_of_operation" multiple size="8" style="height:auto"><option value="">Selecione o estado de atuação primeiro...</option></select></label>';
 echo '</div>';
 
 echo '</div>';
@@ -153,7 +162,11 @@ echo '<label>Experiência em home care<textarea name="home_care_experience" rows
 
 echo '<div class="grid">';
 echo '<div class="col6"><label>Tempo de atuação<input name="years_of_experience" maxlength="40" placeholder="Ex: 5 anos"></label></div>';
-echo '<div class="col6"><label>Especializações/Pós<textarea name="specializations" rows="2"></textarea></label></div>';
+echo '<div class="col6"><label>Especializações (segure Ctrl para selecionar múltiplas)<select name="specializations[]" multiple size="6" style="height:auto"><option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label></div>';
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
@@ -169,37 +182,67 @@ echo '</form>';
 
 echo '</div>';
 
+// Pop-up de sucesso
+$showSuccess = isset($_GET['success']) && $_GET['success'] === '1';
+if ($showSuccess) {
+    echo '<div id="successModal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .3s ease">';
+    echo '<div style="background:#fff;border-radius:20px;padding:40px;text-align:center;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:slideUp .4s ease">';
+    echo '<div style="width:80px;height:80px;margin:0 auto 20px;border-radius:50%;background:linear-gradient(135deg,hsl(142,76%,36%),hsl(142,76%,46%));display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px hsla(142,76%,36%,.3)">';
+    echo '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    echo '</div>';
+    echo '<h2 style="margin:0 0 12px;font-size:24px;font-weight:800;color:hsl(var(--foreground))">Candidatura Enviada!</h2>';
+    echo '<p style="margin:0;color:hsl(var(--muted-foreground));font-size:15px;line-height:1.6">Sua candidatura foi recebida com sucesso. Aguarde a avaliação da nossa equipe.</p>';
+    echo '<p style="margin:16px 0 0;color:hsl(var(--muted-foreground));font-size:13px">Redirecionando para o login...</p>';
+    echo '</div>';
+    echo '</div>';
+    echo '<style>';
+    echo '@keyframes fadeIn{from{opacity:0}to{opacity:1}}';
+    echo '@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    echo '</style>';
+}
+
 // JavaScript para buscar cidades da API do IBGE
 echo '<script>';
+if ($showSuccess) {
+    echo 'setTimeout(function(){ window.location.href = "/login.php"; }, 3000);';
+}
+
+echo 'async function loadCities(uf, selectElement, placeholder = "Selecione...") {';
+echo '  selectElement.innerHTML = "<option value=\\"\\">Carregando...</option>";';
+echo '  selectElement.disabled = true;';
+echo '  if(!uf){';
+echo '    selectElement.innerHTML = `<option value=\\"\\">${placeholder}</option>`;';
+echo '    selectElement.disabled = false;';
+echo '    return;';
+echo '  }';
+echo '  try{';
+echo '    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
+echo '    const cidades = await response.json();';
+echo '    selectElement.innerHTML = `<option value=\\"\\">${placeholder}</option>`;';
+echo '    cidades.forEach(function(cidade){';
+echo '      const opt = document.createElement("option");';
+echo '      opt.value = cidade.nome;';
+echo '      opt.textContent = cidade.nome;';
+echo '      selectElement.appendChild(opt);';
+echo '    });';
+echo '    selectElement.disabled = false;';
+echo '  }catch(err){';
+echo '    console.error("Erro ao buscar cidades:", err);';
+echo '    selectElement.innerHTML = "<option value=\\"\\">Erro ao carregar cidades</option>";';
+echo '    selectElement.disabled = false;';
+echo '  }';
+echo '}';
+
 echo 'const ufSelect = document.getElementById("address_state");';
 echo 'const cidadeSelect = document.getElementById("address_city");';
 echo 'if(ufSelect && cidadeSelect){';
-echo '  ufSelect.addEventListener("change", async function(){';
-echo '    const uf = this.value;';
-echo '    cidadeSelect.innerHTML = "<option value=\\"\\">Carregando...</option>";';
-echo '    cidadeSelect.disabled = true;';
-echo '    if(!uf){';
-echo '      cidadeSelect.innerHTML = "<option value=\\"\\">Selecione o estado primeiro...</option>";';
-echo '      cidadeSelect.disabled = false;';
-echo '      return;';
-echo '    }';
-echo '    try{';
-echo '      const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
-echo '      const cidades = await response.json();';
-echo '      cidadeSelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
-echo '      cidades.forEach(function(cidade){';
-echo '        const opt = document.createElement("option");';
-echo '        opt.value = cidade.nome;';
-echo '        opt.textContent = cidade.nome;';
-echo '        cidadeSelect.appendChild(opt);';
-echo '      });';
-echo '      cidadeSelect.disabled = false;';
-echo '    }catch(err){';
-echo '      console.error("Erro ao buscar cidades:", err);';
-echo '      cidadeSelect.innerHTML = "<option value=\\"\\">Erro ao carregar cidades</option>";';
-echo '      cidadeSelect.disabled = false;';
-echo '    }';
-echo '  });';
+echo '  ufSelect.addEventListener("change", function(){ loadCities(this.value, cidadeSelect, "Selecione..."); });';
+echo '}';
+
+echo 'const operationUfSelect = document.getElementById("operation_state");';
+echo 'const operationCitiesSelect = document.getElementById("cities_of_operation");';
+echo 'if(operationUfSelect && operationCitiesSelect){';
+echo '  operationUfSelect.addEventListener("change", function(){ loadCities(this.value, operationCitiesSelect, "Selecione as cidades..."); });';
 echo '}';
 echo '</script>';
 

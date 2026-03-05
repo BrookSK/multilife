@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp_groups.manage');
 
+// Buscar especialidades cadastradas
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 $stmt = db()->prepare('SELECT * FROM whatsapp_groups WHERE id = :id');
@@ -50,7 +54,13 @@ echo '</div>';
 
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6">';
-echo '<label>Especialidade (opcional)<input name="specialty" maxlength="120" value="' . h((string)($g['specialty'] ?? '')) . '" placeholder="Ex: Fisioterapia"></label>';
+echo '<label>Especialidade (opcional)<select name="specialty"><option value="">Selecione...</option>';
+$currentSpecialty = (string)($g['specialty'] ?? '');
+foreach ($specialties as $spec) {
+    $selected = ($currentSpecialty === (string)$spec['name']) ? ' selected' : '';
+    echo '<option value="' . h((string)$spec['name']) . '"' . $selected . '>' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label>';
 echo '</div>';
 echo '<div class="col6">';
 echo '<label>Status<select name="status">';
@@ -61,14 +71,59 @@ echo '</select></label>';
 echo '</div>';
 echo '</div>';
 
+$currentState = (string)($g['state'] ?? '');
+$currentCity = (string)($g['city'] ?? '');
+
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6">';
-echo '<label>Cidade (opcional)<input name="city" maxlength="120" value="' . h((string)($g['city'] ?? '')) . '" placeholder="Ex: São Paulo"></label>';
+echo '<label>UF (opcional)<select name="state" id="edit_group_state"><option value="">Selecione...</option>';
+$states = ['AC'=>'Acre','AL'=>'Alagoas','AP'=>'Amapá','AM'=>'Amazonas','BA'=>'Bahia','CE'=>'Ceará','DF'=>'Distrito Federal','ES'=>'Espírito Santo','GO'=>'Goiás','MA'=>'Maranhão','MT'=>'Mato Grosso','MS'=>'Mato Grosso do Sul','MG'=>'Minas Gerais','PA'=>'Pará','PB'=>'Paraíba','PR'=>'Paraná','PE'=>'Pernambuco','PI'=>'Piauí','RJ'=>'Rio de Janeiro','RN'=>'Rio Grande do Norte','RS'=>'Rio Grande do Sul','RO'=>'Rondônia','RR'=>'Roraima','SC'=>'Santa Catarina','SP'=>'São Paulo','SE'=>'Sergipe','TO'=>'Tocantins'];
+foreach ($states as $uf => $nome) {
+    $selected = ($currentState === $uf) ? ' selected' : '';
+    echo '<option value="' . $uf . '"' . $selected . '>' . $uf . ' - ' . $nome . '</option>';
+}
+echo '</select></label>';
 echo '</div>';
 echo '<div class="col6">';
-echo '<label>UF (opcional)<input name="state" maxlength="2" value="' . h((string)($g['state'] ?? '')) . '" placeholder="SP" style="text-transform:uppercase"></label>';
+echo '<label>Cidade (opcional)<select name="city" id="edit_group_city"><option value="">Carregando...</option></select></label>';
 echo '</div>';
 echo '</div>';
+
+echo '<script>';
+echo 'const editGroupUfSelect = document.getElementById("edit_group_state");';
+echo 'const editGroupCitySelect = document.getElementById("edit_group_city");';
+echo 'const currentCity = ' . json_encode($currentCity) . ';';
+echo 'const currentState = ' . json_encode($currentState) . ';';
+echo 'async function loadEditCities(uf, preselect = "") {';
+echo '  editGroupCitySelect.innerHTML = "<option value=\\"\\">Carregando...</option>";';
+echo '  editGroupCitySelect.disabled = true;';
+echo '  if(!uf){';
+echo '    editGroupCitySelect.innerHTML = "<option value=\\"\\">Selecione o estado primeiro...</option>";';
+echo '    editGroupCitySelect.disabled = false;';
+echo '    return;';
+echo '  }';
+echo '  try{';
+echo '    const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
+echo '    const cidades = await response.json();';
+echo '    editGroupCitySelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
+echo '    cidades.forEach(function(cidade){';
+echo '      const opt = document.createElement("option");';
+echo '      opt.value = cidade.nome;';
+echo '      opt.textContent = cidade.nome;';
+echo '      if(cidade.nome === preselect) opt.selected = true;';
+echo '      editGroupCitySelect.appendChild(opt);';
+echo '    });';
+echo '    editGroupCitySelect.disabled = false;';
+echo '  }catch(err){';
+echo '    console.error("Erro ao buscar cidades:", err);';
+echo '    editGroupCitySelect.innerHTML = "<option value=\\"\\">Erro ao carregar cidades</option>";';
+echo '    editGroupCitySelect.disabled = false;';
+echo '  }';
+echo '}';
+echo 'if(currentState) loadEditCities(currentState, currentCity);';
+echo 'else editGroupCitySelect.innerHTML = "<option value=\\"\\">Selecione o estado primeiro...</option>";';
+echo 'editGroupUfSelect.addEventListener("change", function(){ loadEditCities(this.value); });';
+echo '</script>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="/whatsapp_groups_list.php">Cancelar</a>';
