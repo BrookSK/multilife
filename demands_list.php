@@ -18,7 +18,7 @@ if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
 
-$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, u.name AS assumed_by_name
+$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.ai_summary, d.procedure_value, u.name AS assumed_by_name
         FROM demands d
         LEFT JOIN users u ON u.id = d.assumed_by_user_id';
 
@@ -193,7 +193,24 @@ foreach ($columns as $col) {
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle">' . h((string)$r['title']) . '</div>';
             echo '</div>';
+            
+            // Resumo da IA (se disponível)
+            $aiSummary = trim((string)($r['ai_summary'] ?? ''));
+            if ($aiSummary !== '') {
+                $summaryPreview = mb_strimwidth($aiSummary, 0, 120, '...');
+                echo '<div style="margin-top:6px;padding:8px;background:hsla(var(--primary)/.08);border-radius:4px;font-size:12px;line-height:1.4;color:hsl(var(--foreground))">';
+                echo '📋 ' . h($summaryPreview);
+                echo '</div>';
+            }
+            
             echo '<div class="kanbanMeta">' . h($locTxt) . ' • ' . h((string)($r['specialty'] ?? '-')) . '</div>';
+            
+            // Valor do procedimento (se disponível)
+            $procedureValue = $r['procedure_value'] !== null ? (float)$r['procedure_value'] : null;
+            if ($procedureValue !== null && $procedureValue > 0) {
+                echo '<div class="kanbanMeta" style="color:hsl(var(--success));font-weight:600">💰 R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
+            }
+            
             echo '<div class="kanbanMeta">' . h($assumed) . ' • ' . h((string)$r['created_at']) . '</div>';
             echo '<span class="badge ' . h($badgeCls) . '">' . h((string)$r['status']) . '</span>';
             echo '</div>';

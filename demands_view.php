@@ -136,6 +136,22 @@ echo '<section class="card col12">';
 echo '<div style="font-weight:900;margin-bottom:8px">Detalhes</div>';
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.7">';
 echo '<div><strong>Origem:</strong> ' . h((string)($d['origin_email'] ?? '-')) . '</div>';
+
+// Resumo da IA (se disponível)
+$aiSummary = trim((string)($d['ai_summary'] ?? ''));
+if ($aiSummary !== '') {
+    echo '<div style="margin-top:12px;padding:12px;background:hsla(var(--primary)/.05);border-left:3px solid hsl(var(--primary));border-radius:6px">';
+    echo '<div style="font-weight:700;color:hsl(var(--primary));margin-bottom:6px">📋 Resumo da Necessidade (IA)</div>';
+    echo '<div style="white-space:pre-wrap;color:hsl(var(--foreground))">' . h($aiSummary) . '</div>';
+    echo '</div>';
+}
+
+// Valor do procedimento (se disponível)
+$procedureValue = $d['procedure_value'] !== null ? (float)$d['procedure_value'] : null;
+if ($procedureValue !== null && $procedureValue > 0) {
+    echo '<div style="margin-top:8px"><strong>Valor do Procedimento:</strong> R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
+}
+
 echo '<div style="margin-top:8px"><strong>Descrição:</strong></div>';
 echo '<div style="white-space:pre-wrap">' . h((string)($d['description'] ?? '')) . '</div>';
 echo '</div>';
