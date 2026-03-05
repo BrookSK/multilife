@@ -329,11 +329,22 @@ function h(string $value): string {
         <section class="brand" aria-label="Boas-vindas">
             <div class="logo">
                 <?php
-                // Buscar logo configurada
+                // Buscar logo configurada sem carregar bootstrap
                 $logoUrl = '';
                 try {
-                    require_once __DIR__ . '/app/bootstrap.php';
-                    $logoUrl = admin_setting_get('app.logo_url');
+                    $dbConfig = require __DIR__ . '/config/config.php';
+                    $pdo = new PDO(
+                        "mysql:host={$dbConfig['db_host']};dbname={$dbConfig['db_name']};charset=utf8mb4",
+                        $dbConfig['db_user'],
+                        $dbConfig['db_pass'],
+                        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+                    );
+                    $stmt = $pdo->prepare('SELECT setting_value FROM admin_settings WHERE setting_key = :key LIMIT 1');
+                    $stmt->execute(['key' => 'app.logo_url']);
+                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($result) {
+                        $logoUrl = (string)$result['setting_value'];
+                    }
                 } catch (Exception $e) {
                     // Ignorar erro se não conseguir carregar
                 }
