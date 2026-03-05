@@ -216,7 +216,7 @@ function view_header(string $title): void
         
         $logoUrl = admin_setting_get('app.logo_url');
         if (!empty($logoUrl)) {
-            echo '<img src="' . h($logoUrl) . '" alt="Logo" style="max-height:40px;max-width:100%;object-fit:contain">';
+            echo '<img src="' . h($logoUrl) . '" alt="Logo" style="max-height:56px;max-width:100%;object-fit:contain">';
         } else {
             echo '<div class="logoMark" aria-hidden="true"><span></span></div>';
             echo '<div class="logoText" id="logoText">Multi<em>Life</em> Care</div>';

@@ -41,7 +41,8 @@ echo '<div style="color:hsl(var(--muted-foreground));font-size:14px">';
 echo '• Formatos aceitos: PNG, JPG, JPEG, SVG<br>';
 echo '• Tamanho máximo: 2MB<br>';
 echo '• Recomendado: Imagem com fundo transparente (PNG)<br>';
-echo '• Dimensões recomendadas: 200x50px ou similar';
+echo '• <strong>Dimensões ideais: 280px × 70px</strong> (proporção 4:1)<br>';
+echo '• Altura máxima exibida: 56px';
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
