@@ -68,6 +68,15 @@ function loadQRCode(){
     console.log("Dados JSON:", JSON.stringify(data, null, 2));
     const container = document.getElementById("qrcode-container");
     
+    // Verificar se instância já está conectada
+    if(data.instance && data.instance.state === "open"){
+      console.log("Instância já está conectada!");
+      container.innerHTML = `<div style="color:hsl(142,76%,36%);padding:40px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:16px;font-size:18px;font-weight:700">WhatsApp Conectado!</div></div>`;
+      document.getElementById("status-message").innerHTML = `<span style="color:hsl(142,76%,36%);font-weight:600">A instância "${data.instance.instanceName}" já está conectada e ativa.</span>`;
+      setTimeout(() => window.location.href = "/evolution_instances.php", 2000);
+      return;
+    }
+    
     if(data.base64){
       console.log("QR Code base64 encontrado");
       container.innerHTML = `<img src="${data.base64}" alt="QR Code" style="max-width:300px;width:100%">`;
