@@ -89,6 +89,8 @@ if (empty($instances)) {
         echo '<div style="display:flex;gap:8px">';
         if (!$isConnected) {
             echo '<a href="/evolution_qrcode.php?instance=' . urlencode($instanceName) . '" class="btn btnPrimary" style="font-size:12px;padding:6px 12px">Conectar</a>';
+        } else if ($instanceName === 'multilife') {
+            echo '<a href="/evolution_instance_disconnect.php?instance=' . urlencode($instanceName) . '" class="btn" style="font-size:12px;padding:6px 12px;background:hsl(var(--destructive));color:white" onclick="return confirm(\'Deseja desconectar esta instância?\')">Desconectar</a>';
         }
         echo '<a href="/evolution_instance_delete.php?instance=' . urlencode($instanceName) . '" class="btn" style="font-size:12px;padding:6px 12px" onclick="return confirm(\'Deseja excluir esta instância?\')">Excluir</a>';
         echo '</div>';
