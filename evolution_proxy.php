@@ -48,12 +48,20 @@ try {
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
     
     if ($httpCode === 200) {
         echo $response;
     } else {
-        echo json_encode(['error' => 'Erro na API Evolution. Código: ' . $httpCode]);
+        // Debug detalhado
+        $errorData = [
+            'error' => 'Erro na API Evolution. Código: ' . $httpCode,
+            'url' => $url,
+            'response' => $response,
+            'curl_error' => $curlError
+        ];
+        echo json_encode($errorData);
     }
 } catch (Exception $e) {
     echo json_encode(['error' => 'Erro ao conectar: ' . $e->getMessage()]);
