@@ -95,8 +95,8 @@ error_log('Params: ' . print_r($params, true));
 try {
     $stmt->execute($params);
     error_log('Candidatura inserida com sucesso! ID: ' . db()->lastInsertId());
-    flash_set('success', 'Candidatura enviada com sucesso! Aguarde a avaliação da nossa equipe.');
-    header('Location: /login.php');
+    flash_set('success', 'Candidatura enviada com sucesso! Aguarde a avaliação da nossa equipe. Você pode fazer login após aprovação.');
+    header('Location: /apply_professional.php');
     exit;
 } catch (Exception $e) {
     error_log('Erro ao inserir candidatura: ' . $e->getMessage());

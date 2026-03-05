@@ -169,52 +169,35 @@ echo '</form>';
 
 echo '</div>';
 
-// JavaScript para popular cidades baseado no estado
-$cidadesJson = json_encode([
-    'SP' => ['Sao Paulo','Guarulhos','Campinas','Sao Bernardo do Campo','Santo Andre','Osasco','Sao Jose dos Campos','Ribeirao Preto','Sorocaba','Santos','Outra'],
-    'RJ' => ['Rio de Janeiro','Sao Goncalo','Duque de Caxias','Nova Iguacu','Niteroi','Campos dos Goytacazes','Petropolis','Volta Redonda','Outra'],
-    'MG' => ['Belo Horizonte','Uberlandia','Contagem','Juiz de Fora','Betim','Montes Claros','Uberaba','Governador Valadares','Outra'],
-    'BA' => ['Salvador','Feira de Santana','Vitoria da Conquista','Camacari','Itabuna','Juazeiro','Lauro de Freitas','Ilheus','Outra'],
-    'PR' => ['Curitiba','Londrina','Maringa','Ponta Grossa','Cascavel','Sao Jose dos Pinhais','Foz do Iguacu','Colombo','Outra'],
-    'RS' => ['Porto Alegre','Caxias do Sul','Pelotas','Canoas','Santa Maria','Gravatai','Novo Hamburgo','Sao Leopoldo','Outra'],
-    'PE' => ['Recife','Jaboatao dos Guararapes','Olinda','Caruaru','Petrolina','Paulista','Cabo de Santo Agostinho','Outra'],
-    'CE' => ['Fortaleza','Caucaia','Juazeiro do Norte','Maracanau','Sobral','Crato','Itapipoca','Maranguape','Outra'],
-    'PA' => ['Belem','Ananindeua','Santarem','Maraba','Castanhal','Parauapebas','Outra'],
-    'SC' => ['Florianopolis','Joinville','Blumenau','Sao Jose','Criciuma','Chapeco','Itajai','Jaragua do Sul','Outra'],
-    'GO' => ['Goiania','Aparecida de Goiania','Anapolis','Rio Verde','Luziania','Aguas Lindas de Goias','Outra'],
-    'MA' => ['Sao Luis','Imperatriz','Sao Jose de Ribamar','Timon','Caxias','Codo','Outra'],
-    'PB' => ['Joao Pessoa','Campina Grande','Santa Rita','Patos','Bayeux','Sousa','Outra'],
-    'ES' => ['Vila Velha','Serra','Cariacica','Vitoria','Cachoeiro de Itapemirim','Linhares','Outra'],
-    'AM' => ['Manaus','Parintins','Itacoatiara','Manacapuru','Coari','Outra'],
-    'RN' => ['Natal','Mossoro','Parnamirim','Sao Goncalo do Amarante','Macaiba','Outra'],
-    'AL' => ['Maceio','Arapiraca','Rio Largo','Palmeira dos Indios','Outra'],
-    'MT' => ['Cuiaba','Varzea Grande','Rondonopolis','Sinop','Tangara da Serra','Outra'],
-    'MS' => ['Campo Grande','Dourados','Tres Lagoas','Corumba','Ponta Pora','Outra'],
-    'DF' => ['Brasilia','Ceilandia','Taguatinga','Samambaia','Planaltina','Outra'],
-    'SE' => ['Aracaju','Nossa Senhora do Socorro','Lagarto','Itabaiana','Outra'],
-    'RO' => ['Porto Velho','Ji-Parana','Ariquemes','Vilhena','Cacoal','Outra'],
-    'TO' => ['Palmas','Araguaina','Gurupi','Porto Nacional','Outra'],
-    'AC' => ['Rio Branco','Cruzeiro do Sul','Sena Madureira','Outra'],
-    'AP' => ['Macapa','Santana','Laranjal do Jari','Outra'],
-    'RR' => ['Boa Vista','Rorainopolis','Caracarai','Outra'],
-    'PI' => ['Teresina','Parnaiba','Picos','Piripiri','Outra']
-], JSON_HEX_APOS | JSON_HEX_QUOT);
-
+// JavaScript para buscar cidades da API do IBGE
 echo '<script>';
-echo 'const cidadesPorEstado = ' . $cidadesJson . ';';
 echo 'const ufSelect = document.getElementById("address_state");';
 echo 'const cidadeSelect = document.getElementById("address_city");';
 echo 'if(ufSelect && cidadeSelect){';
-echo '  ufSelect.addEventListener("change", function(){';
+echo '  ufSelect.addEventListener("change", async function(){';
 echo '    const uf = this.value;';
-echo '    cidadeSelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
-echo '    if(uf && cidadesPorEstado[uf]){';
-echo '      cidadesPorEstado[uf].forEach(function(cidade){';
+echo '    cidadeSelect.innerHTML = "<option value=\\"\\">Carregando...</option>";';
+echo '    cidadeSelect.disabled = true;';
+echo '    if(!uf){';
+echo '      cidadeSelect.innerHTML = "<option value=\\"\\">Selecione o estado primeiro...</option>";';
+echo '      cidadeSelect.disabled = false;';
+echo '      return;';
+echo '    }';
+echo '    try{';
+echo '      const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
+echo '      const cidades = await response.json();';
+echo '      cidadeSelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
+echo '      cidades.forEach(function(cidade){';
 echo '        const opt = document.createElement("option");';
-echo '        opt.value = cidade;';
-echo '        opt.textContent = cidade;';
+echo '        opt.value = cidade.nome;';
+echo '        opt.textContent = cidade.nome;';
 echo '        cidadeSelect.appendChild(opt);';
 echo '      });';
+echo '      cidadeSelect.disabled = false;';
+echo '    }catch(err){';
+echo '      console.error("Erro ao buscar cidades:", err);';
+echo '      cidadeSelect.innerHTML = "<option value=\\"\\">Erro ao carregar cidades</option>";';
+echo '      cidadeSelect.disabled = false;';
 echo '    }';
 echo '  });';
 echo '}';

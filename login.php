@@ -415,7 +415,7 @@ function h(string $value): string {
                 </button>
 
                 <div class="foot">
-                    Não tem acesso? <a href="#" aria-disabled="true" onclick="return false;">Solicitar cadastro</a>
+                    Não tem acesso? <a href="/apply_professional.php">Cadastre-se como profissional</a>
                 </div>
             </form>
         </main>
