@@ -20,15 +20,12 @@ function view_header(string $title): void
         ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php'],
         ['title' => 'Pacientes', 'path' => '/patients_list.php'],
         ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional'],
-        ['title' => 'Financeiro', 'path' => '/finance_dashboard.php', 'submenu' => [
-            ['title' => 'Dashboard', 'path' => '/finance_dashboard.php'],
-            ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
-            ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
-        ]],
+        ['title' => 'Documentos', 'path' => '/documents_list.php'],
+        ['title' => 'Financeiro', 'path' => '/finance_dashboard.php'],
+        ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
+        ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
         ['title' => 'RH', 'path' => '/hr_employees_list.php'],
-        ['title' => 'WhatsApp', 'path' => '/whatsapp_hub.php', 'submenu' => [
-            ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
-        ]],
+        ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
         ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
         ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
         ['title' => 'Permissões', 'path' => '/permissions_list.php'],
@@ -93,6 +90,24 @@ function view_header(string $title): void
     echo '.notifBell svg{color:hsl(var(--foreground))}';
     echo '.notifBadge{position:absolute;top:4px;right:4px;background:hsl(var(--destructive));color:white;font-size:10px;font-weight:700;padding:2px 5px;border-radius:999px;min-width:16px;text-align:center}';
     echo '.notifDropdown{position:absolute;top:calc(100% + 8px);right:0;width:380px;max-height:500px;overflow-y:auto;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:12px;box-shadow:var(--shadow-elevated);display:none;z-index:50}';
+    echo '.pageHistoryModal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center}';
+    echo '.pageHistoryModal.show{display:flex}';
+    echo '.pageHistoryContent{background:hsl(var(--card));border-radius:16px;width:90%;max-width:900px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,.2)}';
+    echo '.pageHistoryHeader{padding:20px 24px;border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between}';
+    echo '.pageHistoryTitle{font-size:20px;font-weight:700;color:hsl(var(--foreground))}';
+    echo '.pageHistoryClose{width:32px;height:32px;border-radius:8px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:hsl(var(--muted-foreground));transition:background .2s}';
+    echo '.pageHistoryClose:hover{background:hsl(var(--accent))}';
+    echo '.pageHistoryBody{flex:1;overflow-y:auto;padding:20px 24px}';
+    echo '.historyItem{display:flex;gap:16px;padding:16px;border-bottom:1px solid hsl(var(--border));transition:background .2s}';
+    echo '.historyItem:hover{background:hsl(var(--accent)/.3)}';
+    echo '.historyAvatar{width:40px;height:40px;border-radius:50%;background:hsl(var(--primary));color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}';
+    echo '.historyContent{flex:1;min-width:0}';
+    echo '.historyUser{font-weight:600;font-size:14px;color:hsl(var(--foreground));margin-bottom:4px}';
+    echo '.historyAction{font-size:14px;color:hsl(var(--foreground));margin-bottom:4px}';
+    echo '.historyTime{font-size:12px;color:hsl(var(--muted-foreground))}';
+    echo '.historyPagination{padding:16px 24px;border-top:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between}';
+    echo '.historyEmpty{text-align:center;padding:60px 20px;color:hsl(var(--muted-foreground))}';
+    echo '.historyEmpty svg{width:80px;height:80px;margin-bottom:16px;opacity:.4}';
     echo '.notifDropdown.isOpen{display:block}';
     echo '.notifHeader{padding:14px 16px;border-bottom:1px solid hsl(var(--border));font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:space-between}';
     echo '.notifList{max-height:400px;overflow-y:auto}';
@@ -263,10 +278,11 @@ function view_header(string $title): void
             'Candidaturas' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
             'Pacientes' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
             'Profissionais' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>',
+            'Documentos' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
             'Financeiro' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
             'Dashboard' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-            'Contas a Receber' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
-            'Contas a Pagar' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+            'Contas a Receber' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+            'Contas a Pagar' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>',
             'RH' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>',
             'WhatsApp' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
             'Chat ao Vivo' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
@@ -277,51 +293,14 @@ function view_header(string $title): void
         ];
         
         foreach ($menuItems as $it) {
-            $hasSubmenu = isset($it['submenu']) && is_array($it['submenu']);
             $isActive = $path === $it['path'];
-            
-            // Verificar se algum item do submenu está ativo
-            $submenuActive = false;
-            if ($hasSubmenu) {
-                foreach ($it['submenu'] as $subItem) {
-                    if ($path === $subItem['path']) {
-                        $submenuActive = true;
-                        break;
-                    }
-                }
-            }
-            
-            $cls = 'navItem' . ($isActive || $submenuActive ? ' isActive' : '');
+            $cls = 'navItem' . ($isActive ? ' isActive' : '');
             $icon = isset($icons[$it['title']]) ? $icons[$it['title']] : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="2"/></svg>';
             
-            if ($hasSubmenu) {
-                echo '<div class="navItemWithSubmenu">';
-                echo '<a class="' . $cls . '" href="' . h($it['path']) . '" title="' . h($it['title']) . '">';
-                echo '<span class="navIcon" aria-hidden="true">' . $icon . '</span>';
-                echo '<span class="navText">' . h($it['title']) . '</span>';
-                echo '<span class="navChevron">▼</span>';
-                echo '</a>';
-                
-                echo '<div class="navSubmenu">';
-                foreach ($it['submenu'] as $subItem) {
-                    $subActive = $path === $subItem['path'];
-                    $subCls = 'navSubItem' . ($subActive ? ' isActive' : '');
-                    $subIcon = isset($icons[$subItem['title']]) ? $icons[$subItem['title']] : '';
-                    echo '<a class="' . $subCls . '" href="' . h($subItem['path']) . '">';
-                    if ($subIcon) {
-                        echo '<span class="navIcon" aria-hidden="true">' . $subIcon . '</span>';
-                    }
-                    echo '<span class="navText">' . h($subItem['title']) . '</span>';
-                    echo '</a>';
-                }
-                echo '</div>';
-                echo '</div>';
-            } else {
-                echo '<a class="' . $cls . '" href="' . h($it['path']) . '" title="' . h($it['title']) . '">';
-                echo '<span class="navIcon" aria-hidden="true">' . $icon . '</span>';
-                echo '<span class="navText">' . h($it['title']) . '</span>';
-                echo '</a>';
-            }
+            echo '<a class="' . $cls . '" href="' . h($it['path']) . '" title="' . h($it['title']) . '">';
+            echo '<span class="navIcon" aria-hidden="true">' . $icon . '</span>';
+            echo '<span class="navText">' . h($it['title']) . '</span>';
+            echo '</a>';
         }
         echo '</nav>';
 
@@ -346,33 +325,38 @@ function view_header(string $title): void
         echo '<div class="topbarTitle">' . h($title) . '</div>';
         echo '<div class="topbarActions">';
         
+        // Ícone de histórico da página
+        echo '<button class="notifBell" id="pageHistoryBtn" onclick="openPageHistory()" title="Histórico desta página">';
+        echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        echo '</button>';
+        
         // Buscar notificações não lidas
         $notifStmt = db()->prepare('SELECT COUNT(*) as count FROM notifications WHERE user_id = :uid AND is_read = 0');
         $notifStmt->execute(['uid' => $user['id']]);
         $notifCount = (int)$notifStmt->fetchColumn();
         
-        echo '<div class="notifBell" id="notifBell" style="position:relative;cursor:pointer">';
-        echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-        if ($notifCount > 0) {
-            echo '<span class="notifBadge">' . ($notifCount > 9 ? '9+' : $notifCount) . '</span>';
-        }
-        echo '</div>';
+        echo '<div class="notifBell" id="notifBell">';
+        echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>';
         
-        echo '<a class="btn" href="/logout.php">Sair</a>';
+        $unreadCount = 0;
+        if (isset($_SESSION['auth_user_id'])) {
+            $stmt = db()->prepare('SELECT COUNT(*) as cnt FROM notifications WHERE user_id = :uid AND is_read = 0');
+            $stmt->execute(['uid' => auth_user_id()]);
+            $row = $stmt->fetch();
+            $unreadCount = (int)($row['cnt'] ?? 0);
+        }
+        
+        if ($unreadCount > 0) {
+            echo '<span class="notifBadge">' . ($unreadCount > 99 ? '99+' : $unreadCount) . '</span>';
+        }
+        
+        echo '<div class="notifDropdown" id="notifDropdown">';
+        echo '<div style="padding:12px 16px;border-bottom:1px solid hsl(var(--border));font-weight:700;font-size:14px">Notificações</div>';
+        echo '<div id="notifList" style="max-height:400px;overflow-y:auto"></div>';
+        echo '<div style="padding:12px 16px;border-top:1px solid hsl(var(--border));text-align:center"><a href="/notifications_list.php" style="font-size:13px;color:hsl(var(--primary))">Ver todas</a></div>';
         echo '</div>';
-        echo '</header>';
-
-        echo '<main class="contentPad">';
-    } else {
-        echo '<header class="top">';
-        echo '<div class="brand">Multilife <span class="pill">Care</span></div>';
-        echo '<nav class="nav">';
-        echo '<a class="btn" href="/">Início</a>';
-        echo '<a class="btn btnPrimary" href="/login.php">Entrar</a>';
-        echo '</nav>';
-        echo '</header>';
-
-        echo '<main class="wrap">';
+        echo '</div>';
+        echo '</div>';n class="wrap">';
     }
 
     if ($flashError !== '') {
@@ -449,8 +433,77 @@ function view_footer(): void
         echo '});';
         echo '},30000);';
         echo '}';
+        
+        // JavaScript para modal de histórico de página
+        echo 'let currentHistoryPage=1;';
+        echo 'function openPageHistory(){';
+        echo '  const modal=document.getElementById("pageHistoryModal");';
+        echo '  modal.classList.add("show");';
+        echo '  currentHistoryPage=1;';
+        echo '  loadPageHistory(1);';
+        echo '}';
+        echo 'function closePageHistory(){';
+        echo '  document.getElementById("pageHistoryModal").classList.remove("show");';
+        echo '}';
+        echo 'function loadPageHistory(page){';
+        echo '  currentHistoryPage=page;';
+        echo '  const pageUrl=window.location.pathname;';
+        echo '  fetch("/page_history_get.php?page_url="+encodeURIComponent(pageUrl)+"&page="+page)';
+        echo '    .then(r=>r.json())';
+        echo '    .then(data=>{';
+        echo '      const body=document.getElementById("pageHistoryBody");';
+        echo '      if(data.items.length===0){';
+        echo '        body.innerHTML=\'<div class="historyEmpty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><p>Nenhum histórico registrado para esta página.</p></div>\';';
+        echo '        document.getElementById("pageHistoryPagination").style.display="none";';
+        echo '        return;';
+        echo '      }';
+        echo '      body.innerHTML="";';
+        echo '      data.items.forEach(item=>{';
+        echo '        const div=document.createElement("div");';
+        echo '        div.className="historyItem";';
+        echo '        div.innerHTML=`';
+        echo '          <div class="historyAvatar">${item.initials}</div>';
+        echo '          <div class="historyContent">';
+        echo '            <div class="historyUser">${item.user_name} <span style="color:hsl(var(--muted-foreground));font-weight:400">(${item.user_email})</span></div>';
+        echo '            <div class="historyAction">${item.action_description}</div>';
+        echo '            <div class="historyTime">${item.created_at}</div>';
+        echo '          </div>';
+        echo '        `;';
+        echo '        body.appendChild(div);';
+        echo '      });';
+        echo '      const pagination=document.getElementById("pageHistoryPagination");';
+        echo '      pagination.style.display="flex";';
+        echo '      document.getElementById("historyPageInfo").textContent=`Página ${data.current_page} de ${data.total_pages}`;';
+        echo '      document.getElementById("historyPrevBtn").disabled=data.current_page<=1;';
+        echo '      document.getElementById("historyNextBtn").disabled=data.current_page>=data.total_pages;';
+        echo '    });';
+        echo '}';
+        echo 'function prevHistoryPage(){';
+        echo '  if(currentHistoryPage>1)loadPageHistory(currentHistoryPage-1);';
+        echo '}';
+        echo 'function nextHistoryPage(){';
+        echo '  loadPageHistory(currentHistoryPage+1);';
+        echo '}';
         echo '</script>';
     }
+    
+    // Modal de histórico de página
+    echo '<div id="pageHistoryModal" class="pageHistoryModal" onclick="if(event.target===this)closePageHistory()">';
+    echo '<div class="pageHistoryContent">';
+    echo '<div class="pageHistoryHeader">';
+    echo '<div class="pageHistoryTitle">Histórico de Ações</div>';
+    echo '<button class="pageHistoryClose" onclick="closePageHistory()">';
+    echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    echo '</button>';
+    echo '</div>';
+    echo '<div class="pageHistoryBody" id="pageHistoryBody"></div>';
+    echo '<div class="historyPagination" id="pageHistoryPagination" style="display:none">';
+    echo '<button class="btn" id="historyPrevBtn" onclick="prevHistoryPage()">Anterior</button>';
+    echo '<span id="historyPageInfo"></span>';
+    echo '<button class="btn" id="historyNextBtn" onclick="nextHistoryPage()">Próxima</button>';
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
 
     echo '</body>';
     echo '</html>';

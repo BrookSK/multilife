@@ -39,6 +39,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/rbac.php';
 require_once __DIR__ . '/view.php';
 require_once __DIR__ . '/navigation.php';
+require_once __DIR__ . '/page_history.php';
 
 $sessionLifetime = (int)admin_setting_get('app.session_lifetime_seconds', (string)(int)$config['app']['session_lifetime_seconds']);
 if ($sessionLifetime <= 0) {
