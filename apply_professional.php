@@ -73,6 +73,7 @@ if ($flash) {
     echo '</div>';
 }
 
+echo '<!-- FORMULARIO INICIADO - PHP EXECUTANDO CORRETAMENTE -->';
 echo '<form method="post" action="/apply_professional_post.php" style="display:grid;gap:12px">';
 
 echo '<div class="grid">';
