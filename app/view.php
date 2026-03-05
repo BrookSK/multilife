@@ -92,9 +92,9 @@ function view_header(string $title): void
     echo '.alertError{background:hsla(var(--destructive)/.10);border-color:hsla(var(--destructive)/.20);color:hsl(var(--foreground))}';
     echo '.alertSuccess{background:hsla(var(--success)/.10);border-color:hsla(var(--success)/.20);color:hsl(var(--foreground))}';
     echo 'input,select,textarea{font-family:inherit}';
-    echo 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="date"],input[type="datetime-local"],select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--secondary)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
+    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--secondary)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
     echo 'textarea{min-height:96px;resize:vertical}';
-    echo 'input:focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
+    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
     echo '::placeholder{color:hsl(var(--muted-foreground))}';
 
     echo 'table{width:100%;border-collapse:separate;border-spacing:0}';
@@ -111,11 +111,34 @@ function view_header(string $title): void
 
     echo 'label{display:grid;gap:7px;font-size:13px;font-weight:600;color:hsl(var(--foreground))}';
     echo 'label[style]{display:grid !important;gap:7px !important;font-size:13px !important;font-weight:600 !important;color:hsl(var(--foreground)) !important}';
-    echo 'input[style],select[style],textarea[style]{border-radius:10px !important;border:1px solid hsl(var(--input)) !important;background:hsla(var(--secondary)/.50) !important;color:hsl(var(--foreground)) !important;padding:10px 12px !important;outline:none !important;font-size:14px !important;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease !important}';
-    echo 'input[style]:focus,select[style]:focus,textarea[style]:focus{background:hsl(var(--card)) !important;border-color:hsla(var(--ring)/.55) !important;box-shadow:0 0 0 4px hsla(var(--ring)/.15) !important}';
+    echo 'input[style]:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select[style],textarea[style]{border-radius:10px !important;border:1px solid hsl(var(--input)) !important;background:hsla(var(--secondary)/.50) !important;color:hsl(var(--foreground)) !important;padding:10px 12px !important;outline:none !important;font-size:14px !important;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease !important}';
+    echo 'input[style]:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,select[style]:focus,textarea[style]:focus{background:hsl(var(--card)) !important;border-color:hsla(var(--ring)/.55) !important;box-shadow:0 0 0 4px hsla(var(--ring)/.15) !important}';
+    
+    // Checkbox/Radio/File com style inline também
+    echo 'input[type="checkbox"][style],input[type="radio"][style]{appearance:none !important;-webkit-appearance:none !important;cursor:pointer !important;transition:all .15s ease !important}';
+    echo 'input[type="file"][style]{cursor:pointer !important;transition:all .15s ease !important}';
     echo 'textarea[style]{min-height:96px !important;resize:vertical !important}';
     echo 'input[readonly],select[disabled],textarea[readonly]{opacity:0.6;cursor:not-allowed}';
-    echo 'input[type="checkbox"],input[type="radio"]{width:auto;height:18px;cursor:pointer}';
+    
+    // Checkbox moderno
+    echo 'input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid hsl(var(--input));border-radius:4px;background:hsl(var(--card));cursor:pointer;position:relative;transition:all .15s ease;margin:0}';
+    echo 'input[type="checkbox"]:checked{background:hsl(var(--primary));border-color:hsl(var(--primary))}';
+    echo 'input[type="checkbox"]:checked::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid hsl(var(--primary-foreground));border-width:0 2px 2px 0;transform:rotate(45deg)}';
+    echo 'input[type="checkbox"]:focus{outline:none;box-shadow:0 0 0 3px hsla(var(--ring)/.15)}';
+    echo 'input[type="checkbox"]:hover:not(:disabled){border-color:hsl(var(--primary))}';
+    
+    // Radio moderno
+    echo 'input[type="radio"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid hsl(var(--input));border-radius:50%;background:hsl(var(--card));cursor:pointer;position:relative;transition:all .15s ease;margin:0}';
+    echo 'input[type="radio"]:checked{border-color:hsl(var(--primary));border-width:5px}';
+    echo 'input[type="radio"]:focus{outline:none;box-shadow:0 0 0 3px hsla(var(--ring)/.15)}';
+    echo 'input[type="radio"]:hover:not(:disabled){border-color:hsl(var(--primary))}';
+    
+    // File input moderno
+    echo 'input[type="file"]{padding:8px 12px;border:1px solid hsl(var(--input));border-radius:10px;background:hsl(var(--card));color:hsl(var(--foreground));font-size:14px;cursor:pointer;transition:all .15s ease}';
+    echo 'input[type="file"]:hover{border-color:hsl(var(--primary));background:hsla(var(--primary)/.05)}';
+    echo 'input[type="file"]:focus{outline:none;border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
+    echo 'input[type="file"]::file-selector-button{padding:6px 12px;margin-right:12px;border:none;border-radius:6px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-weight:600;font-size:13px;cursor:pointer;transition:background .15s ease}';
+    echo 'input[type="file"]::file-selector-button:hover{background:hsl(var(--primary-dark))}';
     echo 'form{display:grid;gap:14px}';
     echo 'form .grid{gap:14px}';
     echo 'fieldset{border:1px solid hsl(var(--border));border-radius:12px;padding:18px;margin:0}';

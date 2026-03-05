@@ -27,11 +27,32 @@ if ($isPublic) {
     echo 'html,body{height:100%}';
     echo 'body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;color:hsl(var(--foreground));background:hsl(var(--background));}';
     echo 'input,select,textarea{font-family:inherit}';
-    echo 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--muted)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
+    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea{width:100%;border-radius:10px;border:1px solid hsl(var(--input));background:hsla(var(--muted)/.50);color:hsl(var(--foreground));padding:10px 12px;outline:none;font-size:14px;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease}';
     echo 'textarea{min-height:96px;resize:vertical}';
-    echo 'input:focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
+    echo 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,select:focus,textarea:focus{background:hsl(var(--card));border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
     echo '::placeholder{color:hsl(var(--muted-foreground))}';
     echo 'label{display:grid;gap:7px;font-size:13px;font-weight:600;color:hsl(var(--foreground))}';
+    
+    // Checkbox moderno
+    echo 'input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid hsl(var(--input));border-radius:4px;background:hsl(var(--card));cursor:pointer;position:relative;transition:all .15s ease;margin:0}';
+    echo 'input[type="checkbox"]:checked{background:hsl(var(--primary));border-color:hsl(var(--primary))}';
+    echo 'input[type="checkbox"]:checked::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid hsl(var(--primary-foreground));border-width:0 2px 2px 0;transform:rotate(45deg)}';
+    echo 'input[type="checkbox"]:focus{outline:none;box-shadow:0 0 0 3px hsla(var(--ring)/.15)}';
+    echo 'input[type="checkbox"]:hover:not(:disabled){border-color:hsl(var(--primary))}';
+    
+    // Radio moderno
+    echo 'input[type="radio"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid hsl(var(--input));border-radius:50%;background:hsl(var(--card));cursor:pointer;position:relative;transition:all .15s ease;margin:0}';
+    echo 'input[type="radio"]:checked{border-color:hsl(var(--primary));border-width:5px}';
+    echo 'input[type="radio"]:focus{outline:none;box-shadow:0 0 0 3px hsla(var(--ring)/.15)}';
+    echo 'input[type="radio"]:hover:not(:disabled){border-color:hsl(var(--primary))}';
+    
+    // File input moderno
+    echo 'input[type="file"]{padding:8px 12px;border:1px solid hsl(var(--input));border-radius:10px;background:hsl(var(--card));color:hsl(var(--foreground));font-size:14px;cursor:pointer;transition:all .15s ease}';
+    echo 'input[type="file"]:hover{border-color:hsl(var(--primary));background:hsla(var(--primary)/.05)}';
+    echo 'input[type="file"]:focus{outline:none;border-color:hsla(var(--ring)/.55);box-shadow:0 0 0 4px hsla(var(--ring)/.15)}';
+    echo 'input[type="file"]::file-selector-button{padding:6px 12px;margin-right:12px;border:none;border-radius:6px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-weight:600;font-size:13px;cursor:pointer;transition:background .15s ease}';
+    echo 'input[type="file"]::file-selector-button:hover{background:hsl(var(--primary-dark))}';
+    
     echo 'form{display:grid;gap:14px}';
     echo '.formSection{padding:18px;border-radius:12px;background:hsla(var(--muted)/.25);border:1px solid hsl(var(--border));margin-bottom:14px}';
     echo '.formSectionTitle{font-size:15px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
@@ -106,7 +127,8 @@ echo '<label>UF de atuação<select name="operation_state" id="operation_state">
 echo '</div>';
 
 echo '<div class="col12">';
-echo '<label>Cidades de atuação (segure Ctrl para selecionar múltiplas)<select name="cities_of_operation[]" id="cities_of_operation" multiple size="8" style="height:auto"><option value="">Selecione o estado de atuação primeiro...</option></select></label>';
+echo '<label style="display:block;margin-bottom:8px">Cidades de atuação</label>';
+echo '<div id="cities_checkboxes" style="max-height:300px;overflow-y:auto;border:1px solid hsl(var(--border));border-radius:8px;padding:12px;background:hsl(var(--background))"><p style="color:hsl(var(--muted-foreground));font-size:14px">Selecione o estado de atuação primeiro...</p></div>';
 echo '</div>';
 
 echo '</div>';
@@ -162,11 +184,11 @@ echo '<label>Experiência em home care<textarea name="home_care_experience" rows
 
 echo '<div class="grid">';
 echo '<div class="col6"><label>Tempo de atuação<input name="years_of_experience" maxlength="40" placeholder="Ex: 5 anos"></label></div>';
-echo '<div class="col6"><label>Especializações (segure Ctrl para selecionar múltiplas)<select name="specializations[]" multiple size="6" style="height:auto"><option value="">Selecione...</option>';
-foreach ($specialties as $spec) {
-    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
-}
-echo '</select></label></div>';
+echo '<div class="col6">';
+echo '<label style="display:block;margin-bottom:8px">Especializações</label>';
+echo '<div id="specializations_container" style="display:flex;flex-direction:column;gap:8px"></div>';
+echo '<button type="button" id="add_specialization" class="btn" style="margin-top:8px;font-size:13px;padding:6px 12px">+ Adicionar Especialização</button>';
+echo '</div>';
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
@@ -218,10 +240,51 @@ echo '  ufSelect.addEventListener("change", function(){ loadCities(this.value, c
 echo '}';
 
 echo 'const operationUfSelect = document.getElementById("operation_state");';
-echo 'const operationCitiesSelect = document.getElementById("cities_of_operation");';
-echo 'if(operationUfSelect && operationCitiesSelect){';
-echo '  operationUfSelect.addEventListener("change", function(){ loadCities(this.value, operationCitiesSelect, "Selecione as cidades..."); });';
+echo 'const citiesCheckboxesContainer = document.getElementById("cities_checkboxes");';
+echo 'if(operationUfSelect && citiesCheckboxesContainer){';
+echo '  operationUfSelect.addEventListener("change", async function(){';
+echo '    const uf = this.value;';
+echo '    citiesCheckboxesContainer.innerHTML = "<p style=\\"color:hsl(var(--muted-foreground));font-size:14px\\">Carregando...</p>";';
+echo '    if(!uf){';
+echo '      citiesCheckboxesContainer.innerHTML = "<p style=\\"color:hsl(var(--muted-foreground));font-size:14px\\">Selecione o estado de atuação primeiro...</p>";';
+echo '      return;';
+echo '    }';
+echo '    try{';
+echo '      const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
+echo '      const cidades = await response.json();';
+echo '      let html = "<div style=\\"display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px\\">";';
+echo '      cidades.forEach(function(cidade){';
+echo '        html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px"><input type="checkbox" name="cities_of_operation[]" value="${cidade.nome}" style="cursor:pointer"><span style="font-size:14px">${cidade.nome}</span></label>`;';
+echo '      });';
+echo '      html += "</div>";';
+echo '      citiesCheckboxesContainer.innerHTML = html;';
+echo '    }catch(err){';
+echo '      console.error("Erro ao buscar cidades:", err);';
+echo '      citiesCheckboxesContainer.innerHTML = "<p style=\\"color:hsl(0,84%,60%);font-size:14px\\">Erro ao carregar cidades</p>";';
+echo '    }';
+echo '  });';
 echo '}';
+echo '';
+echo '// Especializações dinâmicas';
+echo 'const specializationsContainer = document.getElementById("specializations_container");';
+echo 'const addSpecializationBtn = document.getElementById("add_specialization");';
+echo 'let specCount = 0;';
+echo '';
+echo 'function addSpecializationField(value = "") {';
+echo '  const div = document.createElement("div");';
+echo '  div.style.display = "flex";';
+echo '  div.style.gap = "8px";';
+echo '  div.style.alignItems = "center";';
+echo '  div.innerHTML = `<input type="text" name="specializations[]" value="${value}" maxlength="120" placeholder="Ex: Fisioterapia" style="flex:1"><button type="button" class="remove-spec" style="padding:6px 12px;background:hsl(0,84%,60%);color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">×</button>`;';
+echo '  specializationsContainer.appendChild(div);';
+echo '  div.querySelector(".remove-spec").addEventListener("click", function(){ div.remove(); });';
+echo '  specCount++;';
+echo '}';
+echo '';
+echo '// Adicionar primeira linha';
+echo 'addSpecializationField();';
+echo '';
+echo 'addSpecializationBtn.addEventListener("click", function(){ addSpecializationField(); });';
 echo '</script>';
 
 if ($isPublic) {
