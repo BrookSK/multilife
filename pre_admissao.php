@@ -70,19 +70,21 @@ echo '.paSearch input{padding-left:36px}';
 echo '.paList{display:flex;flex-direction:column;gap:12px}';
 echo '.paCard{border:1px solid hsl(var(--border));box-shadow:var(--shadow-card);border-radius:calc(var(--radius) + 6px);background:hsl(var(--card));transition:box-shadow .15s ease;cursor:pointer;overflow:hidden}';
 echo '.paCard:hover{box-shadow:var(--shadow-card-hover)}';
-echo '.paCardBody{padding:20px 16px 24px}';
+echo '.paCardBody{padding:18px 20px 22px}';
 echo '.paTop{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}';
 echo '.paTitle{font-weight:900;color:hsl(var(--foreground))}';
 echo '.paSub{margin-top:4px;color:hsl(var(--muted-foreground));font-size:13px}';
-echo '.paStepsRow{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;position:relative}';
-echo '.paStep{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;position:relative;z-index:2}';
-echo '.paStepDot{width:36px;height:36px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;border:2px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--muted-foreground))}';  
+echo '.paStepsContainer{margin-top:16px}';
+echo '.paStepsRow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:10px}';
+echo '.paStep{display:flex;flex-direction:column;align-items:center;justify-content:flex-start}';
+echo '.paStepDot{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;border:2px solid hsl(var(--border));background:hsl(var(--card));color:hsl(var(--muted-foreground));margin:0 auto}';
 echo '.paStepDot.isDone{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(var(--primary-foreground))}';
 echo '.paStepDot.isProgress{background:hsla(var(--info)/.12);border-color:hsla(var(--info)/.25);color:hsl(var(--info))}';
 echo '.paStepDot.isPending{background:hsla(var(--warning)/.12);border-color:hsla(var(--warning)/.25);color:hsl(var(--warning))}';
-echo '.paStepLabel{margin-top:8px;text-align:center;font-size:11px;line-height:1.3;color:hsl(var(--muted-foreground));min-height:28px;display:flex;align-items:center;justify-content:center}';
-echo '.paConnectors{display:flex;align-items:center;position:absolute;top:18px;left:0;right:0;padding:0 calc(50% / 4);z-index:1;pointer-events:none}';
-echo '.paConn{flex:1;height:2px;background:hsl(var(--border))}';  
+echo '.paStepLabel{margin-top:8px;text-align:center;font-size:10px;line-height:1.3;color:hsl(var(--muted-foreground));word-wrap:break-word;max-width:100%}';
+echo '.paConnectors{display:grid;grid-template-columns:1fr 2fr 1fr 2fr 1fr 2fr 1fr;align-items:center;margin-bottom:10px;padding:0 10px}';
+echo '.paConnSpacer{width:40px}';
+echo '.paConn{height:2px;background:hsl(var(--border))}';  
 echo '.paConn.isDone{background:hsl(var(--primary))}';
 
 echo '.drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:60;display:none}';
@@ -197,18 +199,21 @@ foreach ($rows as $r) {
     echo '<div style="font-size:12px;font-weight:900;color:hsl(var(--muted-foreground))">' . $completed . '/4 etapas</div>';
     echo '</div>';
 
-    echo '<div class="paStepsRow">';
+    echo '<div class="paStepsContainer">';
     
     echo '<div class="paConnectors">';
+    echo '<div class="paConnSpacer"></div>';
     for ($i = 0; $i < 3; $i++) {
         $c = 'paConn';
         if ((string)$stArr[$i] === 'done') {
             $c .= ' isDone';
         }
         echo '<div class="' . h($c) . '"></div>';
+        echo '<div class="paConnSpacer"></div>';
     }
     echo '</div>';
     
+    echo '<div class="paStepsRow">';
     for ($i = 0; $i < 4; $i++) {
         $st = (string)$stArr[$i];
         $cls = 'paStepDot';
@@ -225,6 +230,8 @@ foreach ($rows as $r) {
         echo '<div class="paStepLabel">' . h((string)$steps[$i]['label']) . '</div>';
         echo '</div>';
     }
+    echo '</div>';
+    
     echo '</div>';
 
     echo '</div>';
