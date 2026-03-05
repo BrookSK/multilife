@@ -9,6 +9,8 @@ if ($limit <= 0 || $limit > 100) {
     $limit = 10;
 }
 
+$debug = isset($_GET['debug']) && ((string)$_GET['debug'] === '1' || strtolower((string)$_GET['debug']) === 'true');
+
 $db = db();
 
 $colsStmt = $db->prepare('SHOW COLUMNS FROM inbound_emails');
@@ -88,6 +90,7 @@ $insDemandLog = $db->prepare(
 $ok = 0;
 $manual = 0;
 $errors = 0;
+$errorLines = [];
 
 foreach ($emails as $e) {
     $id = (int)$e['id'];
@@ -134,6 +137,23 @@ foreach ($emails as $e) {
             null,
             ['temperature' => 0.2]
         );
+
+        $statusCode = (int)($res['status'] ?? 0);
+        if ($statusCode < 200 || $statusCode >= 300) {
+            $msg = '';
+            $json = $res['json'] ?? null;
+            if (is_array($json)) {
+                $msg = (string)($json['error']['message'] ?? '');
+            }
+            if ($msg === '') {
+                $msg = (string)($res['body_raw'] ?? '');
+            }
+            $msg = trim($msg);
+            if ($msg === '') {
+                $msg = 'HTTP ' . (string)$statusCode;
+            }
+            throw new RuntimeException('OpenAI error: ' . $msg);
+        }
 
         $json = $res['json'] ?? null;
         $raw = '';
@@ -225,12 +245,24 @@ foreach ($emails as $e) {
         }
     } catch (Throwable $ex) {
         $errors++;
+        $errMsg = (string)$ex->getMessage();
         $updErr->execute([
-            'err' => mb_strimwidth((string)$ex->getMessage(), 0, 250, '...'),
+            'err' => mb_strimwidth($errMsg, 0, 250, '...'),
             'pa' => date('Y-m-d H:i:s'),
             'id' => $id,
         ]);
+
+        if ($debug) {
+            $errorLines[] = 'EMAIL #' . (string)$id . ': ' . $errMsg;
+        }
     }
 }
 
 echo 'OK: created=' . ($ok + $manual) . ' manual=' . $manual . ' errors=' . $errors . "\n";
+
+if ($debug && count($errorLines) > 0) {
+    echo "\n";
+    foreach ($errorLines as $l) {
+        echo $l . "\n";
+    }
+}
