@@ -27,25 +27,34 @@ $error = null;
 
 // Primeiro, verificar se a instância existe
 $instanceExists = false;
+$debugInfo = [];
 try {
     $fetchRes = $api->fetchInstances($instance);
+    $debugInfo[] = 'fetchInstances executado - Status: ' . ($fetchRes['status'] ?? 'N/A');
     if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
         $instanceExists = true;
+        $debugInfo[] = 'Instância encontrada: SIM';
+    } else {
+        $debugInfo[] = 'Instância encontrada: NÃO';
     }
 } catch (Throwable $e) {
     // Instância não existe ou erro ao buscar
     $instanceExists = false;
+    $debugInfo[] = 'Erro ao buscar instância: ' . $e->getMessage();
 }
 
 // Se não existe, criar a instância automaticamente
 if (!$instanceExists) {
+    $debugInfo[] = 'Tentando criar instância automaticamente...';
     try {
         // Payload mínimo conforme documentação
         $createPayload = [
             'instanceName' => $instance,
             'qrcode' => true,
         ];
+        $debugInfo[] = 'Payload: ' . json_encode($createPayload);
         $createRes = $api->createInstanceBasic($createPayload);
+        $debugInfo[] = 'createInstanceBasic executado - Status: ' . ($createRes['status'] ?? 'N/A');
         
         if (isset($createRes['status']) && $createRes['status'] >= 200 && $createRes['status'] < 300) {
             // Aguardar criação
@@ -158,6 +167,18 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
 view_header('Instâncias WhatsApp');
 
 echo '<div class="grid">';
+
+// Mostrar debug info
+if (!empty($debugInfo)) {
+    echo '<section class="card col12">';
+    echo '<div style="font-weight:700;margin-bottom:10px;color:hsl(var(--primary))">🔍 Debug - Processo de Verificação/Criação</div>';
+    echo '<div style="background:#f5f5f5;padding:12px;border-radius:8px;font-family:monospace;font-size:12px">';
+    foreach ($debugInfo as $info) {
+        echo '<div style="margin-bottom:4px">• ' . h($info) . '</div>';
+    }
+    echo '</div>';
+    echo '</section>';
+}
 
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
