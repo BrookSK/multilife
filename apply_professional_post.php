@@ -29,6 +29,15 @@ if ($stmt->fetch()) {
     exit;
 }
 
+// Evita duplicidade de candidaturas
+$stmt = db()->prepare('SELECT id FROM professional_applications WHERE email = :email LIMIT 1');
+$stmt->execute(['email' => $email]);
+if ($stmt->fetch()) {
+    flash_set('error', 'Já existe uma candidatura com esse e-mail. Aguarde a avaliação.');
+    header('Location: /apply_professional.php');
+    exit;
+}
+
 $state1 = strtoupper(trim((string)($_POST['address_state'] ?? '')));
 $state2 = strtoupper(trim((string)($_POST['council_state'] ?? '')));
 
@@ -85,8 +94,14 @@ foreach ($fields as $f) {
     }
 }
 
-$stmt->execute($params);
-
-flash_set('success', 'Candidatura enviada com sucesso. Aguarde avaliação.');
-header('Location: /login.php');
-exit;
+try {
+    $stmt->execute($params);
+    flash_set('success', 'Candidatura enviada com sucesso! Aguarde a avaliação da nossa equipe.');
+    header('Location: /login.php');
+    exit;
+} catch (Exception $e) {
+    error_log('Erro ao inserir candidatura: ' . $e->getMessage());
+    flash_set('error', 'Erro ao enviar candidatura. Por favor, tente novamente ou entre em contato com o suporte.');
+    header('Location: /apply_professional.php');
+    exit;
+}
