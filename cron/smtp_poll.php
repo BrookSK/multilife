@@ -13,6 +13,14 @@ if (!function_exists('imap_open')) {
     exit;
 }
 
+@set_time_limit(25);
+if (function_exists('imap_timeout')) {
+    @imap_timeout(IMAP_OPENTIMEOUT, 10);
+    @imap_timeout(IMAP_READTIMEOUT, 10);
+    @imap_timeout(IMAP_WRITETIMEOUT, 10);
+    @imap_timeout(IMAP_CLOSETIMEOUT, 5);
+}
+
 $host = trim((string)admin_setting_get('smtp.in.host', ''));
 $port = (int)admin_setting_get('smtp.in.port', '993');
 $enc = strtolower(trim((string)admin_setting_get('smtp.in.encryption', 'ssl')));
@@ -51,7 +59,7 @@ if (count($flags) > 0) {
 
 $mboxStr = '{' . $host . ':' . $port . '/imap' . $flagsStr . '}' . $mailbox;
 
-$imap = @imap_open($mboxStr, $user, $pass);
+$imap = @imap_open($mboxStr, $user, $pass, 0, 1);
 if (!$imap) {
     http_response_code(500);
     $err = imap_last_error();
