@@ -54,10 +54,10 @@ function view_header(string $title): void
     echo '.logoText{font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
     echo '.logoText em{font-style:normal;color:hsl(var(--primary))}';
     echo '.sidebarNav{flex:1 1 auto;overflow:auto;padding:14px 12px;display:flex;flex-direction:column;gap:6px}';
-    echo '.navItem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;font-size:13px;font-weight:600;color:hsl(var(--muted-foreground));transition:background .15s ease,color .15s ease}';
+    echo '.navItem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;font-size:15px;font-weight:600;color:hsl(var(--muted-foreground));transition:background .15s ease,color .15s ease}';
     echo '.navItem:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));text-decoration:none}';
     echo '.navItem.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 1px 2px rgba(0,0,0,.06)}';
-    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:hsl(var(--primary));flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700}';
+    echo '.navIcon{width:22px;height:22px;border-radius:6px;background:hsl(var(--primary));flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700}';
     echo '.sidebarUser{border-top:1px solid hsl(var(--border));padding:12px;flex:0 0 auto}';
     echo '.userRow{display:flex;align-items:center;gap:12px}';
     echo '.avatar{width:36px;height:36px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:center;color:hsl(var(--foreground));font-weight:800;font-size:12px;flex:0 0 auto}';
@@ -73,6 +73,21 @@ function view_header(string $title): void
     echo '.topbar{position:sticky;top:0;z-index:30;height:64px;background:hsl(var(--card));border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between;padding:0 24px}';
     echo '.topbarTitle{font-size:16px;font-weight:800;color:hsl(var(--foreground))}';
     echo '.topbarActions{display:flex;align-items:center;gap:14px}';
+    echo '.notifBell{position:relative;padding:8px;border-radius:8px;transition:background .15s ease}';
+    echo '.notifBell:hover{background:hsl(var(--accent))}';
+    echo '.notifBell svg{color:hsl(var(--foreground))}';
+    echo '.notifBadge{position:absolute;top:4px;right:4px;background:hsl(var(--destructive));color:white;font-size:10px;font-weight:700;padding:2px 5px;border-radius:999px;min-width:16px;text-align:center}';
+    echo '.notifDropdown{position:absolute;top:calc(100% + 8px);right:0;width:380px;max-height:500px;overflow-y:auto;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:12px;box-shadow:var(--shadow-elevated);display:none;z-index:50}';
+    echo '.notifDropdown.isOpen{display:block}';
+    echo '.notifHeader{padding:14px 16px;border-bottom:1px solid hsl(var(--border));font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:space-between}';
+    echo '.notifList{max-height:400px;overflow-y:auto}';
+    echo '.notifItem{padding:12px 16px;border-bottom:1px solid hsl(var(--border));cursor:pointer;transition:background .15s ease}';
+    echo '.notifItem:hover{background:hsl(var(--accent))}';
+    echo '.notifItem.unread{background:hsla(var(--primary)/.05)}';
+    echo '.notifTitle{font-weight:600;font-size:13px;margin-bottom:4px;color:hsl(var(--foreground))}';
+    echo '.notifMessage{font-size:12px;color:hsl(var(--muted-foreground));line-height:1.4}';
+    echo '.notifTime{font-size:11px;color:hsl(var(--muted-foreground));margin-top:4px}';
+    echo '.notifEmpty{padding:40px 16px;text-align:center;color:hsl(var(--muted-foreground));font-size:13px}';
     echo '.notifDot{width:8px;height:8px;border-radius:999px;background:hsl(var(--destructive));display:inline-block;margin-left:-6px;margin-top:-10px}';
     echo '.contentPad{padding:24px}';
     echo '.top{max-width:1100px;margin:0 auto;padding:18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative;z-index:1}';
@@ -227,20 +242,20 @@ function view_header(string $title): void
         echo '<nav class="sidebarNav">';
         
         $icons = [
-            'Dashboard' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-            'Captação' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>',
-            'Pré-admissão' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
-            'Candidaturas' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
-            'Pacientes' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
-            'Profissionais' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>',
-            'Financeiro' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
-            'RH' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>',
-            'Comunicação' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
-            'WhatsApp' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
-            'Pendências' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-            'Integrações' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>',
-            'Permissões' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
-            'Configurações' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
+            'Dashboard' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+            'Captação' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>',
+            'Pré-admissão' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+            'Candidaturas' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
+            'Pacientes' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+            'Profissionais' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>',
+            'Financeiro' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+            'RH' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>',
+            'Comunicação' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+            'WhatsApp' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
+            'Pendências' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+            'Integrações' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>',
+            'Permissões' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
+            'Configurações' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
         ];
         
         foreach ($menuItems as $it) {
@@ -274,6 +289,19 @@ function view_header(string $title): void
         echo '<header class="topbar">';
         echo '<div class="topbarTitle">' . h($title) . '</div>';
         echo '<div class="topbarActions">';
+        
+        // Buscar notificações não lidas
+        $notifStmt = db()->prepare('SELECT COUNT(*) as count FROM notifications WHERE user_id = :uid AND is_read = 0');
+        $notifStmt->execute(['uid' => $user['id']]);
+        $notifCount = (int)$notifStmt->fetchColumn();
+        
+        echo '<div class="notifBell" id="notifBell" style="position:relative;cursor:pointer">';
+        echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        if ($notifCount > 0) {
+            echo '<span class="notifBadge">' . ($notifCount > 9 ? '9+' : $notifCount) . '</span>';
+        }
+        echo '</div>';
+        
         echo '<a class="btn" href="/logout.php">Sair</a>';
         echo '</div>';
         echo '</header>';
@@ -305,10 +333,66 @@ function view_footer(): void
     echo '</main>';
 
     if ($user !== null) {
+        // Dropdown de notificações
+        echo '<div class="notifDropdown" id="notifDropdown">';
+        echo '<div class="notifHeader">';
+        echo '<span>Notificações</span>';
+        echo '<a href="#" onclick="markAllAsRead(); return false;" style="font-size:12px;font-weight:400;color:hsl(var(--primary))">Marcar todas como lidas</a>';
+        echo '</div>';
+        echo '<div class="notifList" id="notifList">';
+        echo '<div class="notifEmpty">Carregando...</div>';
+        echo '</div>';
+        echo '</div>';
+        
         echo '</div>';
         echo '</div>';
         echo '<script>';
         echo '(function(){try{var sb=document.getElementById("appSidebar");var mc=document.getElementById("mainCol");var btn=document.getElementById("sidebarCollapse");if(!sb||!mc||!btn)return;var k="ml_sidebar_collapsed";var set=function(v){if(v){sb.classList.add("isCollapsed");mc.classList.add("isCollapsed");}else{sb.classList.remove("isCollapsed");mc.classList.remove("isCollapsed");}};set(localStorage.getItem(k)==="1");btn.addEventListener("click",function(){var next=!sb.classList.contains("isCollapsed");set(next);localStorage.setItem(k,next?"1":"0");});}catch(e){}})();';
+        
+        // JavaScript de notificações
+        echo 'const notifBell=document.getElementById("notifBell");';
+        echo 'const notifDropdown=document.getElementById("notifDropdown");';
+        echo 'let notifOpen=false;';
+        echo 'if(notifBell){';
+        echo 'notifBell.addEventListener("click",function(e){';
+        echo 'e.stopPropagation();notifOpen=!notifOpen;';
+        echo 'if(notifOpen){notifDropdown.classList.add("isOpen");loadNotifications();}';
+        echo 'else{notifDropdown.classList.remove("isOpen");}';
+        echo '});';
+        echo 'document.addEventListener("click",function(e){';
+        echo 'if(!notifDropdown.contains(e.target)&&!notifBell.contains(e.target)){';
+        echo 'notifDropdown.classList.remove("isOpen");notifOpen=false;}';
+        echo '});';
+        echo 'function loadNotifications(){';
+        echo 'fetch("/notifications_get.php").then(r=>r.json()).then(data=>{';
+        echo 'const list=document.getElementById("notifList");';
+        echo 'if(data.notifications.length===0){list.innerHTML="<div class=\\"notifEmpty\\">Nenhuma notificação</div>";return;}';
+        echo 'list.innerHTML="";';
+        echo 'data.notifications.forEach(n=>{';
+        echo 'const item=document.createElement("div");';
+        echo 'item.className="notifItem"+(n.is_read?"":" unread");';
+        echo 'item.innerHTML=`<div class="notifTitle">${n.title}</div><div class="notifMessage">${n.message}</div><div class="notifTime">${n.created_at}</div>`;';
+        echo 'item.addEventListener("click",function(){markAsRead(n.id);if(n.link)window.location.href=n.link;});';
+        echo 'list.appendChild(item);';
+        echo '});';
+        echo '});';
+        echo '}';
+        echo 'function markAsRead(id){';
+        echo 'fetch("/notifications_mark_read.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(()=>location.reload());';
+        echo '}';
+        echo 'function markAllAsRead(){';
+        echo 'fetch("/notifications_mark_all_read.php",{method:"POST"}).then(()=>location.reload());';
+        echo '}';
+        echo 'setInterval(function(){';
+        echo 'fetch("/notifications_count.php").then(r=>r.json()).then(data=>{';
+        echo 'const badge=document.querySelector(".notifBadge");';
+        echo 'if(data.count>0){';
+        echo 'if(!badge){const newBadge=document.createElement("span");newBadge.className="notifBadge";newBadge.textContent=data.count>9?"9+":data.count;notifBell.appendChild(newBadge);}';
+        echo 'else{badge.textContent=data.count>9?"9+":data.count;}';
+        echo '}else if(badge){badge.remove();}';
+        echo '});';
+        echo '},30000);';
+        echo '}';
         echo '</script>';
     }
 

@@ -328,16 +328,31 @@ function h(string $value): string {
     <div class="wrap">
         <section class="brand" aria-label="Boas-vindas">
             <div class="logo">
-                <div class="mark" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2l8.5 5v10L12 22 3.5 17V7L12 2Z" stroke="currentColor" stroke-width="2"/>
-                        <path d="M7.5 9.5L12 12l4.5-2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </div>
-                <div>
-                    <div style="font-size:14px; opacity:.95;">Multilife</div>
-                    <div style="font-size:12px; color: hsl(var(--muted-foreground));">Acesso ao painel</div>
-                </div>
+                <?php
+                // Buscar logo configurada
+                $logoUrl = '';
+                try {
+                    require_once __DIR__ . '/app/bootstrap.php';
+                    $logoUrl = admin_setting_get('app.logo_url');
+                } catch (Exception $e) {
+                    // Ignorar erro se não conseguir carregar
+                }
+                
+                if (!empty($logoUrl)):
+                ?>
+                    <img src="<?= h($logoUrl) ?>" alt="Logo" style="max-height:60px;max-width:100%;object-fit:contain">
+                <?php else: ?>
+                    <div class="mark" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2l8.5 5v10L12 22 3.5 17V7L12 2Z" stroke="currentColor" stroke-width="2"/>
+                            <path d="M7.5 9.5L12 12l4.5-2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div style="font-size:14px; opacity:.95;">Multilife</div>
+                        <div style="font-size:12px; color: hsl(var(--muted-foreground));">Acesso ao painel</div>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <h1>Faça login para continuar</h1>
