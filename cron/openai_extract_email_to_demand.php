@@ -229,17 +229,19 @@ foreach ($emails as $e) {
             . "{\"description\":string,\"ai_summary\":string}\n\n"
             . "Campos:\n"
             . "- description: Descrição completa e detalhada extraída do e-mail (todos os detalhes relevantes)\n"
-            . "- ai_summary: Resumo executivo em 2-4 frases, focado na necessidade do paciente e ação necessária\n\n"
+            . "- ai_summary: Resumo executivo ESTRUTURADO EM PARÁGRAFOS, focado nas características do atendimento\n\n"
             . "Regras para description:\n"
             . "- Incluir TODOS os detalhes médicos relevantes\n"
             . "- Incluir dados do paciente (nome, idade, diagnóstico)\n"
             . "- Incluir serviços solicitados e frequência\n"
             . "- Manter formatação clara e profissional\n\n"
-            . "Regras para ai_summary:\n"
-            . "- Ser objetivo e direto\n"
-            . "- Focar na necessidade principal\n"
-            . "- Incluir urgência se mencionada\n"
-            . "- Máximo 4 frases\n\n"
+            . "Regras para ai_summary (MUITO IMPORTANTE):\n"
+            . "- ESTRUTURAR EM PARÁGRAFOS separados por quebras de linha (\\n\\n)\n"
+            . "- Parágrafo 1: Dados do paciente (nome, idade, diagnóstico principal)\n"
+            . "- Parágrafo 2: Necessidade/serviço solicitado e frequência\n"
+            . "- Parágrafo 3: Valor e urgência (se houver)\n"
+            . "- Ser objetivo e pontual em cada parágrafo\n"
+            . "- Facilitar identificação rápida das características\n\n"
             . "Responda SOMENTE com JSON válido";
 
         $userPrompt2 = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . $content;
@@ -303,6 +305,13 @@ foreach ($emails as $e) {
         // Extrair descrição e resumo
         $desc = trim((string)($parsed2['description'] ?? ''));
         $aiSummary = trim((string)($parsed2['ai_summary'] ?? ''));
+        
+        // Adicionar corpo do e-mail original completo abaixo do resumo
+        if ($desc !== '') {
+            $desc .= "\n\n--- E-MAIL ORIGINAL ---\n\n" . $content;
+        } else {
+            $desc = $content;
+        }
 
         // Validações e defaults
         if ($title === '') {
