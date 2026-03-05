@@ -181,7 +181,24 @@ try {
             $messageId = 'uid-' . (string)$uid . '-' . (string)time();
         }
 
-        $subjectUtf8 = $subject !== '' ? (string)imap_utf8($subject) : '';
+        // Decodificar subject corretamente (MIME encoded headers)
+        $subjectUtf8 = '';
+        if ($subject !== '') {
+            $decoded = imap_mime_header_decode($subject);
+            if (is_array($decoded)) {
+                foreach ($decoded as $part) {
+                    $charset = isset($part->charset) ? (string)$part->charset : 'default';
+                    $text = isset($part->text) ? (string)$part->text : '';
+                    if ($charset !== 'default' && $charset !== 'us-ascii') {
+                        $subjectUtf8 .= mb_convert_encoding($text, 'UTF-8', $charset);
+                    } else {
+                        $subjectUtf8 .= $text;
+                    }
+                }
+            } else {
+                $subjectUtf8 = (string)imap_utf8($subject);
+            }
+        }
 
         $receivedAt = null;
         if ($dateRaw !== '') {
