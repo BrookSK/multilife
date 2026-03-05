@@ -57,7 +57,7 @@ function view_header(string $title): void
     echo '.navItem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;font-size:13px;font-weight:600;color:hsl(var(--muted-foreground));transition:background .15s ease,color .15s ease}';
     echo '.navItem:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));text-decoration:none}';
     echo '.navItem.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 1px 2px rgba(0,0,0,.06)}';
-    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:hsl(var(--primary));flex:0 0 auto}';
+    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:hsl(var(--primary));flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700}';
     echo '.sidebarUser{border-top:1px solid hsl(var(--border));padding:12px;flex:0 0 auto}';
     echo '.userRow{display:flex;align-items:center;gap:12px}';
     echo '.avatar{width:36px;height:36px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:center;color:hsl(var(--foreground));font-weight:800;font-size:12px;flex:0 0 auto}';
@@ -84,7 +84,7 @@ function view_header(string $title): void
     echo '.btn:active{transform:translateY(1px)}';
     echo '.btnPrimary{border-color:transparent;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}';
     echo '.btnPrimary:hover{background:hsl(var(--primary-dark))}';
-    echo '.wrap{max-width:1100px;margin:0 auto;padding:0 16px 26px;position:relative;z-index:1}';
+    echo '.wrap{margin:0 auto;padding:0 16px 26px;position:relative;z-index:1}';
     echo '.card{background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:var(--shadow-elevated);border-radius:calc(var(--radius) + 6px);padding:18px;color:hsl(var(--card-foreground))}';
     echo '.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}';
     echo '.col6{grid-column:span 6} .col12{grid-column:span 12}';
@@ -218,11 +218,30 @@ function view_header(string $title): void
         echo '</div>';
 
         echo '<nav class="sidebarNav">';
+        
+        $icons = [
+            'Dashboard' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+            'Captação' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>',
+            'Pré-admissão' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+            'Candidaturas' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
+            'Pacientes' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+            'Profissionais' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>',
+            'Financeiro' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+            'RH' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>',
+            'Comunicação' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+            'WhatsApp' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
+            'Pendências' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+            'Integrações' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>',
+            'Permissões' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>',
+            'Configurações' => '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
+        ];
+        
         foreach ($menuItems as $it) {
             $isActive = $path === $it['path'];
             $cls = 'navItem' . ($isActive ? ' isActive' : '');
+            $icon = isset($icons[$it['title']]) ? $icons[$it['title']] : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="2"/></svg>';
             echo '<a class="' . $cls . '" href="' . h($it['path']) . '" title="' . h($it['title']) . '">';
-            echo '<span class="navIcon" aria-hidden="true"></span>';
+            echo '<span class="navIcon" aria-hidden="true">' . $icon . '</span>';
             echo '<span class="navText">' . h($it['title']) . '</span>';
             echo '</a>';
         }
