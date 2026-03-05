@@ -38,10 +38,17 @@ if ($kind === 'patient') {
 }
 
 if ($kind === 'professional') {
-    $stmt = db()->prepare('SELECT id FROM professional_applications WHERE id = :id');
+    $stmt = db()->prepare(
+        "SELECT u.id\n"
+        . "FROM users u\n"
+        . "INNER JOIN user_roles ur ON ur.user_id = u.id\n"
+        . "INNER JOIN roles r ON r.id = ur.role_id\n"
+        . "WHERE u.id = :id AND u.status='active' AND r.slug='profissional'\n"
+        . "LIMIT 1"
+    );
     $stmt->execute(['id' => $refId]);
     if (!$stmt->fetch()) {
-        flash_set('error', 'Candidatura não encontrada.');
+        flash_set('error', 'Profissional não encontrado.');
         header('Location: /chat_web.php?id=' . $id);
         exit;
     }

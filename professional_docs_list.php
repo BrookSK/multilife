@@ -15,9 +15,11 @@ if (!in_array($status, $allowed, true)) {
     $status = '';
 }
 
-$sql = 'SELECT id, patient_ref, sessions_count, status, due_at, submitted_at, created_at
-        FROM professional_documentations
-        WHERE professional_user_id = :uid';
+$sql = 'SELECT d.id, d.patient_id, d.patient_ref, d.sessions_count, d.status, d.due_at, d.submitted_at, d.created_at,
+               p.full_name AS patient_name
+        FROM professional_documentations d
+        LEFT JOIN patients p ON p.id = d.patient_id
+        WHERE d.professional_user_id = :uid';
 $params = ['uid' => $uid];
 
 if ($status !== '') {
@@ -75,7 +77,8 @@ echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';
     echo '<td>' . (int)$r['id'] . '</td>';
-    echo '<td style="font-weight:700">' . h((string)$r['patient_ref']) . '</td>';
+    $pt = $r['patient_name'] ? ((string)$r['patient_name'] . ' (#' . (int)($r['patient_id'] ?? 0) . ')') : (string)$r['patient_ref'];
+    echo '<td style="font-weight:700">' . h($pt) . '</td>';
     echo '<td>' . (int)$r['sessions_count'] . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td>' . h((string)($r['due_at'] ?? '')) . '</td>';

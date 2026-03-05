@@ -42,6 +42,7 @@ if ($daysBefore > 0) {
             'kind' => 'before_due',
         ];
         integration_job_enqueue('evolution', 'professional_doc_reminder', $payload, null);
+        integration_job_enqueue('smtp', 'professional_doc_reminder_email', $payload, null);
     }
 }
 
@@ -116,6 +117,7 @@ foreach ($overdue as $r) {
     ];
 
     integration_job_enqueue('evolution', 'professional_doc_reminder', $payload, null);
+    integration_job_enqueue('smtp', 'professional_doc_reminder_email', $payload, null);
     $createdJobs++;
 
     $upd->execute(['rs' => $sent + 1, 'id' => $docId]);

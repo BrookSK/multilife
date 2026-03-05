@@ -29,6 +29,7 @@ echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/whatsapp_groups_list.php">Voltar</a>';
+echo '<a class="btn" href="/whatsapp_groups_members_evolution.php?id=' . (int)$g['id'] . '">Membros (Evolution)</a>';
 echo '</div>';
 echo '</div>';
 

@@ -79,13 +79,16 @@ $msg = strtr($tpl, $repl);
 $db = db();
 $db->beginTransaction();
 try {
-    $ins = $db->prepare('INSERT INTO demand_dispatch_logs (demand_id, group_id, dispatched_by_user_id, message, dispatch_status) VALUES (:did, :gid, :uid, :msg, :st)');
+    $ins = $db->prepare('INSERT INTO demand_dispatch_logs (demand_id, group_id, dispatched_by_user_id, message, capture_token, dispatch_status) VALUES (:did, :gid, :uid, :msg, :token, :st)');
     foreach ($groups as $g) {
+        $token = '#CAP' . (string)$id . '-' . strtoupper(substr(bin2hex(random_bytes(6)), 0, 10));
+        $msgWithToken = $msg . "\n\n" . $token;
         $ins->execute([
             'did' => $id,
             'gid' => (int)$g['id'],
             'uid' => auth_user_id(),
-            'msg' => $msg,
+            'msg' => $msgWithToken,
+            'token' => $token,
             'st' => 'queued',
         ]);
     }
@@ -127,7 +130,7 @@ try {
 }
 
 $selLogs = db()->prepare(
-    'SELECT dl.id, g.evolution_group_jid FROM demand_dispatch_logs dl LEFT JOIN whatsapp_groups g ON g.id = dl.group_id WHERE dl.demand_id = :did AND dl.dispatch_status = \'queued\''
+    'SELECT dl.id, dl.message, g.evolution_group_jid FROM demand_dispatch_logs dl LEFT JOIN whatsapp_groups g ON g.id = dl.group_id WHERE dl.demand_id = :did AND dl.dispatch_status = \'queued\''
 );
 $selLogs->execute(['did' => $id]);
 $toSend = $selLogs->fetchAll();
@@ -139,6 +142,7 @@ $errCount = 0;
 foreach ($toSend as $row) {
     $logId = (int)$row['id'];
     $jid = (string)($row['evolution_group_jid'] ?? '');
+    $msgRow = (string)($row['message'] ?? $msg);
     if ($jid === '') {
         $updOne->execute(['st' => 'error', 'err' => 'Grupo sem evolution_group_jid configurado.', 'id' => $logId]);
         $errCount++;
@@ -146,7 +150,7 @@ foreach ($toSend as $row) {
     }
 
     try {
-        $res = $api->sendText($jid, $msg);
+        $res = $api->sendText($jid, $msgRow);
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         if ($ok) {
             $updOne->execute(['st' => 'sent', 'err' => null, 'id' => $logId]);

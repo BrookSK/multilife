@@ -10,6 +10,7 @@ rbac_require_permission('chat.manage');
 $status = isset($_GET['status']) ? (string)$_GET['status'] : 'open';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $selectedId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$prefDemandId = isset($_GET['demand_id']) ? (int)$_GET['demand_id'] : 0;
 
 if (!in_array($status, ['open', 'closed'], true)) {
     $status = 'open';
@@ -104,23 +105,25 @@ if ($selectedId > 0) {
                 'email' => (string)($p['email'] ?? ''),
             ];
         } else {
-            // Professional application phone as fallback
+            // Professional by users.phone (role profissional)
             $stmt = db()->prepare(
-                "SELECT id, full_name, email, phone, status\n"
-                . "FROM professional_applications\n"
-                . "WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
-                . "ORDER BY id DESC\n"
+                "SELECT u.id, u.name, u.email\n"
+                . "FROM users u\n"
+                . "INNER JOIN user_roles ur ON ur.user_id = u.id\n"
+                . "INNER JOIN roles r ON r.id = ur.role_id\n"
+                . "WHERE u.status='active' AND r.slug='profissional'\n"
+                . "  AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(u.phone,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
+                . "ORDER BY u.id DESC\n"
                 . "LIMIT 1"
             );
             $stmt->execute(['p' => '%' . $phoneDigits . '%']);
-            $pa = $stmt->fetch();
-            if ($pa) {
+            $pu = $stmt->fetch();
+            if ($pu) {
                 $contact = [
-                    'kind' => 'professional',
-                    'id' => (int)$pa['id'],
-                    'name' => (string)$pa['full_name'],
-                    'email' => (string)($pa['email'] ?? ''),
-                    'status' => (string)($pa['status'] ?? ''),
+                    'kind' => 'professional_user',
+                    'id' => (int)$pu['id'],
+                    'name' => (string)$pu['name'],
+                    'email' => (string)($pu['email'] ?? ''),
                 ];
             }
         }
@@ -269,6 +272,25 @@ echo '</div>';
 // Right: contact panel
 echo '<div style="min-height:640px;display:flex;flex-direction:column">';
 if ($selected) {
+    // Show demand context if available
+    if ($prefDemandId > 0) {
+        $stmt = db()->prepare('SELECT id, title, specialty, location_city, location_state, status FROM demands WHERE id = :id');
+        $stmt->execute(['id' => $prefDemandId]);
+        $demandCtx = $stmt->fetch();
+        if ($demandCtx) {
+            echo '<div style="padding:12px;border-radius:10px;background:hsl(var(--accent)/.15);border:1px solid hsl(var(--border));margin-bottom:14px">';
+            echo '<div style="font-weight:900;font-size:13px;color:hsl(var(--primary));margin-bottom:8px">📋 Contexto da Demanda</div>';
+            echo '<div style="font-size:12px;line-height:1.6">';
+            echo '<strong>Card #' . (int)$demandCtx['id'] . ':</strong> ' . h((string)$demandCtx['title']) . '<br>';
+            echo '<strong>Especialidade:</strong> ' . h((string)($demandCtx['specialty'] ?? '-')) . '<br>';
+            echo '<strong>Local:</strong> ' . h((string)($demandCtx['location_city'] ?? '-')) . '/' . h((string)($demandCtx['location_state'] ?? '-')) . '<br>';
+            echo '<strong>Status:</strong> ' . h((string)$demandCtx['status']);
+            echo '</div>';
+            echo '<div style="margin-top:10px"><a class="btn" href="/demands_view.php?id=' . (int)$demandCtx['id'] . '" style="font-size:12px;padding:6px 12px">Ver card completo</a></div>';
+            echo '</div>';
+        }
+    }
+
     echo '<div style="font-weight:900;margin-bottom:10px">Contato</div>';
     echo '<div class="pill" style="display:block;margin-bottom:10px">Telefone: ' . h((string)$selected['external_phone']) . '</div>';
 
@@ -291,7 +313,11 @@ if ($selected) {
     }
 
     echo '<div style="height:10px"></div>';
-    echo '<a class="btn btnPrimary" href="/chat_confirm_admission.php?chat_id=' . (int)$selected['id'] . '">Confirmar Admissão</a>';
+    $admUrl = '/chat_confirm_admission.php?chat_id=' . (int)$selected['id'];
+    if ($prefDemandId > 0) {
+        $admUrl .= '&demand_id=' . urlencode((string)$prefDemandId);
+    }
+    echo '<a class="btn btnPrimary" href="' . h($admUrl) . '">Confirmar Admissão</a>';
 
     echo '<div style="height:14px"></div>';
     echo '<div style="font-weight:900;margin:0 0 10px">Vincular manualmente</div>';
@@ -300,7 +326,7 @@ if ($selected) {
     echo '<select name="kind" required>';
     echo '<option value="">Selecione</option>';
     echo '<option value="patient">Paciente</option>';
-    echo '<option value="professional">Profissional (candidatura)</option>';
+    echo '<option value="professional">Profissional (usuário)</option>';
     echo '</select>';
     echo '<input name="ref_id" placeholder="ID do registro" required>';
     echo '<button class="btn" type="submit">Vincular</button>';

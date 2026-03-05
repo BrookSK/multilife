@@ -105,6 +105,31 @@ foreach ($rows as $r) {
     if ((string)$r['related_table'] === 'chat_conversations' && $r['related_id'] !== null) {
         echo '<a class="btn" href="/chat_web.php?id=' . (int)$r['related_id'] . '">Abrir chat</a>';
     }
+
+    if ((string)$r['type'] === 'patient_feedback' && (string)$r['related_table'] === 'appointments' && $r['related_id'] !== null) {
+        $aid = (int)$r['related_id'];
+        echo '<a class="btn" href="/appointments_view.php?id=' . $aid . '">Abrir agendamento</a>';
+
+        try {
+            $stmt = db()->prepare('SELECT demand_id FROM appointments WHERE id = :id');
+            $stmt->execute(['id' => $aid]);
+            $a = $stmt->fetch();
+            if ($a && $a['demand_id'] !== null) {
+                echo ' <a class="btn" href="/demands_view.php?id=' . (int)$a['demand_id'] . '">Abrir demanda</a>';
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    if ((string)$r['type'] === 'appointment_cycle_renewal' && (string)$r['related_table'] === 'appointments' && $r['related_id'] !== null) {
+        echo '<a class="btn btnPrimary" href="/appointments_renew_cycle.php?appointment_id=' . (int)$r['related_id'] . '" style="font-size:11px;padding:4px 8px">Renovar</a>';
+        echo ' <a class="btn" href="/appointments_view.php?id=' . (int)$r['related_id'] . '" style="font-size:11px;padding:4px 8px">Ver agendamento</a>';
+    }
+
+    if ((string)$r['type'] === 'appointment_review' && (string)$r['related_table'] === 'appointments' && $r['related_id'] !== null) {
+        echo '<a class="btn" href="/appointments_view.php?id=' . (int)$r['related_id'] . '" style="font-size:11px;padding:4px 8px">Revisar agendamento</a>';
+    }
+
     echo ' ';
     echo '<a class="btn" href="/pending_items_set_status_post.php?id=' . (int)$r['id'] . '&status=done">Concluir</a>';
     echo ' ';

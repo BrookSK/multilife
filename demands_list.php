@@ -9,6 +9,9 @@ rbac_require_permission('demands.manage');
 
 $status = isset($_GET['status']) ? (string)$_GET['status'] : '';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
+$city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
+$assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : '';
 
 $allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','cancelado'];
 if (!in_array($status, $allowedStatuses, true)) {
@@ -30,6 +33,21 @@ if ($status !== '') {
 if ($q !== '') {
     $where[] = '(d.title LIKE :q OR d.specialty LIKE :q OR d.location_city LIKE :q OR d.origin_email LIKE :q)';
     $params['q'] = '%' . $q . '%';
+}
+
+if ($specialty !== '') {
+    $where[] = 'd.specialty LIKE :specialty';
+    $params['specialty'] = '%' . $specialty . '%';
+}
+
+if ($city !== '') {
+    $where[] = 'd.location_city LIKE :city';
+    $params['city'] = '%' . $city . '%';
+}
+
+if ($assumedBy !== '' && ctype_digit($assumedBy)) {
+    $where[] = 'd.assumed_by_user_id = :assumed_by';
+    $params['assumed_by'] = (int)$assumedBy;
 }
 
 if (count($where) > 0) {
@@ -77,12 +95,13 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/demands_create.php">Novo card</a>';
+echo '<a class="btn" href="/inbound_emails_list.php">Inbox (E-mails)</a>';
 echo '<a class="btn" href="/whatsapp_groups_list.php">Grupos WhatsApp</a>';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="get" action="/demands_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+echo '<form method="get" action="/demands_list.php" style="margin-top:14px;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
 echo '<select name="status">';
 $opts = [
     '' => 'Todos os status',
@@ -97,8 +116,39 @@ foreach ($opts as $k => $label) {
     echo '<option value="' . h($k) . '"' . $sel . '>' . h($label) . '</option>';
 }
 echo '</select>';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (título, especialidade, cidade, origem)" style="flex:1;min-width:240px">';
-echo '<button class="btn" type="submit">Filtrar</button>';
+
+$specialties = db()->query("SELECT DISTINCT specialty FROM demands WHERE specialty IS NOT NULL AND specialty != '' ORDER BY specialty ASC LIMIT 100")->fetchAll();
+echo '<select name="specialty">';
+echo '<option value="">Todas especialidades</option>';
+foreach ($specialties as $sp) {
+    $val = (string)$sp['specialty'];
+    $sel = ($specialty === $val) ? ' selected' : '';
+    echo '<option value="' . h($val) . '"' . $sel . '>' . h($val) . '</option>';
+}
+echo '</select>';
+
+$cities = db()->query("SELECT DISTINCT location_city FROM demands WHERE location_city IS NOT NULL AND location_city != '' ORDER BY location_city ASC LIMIT 100")->fetchAll();
+echo '<select name="city">';
+echo '<option value="">Todas cidades</option>';
+foreach ($cities as $c) {
+    $val = (string)$c['location_city'];
+    $sel = ($city === $val) ? ' selected' : '';
+    echo '<option value="' . h($val) . '"' . $sel . '>' . h($val) . '</option>';
+}
+echo '</select>';
+
+$captadores = db()->query("SELECT DISTINCT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.slug = 'captador' AND u.status = 'active' ORDER BY u.name ASC")->fetchAll();
+echo '<select name="assumed_by">';
+echo '<option value="">Todos captadores</option>';
+foreach ($captadores as $cap) {
+    $val = (string)$cap['id'];
+    $sel = ($assumedBy === $val) ? ' selected' : '';
+    echo '<option value="' . h($val) . '"' . $sel . '>' . h((string)$cap['name']) . '</option>';
+}
+echo '</select>';
+
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (título, origem)" style="grid-column:span 2">';
+echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
 echo '</form>';
 
 echo '</section>';

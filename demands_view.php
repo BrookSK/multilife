@@ -47,6 +47,17 @@ $stmt = db()->prepare(
 $stmt->execute(['id' => $id]);
 $dispatchLogs = $stmt->fetchAll();
 
+$stmt = db()->prepare(
+    "SELECT m.id, m.group_id, m.sender_phone, m.body, m.received_at, m.created_at, g.name AS group_name\n"
+    . "FROM whatsapp_group_messages m\n"
+    . "LEFT JOIN whatsapp_groups g ON g.id = m.group_id\n"
+    . "WHERE m.demand_id = :id\n"
+    . "ORDER BY m.id DESC\n"
+    . "LIMIT 200"
+);
+$stmt->execute(['id' => $id]);
+$groupMessages = $stmt->fetchAll();
+
 $loc = trim((string)($d['location_city'] ?? ''));
 $uf = trim((string)($d['location_state'] ?? ''));
 $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
@@ -151,6 +162,68 @@ foreach ($statusLogs as $l) {
 
 echo '</tbody></table>';
 echo '</div>';
+echo '</section>';
+
+echo '<section class="card col12">';
+echo '<div style="font-weight:900;margin-bottom:8px">Respostas WhatsApp (grupos)</div>';
+if (count($groupMessages) === 0) {
+    echo '<div class="pill" style="display:block">Nenhuma resposta registrada ainda.</div>';
+} else {
+    echo '<div style="display:grid;gap:10px">';
+    foreach ($groupMessages as $m) {
+        $sender = (string)$m['sender_phone'];
+        $senderDigits = preg_replace('/\D+/', '', $sender);
+
+        $stmt2 = db()->prepare(
+            "SELECT u.id, u.name\n"
+            . "FROM users u\n"
+            . "INNER JOIN user_roles ur ON ur.user_id = u.id\n"
+            . "INNER JOIN roles r ON r.id = ur.role_id\n"
+            . "WHERE u.status='active' AND r.slug='profissional'\n"
+            . "  AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(u.phone,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
+            . "LIMIT 1"
+        );
+        $stmt2->execute(['p' => '%' . $senderDigits . '%']);
+        $prof = $stmt2->fetch();
+
+        $when = $m['received_at'] ? (string)$m['received_at'] : (string)$m['created_at'];
+        $gname = $m['group_name'] ? (string)$m['group_name'] : '-';
+
+        echo '<div style="border:1px solid hsl(var(--border));border-radius:14px;padding:12px;background:hsl(var(--muted)/.15)">';
+        echo '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">';
+        echo '<div style="min-width:0">';
+        echo '<div style="font-weight:900;font-size:13px">' . h($sender) . '</div>';
+        echo '<div style="margin-top:4px;color:hsl(var(--muted-foreground));font-size:12px">Grupo: ' . h($gname) . ' | ' . h($when) . '</div>';
+        echo '</div>';
+        echo '</div>';
+
+        echo '<div style="margin-top:10px;white-space:pre-wrap;font-size:14px;line-height:1.6">' . h((string)$m['body']) . '</div>';
+
+        if ($prof) {
+            echo '<div style="margin-top:14px;padding:12px;border-radius:10px;background:hsl(var(--primary)/.08);border:2px solid hsl(var(--primary)/.3)">';
+            echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+            echo '<div>';
+            echo '<div style="font-weight:900;color:hsl(var(--primary));font-size:13px">✓ Profissional Identificado</div>';
+            echo '<div style="margin-top:4px;font-size:14px">' . h((string)$prof['name']) . ' <span style="color:hsl(var(--muted-foreground));font-size:12px">(ID: ' . (int)$prof['id'] . ')</span></div>';
+            echo '</div>';
+            echo '<form method="post" action="/chat_open_professional_post.php" style="display:inline">';
+            echo '<input type="hidden" name="demand_id" value="' . (int)$d['id'] . '">';
+            echo '<input type="hidden" name="professional_user_id" value="' . (int)$prof['id'] . '">';
+            echo '<button class="btn btnPrimary" type="submit" style="font-weight:900;padding:10px 20px">→ Selecionar e Abrir Chat</button>';
+            echo '</form>';
+            echo '</div>';
+            echo '</div>';
+        } else {
+            echo '<div style="margin-top:14px;padding:12px;border-radius:10px;background:hsl(var(--muted)/.25);border:1px solid hsl(var(--border))">';
+            echo '<div style="color:hsl(var(--muted-foreground));font-size:13px">⚠ Profissional não identificado automaticamente</div>';
+            echo '<div style="margin-top:4px;font-size:12px;color:hsl(var(--muted-foreground))">Apenas usuários cadastrados com telefone vinculado podem ser selecionados.</div>';
+            echo '</div>';
+        }
+
+        echo '</div>';
+    }
+    echo '</div>';
+}
 echo '</section>';
 
 echo '<section class="card col12">';

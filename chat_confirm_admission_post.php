@@ -205,6 +205,11 @@ try {
 
     $appointmentId = (int)$db->lastInsertId();
 
+    // Link único de feedback do paciente (Seção 7.4)
+    $token = 'APT-' . (string)$appointmentId . '-' . strtoupper(substr(bin2hex(random_bytes(8)), 0, 16));
+    $stmt = $db->prepare('INSERT INTO appointment_patient_feedback (appointment_id, token, status) VALUES (:aid, :t, \'pending\')');
+    $stmt->execute(['aid' => $appointmentId, 't' => $token]);
+
     $stmt = $db->prepare('INSERT INTO appointment_status_logs (appointment_id, old_status, new_status, user_id, note) VALUES (:aid, NULL, :ns, :uid, :note)');
     $stmt->execute([
         'aid' => $appointmentId,

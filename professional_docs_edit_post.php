@@ -27,23 +27,43 @@ if ((string)$old['status'] !== 'draft') {
 }
 
 $patientRef = trim((string)($_POST['patient_ref'] ?? ''));
+$patientId = (int)($_POST['patient_id'] ?? 0);
 $sessions = (int)($_POST['sessions_count'] ?? 1);
 $billing = trim((string)($_POST['billing_docs'] ?? ''));
 $productivity = trim((string)($_POST['productivity_docs'] ?? ''));
 $notes = trim((string)($_POST['notes'] ?? ''));
 
-if ($patientRef === '') {
-    flash_set('error', 'Informe o paciente.');
-    header('Location: /professional_docs_edit.php?id=' . $id);
-    exit;
+if ($patientId > 0) {
+    $stmt = db()->prepare(
+        'SELECT p.id, p.full_name\n'
+        . 'FROM patients p\n'
+        . 'INNER JOIN patient_professionals pp ON pp.patient_id = p.id\n'
+        . 'WHERE p.deleted_at IS NULL AND pp.professional_user_id = :uid AND pp.is_active = 1 AND p.id = :pid\n'
+        . 'LIMIT 1'
+    );
+    $stmt->execute(['uid' => $uid, 'pid' => $patientId]);
+    $p = $stmt->fetch();
+    if (!$p) {
+        flash_set('error', 'Paciente inválido ou não vinculado ao seu perfil.');
+        header('Location: /professional_docs_edit.php?id=' . $id);
+        exit;
+    }
+    $patientRef = (string)$p['full_name'] . ' (#' . (int)$p['id'] . ')';
+} else {
+    if ($patientRef === '') {
+        flash_set('error', 'Informe o paciente.');
+        header('Location: /professional_docs_edit.php?id=' . $id);
+        exit;
+    }
 }
 
 if ($sessions < 1) {
     $sessions = 1;
 }
 
-$stmt = db()->prepare('UPDATE professional_documentations SET patient_ref = :p, sessions_count = :s, billing_docs = :b, productivity_docs = :pr, notes = :n WHERE id = :id');
+$stmt = db()->prepare('UPDATE professional_documentations SET patient_id = :pid, patient_ref = :p, sessions_count = :s, billing_docs = :b, productivity_docs = :pr, notes = :n WHERE id = :id');
 $stmt->execute([
+    'pid' => $patientId > 0 ? $patientId : null,
     'p' => $patientRef,
     's' => $sessions,
     'b' => $billing !== '' ? $billing : null,

@@ -9,8 +9,20 @@ rbac_require_permission('users.manage');
 
 $name = trim((string)($_POST['name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
+$phoneRaw = trim((string)($_POST['phone'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
+
+$phone = null;
+if ($phoneRaw !== '') {
+    $digits = preg_replace('/\D+/', '', $phoneRaw);
+    if ($digits === '' || mb_strlen($digits) < 10) {
+        flash_set('error', 'Telefone inválido.');
+        header('Location: /users_create.php');
+        exit;
+    }
+    $phone = $digits;
+}
 
 if ($name === '' || $email === '' || $password === '') {
     flash_set('error', 'Preencha nome, e-mail e senha.');
@@ -49,16 +61,17 @@ if ($stmt->fetch()) {
 }
 
 $hash = password_hash($password, PASSWORD_BCRYPT);
-$stmt = db()->prepare('INSERT INTO users (name, email, password_hash, status) VALUES (:name, :email, :hash, :status)');
+$stmt = db()->prepare('INSERT INTO users (name, email, phone, password_hash, status) VALUES (:name, :email, :phone, :hash, :status)');
 $stmt->execute([
     'name' => $name,
     'email' => $email,
+    'phone' => $phone,
     'hash' => $hash,
     'status' => $status,
 ]);
 
 $id = (string)db()->lastInsertId();
-audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'status' => $status]);
+audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status]);
 
 flash_set('success', 'Usuário criado.');
 header('Location: /users_list.php');

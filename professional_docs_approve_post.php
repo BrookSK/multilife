@@ -9,7 +9,7 @@ rbac_require_permission('professional_docs.review');
 
 $id = (int)($_POST['id'] ?? 0);
 
-$stmt = db()->prepare('SELECT id, status, appointment_id, professional_user_id, sessions_count FROM professional_documentations WHERE id = :id');
+$stmt = db()->prepare('SELECT id, status, appointment_id, patient_id, patient_ref, professional_user_id, sessions_count, notes FROM professional_documentations WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $d = $stmt->fetch();
 
@@ -30,6 +30,62 @@ $db->beginTransaction();
 try {
     $stmt = $db->prepare('UPDATE professional_documentations SET status = \'approved\', reviewed_by_user_id = :uid, reviewed_at = NOW(), review_note = NULL WHERE id = :id');
     $stmt->execute(['uid' => auth_user_id(), 'id' => $id]);
+
+    // Conclui pendência de revisão (se existir)
+    $stmt = $db->prepare(
+        "UPDATE pending_items\n"
+        . "SET status = 'done', resolved_at = NOW()\n"
+        . "WHERE status = 'open' AND type = 'professional_docs_review'\n"
+        . "  AND related_table = 'professional_documentations' AND related_id = :rid"
+    );
+    $stmt->execute(['rid' => $id]);
+
+    // Prontuário (se houver patient_id)
+    if ($d['patient_id'] !== null) {
+        $att = [];
+        $stmt = $db->prepare(
+            "SELECT pdd.doc_kind, doc.id AS document_id\n"
+            . "FROM professional_documentation_documents pdd\n"
+            . "INNER JOIN documents doc ON doc.id = pdd.document_id\n"
+            . "WHERE pdd.documentation_id = :id\n"
+            . "ORDER BY doc.id ASC"
+        );
+        $stmt->execute(['id' => $id]);
+        $rows = $stmt->fetchAll();
+        foreach ($rows as $r) {
+            $att[] = [
+                'kind' => (string)$r['doc_kind'],
+                'document_id' => (int)$r['document_id'],
+            ];
+        }
+
+        $occurredAt = (new DateTime('now'))->format('Y-m-d H:i:s');
+        if ($d['appointment_id'] !== null) {
+            $stmt = $db->prepare('SELECT first_at FROM appointments WHERE id = :id');
+            $stmt->execute(['id' => (int)$d['appointment_id']]);
+            $a = $stmt->fetch();
+            if ($a && isset($a['first_at'])) {
+                $occurredAt = (string)$a['first_at'];
+            }
+        }
+
+        $stmt = $db->prepare(
+            'INSERT INTO patient_prontuario_entries (patient_id, professional_user_id, origin, occurred_at, sessions_count, notes, attachments_json) '
+            . 'VALUES (:pid, :puid, :origin, :occ, :sc, :notes, :att)'
+        );
+        $stmt->execute([
+            'pid' => (int)$d['patient_id'],
+            'puid' => (int)$d['professional_user_id'],
+            'origin' => 'professional_documentations',
+            'occ' => $occurredAt,
+            'sc' => (int)($d['sessions_count'] ?? 1),
+            'notes' => $d['notes'] !== null ? (string)$d['notes'] : null,
+            'att' => json_encode($att, JSON_UNESCAPED_UNICODE),
+        ]);
+
+        $prontId = (string)$db->lastInsertId();
+        audit_log('create', 'patient_prontuario_entries', $prontId, null, ['patient_id' => (int)$d['patient_id'], 'origin' => 'professional_documentations']);
+    }
 
     // Financeiro: cria Conta a Pagar (repasse) quando houver agendamento vinculado
     if ($d['appointment_id'] !== null) {
@@ -66,6 +122,13 @@ try {
     $db->rollBack();
     throw $e;
 }
+
+// Confirmação ao profissional (WhatsApp + e-mail) via jobs
+$payload = [
+    'documentation_id' => $id,
+];
+integration_job_enqueue('evolution', 'professional_docs_approved_notify', $payload, null);
+integration_job_enqueue('smtp', 'professional_docs_approved_email', $payload, null);
 
 flash_set('success', 'Documentação aprovada.');
 header('Location: /professional_docs_review_list.php?status=approved');

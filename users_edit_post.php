@@ -10,10 +10,22 @@ rbac_require_permission('users.manage');
 $id = (int)($_POST['id'] ?? 0);
 $name = trim((string)($_POST['name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
+$phoneRaw = trim((string)($_POST['phone'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
 
-$stmt = db()->prepare('SELECT id, name, email, status FROM users WHERE id = :id');
+$phone = null;
+if ($phoneRaw !== '') {
+    $digits = preg_replace('/\D+/', '', $phoneRaw);
+    if ($digits === '' || mb_strlen($digits) < 10) {
+        flash_set('error', 'Telefone inválido.');
+        header('Location: /users_edit.php?id=' . $id);
+        exit;
+    }
+    $phone = $digits;
+}
+
+$stmt = db()->prepare('SELECT id, name, email, phone, status FROM users WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $old = $stmt->fetch();
 
@@ -63,14 +75,14 @@ db()->beginTransaction();
 try {
     if ($password !== '') {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, status = :status, password_hash = :hash WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'status' => $status, 'hash' => $hash, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, status = :status, password_hash = :hash WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status, 'hash' => $hash, 'id' => $id]);
     } else {
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, status = :status WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'status' => $status, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, status = :status WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status, 'id' => $id]);
     }
 
-    audit_log('update', 'users', (string)$id, $old, ['name' => $name, 'email' => $email, 'status' => $status]);
+    audit_log('update', 'users', (string)$id, $old, ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status]);
 
     db()->commit();
 } catch (Throwable $e) {

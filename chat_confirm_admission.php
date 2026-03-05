@@ -8,6 +8,7 @@ auth_require_login();
 rbac_require_permission('appointments.manage');
 
 $chatId = isset($_GET['chat_id']) ? (int)$_GET['chat_id'] : 0;
+$prefDemandId = isset($_GET['demand_id']) ? (int)$_GET['demand_id'] : 0;
 
 $stmt = db()->prepare('SELECT * FROM chat_conversations WHERE id = :id');
 $stmt->execute(['id' => $chatId]);
@@ -72,7 +73,8 @@ echo '<div class="col6">';
 echo '<label>Demanda (card)<select name="demand_id">';
 echo '<option value="">(opcional)</option>';
 foreach ($demands as $d) {
-    echo '<option value="' . (int)$d['id'] . '">#' . (int)$d['id'] . ' — ' . h((string)$d['title']) . ' (' . h((string)$d['status']) . ')</option>';
+    $sel = ((int)$d['id'] === $prefDemandId) ? ' selected' : '';
+    echo '<option value="' . (int)$d['id'] . '"' . $sel . '>#' . (int)$d['id'] . ' — ' . h((string)$d['title']) . ' (' . h((string)$d['status']) . ')</option>';
 }
 
 echo '</select></label>';

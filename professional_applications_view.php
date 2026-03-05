@@ -43,12 +43,12 @@ echo '</form>';
 
 echo '<form method="post" action="/professional_applications_need_more_info_post.php" style="display:inline">';
 echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
-echo '<button class="btn" type="submit">Solicitar complemento</button>';
+echo '<a class="btn" href="/professional_applications_need_more_info.php?id=' . (int)$pa['id'] . '">Solicitar complemento</a>';
 echo '</form>';
 
 echo '<form method="post" action="/professional_applications_reject_post.php" style="display:inline">';
 echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
-echo '<button class="btn" type="submit" onclick="return confirm(\'Reprovar candidatura?\')">Reprovar</button>';
+echo '<a class="btn" href="/professional_applications_reject.php?id=' . (int)$pa['id'] . '">Reprovar</a>';
 echo '</form>';
 
 echo '</div>';

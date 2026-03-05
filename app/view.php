@@ -108,15 +108,25 @@ function view_header(string $title): void
     echo '.badgeInfo{border-color:hsla(var(--info)/.20);background:hsla(var(--info)/.10);color:hsl(var(--info))}';
     echo '.badgeSuccess{border-color:hsla(var(--success)/.20);background:hsla(var(--success)/.10);color:hsl(var(--success))}';
 
-    echo 'label[style]{display:grid !important;gap:7px !important;font-size:13px !important;color:hsl(var(--foreground)) !important}';
-    echo 'input[style],select[style],textarea[style]{border-radius:10px !important;border:1px solid hsl(var(--input)) !important;background:hsla(var(--secondary)/.50) !important;color:hsl(var(--foreground)) !important;padding:10px 12px !important;outline:none !important;font-size:14px !important}';
+    echo 'label{display:grid;gap:7px;font-size:13px;font-weight:600;color:hsl(var(--foreground))}';
+    echo 'label[style]{display:grid !important;gap:7px !important;font-size:13px !important;font-weight:600 !important;color:hsl(var(--foreground)) !important}';
+    echo 'input[style],select[style],textarea[style]{border-radius:10px !important;border:1px solid hsl(var(--input)) !important;background:hsla(var(--secondary)/.50) !important;color:hsl(var(--foreground)) !important;padding:10px 12px !important;outline:none !important;font-size:14px !important;transition:background .15s ease,box-shadow .15s ease,border-color .15s ease !important}';
     echo 'input[style]:focus,select[style]:focus,textarea[style]:focus{background:hsl(var(--card)) !important;border-color:hsla(var(--ring)/.55) !important;box-shadow:0 0 0 4px hsla(var(--ring)/.15) !important}';
     echo 'textarea[style]{min-height:96px !important;resize:vertical !important}';
+    echo 'input[readonly],select[disabled],textarea[readonly]{opacity:0.6;cursor:not-allowed}';
+    echo 'input[type="checkbox"],input[type="radio"]{width:auto;height:18px;cursor:pointer}';
+    echo 'form{display:grid;gap:14px}';
+    echo 'form .grid{gap:14px}';
+    echo 'fieldset{border:1px solid hsl(var(--border));border-radius:12px;padding:18px;margin:0}';
+    echo 'legend{font-size:14px;font-weight:700;color:hsl(var(--foreground));padding:0 8px}';
+    echo '.formSection{padding:18px;border-radius:12px;background:hsla(var(--muted)/.25);border:1px solid hsl(var(--border));margin-bottom:14px}';
+    echo '.formSectionTitle{font-size:15px;font-weight:800;color:hsl(var(--foreground));margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid hsl(var(--border))}';
     echo 'div[style*="color:rgba(234,240,255,.72)"],span[style*="color:rgba(234,240,255,.72)"]{color:hsl(var(--muted-foreground)) !important}';
     echo 'div[style*="color:rgba(234,240,255,.85)"],span[style*="color:rgba(234,240,255,.85)"]{color:hsl(var(--foreground)) !important}';
     echo 'div[style*="background:rgba(10,14,28,.55)"],span[style*="background:rgba(10,14,28,.55)"]{background:hsla(var(--secondary)/.50) !important}';
     echo 'div[style*="border-radius:14px"],input[style*="border-radius:14px"],textarea[style*="border-radius:14px"],select[style*="border-radius:14px"]{border-radius:10px !important}';
     echo 'button.btn[style]{box-shadow:var(--shadow-card) !important}';
+    echo '.helpText{font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px;line-height:1.4}';
 
     echo '.kanbanScroll{overflow:auto;padding-bottom:6px}';
     echo '.kanbanRow{display:flex;gap:16px;min-width:1600px;padding-bottom:10px}';

@@ -34,10 +34,11 @@ $hash = password_hash($tmpPassword, PASSWORD_BCRYPT);
 $db->beginTransaction();
 try {
     // Cria usuário
-    $stmt = $db->prepare('INSERT INTO users (name, email, password_hash, status) VALUES (:name, :email, :hash, :status)');
+    $stmt = $db->prepare('INSERT INTO users (name, email, phone, password_hash, status) VALUES (:name, :email, :phone, :hash, :status)');
     $stmt->execute([
         'name' => (string)$pa['full_name'],
         'email' => (string)$pa['email'],
+        'phone' => (string)$pa['phone'],
         'hash' => $hash,
         'status' => 'active',
     ]);

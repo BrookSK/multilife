@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('patients.manage');
+rbac_require_permission('patient_prontuario.manage');
 
 $id = (int)($_POST['id'] ?? 0);
 

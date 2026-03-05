@@ -53,6 +53,13 @@ echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/appointments_list.php">Voltar</a>';
 echo '<a class="btn" href="/appointments_edit.php?id=' . (int)$a['id'] . '">Editar</a>';
+if (in_array((string)$a['recurrence_type'], ['weekly','monthly','custom'], true)) {
+    echo '<a class="btn btnPrimary" href="/appointments_renew_cycle.php?appointment_id=' . (int)$a['id'] . '">Renovar Ciclo</a>';
+    echo '<form method="post" action="/appointments_close_cycle_post.php" style="display:inline">';
+    echo '<input type="hidden" name="appointment_id" value="' . (int)$a['id'] . '">';
+    echo '<button class="btn" type="submit" onclick="return confirm(\'Encerrar este ciclo de atendimento?\')">Encerrar Ciclo</button>';
+    echo '</form>';
+}
 echo '<form method="post" action="/appointments_cancel_post.php" style="display:inline">';
 echo '<input type="hidden" name="id" value="' . (int)$a['id'] . '">';
 echo '<button class="btn" type="submit" onclick="return confirm(\'Cancelar este agendamento?\')">Cancelar</button>';
