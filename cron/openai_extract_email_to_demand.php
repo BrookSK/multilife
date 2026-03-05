@@ -105,9 +105,14 @@ $ok = 0;
 $manual = 0;
 $errors = 0;
 $errorLines = [];
+$selectedEmailIds = [];
+$createdLines = [];
 
 foreach ($emails as $e) {
     $id = (int)$e['id'];
+    if ($debug) {
+        $selectedEmailIds[] = $id;
+    }
     $subject = (string)($e['subject'] ?? '');
     $fromEmail = '';
     if ($selectFromField !== null) {
@@ -265,6 +270,9 @@ foreach ($emails as $e) {
             }
             $updOk->execute($updParams);
             $ok++;
+            if ($debug) {
+                $createdLines[] = 'EMAIL #' . (string)$id . ' -> DEMAND #' . (string)$demandId . ' (' . $status . ')';
+            }
         } catch (Throwable $e2) {
             $db->rollBack();
             throw $e2;
@@ -292,7 +300,30 @@ echo 'OK: created=' . ($ok + $manual) . ' manual=' . $manual . ' errors=' . $err
 
 if ($debug && count($errorLines) > 0) {
     echo "\n";
+    if (count($selectedEmailIds) > 0) {
+        echo 'SELECTED EMAIL IDS: ' . implode(',', array_map('strval', $selectedEmailIds)) . "\n";
+    }
+    if (count($createdLines) > 0) {
+        echo "\n";
+        foreach ($createdLines as $l) {
+            echo $l . "\n";
+        }
+    }
+    echo "\n";
     foreach ($errorLines as $l) {
         echo $l . "\n";
+    }
+}
+
+if ($debug && count($errorLines) === 0) {
+    if (count($selectedEmailIds) > 0) {
+        echo "\n";
+        echo 'SELECTED EMAIL IDS: ' . implode(',', array_map('strval', $selectedEmailIds)) . "\n";
+    }
+    if (count($createdLines) > 0) {
+        echo "\n";
+        foreach ($createdLines as $l) {
+            echo $l . "\n";
+        }
     }
 }
