@@ -59,6 +59,10 @@ if (!move_uploaded_file($fileTmpName, $destination)) {
     exit;
 }
 
+// Determinar tipo de logo
+$type = isset($_POST['type']) && in_array($_POST['type'], ['system', 'login'], true) ? $_POST['type'] : 'system';
+$settingKey = $type === 'login' ? 'app.login_logo_url' : 'app.logo_url';
+
 // Salvar URL da logo nas configurações
 $logoUrl = '/uploads/' . $newFileName;
 
@@ -67,17 +71,17 @@ try {
     
     // Verificar se configuração já existe
     $stmt = $db->prepare('SELECT id FROM admin_settings WHERE setting_key = :key');
-    $stmt->execute(['key' => 'app.logo_url']);
+    $stmt->execute(['key' => $settingKey]);
     $existing = $stmt->fetch();
     
     if ($existing) {
         // Atualizar
         $stmt = $db->prepare('UPDATE admin_settings SET setting_value = :value WHERE setting_key = :key');
-        $stmt->execute(['value' => $logoUrl, 'key' => 'app.logo_url']);
+        $stmt->execute(['value' => $logoUrl, 'key' => $settingKey]);
     } else {
         // Inserir
         $stmt = $db->prepare('INSERT INTO admin_settings (setting_key, setting_value) VALUES (:key, :value)');
-        $stmt->execute(['key' => 'app.logo_url', 'value' => $logoUrl]);
+        $stmt->execute(['key' => $settingKey, 'value' => $logoUrl]);
     }
     
     flash_set('success', 'Logo atualizada com sucesso!');

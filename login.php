@@ -329,7 +329,7 @@ function h(string $value): string {
         <section class="brand" aria-label="Boas-vindas">
             <div class="logo">
                 <?php
-                // Buscar logo configurada sem carregar bootstrap
+                // Buscar logo da tela de login sem carregar bootstrap
                 $logoUrl = '';
                 try {
                     $dbConfig = require __DIR__ . '/config/config.php';
@@ -340,7 +340,7 @@ function h(string $value): string {
                         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
                     );
                     $stmt = $pdo->prepare('SELECT setting_value FROM admin_settings WHERE setting_key = :key LIMIT 1');
-                    $stmt->execute(['key' => 'app.logo_url']);
+                    $stmt->execute(['key' => 'app.login_logo_url']);
                     $result = $stmt->fetch(PDO::FETCH_ASSOC);
                     if ($result) {
                         $logoUrl = (string)$result['setting_value'];

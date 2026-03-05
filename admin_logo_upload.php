@@ -7,15 +7,20 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
 
-view_header('Upload de Logo');
+$type = isset($_GET['type']) && in_array($_GET['type'], ['system', 'login'], true) ? $_GET['type'] : 'system';
+$settingKey = $type === 'login' ? 'app.login_logo_url' : 'app.logo_url';
+$title = $type === 'login' ? 'Upload de Logo - Tela de Login' : 'Upload de Logo - Sidebar';
+$description = $type === 'login' ? 'Faça upload da logo para aparecer na tela de login.' : 'Faça upload da logo para aparecer na sidebar do sistema.';
+
+view_header($title);
 
 echo '<div class="grid">';
 
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">Upload de Logo</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Faça upload da logo da empresa para aparecer na sidebar.</div>';
+echo '<div style="font-size:22px;font-weight:900">' . h($title) . '</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">' . h($description) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_settings.php">Voltar para Configurações</a>';
@@ -23,10 +28,11 @@ echo '</div>';
 echo '</div>';
 echo '</section>';
 
-$currentLogo = admin_setting_get('app.logo_url');
+$currentLogo = admin_setting_get($settingKey);
 
 echo '<section class="card col12">';
 echo '<form method="post" action="/admin_logo_upload_post.php" enctype="multipart/form-data" style="display:grid;gap:14px">';
+echo '<input type="hidden" name="type" value="' . h($type) . '">';
 
 if (!empty($currentLogo)) {
     echo '<div>';

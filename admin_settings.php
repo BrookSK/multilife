@@ -26,15 +26,14 @@ echo '<div style="font-size:22px;font-weight:900">Configurações do Sistema</di
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Parâmetros operacionais, integrações e valores.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn btnPrimary" href="/admin_logo_upload.php">Upload de Logo</a>';
-echo '<a class="btn" href="/specialties_list.php">Gerenciar Especialidades</a>';
 echo '<a class="btn" href="/admin_dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 echo '</section>';
 
 $fields = [
-    'app.logo_url' => 'Logo da Empresa (URL da imagem - ex: /uploads/logo.png)',
+    'app.logo_url' => 'Logo do Sistema - Sidebar (URL da imagem - ex: /uploads/logo.png)',
+    'app.login_logo_url' => 'Logo da Tela de Login (URL da imagem - ex: /uploads/login_logo.png)',
     'docs.reminder_days_before_due' => 'Dias antes para lembrete de formulário',
     'finance.repasse_cycle_days' => 'Ciclo de repasse (dias)',
     'demands.assume_timeout_hours' => 'Timeout para assumir demanda (horas)',
@@ -114,7 +113,11 @@ echo '<form method="post" action="/admin_settings_post.php">';
 $sections = [
     'Aparência' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
-        'keys' => ['app.logo_url']
+        'keys' => ['app.logo_url', 'app.login_logo_url', '_upload_logos_']
+    ],
+    'Especialidades' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+        'keys' => ['_specialties_']
     ],
     'Operacional' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
@@ -169,28 +172,99 @@ $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
     $isActive = $idx === 0 ? 'isActive' : '';
     echo '<div class="configPanel ' . $isActive . '" id="tab' . $idx . '">';
-    echo '<div class="formSection">';
-    echo '<div class="formSectionTitle">' . h($sectionTitle) . '</div>';
-    echo '<div style="display:grid;gap:12px">';
     
-    foreach ($sectionData['keys'] as $key) {
-        if (!isset($fields[$key])) continue;
-        $label = $fields[$key];
-        $val = $settings[$key] ?? '';
-        $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'evolution.api_key', 'zapsign.api_token'], true);
-        $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';
+    // Aba especial de Aparência
+    if ($sectionTitle === 'Aparência') {
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Aparência do Sistema</div>';
+        echo '<div style="display:grid;gap:16px">';
         
-        if ($isSensitive) {
-            echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
-        } elseif ($isTemplate) {
-            echo '<label>' . h($label) . '<textarea name="settings[' . h($key) . ']" rows="4" placeholder="(configure)">' . h($val) . '</textarea></label>';
-        } else {
-            echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
+        // Logo do Sistema (Sidebar)
+        $logoUrl = $settings['app.logo_url'] ?? '';
+        echo '<div>';
+        echo '<label style="font-weight:600;margin-bottom:8px;display:block">Logo do Sistema - Sidebar</label>';
+        if (!empty($logoUrl)) {
+            echo '<div style="margin-bottom:8px">';
+            echo '<img src="' . h($logoUrl) . '" alt="Logo atual" style="max-height:60px;border:1px solid hsl(var(--border));border-radius:8px;padding:8px">';
+            echo '</div>';
         }
+        echo '<a class="btn btnPrimary" href="/admin_logo_upload.php?type=system" style="font-size:13px">Upload Logo Sidebar</a>';
+        echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">Dimensões ideais: 280px × 70px (PNG transparente)</div>';
+        echo '</div>';
+        
+        // Logo da Tela de Login
+        $loginLogoUrl = $settings['app.login_logo_url'] ?? '';
+        echo '<div>';
+        echo '<label style="font-weight:600;margin-bottom:8px;display:block">Logo da Tela de Login</label>';
+        if (!empty($loginLogoUrl)) {
+            echo '<div style="margin-bottom:8px">';
+            echo '<img src="' . h($loginLogoUrl) . '" alt="Logo login atual" style="max-height:60px;border:1px solid hsl(var(--border));border-radius:8px;padding:8px">';
+            echo '</div>';
+        }
+        echo '<a class="btn btnPrimary" href="/admin_logo_upload.php?type=login" style="font-size:13px">Upload Logo Login</a>';
+        echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">Dimensões ideais: 280px × 70px (PNG transparente)</div>';
+        echo '</div>';
+        
+        echo '</div>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Especialidades') {
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle" style="display:flex;align-items:center;justify-content:space-between">';
+        echo '<span>Especialidades</span>';
+        echo '<a class="btn btnPrimary" href="/specialties_create.php" style="font-size:12px;padding:6px 12px">Nova Especialidade</a>';
+        echo '</div>';
+        
+        // Buscar especialidades
+        $specStmt = db()->query('SELECT id, name, status FROM specialties ORDER BY name ASC');
+        $specialties = $specStmt->fetchAll();
+        
+        if (count($specialties) === 0) {
+            echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma especialidade cadastrada</div>';
+        } else {
+            echo '<div style="display:grid;gap:8px;margin-top:12px">';
+            foreach ($specialties as $spec) {
+                $statusColor = $spec['status'] === 'active' ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))';
+                $statusText = $spec['status'] === 'active' ? 'Ativa' : 'Inativa';
+                echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
+                echo '<div>';
+                echo '<strong>' . h((string)$spec['name']) . '</strong>';
+                echo '<span style="margin-left:10px;font-size:12px;color:' . $statusColor . '">' . $statusText . '</span>';
+                echo '</div>';
+                echo '<div style="display:flex;gap:8px">';
+                echo '<a href="/specialties_edit.php?id=' . (int)$spec['id'] . '" class="btn" style="font-size:12px;padding:6px 10px">Editar</a>';
+                echo '</div>';
+                echo '</div>';
+            }
+            echo '</div>';
+        }
+        
+        echo '</div>';
+    } else {
+        // Abas normais de configuração
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">' . h($sectionTitle) . '</div>';
+        echo '<div style="display:grid;gap:12px">';
+        
+        foreach ($sectionData['keys'] as $key) {
+            if (!isset($fields[$key])) continue;
+            $label = $fields[$key];
+            $val = $settings[$key] ?? '';
+            $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'evolution.api_key', 'zapsign.api_token'], true);
+            $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';
+            
+            if ($isSensitive) {
+                echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
+            } elseif ($isTemplate) {
+                echo '<label>' . h($label) . '<textarea name="settings[' . h($key) . ']" rows="4" placeholder="(configure)">' . h($val) . '</textarea></label>';
+            } else {
+                echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
+            }
+        }
+        
+        echo '</div>';
+        echo '</div>';
     }
     
-    echo '</div>';
-    echo '</div>';
     echo '</div>';
     $idx++;
 }
