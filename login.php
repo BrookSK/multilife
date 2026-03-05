@@ -346,8 +346,13 @@ function h(string $value): string {
                         $logoUrl = (string)$result['setting_value'];
                     }
                 } catch (Exception $e) {
-                    // Ignorar erro se não conseguir carregar
+                    // Mostrar erro se houver
+                    echo '<!-- ERRO AO BUSCAR LOGO: ' . htmlspecialchars($e->getMessage()) . ' -->';
                 }
+                
+                // Debug ativo: mostrar URL da logo
+                echo '<!-- Logo URL encontrada: "' . htmlspecialchars($logoUrl) . '" -->';
+                echo '<!-- Logo vazia? ' . (empty($logoUrl) ? 'SIM' : 'NÃO') . ' -->';
                 
                 if (!empty($logoUrl)):
                 ?>
