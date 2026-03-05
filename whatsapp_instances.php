@@ -338,7 +338,15 @@ if ($qrCode !== null) {
     
     // Exibir QR Code em imagem se disponível
     if ($qrBase64 !== null && $qrBase64 !== '') {
-        echo '<img src="data:image/png;base64,' . h($qrBase64) . '" alt="QR Code" style="max-width:400px;border:1px solid hsl(var(--border));border-radius:10px">';
+        // Remover prefixo duplicado se existir
+        $qrBase64Clean = $qrBase64;
+        if (strpos($qrBase64, 'data:image/png;base64,') === 0) {
+            $qrBase64Clean = substr($qrBase64, strlen('data:image/png;base64,'));
+        }
+        
+        echo '<div style="padding:20px;background:#fff;border-radius:12px;display:inline-block">';
+        echo '<img src="data:image/png;base64,' . h($qrBase64Clean) . '" alt="QR Code" style="max-width:400px;display:block">';
+        echo '</div>';
         echo '<div style="margin-top:14px;color:hsl(var(--muted-foreground));font-size:13px">Escaneie este QR Code com o WhatsApp do seu celular</div>';
         echo '<div style="margin-top:10px">';
         echo '<a class="btn" href="/whatsapp_instances.php">Atualizar Status</a>';
