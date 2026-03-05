@@ -26,7 +26,7 @@ echo '</div>';
 
 echo '<div style="height:14px"></div>';
 
-echo '<form method="post" action="/patients_create_post.php" style="max-width:1200px" enctype="multipart/form-data">';
+echo '<form method="post" action="/patients_create_post.php" enctype="multipart/form-data">';
 
 // 1. Identificação
 echo '<div class="formSection">';

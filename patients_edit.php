@@ -101,7 +101,7 @@ echo '</div>';
 echo '</section>';
 
 echo '<section class="card col12">';
-echo '<form method="post" action="/patients_edit_post.php" style="display:grid;gap:12px;max-width:980px">';
+echo '<form method="post" action="/patients_edit_post.php" style="display:grid;gap:12px">';
 echo '<input type="hidden" name="id" value="' . (int)$p['id'] . '">';
 
 echo '<style>';

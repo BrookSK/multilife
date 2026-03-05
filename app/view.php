@@ -57,7 +57,7 @@ function view_header(string $title): void
     echo '.navItem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;font-size:13px;font-weight:600;color:hsl(var(--muted-foreground));transition:background .15s ease,color .15s ease}';
     echo '.navItem:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));text-decoration:none}';
     echo '.navItem.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 1px 2px rgba(0,0,0,.06)}';
-    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:hsl(var(--muted));flex:0 0 auto}';
+    echo '.navIcon{width:18px;height:18px;border-radius:6px;background:hsl(var(--primary));flex:0 0 auto}';
     echo '.sidebarUser{border-top:1px solid hsl(var(--border));padding:12px;flex:0 0 auto}';
     echo '.userRow{display:flex;align-items:center;gap:12px}';
     echo '.avatar{width:36px;height:36px;border-radius:12px;background:transparent;border:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:center;color:hsl(var(--foreground));font-weight:800;font-size:12px;flex:0 0 auto}';
