@@ -183,17 +183,18 @@ echo '<div style="font-weight:900;margin-top:6px">Informações técnicas</div>'
 echo '<label>Experiência em home care<textarea name="home_care_experience" rows="3"></textarea></label>';
 
 echo '<div class="grid">';
-echo '<div class="col6"><label>Tempo de atuação<input name="years_of_experience" maxlength="40" placeholder="Ex: 5 anos"></label></div>';
-echo '<div class="col6">';
-echo '<label style="display:block;margin-bottom:8px">Especializações</label>';
+echo '<div class="col12"><label>Tempo de atuação<input name="years_of_experience" maxlength="40" placeholder="Ex: 5 anos"></label></div>';
+echo '</div>';
+
+echo '<div style="margin-top:14px">';
+echo '<label style="display:block;margin-bottom:8px;font-size:13px;font-weight:600">Especializações</label>';
 echo '<div id="specializations_container" style="display:flex;flex-direction:column;gap:8px"></div>';
 echo '<button type="button" id="add_specialization" class="btn" style="margin-top:8px;font-size:13px;padding:6px 12px">+ Adicionar Especialização</button>';
 echo '</div>';
-echo '</div>';
 
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:24px">';
 if ($isPublic) {
-    echo '<button class="btn btnPrimary" type="submit" style="font-size:15px;padding:12px 24px">Enviar Candidatura</button>';
+    echo '<button class="btn btnPrimary" type="submit" style="font-size:15px;padding:12px 32px">Enviar Candidatura</button>';
 } else {
     echo '<a class="btn" href="/professional_applications_list.php">Cancelar</a>';
     echo '<button class="btn btnPrimary" type="submit">Enviar candidatura</button>';
@@ -268,23 +269,30 @@ echo '';
 echo '// Especializações dinâmicas';
 echo 'const specializationsContainer = document.getElementById("specializations_container");';
 echo 'const addSpecializationBtn = document.getElementById("add_specialization");';
-echo 'let specCount = 0;';
 echo '';
-echo 'function addSpecializationField(value = "") {';
-echo '  const div = document.createElement("div");';
-echo '  div.style.display = "flex";';
-echo '  div.style.gap = "8px";';
-echo '  div.style.alignItems = "center";';
-echo '  div.innerHTML = `<input type="text" name="specializations[]" value="${value}" maxlength="120" placeholder="Ex: Fisioterapia" style="flex:1"><button type="button" class="remove-spec" style="padding:6px 12px;background:hsl(0,84%,60%);color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">×</button>`;';
-echo '  specializationsContainer.appendChild(div);';
-echo '  div.querySelector(".remove-spec").addEventListener("click", function(){ div.remove(); });';
-echo '  specCount++;';
+echo 'if(specializationsContainer && addSpecializationBtn) {';
+echo '  function addSpecializationField(value = "") {';
+echo '    const div = document.createElement("div");';
+echo '    div.style.display = "flex";';
+echo '    div.style.gap = "8px";';
+echo '    div.style.alignItems = "center";';
+echo '    div.innerHTML = `<input type="text" name="specializations[]" value="${value}" maxlength="120" placeholder="Ex: Fisioterapia" style="flex:1"><button type="button" class="remove-spec" style="padding:6px 12px;background:hsl(0,84%,60%);color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">×</button>`;';
+echo '    specializationsContainer.appendChild(div);';
+echo '    const removeBtn = div.querySelector(".remove-spec");';
+echo '    if(removeBtn) {';
+echo '      removeBtn.addEventListener("click", function(){ div.remove(); });';
+echo '    }';
+echo '  }';
+echo '  ';
+echo '  // Adicionar primeira linha';
+echo '  addSpecializationField();';
+echo '  ';
+echo '  // Event listener para botão adicionar';
+echo '  addSpecializationBtn.addEventListener("click", function(e){ ';
+echo '    e.preventDefault();';
+echo '    addSpecializationField(); ';
+echo '  });';
 echo '}';
-echo '';
-echo '// Adicionar primeira linha';
-echo 'addSpecializationField();';
-echo '';
-echo 'addSpecializationBtn.addEventListener("click", function(){ addSpecializationField(); });';
 echo '</script>';
 
 if ($isPublic) {
