@@ -326,22 +326,29 @@ foreach ($sections as $sectionTitle => $sectionData) {
         // Aba especial de Evolution com gerenciamento de instâncias
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Configurações Evolution API</div>';
+        
+        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo '<strong>ℹ️ Formato das Credenciais:</strong><br>';
+        echo '• <strong>Base URL:</strong> http://IP:PORTA (ex: http://31.97.83.150:8080)<br>';
+        echo '• <strong>Link Manager:</strong> http://IP:PORTA/manager/ (ex: http://31.97.83.150:8080/manager/)<br>';
+        echo '• <strong>Token (API Key):</strong> Chave de acesso da Evolution API';
+        echo '</div>';
+        echo '</div>';
+        
         echo '<div style="display:grid;gap:12px">';
         
-        // Campos de configuração normais
-        foreach ($sectionData['keys'] as $key) {
-            if ($key === '_evolution_manage_') continue;
-            if (!isset($fields[$key])) continue;
-            $label = $fields[$key];
-            $val = $settings[$key] ?? '';
-            $isSensitive = $key === 'evolution.api_key';
-            
-            if ($isSensitive) {
-                echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
-            } else {
-                echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
-            }
-        }
+        $baseUrlVal = $settings['evolution.base_url'] ?? '';
+        $apiKeyVal = $settings['evolution.api_key'] ?? '';
+        $instanceVal = $settings['evolution.instance'] ?? '';
+        
+        echo '<label>Base URL<input name="settings[evolution.base_url]" value="' . h($baseUrlVal) . '" placeholder="http://31.97.83.150:8080" required><span class="helpText">URL base da Evolution API (sem barra no final)</span></label>';
+        
+        echo '<label>Link Manager (Opcional)<input name="settings[evolution.manager_url]" value="' . h($settings['evolution.manager_url'] ?? '') . '" placeholder="http://31.97.83.150:8080/manager/"><span class="helpText">URL do painel de gerenciamento (opcional)</span></label>';
+        
+        echo '<label>Token (API Key)<input type="password" name="settings[evolution.api_key]" value="" placeholder="Cole o token da Evolution API aqui"><span class="helpText">Deixe vazio para manter o valor atual. Token de autenticação da API.</span></label>';
+        
+        echo '<label>Nome da Instância Padrão<input name="settings[evolution.instance]" value="' . h($instanceVal) . '" placeholder="multilife_whatsapp"><span class="helpText">Nome da instância WhatsApp padrão</span></label>';
         
         echo '</div>';
         echo '</div>';
