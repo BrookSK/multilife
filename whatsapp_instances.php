@@ -104,6 +104,15 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
     try {
         $checkRes = $api->fetchInstances($instance);
         if (isset($checkRes['json']) && is_array($checkRes['json']) && count($checkRes['json']) > 0) {
+            // Instância existe, tentar reiniciar antes de conectar
+            $debugInfo[] = 'Instância existe, reiniciando antes de conectar...';
+            try {
+                $restartRes = $api->restartInstance();
+                $debugInfo[] = 'Restart executado - Status: ' . ($restartRes['status'] ?? 'N/A');
+                sleep(2); // Aguardar reinicialização
+            } catch (Throwable $e) {
+                $debugInfo[] = 'Aviso: Não foi possível reiniciar - ' . $e->getMessage();
+            }
             $canGenerateQr = true;
         } else {
             // Instância não existe, tentar criar agora
@@ -147,21 +156,31 @@ if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === nu
     // Só gerar QR Code se a instância existe/foi criada
     if ($canGenerateQr && $error === null) {
         try {
+            $debugInfo[] = 'Chamando generateQrCode (GET /instance/connect)...';
             $qrResponse = $api->generateQrCode();
+            $debugInfo[] = 'generateQrCode executado - Status: ' . ($qrResponse['status'] ?? 'N/A');
             
             // Verificar se houve erro 404
             if (isset($qrResponse['status']) && $qrResponse['status'] === 404) {
-                $error = 'A instância "' . $instance . '" não existe na Evolution API. Tente recarregar a página para criá-la automaticamente.';
-            } else {
-                // A resposta vem em $qrResponse['json']
+                $errorMsg = 'Erro 404 ao conectar à instância.';
+                $errorMsg .= '<br><br><strong>Debug - Resposta:</strong><br><pre style="background:#000;color:#0f0;padding:10px;border-radius:5px;overflow:auto;max-height:300px">' . json_encode($qrResponse, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . '</pre>';
+                $error = $errorMsg;
+            } else if (isset($qrResponse['status']) && $qrResponse['status'] >= 200 && $qrResponse['status'] < 300) {
+                // Sucesso - a resposta vem em $qrResponse['json']
                 if (isset($qrResponse['json'])) {
                     $qrCode = $qrResponse['json'];
+                    $debugInfo[] = 'QR Code/Pairing Code recebido com sucesso!';
                 } else {
                     $qrCode = $qrResponse;
                 }
+            } else {
+                $errorMsg = 'Erro ao gerar QR Code. Status: ' . ($qrResponse['status'] ?? 'desconhecido');
+                $errorMsg .= '<br><br><strong>Debug - Resposta:</strong><br><pre style="background:#000;color:#0f0;padding:10px;border-radius:5px;overflow:auto;max-height:300px">' . json_encode($qrResponse, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . '</pre>';
+                $error = $errorMsg;
             }
         } catch (Throwable $e) {
-            $error = $e->getMessage();
+            $error = 'Exceção ao gerar QR Code: ' . $e->getMessage();
+            $debugInfo[] = 'Exceção: ' . $e->getMessage();
         }
     }
 }
