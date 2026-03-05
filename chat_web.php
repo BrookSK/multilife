@@ -130,7 +130,7 @@ echo '.whatsapp-chat-header-info{display:flex;align-items:center;gap:12px}';
 echo '.whatsapp-chat-header-actions{display:flex;gap:8px}';
 echo '.whatsapp-action-btn{width:40px;height:40px;border-radius:50%;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#54656f;transition:background .2s}';
 echo '.whatsapp-action-btn:hover{background:#f5f6f6}';
-echo '.whatsapp-messages{flex:1;overflow-y:auto;padding:20px;background-image:url("data:image/svg+xml,%3Csvg width=\\'100%25\\' height=\\'100%25\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Cdefs%3E%3Cpattern id=\\'pattern\\' x=\\'0\\' y=\\'0\\' width=\\'40\\' height=\\'40\\' patternUnits=\\'userSpaceOnUse\\'%3E%3Cpath d=\\'M0 20h40M20 0v40\\' stroke=\\'%23e9edef\\' stroke-width=\\'0.5\\' fill=\\'none\\'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\\'100%25\\' height=\\'100%25\\' fill=\\'url(%23pattern)\\'/%3E%3C/svg%3E")}';
+echo '.whatsapp-messages{flex:1;overflow-y:auto;padding:20px;background-image:url("data:image/svg+xml,%3Csvg width=\'100%25\' height=\'100%25\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cdefs%3E%3Cpattern id=\'pattern\' x=\'0\' y=\'0\' width=\'40\' height=\'40\' patternUnits=\'userSpaceOnUse\'%3E%3Cpath d=\'M0 20h40M20 0v40\' stroke=\'%23e9edef\' stroke-width=\'0.5\' fill=\'none\'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\'100%25\' height=\'100%25\' fill=\'url(%23pattern)\'/%3E%3C/svg%3E")}';
 echo '.whatsapp-message{margin-bottom:12px;display:flex}';
 echo '.whatsapp-message.out{justify-content:flex-end}';
 echo '.whatsapp-message.in{justify-content:flex-start}';
