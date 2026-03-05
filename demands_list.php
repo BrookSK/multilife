@@ -220,11 +220,11 @@ foreach ($columns as $col) {
             // Badge de urgência
             $urgency = trim((string)($r['urgency'] ?? ''));
             if ($urgency === 'urgente') {
-                echo '<span class="badge badgeDanger" style="background:hsl(0,84%,60%);color:#fff;font-weight:700">🚨 URGENTE</span>';
+                echo '<span class="badge badgeDanger" style="background:hsl(0,84%,60%);color:#fff;font-weight:700">URGENTE</span>';
             } elseif ($urgency === 'normal') {
-                echo '<span class="badge badgeWarn" style="font-size:11px">⏱️ Normal</span>';
+                echo '<span class="badge badgeWarn" style="font-size:11px">Normal</span>';
             } elseif ($urgency === 'baixa') {
-                echo '<span class="badge badgeInfo" style="font-size:11px">📅 Baixa</span>';
+                echo '<span class="badge badgeInfo" style="font-size:11px">Baixa</span>';
             }
             
             echo '</div>';

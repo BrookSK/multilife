@@ -89,11 +89,11 @@ echo '<span class="badge ' . h($badgeCls) . '">' . h($st) . '</span>';
 // Badge de urgência
 $urgency = trim((string)($d['urgency'] ?? ''));
 if ($urgency === 'urgente') {
-    echo '<span class="badge badgeDanger" style="background:hsl(0,84%,60%);color:#fff;font-weight:700;font-size:13px">🚨 URGENTE</span>';
+    echo '<span class="badge badgeDanger" style="background:hsl(0,84%,60%);color:#fff;font-weight:700;font-size:13px">URGENTE</span>';
 } elseif ($urgency === 'normal') {
-    echo '<span class="badge badgeWarn" style="font-size:12px">⏱️ Normal</span>';
+    echo '<span class="badge badgeWarn" style="font-size:12px">Normal</span>';
 } elseif ($urgency === 'baixa') {
-    echo '<span class="badge badgeInfo" style="font-size:12px">📅 Baixa</span>';
+    echo '<span class="badge badgeInfo" style="font-size:12px">Baixa</span>';
 }
 
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Local:</strong> ' . h($locTxt) . '</span>';
@@ -141,10 +141,19 @@ echo '</div>';
 
 echo '</section>';
 
-// Descrição
+// Detalhes
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:900;margin-bottom:8px">Detalhes</div>';
+
+// Cabeçalho com título e valor do procedimento
+$procedureValue = $d['procedure_value'] !== null ? (float)$d['procedure_value'] : null;
+echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px">';
+echo '<div style="font-weight:900">Detalhes</div>';
+if ($procedureValue !== null && $procedureValue > 0) {
+    echo '<div style="font-weight:700;color:hsl(var(--success));font-size:16px">💰 R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
+}
+echo '</div>';
+
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.7">';
 echo '<div><strong>Origem:</strong> ' . h((string)($d['origin_email'] ?? '-')) . '</div>';
 
@@ -157,14 +166,15 @@ if ($aiSummary !== '') {
     echo '</div>';
 }
 
-// Valor do procedimento (se disponível)
-$procedureValue = $d['procedure_value'] !== null ? (float)$d['procedure_value'] : null;
-if ($procedureValue !== null && $procedureValue > 0) {
-    echo '<div style="margin-top:8px"><strong>Valor do Procedimento:</strong> R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
+// E-mail original completo (já incluído na description pelo processamento)
+$description = trim((string)($d['description'] ?? ''));
+if ($description !== '') {
+    echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--muted-foreground)/.05);border-radius:6px">';
+    echo '<div style="font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:6px">📧 E-mail Original</div>';
+    echo '<div style="white-space:pre-wrap;font-size:13px;color:hsl(var(--foreground))">' . h($description) . '</div>';
+    echo '</div>';
 }
 
-echo '<div style="margin-top:8px"><strong>Descrição:</strong></div>';
-echo '<div style="white-space:pre-wrap">' . h((string)($d['description'] ?? '')) . '</div>';
 echo '</div>';
 echo '</section>';
 
