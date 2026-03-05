@@ -25,62 +25,63 @@ $qrCode = null;
 $connectionStatus = null;
 $error = null;
 
-// Tentar obter status da conexão
+// Primeiro, verificar se a instância existe
+$instanceExists = false;
 try {
-    $statusResponse = $api->getConnectionStatus();
-    // A resposta vem em $statusResponse['json']
-    if (isset($statusResponse['json'])) {
-        $connectionStatus = $statusResponse['json'];
-    } else {
-        $connectionStatus = $statusResponse;
+    $fetchRes = $api->fetchInstances($instance);
+    if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
+        $instanceExists = true;
     }
 } catch (Throwable $e) {
-    $error = $e->getMessage();
+    // Instância não existe ou erro ao buscar
+    $instanceExists = false;
+}
+
+// Se não existe, criar a instância automaticamente
+if (!$instanceExists) {
+    try {
+        $createPayload = [
+            'instanceName' => $instance,
+            'qrcode' => true,
+            'integration' => 'WHATSAPP-BAILEYS',
+        ];
+        $createRes = $api->createInstanceBasic($createPayload);
+        
+        if (isset($createRes['status']) && $createRes['status'] >= 200 && $createRes['status'] < 300) {
+            // Aguardar criação
+            sleep(3);
+            $instanceExists = true;
+            flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
+        }
+    } catch (Throwable $e) {
+        $error = 'Erro ao criar instância: ' . $e->getMessage();
+    }
+}
+
+// Só tentar obter status se a instância existe
+if ($instanceExists && $error === null) {
+    try {
+        $statusResponse = $api->getConnectionStatus();
+        if (isset($statusResponse['json'])) {
+            $connectionStatus = $statusResponse['json'];
+        } else {
+            $connectionStatus = $statusResponse;
+        }
+    } catch (Throwable $e) {
+        // Ignorar erro de status se instância acabou de ser criada
+        $connectionStatus = null;
+    }
 }
 
 // Gerar QR Code se solicitado
-if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1') {
+if (isset($_GET['generate_qr']) && $_GET['generate_qr'] === '1' && $error === null) {
     try {
-        // Primeiro, verificar se a instância existe
-        $instanceExists = false;
-        try {
-            $fetchRes = $api->fetchInstances($instance);
-            if (isset($fetchRes['json']) && is_array($fetchRes['json']) && count($fetchRes['json']) > 0) {
-                $instanceExists = true;
-            }
-        } catch (Throwable $e) {
-            // Instância não existe
-            $instanceExists = false;
-        }
-        
-        // Se não existe, criar a instância
-        if (!$instanceExists) {
-            try {
-                $createPayload = [
-                    'instanceName' => $instance,
-                    'qrcode' => true,
-                    'integration' => 'WHATSAPP-BAILEYS',
-                ];
-                $createRes = $api->createInstanceBasic($createPayload);
-                
-                // Aguardar um momento para a instância ser criada
-                sleep(2);
-                
-                flash_set('success', 'Instância "' . $instance . '" criada com sucesso!');
-            } catch (Throwable $e) {
-                $error = 'Erro ao criar instância: ' . $e->getMessage();
-            }
-        }
-        
-        // Agora tentar gerar o QR Code
-        if ($error === null) {
-            $qrResponse = $api->generateQrCode();
-            // A resposta vem em $qrResponse['json']
-            if (isset($qrResponse['json'])) {
-                $qrCode = $qrResponse['json'];
-            } else {
-                $qrCode = $qrResponse;
-            }
+        $qrResponse = $api->generateQrCode();
+        // A resposta vem em $qrResponse['json']
+        if (isset($qrResponse['json'])) {
+            $qrCode = $qrResponse['json'];
+        } else {
+            $qrCode = $qrResponse;
         }
     } catch (Throwable $e) {
         $error = $e->getMessage();
