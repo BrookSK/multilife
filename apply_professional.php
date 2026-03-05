@@ -63,6 +63,16 @@ echo '</div>';
 
 echo '<div style="height:14px"></div>';
 
+// Exibir mensagens flash
+$flash = flash_get();
+if ($flash) {
+    $bgColor = $flash['type'] === 'success' ? 'hsl(142,76%,36%)' : 'hsl(0,84%,60%)';
+    $textColor = '#fff';
+    echo '<div style="padding:12px 16px;border-radius:10px;background:' . $bgColor . ';color:' . $textColor . ';font-weight:600;margin-bottom:14px">';
+    echo h($flash['message']);
+    echo '</div>';
+}
+
 echo '<form method="post" action="/apply_professional_post.php" style="display:grid;gap:12px">';
 
 echo '<div class="grid">';
@@ -104,7 +114,7 @@ echo '<div class="col6"><label>Número<input name="address_number" maxlength="20
 echo '<div class="col6"><label>Complemento<input name="address_complement" maxlength="80"></label></div>';
 echo '<div class="col6"><label>Bairro<input name="address_neighborhood" maxlength="80"></label></div>';
 echo '<div class="col6"><label>Cidade<input name="address_city" maxlength="120"></label></div>';
-echo '<div class="col6"><label>UF<input name="address_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
+echo '<div class="col6"><label>UF (2 letras)<input name="address_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
 echo '<div class="col6"><label>CEP<input name="address_zip" maxlength="12" placeholder="00000-000"></label></div>';
 echo '</div>';
 
@@ -114,7 +124,7 @@ echo '<div class="grid">';
 echo '<div class="col6"><label>RG<input name="rg" maxlength="30"></label></div>';
 echo '<div class="col6"><label>Sigla do Conselho<input name="council_abbr" maxlength="20" placeholder="COREN, CRM"></label></div>';
 echo '<div class="col6"><label>Número do Conselho<input name="council_number" maxlength="30"></label></div>';
-echo '<div class="col6"><label>UF do Conselho<input name="council_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
+echo '<div class="col6"><label>UF do Conselho (2 letras)<input name="council_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
 echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:6px">Dados bancários</div>';
