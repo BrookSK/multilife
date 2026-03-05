@@ -151,6 +151,10 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
         'keys' => ['appointments.email_subject_template', 'appointments.email_body_template', 'professional.onboarding_email_subject_template', 'professional.onboarding_email_body_template', 'professional.application_need_more_info_email_subject_template', 'professional.application_need_more_info_email_body_template', 'professional.application_rejected_email_subject_template', 'professional.application_rejected_email_body_template', 'professional.docs_reminder_email_subject_template', 'professional.docs_reminder_email_body_template', 'professional.docs_overdue_email_subject_template', 'professional.docs_overdue_email_body_template', 'professional.docs_approved_email_subject_template', 'professional.docs_approved_email_body_template']
     ],
+    'Ajuda' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        'keys' => ['_help_']
+    ],
 ];
 
 $fieldsAdded = ['zapsign.base_url' => 'ZapSign - Base URL', 'zapsign.api_token' => 'ZapSign - API Token'];
@@ -239,6 +243,85 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '</div>';
+    } elseif ($sectionTitle === 'Ajuda') {
+        // Aba especial de Ajuda
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Como Funciona o Sistema</div>';
+        echo '<div style="margin-top:12px">';
+        
+        $helpTopics = [
+            'Fluxo de Captação de Demandas' => [
+                'Recebimento da Demanda' => 'Uma demanda chega por e-mail ou WhatsApp e é registrada automaticamente no sistema.',
+                'Captador Assume a Demanda' => 'O captador visualiza a demanda na lista de Captação e clica em "Assumir". A partir desse momento, ele é responsável por encontrar um profissional.',
+                'Disparo para Grupos WhatsApp' => 'O captador deve disparar a demanda para os grupos de WhatsApp dos profissionais. O sistema envia automaticamente a mensagem com os detalhes da demanda.',
+                'Profissional Manifesta Interesse' => 'Os profissionais que receberem a mensagem no grupo podem responder demonstrando interesse em atender a demanda.',
+                'Captador Seleciona Profissional' => 'O captador escolhe o profissional mais adequado e registra no sistema quem foi selecionado.',
+                'Finalização' => 'A demanda é marcada como "Atendida" e o fluxo é concluído.'
+            ],
+            'Gestão de Profissionais' => [
+                'Candidatura' => 'O profissional preenche o formulário de candidatura no site público. Os dados são salvos como "Pendente".',
+                'Análise da Candidatura' => 'A equipe de RH acessa "Candidaturas" e visualiza os dados. Pode aprovar, reprovar ou solicitar mais informações.',
+                'Aprovação e Onboarding' => 'Ao aprovar, o sistema cria automaticamente um usuário para o profissional e envia e-mail/WhatsApp com login e senha.',
+                'Documentação' => 'O profissional acessa o sistema e faz upload dos documentos obrigatórios (RG, CPF, certificados, etc).',
+                'Revisão de Documentos' => 'A equipe revisa os documentos em "Profissionais → Documentos para Revisão" e aprova ou rejeita.',
+                'Profissional Ativo' => 'Com todos os documentos aprovados, o profissional está apto a receber demandas.'
+            ],
+            'Gestão de Pacientes' => [
+                'Cadastro do Paciente' => 'Quando uma demanda é atendida, o captador ou profissional cadastra o paciente no sistema com dados pessoais e de saúde.',
+                'Vínculos' => 'O paciente é vinculado ao profissional que irá atendê-lo. Um paciente pode ter vários profissionais (ex: fisioterapeuta + nutricionista).',
+                'Acompanhamento' => 'O profissional acessa "Meus Pacientes" para ver todos os pacientes sob seus cuidados.',
+                'Histórico' => 'Todas as interações, sessões e documentos do paciente ficam registrados para consulta futura.'
+            ],
+            'Chat e Comunicação' => [
+                'Chat Interno' => 'O sistema possui chat interno para comunicação entre equipe e profissionais.',
+                'Mensagens WhatsApp' => 'Integrado com WhatsApp via Evolution API para envio automático de mensagens.',
+                'E-mails Automáticos' => 'O sistema envia e-mails automáticos em eventos importantes (aprovação, lembretes, etc).',
+                'Notificações' => 'O sininho no topo mostra notificações de pendências, novos e-mails, mensagens WhatsApp e captações atrasadas.'
+            ],
+            'Como Testar o Sistema' => [
+                '1. Teste de Captação' => 'Crie uma demanda manualmente em "Captação → Criar Demanda". Assuma a demanda e teste o disparo para grupos WhatsApp.',
+                '2. Teste de Candidatura' => 'Acesse a página pública de candidatura (/apply_professional.php) e preencha o formulário. Depois, aprove a candidatura no admin.',
+                '3. Teste de Documentos' => 'Faça login como profissional e envie documentos. Depois, acesse como admin e revise os documentos.',
+                '4. Teste de Paciente' => 'Cadastre um paciente de teste e vincule a um profissional. Verifique se aparece em "Meus Pacientes".',
+                '5. Teste de Notificações' => 'Execute a migration de notificações e crie notificações de teste usando as funções helper.',
+                '6. Teste de Integrações' => 'Configure as credenciais em "Integrações" e teste o console de cada integração (WhatsApp, OpenAI, etc).'
+            ]
+        ];
+        
+        echo '<style>';
+        echo '.accordion{border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:12px;overflow:hidden}';
+        echo '.accordionHeader{padding:14px 16px;background:hsl(var(--card));cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:space-between;transition:background .15s ease}';
+        echo '.accordionHeader:hover{background:hsl(var(--accent))}';
+        echo '.accordionHeader.isOpen{background:hsla(var(--primary)/.08)}';
+        echo '.accordionIcon{transition:transform .2s ease;font-size:18px;color:hsl(var(--muted-foreground))}';
+        echo '.accordionHeader.isOpen .accordionIcon{transform:rotate(180deg)}';
+        echo '.accordionContent{display:none;padding:16px;background:hsl(var(--card));border-top:1px solid hsl(var(--border))}';
+        echo '.accordionContent.isOpen{display:block}';
+        echo '.helpStep{padding:10px 0;border-bottom:1px solid hsl(var(--border))}';
+        echo '.helpStep:last-child{border-bottom:none}';
+        echo '.helpStepTitle{font-weight:600;margin-bottom:6px;color:hsl(var(--foreground))}';
+        echo '.helpStepDesc{color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6}';
+        echo '</style>';
+        
+        foreach ($helpTopics as $topic => $steps) {
+            echo '<div class="accordion">';
+            echo '<div class="accordionHeader" onclick="toggleAccordion(this)">';
+            echo '<span>' . h($topic) . '</span>';
+            echo '<span class="accordionIcon">▼</span>';
+            echo '</div>';
+            echo '<div class="accordionContent">';
+            foreach ($steps as $stepTitle => $stepDesc) {
+                echo '<div class="helpStep">';
+                echo '<div class="helpStepTitle">' . h($stepTitle) . '</div>';
+                echo '<div class="helpStepDesc">' . h($stepDesc) . '</div>';
+                echo '</div>';
+            }
+            echo '</div>';
+            echo '</div>';
+        }
+        
+        echo '</div>';
+        echo '</div>';
     } else {
         // Abas normais de configuração
         echo '<div class="formSection">';
@@ -284,6 +367,17 @@ echo '    this.classList.add("isActive");';
 echo '    document.getElementById(targetId).classList.add("isActive");';
 echo '  });';
 echo '});';
+echo 'function toggleAccordion(header){';
+echo '  const content = header.nextElementSibling;';
+echo '  const isOpen = header.classList.contains("isOpen");';
+echo '  if(isOpen){';
+echo '    header.classList.remove("isOpen");';
+echo '    content.classList.remove("isOpen");';
+echo '  }else{';
+echo '    header.classList.add("isOpen");';
+echo '    content.classList.add("isOpen");';
+echo '  }';
+echo '}';
 echo '</script>';
 
 echo '</section>';

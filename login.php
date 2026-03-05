@@ -351,7 +351,7 @@ function h(string $value): string {
                 
                 if (!empty($logoUrl)):
                 ?>
-                    <img src="<?= h($logoUrl) ?>" alt="Logo" style="max-height:90px;max-width:100%;object-fit:contain">
+                    <img src="<?= h($logoUrl) ?>" alt="Logo" style="max-height:102px;max-width:100%;object-fit:contain">
                 <?php else: ?>
                     <div class="mark" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
