@@ -269,6 +269,8 @@ foreach ($emails as $e) {
                 $updParams['did'] = $demandId;
             }
             $updOk->execute($updParams);
+
+            $db->commit();
             $ok++;
             if ($debug) {
                 $createdLines[] = 'EMAIL #' . (string)$id . ' -> DEMAND #' . (string)$demandId . ' (' . $status . ')';
