@@ -163,51 +163,53 @@ echo '</form>';
 echo '</div>';
 
 // JavaScript para popular cidades baseado no estado
+$cidadesJson = json_encode([
+    'SP' => ['Sao Paulo','Guarulhos','Campinas','Sao Bernardo do Campo','Santo Andre','Osasco','Sao Jose dos Campos','Ribeirao Preto','Sorocaba','Santos','Outra'],
+    'RJ' => ['Rio de Janeiro','Sao Goncalo','Duque de Caxias','Nova Iguacu','Niteroi','Campos dos Goytacazes','Petropolis','Volta Redonda','Outra'],
+    'MG' => ['Belo Horizonte','Uberlandia','Contagem','Juiz de Fora','Betim','Montes Claros','Uberaba','Governador Valadares','Outra'],
+    'BA' => ['Salvador','Feira de Santana','Vitoria da Conquista','Camacari','Itabuna','Juazeiro','Lauro de Freitas','Ilheus','Outra'],
+    'PR' => ['Curitiba','Londrina','Maringa','Ponta Grossa','Cascavel','Sao Jose dos Pinhais','Foz do Iguacu','Colombo','Outra'],
+    'RS' => ['Porto Alegre','Caxias do Sul','Pelotas','Canoas','Santa Maria','Gravatai','Novo Hamburgo','Sao Leopoldo','Outra'],
+    'PE' => ['Recife','Jaboatao dos Guararapes','Olinda','Caruaru','Petrolina','Paulista','Cabo de Santo Agostinho','Outra'],
+    'CE' => ['Fortaleza','Caucaia','Juazeiro do Norte','Maracanau','Sobral','Crato','Itapipoca','Maranguape','Outra'],
+    'PA' => ['Belem','Ananindeua','Santarem','Maraba','Castanhal','Parauapebas','Outra'],
+    'SC' => ['Florianopolis','Joinville','Blumenau','Sao Jose','Criciuma','Chapeco','Itajai','Jaragua do Sul','Outra'],
+    'GO' => ['Goiania','Aparecida de Goiania','Anapolis','Rio Verde','Luziania','Aguas Lindas de Goias','Outra'],
+    'MA' => ['Sao Luis','Imperatriz','Sao Jose de Ribamar','Timon','Caxias','Codo','Outra'],
+    'PB' => ['Joao Pessoa','Campina Grande','Santa Rita','Patos','Bayeux','Sousa','Outra'],
+    'ES' => ['Vila Velha','Serra','Cariacica','Vitoria','Cachoeiro de Itapemirim','Linhares','Outra'],
+    'AM' => ['Manaus','Parintins','Itacoatiara','Manacapuru','Coari','Outra'],
+    'RN' => ['Natal','Mossoro','Parnamirim','Sao Goncalo do Amarante','Macaiba','Outra'],
+    'AL' => ['Maceio','Arapiraca','Rio Largo','Palmeira dos Indios','Outra'],
+    'MT' => ['Cuiaba','Varzea Grande','Rondonopolis','Sinop','Tangara da Serra','Outra'],
+    'MS' => ['Campo Grande','Dourados','Tres Lagoas','Corumba','Ponta Pora','Outra'],
+    'DF' => ['Brasilia','Ceilandia','Taguatinga','Samambaia','Planaltina','Outra'],
+    'SE' => ['Aracaju','Nossa Senhora do Socorro','Lagarto','Itabaiana','Outra'],
+    'RO' => ['Porto Velho','Ji-Parana','Ariquemes','Vilhena','Cacoal','Outra'],
+    'TO' => ['Palmas','Araguaina','Gurupi','Porto Nacional','Outra'],
+    'AC' => ['Rio Branco','Cruzeiro do Sul','Sena Madureira','Outra'],
+    'AP' => ['Macapa','Santana','Laranjal do Jari','Outra'],
+    'RR' => ['Boa Vista','Rorainopolis','Caracarai','Outra'],
+    'PI' => ['Teresina','Parnaiba','Picos','Piripiri','Outra']
+], JSON_HEX_APOS | JSON_HEX_QUOT);
+
 echo '<script>';
-echo 'const cidadesPorEstado = {';
-echo '"SP": ["São Paulo","Guarulhos","Campinas","São Bernardo do Campo","Santo André","Osasco","São José dos Campos","Ribeirão Preto","Sorocaba","Santos","Mauá","São José do Rio Preto","Diadema","Jundiaí","Piracicaba","Carapicuíba","Bauru","Itaquaquecetuba","São Vicente","Franca","Praia Grande","Limeira","Suzano","Taboão da Serra","Sumaré","Americana","Araraquara","Jacareí","Indaiatuba","Taubaté","Embu das Artes","Cotia","Marília","Presidente Prudente","Hortolândia","Sertãozinho","Outra"],';
-echo '"RJ": ["Rio de Janeiro","São Gonçalo","Duque de Caxias","Nova Iguaçu","Niterói","Belford Roxo","Campos dos Goytacazes","São João de Meriti","Petrópolis","Volta Redonda","Magé","Itaboraí","Macaé","Cabo Frio","Nova Friburgo","Barra Mansa","Angra dos Reis","Teresópolis","Mesquita","Nilópolis","Outra"],';
-echo '"MG": ["Belo Horizonte","Uberlândia","Contagem","Juiz de Fora","Betim","Montes Claros","Ribeirão das Neves","Uberaba","Governador Valadares","Ipatinga","Santa Luzia","Sete Lagoas","Divinópolis","Ibirité","Poços de Caldas","Patos de Minas","Teófilo Otoni","Sabará","Pouso Alegre","Barbacena","Varginha","Outra"],';
-echo '"BA": ["Salvador","Feira de Santana","Vitória da Conquista","Camaçari","Itabuna","Juazeiro","Lauro de Freitas","Ilhéus","Jequié","Teixeira de Freitas","Alagoinhas","Barreiras","Porto Seguro","Simões Filho","Paulo Afonso","Eunápolis","Santo Antônio de Jesus","Valença","Candeias","Guanambi","Outra"],';
-echo '"PR": ["Curitiba","Londrina","Maringá","Ponta Grossa","Cascavel","São José dos Pinhais","Foz do Iguaçu","Colombo","Guarapuava","Paranaguá","Araucária","Toledo","Apucarana","Pinhais","Campo Largo","Almirante Tamandaré","Umuarama","Paranavaí","Piraquara","Cambé","Outra"],';
-echo '"RS": ["Porto Alegre","Caxias do Sul","Pelotas","Canoas","Santa Maria","Gravataí","Viamão","Novo Hamburgo","São Leopoldo","Rio Grande","Alvorada","Passo Fundo","Sapucaia do Sul","Uruguaiana","Santa Cruz do Sul","Cachoeirinha","Bagé","Bento Gonçalves","Erechim","Guaíba","Outra"],';
-echo '"PE": ["Recife","Jaboatão dos Guararapes","Olinda","Caruaru","Petrolina","Paulista","Cabo de Santo Agostinho","Camaragibe","Garanhuns","Vitória de Santo Antão","Igarassu","São Lourenço da Mata","Abreu e Lima","Santa Cruz do Capibaribe","Ipojuca","Serra Talhada","Araripina","Palmares","Escada","Outra"],';
-echo '"CE": ["Fortaleza","Caucaia","Juazeiro do Norte","Maracanaú","Sobral","Crato","Itapipoca","Maranguape","Iguatu","Quixadá","Canindé","Pacajus","Aquiraz","Quixeramobim","Cascavel","Pacatuba","Horizonte","Russas","Crateús","Tianguá","Outra"],';
-echo '"PA": ["Belém","Ananindeua","Santarém","Marabá","Castanhal","Parauapebas","Itaituba","Cametá","Bragança","Abaetetuba","Marituba","Altamira","Tucuruí","Barcarena","Paragominas","Breves","Tailândia","Benevides","Outra"],';
-echo '"SC": ["Florianópolis","Joinville","Blumenau","São José","Criciúma","Chapecó","Itajaí","Jaraguá do Sul","Lages","Palhoça","Balneário Camboriú","Brusque","Tubarão","São Bento do Sul","Caçador","Camboriú","Navegantes","Concórdia","Rio do Sul","Araranguá","Outra"],';
-echo '"GO": ["Goiânia","Aparecida de Goiânia","Anápolis","Rio Verde","Luziânia","Águas Lindas de Goiás","Valparaíso de Goiás","Trindade","Formosa","Novo Gama","Itumbiara","Senador Canedo","Catalão","Jataí","Planaltina","Caldas Novas","Santo Antônio do Descoberto","Outra"],';
-echo '"MA": ["São Luís","Imperatriz","São José de Ribamar","Timon","Caxias","Codó","Paço do Lumiar","Açailândia","Bacabal","Balsas","Santa Inês","Pinheiro","Pedreiras","Chapadinha","São Mateus","Barra do Corda","Outra"],';
-echo '"PB": ["João Pessoa","Campina Grande","Santa Rita","Patos","Bayeux","Sousa","Cajazeiras","Cabedelo","Guarabira","Mamanguape","Monteiro","Pombal","Itabaiana","Esperança","Outra"],';
-echo '"ES": ["Vila Velha","Serra","Cariacica","Vitória","Cachoeiro de Itapemirim","Linhares","São Mateus","Colatina","Guarapari","Aracruz","Viana","Nova Venécia","Barra de São Francisco","Outra"],';
-echo '"AM": ["Manaus","Parintins","Itacoatiara","Manacapuru","Coari","Tefé","Tabatinga","Maués","Humaitá","São Gabriel da Cachoeira","Outra"],';
-echo '"RN": ["Natal","Mossoró","Parnamirim","São Gonçalo do Amarante","Macaíba","Ceará-Mirim","Caicó","Assu","Currais Novos","São José de Mipibu","Outra"],';
-echo '"AL": ["Maceió","Arapiraca","Rio Largo","Palmeira dos Índios","União dos Palmares","Penedo","São Miguel dos Campos","Santana do Ipanema","Delmiro Gouveia","Coruripe","Outra"],';
-echo '"MT": ["Cuiabá","Várzea Grande","Rondonópolis","Sinop","Tangará da Serra","Cáceres","Sorriso","Lucas do Rio Verde","Barra do Garças","Alta Floresta","Outra"],';
-echo '"MS": ["Campo Grande","Dourados","Três Lagoas","Corumbá","Ponta Porã","Sidrolândia","Naviraí","Nova Andradina","Aquidauana","Paranaíba","Outra"],';
-echo '"DF": ["Brasília","Ceilândia","Taguatinga","Samambaia","Planaltina","Águas Claras","Gama","Santa Maria","São Sebastião","Recanto das Emas","Sobradinho","Outra"],';
-echo '"SE": ["Aracaju","Nossa Senhora do Socorro","Lagarto","Itabaiana","Estância","São Cristóvão","Tobias Barreto","Simão Dias","Propriá","Outra"],';
-echo '"RO": ["Porto Velho","Ji-Paraná","Ariquemes","Vilhena","Cacoal","Jaru","Rolim de Moura","Guajará-Mirim","Pimenta Bueno","Outra"],';
-echo '"TO": ["Palmas","Araguaína","Gurupi","Porto Nacional","Paraíso do Tocantins","Colinas do Tocantins","Guaraí","Miracema do Tocantins","Outra"],';
-echo '"AC": ["Rio Branco","Cruzeiro do Sul","Sena Madureira","Tarauacá","Feijó","Brasiléia","Outra"],';
-echo '"AP": ["Macapá","Santana","Laranjal do Jari","Oiapoque","Mazagão","Outra"],';
-echo '"RR": ["Boa Vista","Rorainópolis","Caracaraí","Mucajaí","Pacaraima","Outra"],';
-echo '"PI": ["Teresina","Parnaíba","Picos","Piripiri","Floriano","Campo Maior","Barras","Altos","Outra"]';
-echo '};';
+echo 'const cidadesPorEstado = ' . $cidadesJson . ';';
 echo 'const ufSelect = document.getElementById("address_state");';
 echo 'const cidadeSelect = document.getElementById("address_city");';
 echo 'if(ufSelect && cidadeSelect){';
-echo 'ufSelect.addEventListener("change", function(){';
-echo 'const uf = this.value;';
-echo 'cidadeSelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
-echo 'if(uf && cidadesPorEstado[uf]){';
-echo 'cidadesPorEstado[uf].forEach(function(cidade){';
-echo 'const opt = document.createElement("option");';
-echo 'opt.value = cidade;';
-echo 'opt.textContent = cidade;';
-echo 'cidadeSelect.appendChild(opt);';
-echo '});';
-echo '}';
-echo '});';
+echo '  ufSelect.addEventListener("change", function(){';
+echo '    const uf = this.value;';
+echo '    cidadeSelect.innerHTML = "<option value=\\"\\">Selecione...</option>";';
+echo '    if(uf && cidadesPorEstado[uf]){';
+echo '      cidadesPorEstado[uf].forEach(function(cidade){';
+echo '        const opt = document.createElement("option");';
+echo '        opt.value = cidade;';
+echo '        opt.textContent = cidade;';
+echo '        cidadeSelect.appendChild(opt);';
+echo '      });';
+echo '    }';
+echo '  });';
 echo '}';
 echo '</script>';
 
