@@ -88,10 +88,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $payload = json_encode([
                 'number'      => $remoteJid,
                 'textMessage' => ['text' => $message],
-                'options'     => [
-                    'delay'    => 1200,
-                    'presence' => 'composing',
-                ],
             ]);
             error_log("[$debugId] URL:'$url' | payload:$payload");
             
