@@ -28,147 +28,20 @@ $selectedChatData = [];
 $cacheKey = 'evolution_chats_' . $instanceName;
 $cacheTime = 30; // 30 segundos
 
-// Verificar se há cache válido
-$useCache = false;
+// TEMPORARIAMENTE DESABILITADO - API Evolution causando timeout no servidor
 $debugLogs = [];
-if (!$forceRefresh && isset($_SESSION[$cacheKey]) && isset($_SESSION[$cacheKey . '_time'])) {
-    $timeSinceCache = time() - $_SESSION[$cacheKey . '_time'];
-    if ($timeSinceCache < $cacheTime) {
-        $chats = $_SESSION[$cacheKey];
-        $useCache = true;
-        
-        // Debug para cache
-        $debugLogs[] = "=== 10 ÚLTIMOS CONTATOS (CACHE) ===";
-        $debugLogs[] = "Fonte: Cache (atualizado há " . $timeSinceCache . " segundos)";
-        $debugLogs[] = "Total de conversas: " . count($chats);
-        $debugLogs[] = "";
-        $debugLogs[] = "--- CONVERSAS DO CACHE ---";
-        foreach ($chats as $idx => $chat) {
-            $timestamp = $chat['lastMsgTimestamp'] ?? 0;
-            $chatId = $chat['id'] ?? 'N/A';
-            $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-            $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
-        }
-    }
-}
+$debugLogs[] = "=== CHAT TEMPORARIAMENTE DESABILITADO ===";
+$debugLogs[] = "A API Evolution está causando timeout no servidor.";
+$debugLogs[] = "Aguarde correção ou sincronize manualmente.";
+$debugLogs[] = "";
+$chats = [];
 
+// Código comentado para reativar depois:
+/*
 if (!$useCache && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
-    try {
-        // Adicionar timestamp para evitar cache
-        $url = $baseUrl . '/chat/findChats/' . urlencode($instanceName);
-        $url .= '?t=' . time();
-        
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'apikey: ' . $apiKey,
-            'Cache-Control: no-cache, no-store, must-revalidate',
-            'Pragma: no-cache',
-            'Expires: 0'
-        ]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 3); // Reduzido para 3 segundos
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2); // Timeout de conexão
-        curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        // Log de erro se houver
-        if ($curlError) {
-            error_log("Evolution API Error: " . $curlError);
-        }
-        
-        if ($httpCode === 200) {
-            $chats = json_decode($response, true);
-            if (!is_array($chats)) {
-                $chats = [];
-            }
-            
-            // FILTRO 1: Excluir apenas canais @lid (manter grupos e conversas privadas)
-            $chats = array_filter($chats, function($chat) {
-                $chatId = $chat['id'] ?? '';
-                return !empty($chatId) && strpos($chatId, '@lid') === false;
-            });
-            
-            // ORDENAR POR TIMESTAMP E PEGAR OS 10 MAIS RECENTES (SEM BUSCAR MENSAGENS)
-            $debugLogs = [];
-            $debugLogs[] = "=== 10 ÚLTIMOS CONTATOS (SEM HISTÓRICO) ===";
-            $debugLogs[] = "Fonte: API Evolution (dados salvos em cache por 30s)";
-            $debugLogs[] = "Total de conversas disponíveis: " . count($chats);
-            $debugLogs[] = "";
-            
-            // Ordenar por lastMsgTimestamp (já vem do endpoint de chats)
-            usort($chats, function($a, $b) {
-                $timeA = $a['lastMsgTimestamp'] ?? 0;
-                $timeB = $b['lastMsgTimestamp'] ?? 0;
-                
-                if ($timeA > 9999999999) $timeA = intval($timeA / 1000);
-                if ($timeB > 9999999999) $timeB = intval($timeB / 1000);
-                
-                return $timeB - $timeA;
-            });
-            
-            // Limitar aos 10 primeiros
-            $chats = array_slice($chats, 0, 10);
-            
-            $debugLogs[] = "--- 10 ÚLTIMOS CONTATOS ---";
-            foreach ($chats as $idx => $chat) {
-                $timestamp = $chat['lastMsgTimestamp'] ?? 0;
-                $chatId = $chat['id'] ?? 'N/A';
-                $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-                $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
-            }
-            
-            // Salvar no cache
-            $_SESSION[$cacheKey] = $chats;
-            $_SESSION[$cacheKey . '_time'] = time();
-            
-            // Enriquecer dados dos chats com nomes
-            foreach ($chats as &$chat) {
-                $chatId = $chat['id'] ?? '';
-                
-                // Buscar nome - usar dados já disponíveis da API
-                if (!isset($chat['name']) || empty($chat['name'])) {
-                    if (!empty($chatId)) {
-                        $isGroup = strpos($chatId, '@g.us') !== false;
-                        
-                        // Prioridade: pushName > subject (grupos) > número formatado
-                        if (isset($chat['pushName']) && !empty($chat['pushName'])) {
-                            $chat['name'] = $chat['pushName'];
-                        } elseif ($isGroup && isset($chat['subject']) && !empty($chat['subject'])) {
-                            // Grupos têm um campo 'subject' com o nome do grupo
-                            $chat['name'] = $chat['subject'];
-                        } elseif (!$isGroup) {
-                            // Apenas formatar número se for conversa privada
-                            $number = str_replace(['@s.whatsapp.net', '@lid'], '', $chatId);
-                            
-                            // Formatar número brasileiro: +55 (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
-                            if (preg_match('/^55(\d{2})(\d{4,5})(\d{4})$/', $number, $matches)) {
-                                // Número brasileiro com DDI 55
-                                $chat['name'] = '+55 (' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3];
-                            } elseif (preg_match('/^(\d{2})(\d{4,5})(\d{4})$/', $number, $matches)) {
-                                // Número brasileiro sem DDI
-                                $chat['name'] = '(' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3];
-                            } else {
-                                // Outros formatos - adicionar + se tiver mais de 10 dígitos
-                                $chat['name'] = strlen($number) > 10 ? '+' . $number : $number;
-                            }
-                        } else {
-                            // Fallback para grupos sem subject
-                            $chat['name'] = 'Grupo';
-                        }
-                    }
-                }
-                
-                // Usar profilePictureUrl se já vier da API
-                if (!isset($chat['profilePictureUrl'])) {
-                    $chat['profilePictureUrl'] = null;
-                }
-            }
-            unset($chat);
+    // ... código da API Evolution aqui ...
+}
+*/
             
             // Filtrar por busca (se houver)
             if (!empty($searchQuery)) {
