@@ -120,6 +120,39 @@ $messages = [];
 $selectedChatData = [];
 $debugLogs = [];
 
+// Buscar profissionais e pacientes para seletor de contatos
+$professionals = [];
+$patients = [];
+
+try {
+    // Buscar profissionais (usuários com role de profissional)
+    $stmt = db()->prepare("
+        SELECT u.id, u.name, u.phone, u.email
+        FROM users u
+        INNER JOIN user_roles ur ON u.id = ur.user_id
+        INNER JOIN roles r ON ur.role_id = r.id
+        WHERE r.name IN ('professional', 'admin')
+        AND u.phone IS NOT NULL
+        AND u.phone != ''
+        ORDER BY u.name ASC
+    ");
+    $stmt->execute();
+    $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Buscar pacientes
+    $stmt = db()->prepare("
+        SELECT id, name, phone, email
+        FROM patients
+        WHERE phone IS NOT NULL
+        AND phone != ''
+        ORDER BY name ASC
+    ");
+    $stmt->execute();
+    $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Erro ao buscar contatos: " . $e->getMessage());
+}
+
 // DESABILITADO: API Evolution não retorna mensagens corretas
 // A API retorna sempre as mesmas mensagens antigas de canais, independente do filtro
 // Até que a API seja corrigida ou sincronizada, mensagens não serão carregadas
@@ -368,8 +401,11 @@ echo '<div class="whatsapp-sidebar">';
 echo '<div class="whatsapp-header">';
 echo '<div class="whatsapp-chat-avatar">' . strtoupper(substr(auth_user()['name'] ?? 'U', 0, 1)) . '</div>';
 echo '<div style="display:flex;gap:4px">';
-echo '<button class="whatsapp-action-btn" onclick="syncWhatsApp()" title="Sincronizar WhatsApp">';
-echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.2"/></svg>';
+echo '<button class="whatsapp-action-btn" onclick="openNewChatModal()" title="Nova Conversa">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+echo '</button>';
+echo '<button class="whatsapp-action-btn" onclick="openCreateGroupModal()" title="Criar Grupo">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
 echo '</button>';
 echo '<button class="whatsapp-action-btn" onclick="window.location.href=\'/evolution_qrcode.php\'" title="Conectar via QR Code">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
@@ -550,8 +586,182 @@ echo '</div>';
 
 echo '</div>'; // Fecha whatsapp-container
 
+// Modal: Nova Conversa
+echo '<div id="newChatModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center">';
+echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:500px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">';
+echo '<div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">';
+echo '<h2 style="margin:0;font-size:20px;color:#111b21">Nova Conversa</h2>';
+echo '<button onclick="closeNewChatModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>';
+echo '</div>';
+echo '<div style="flex:1;overflow-y:auto;padding:20px">';
+echo '<form method="post" action="/chat_web.php" id="newChatForm">';
+echo '<input type="hidden" name="action" value="send_message">';
+
+// Tabs: Profissionais / Pacientes / Número Manual
+echo '<div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid #e0e0e0">';
+echo '<button type="button" onclick="switchTab(\'professionals\')" id="tabProfessionals" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid #00a884;color:#00a884;font-weight:600;cursor:pointer">Profissionais</button>';
+echo '<button type="button" onclick="switchTab(\'patients\')" id="tabPatients" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#54656f;cursor:pointer">Pacientes</button>';
+echo '<button type="button" onclick="switchTab(\'manual\')" id="tabManual" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#54656f;cursor:pointer">Número Manual</button>';
+echo '</div>';
+
+// Tab: Profissionais
+echo '<div id="contentProfessionals" style="display:block">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Selecione um Profissional:</label>';
+echo '<select name="contact_phone_professional" id="professionalSelect" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">-- Selecione --</option>';
+foreach ($professionals as $prof) {
+    $phone = $prof['phone'] ?? '';
+    $name = $prof['name'] ?? '';
+    if (!empty($phone)) {
+        echo '<option value="' . h($phone) . '">' . h($name) . ' - ' . h($phone) . '</option>';
+    }
+}
+echo '</select>';
+echo '</div>';
+
+// Tab: Pacientes
+echo '<div id="contentPatients" style="display:none">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Selecione um Paciente:</label>';
+echo '<select name="contact_phone_patient" id="patientSelect" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">-- Selecione --</option>';
+foreach ($patients as $patient) {
+    $phone = $patient['phone'] ?? '';
+    $name = $patient['name'] ?? '';
+    if (!empty($phone)) {
+        echo '<option value="' . h($phone) . '">' . h($name) . ' - ' . h($phone) . '</option>';
+    }
+}
+echo '</select>';
+echo '</div>';
+
+// Tab: Número Manual
+echo '<div id="contentManual" style="display:none">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Digite o Número:</label>';
+echo '<input type="text" name="contact_phone_manual" id="manualPhone" placeholder="Ex: 5511999999999" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:8px">';
+echo '<p style="font-size:12px;color:#667781;margin:0">Formato: Código do país + DDD + número (sem espaços ou caracteres especiais)</p>';
+echo '</div>';
+
+// Mensagem
+echo '<label style="display:block;margin:16px 0 8px;font-weight:600;color:#111b21">Mensagem:</label>';
+echo '<textarea name="message" rows="4" placeholder="Digite sua mensagem..." required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical"></textarea>';
+
+echo '<div style="display:flex;gap:12px;margin-top:20px">';
+echo '<button type="button" onclick="closeNewChatModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>';
+echo '<button type="submit" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Enviar</button>';
+echo '</div>';
+echo '</form>';
+echo '</div>';
+echo '</div>';
+echo '</div>';
+
+// Modal: Criar Grupo
+echo '<div id="createGroupModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center">';
+echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:500px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">';
+echo '<div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">';
+echo '<h2 style="margin:0;font-size:20px;color:#111b21">Criar Grupo</h2>';
+echo '<button onclick="closeCreateGroupModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>';
+echo '</div>';
+echo '<div style="flex:1;overflow-y:auto;padding:20px">';
+echo '<form method="post" action="/chat_web.php">';
+echo '<input type="hidden" name="action" value="create_group">';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Nome do Grupo:</label>';
+echo '<input type="text" name="group_name" placeholder="Ex: Equipe Médica" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Participantes (um número por linha):</label>';
+echo '<textarea name="participants" rows="6" placeholder="5511999999999&#10;5511888888888&#10;..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:8px"></textarea>';
+echo '<p style="font-size:12px;color:#667781;margin:0 0 16px">Digite um número por linha no formato: código do país + DDD + número</p>';
+
+echo '<div style="display:flex;gap:12px">';
+echo '<button type="button" onclick="closeCreateGroupModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>';
+echo '<button type="submit" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Criar Grupo</button>';
+echo '</div>';
+echo '</form>';
+echo '</div>';
+echo '</div>';
+echo '</div>';
+
+// Exibir mensagens de sucesso/erro
+if (!empty($success)) {
+    echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
+    echo '<strong>✓ Sucesso:</strong> ' . h($success);
+    echo '</div>';
+    echo '<script>setTimeout(() => { window.location.href = "/chat_web.php"; }, 2000);</script>';
+}
+if (!empty($error)) {
+    echo '<div style="position:fixed;top:20px;right:20px;background:#f8d7da;color:#721c24;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
+    echo '<strong>✗ Erro:</strong> ' . h($error);
+    echo '</div>';
+}
+
 // JavaScript para funcionalidades
 echo '<script>';
+
+// Funções para controlar modais
+echo 'function openNewChatModal() {';
+echo '  document.getElementById("newChatModal").style.display = "flex";';
+echo '}';
+echo 'function closeNewChatModal() {';
+echo '  document.getElementById("newChatModal").style.display = "none";';
+echo '}';
+echo 'function openCreateGroupModal() {';
+echo '  document.getElementById("createGroupModal").style.display = "flex";';
+echo '}';
+echo 'function closeCreateGroupModal() {';
+echo '  document.getElementById("createGroupModal").style.display = "none";';
+echo '}';
+
+// Função para trocar tabs
+echo 'function switchTab(tab) {';
+echo '  // Resetar todos os tabs';
+echo '  document.getElementById("tabProfessionals").style.borderBottomColor = "transparent";';
+echo '  document.getElementById("tabProfessionals").style.color = "#54656f";';
+echo '  document.getElementById("tabPatients").style.borderBottomColor = "transparent";';
+echo '  document.getElementById("tabPatients").style.color = "#54656f";';
+echo '  document.getElementById("tabManual").style.borderBottomColor = "transparent";';
+echo '  document.getElementById("tabManual").style.color = "#54656f";';
+echo '  document.getElementById("contentProfessionals").style.display = "none";';
+echo '  document.getElementById("contentPatients").style.display = "none";';
+echo '  document.getElementById("contentManual").style.display = "none";';
+echo '  // Limpar campos';
+echo '  document.getElementById("professionalSelect").value = "";';
+echo '  document.getElementById("patientSelect").value = "";';
+echo '  document.getElementById("manualPhone").value = "";';
+echo '  // Ativar tab selecionada';
+echo '  if (tab === "professionals") {';
+echo '    document.getElementById("tabProfessionals").style.borderBottomColor = "#00a884";';
+echo '    document.getElementById("tabProfessionals").style.color = "#00a884";';
+echo '    document.getElementById("contentProfessionals").style.display = "block";';
+echo '  } else if (tab === "patients") {';
+echo '    document.getElementById("tabPatients").style.borderBottomColor = "#00a884";';
+echo '    document.getElementById("tabPatients").style.color = "#00a884";';
+echo '    document.getElementById("contentPatients").style.display = "block";';
+echo '  } else if (tab === "manual") {';
+echo '    document.getElementById("tabManual").style.borderBottomColor = "#00a884";';
+echo '    document.getElementById("tabManual").style.color = "#00a884";';
+echo '    document.getElementById("contentManual").style.display = "block";';
+echo '  }';
+echo '}';
+
+// Validação do formulário antes de enviar
+echo 'document.getElementById("newChatForm").addEventListener("submit", function(e) {';
+echo '  const profPhone = document.getElementById("professionalSelect").value;';
+echo '  const patPhone = document.getElementById("patientSelect").value;';
+echo '  const manualPhone = document.getElementById("manualPhone").value;';
+echo '  if (!profPhone && !patPhone && !manualPhone) {';
+echo '    e.preventDefault();';
+echo '    alert("Por favor, selecione um contato ou digite um número manualmente.");';
+echo '    return false;';
+echo '  }';
+echo '  // Criar campo phone_number com o valor correto';
+echo '  const phoneValue = profPhone || patPhone || manualPhone;';
+echo '  const hiddenInput = document.createElement("input");';
+echo '  hiddenInput.type = "hidden";';
+echo '  hiddenInput.name = "phone_number";';
+echo '  hiddenInput.value = phoneValue;';
+echo '  this.appendChild(hiddenInput);';
+echo '});';
+
 echo 'console.log("=== CHAT WEB DEBUG ===");';
 echo 'console.log("Chat selecionado:", "' . addslashes($selectedChat) . '");';
 echo 'console.log("Total de conversas carregadas:", ' . count($chats) . ');';
