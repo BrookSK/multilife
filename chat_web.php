@@ -11,6 +11,7 @@ auth_require_login();
 $selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
 $chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all'; // all, groups, private
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$forceRefresh = isset($_GET['refresh']) ? true : false;
 
 // Buscar configurações da Evolution API
 $baseUrl = admin_setting_get('evolution.base_url');
@@ -26,11 +27,23 @@ $chats = [];
 $selectedChatData = [];
 if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        $ch = curl_init($baseUrl . '/chat/findChats/' . urlencode($instanceName));
+        // Adicionar timestamp para evitar cache
+        $url = $baseUrl . '/chat/findChats/' . urlencode($instanceName);
+        if ($forceRefresh) {
+            $url .= '?t=' . time();
+        }
+        
+        $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'apikey: ' . $apiKey,
+            'Cache-Control: no-cache, no-store, must-revalidate',
+            'Pragma: no-cache',
+            'Expires: 0'
+        ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -99,18 +112,24 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'apikey: ' . $apiKey,
-            'Content-Type: application/json'
+            'Content-Type: application/json',
+            'Cache-Control: no-cache, no-store, must-revalidate',
+            'Pragma: no-cache'
         ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
         curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
             'where' => [
                 'key' => [
                     'remoteJid' => $selectedChat
                 ]
             ],
-            'limit' => 10
+            'limit' => 10,
+            'sort' => [
+                'messageTimestamp' => -1
+            ]
         ]));
         
         $response = curl_exec($ch);
@@ -134,6 +153,38 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         foreach ($chats as $chat) {
             if (($chat['id'] ?? '') === $selectedChat) {
                 $selectedChatData = $chat;
+                
+                // Buscar perfil completo para garantir nome e foto corretos
+                if (!strpos($selectedChat, '@g.us')) {
+                    try {
+                        $number = str_replace('@s.whatsapp.net', '', $selectedChat);
+                        $chProfile = curl_init($baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode($number));
+                        curl_setopt($chProfile, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($chProfile, CURLOPT_HTTPHEADER, [
+                            'apikey: ' . $apiKey,
+                            'Cache-Control: no-cache'
+                        ]);
+                        curl_setopt($chProfile, CURLOPT_SSL_VERIFYPEER, false);
+                        curl_setopt($chProfile, CURLOPT_TIMEOUT, 5);
+                        curl_setopt($chProfile, CURLOPT_FRESH_CONNECT, true);
+                        
+                        $profileResponse = curl_exec($chProfile);
+                        $profileHttpCode = curl_getinfo($chProfile, CURLINFO_HTTP_CODE);
+                        curl_close($chProfile);
+                        
+                        if ($profileHttpCode === 200) {
+                            $profileData = json_decode($profileResponse, true);
+                            if (isset($profileData['profilePictureUrl'])) {
+                                $selectedChatData['profilePictureUrl'] = $profileData['profilePictureUrl'];
+                            }
+                            if (isset($profileData['name']) && !empty($profileData['name'])) {
+                                $selectedChatData['name'] = $profileData['name'];
+                            }
+                        }
+                    } catch (Exception $e) {
+                        // Ignorar erro de perfil
+                    }
+                }
                 break;
             }
         }

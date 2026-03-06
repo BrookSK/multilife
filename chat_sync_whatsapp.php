@@ -44,8 +44,17 @@ try {
             }
         }
         
-        flash_set('success', "Sincronização concluída! Total: $totalChats conversas ($groups grupos, $private conversas privadas)");
+        flash_set('success', "Sincronização concluída! Total: $totalChats conversas ($groups grupos, $private conversas privadas). Dados atualizados.");
         audit_log('sync', 'whatsapp', '0', null, ['total_chats' => $totalChats, 'groups' => $groups, 'private' => $private]);
+        
+        page_history_log(
+            '/chat_web.php',
+            'Chat ao Vivo',
+            'sync',
+            'Sincronizou conversas do WhatsApp: ' . $totalChats . ' conversas',
+            'whatsapp',
+            0
+        );
     } else {
         flash_set('error', 'Erro ao sincronizar. Código: ' . $httpCode);
     }
@@ -53,5 +62,6 @@ try {
     flash_set('error', 'Erro ao sincronizar: ' . $e->getMessage());
 }
 
-header('Location: /chat_web.php');
+// Redirecionar com parâmetro refresh para forçar dados novos
+header('Location: /chat_web.php?refresh=1&t=' . time());
 exit;
