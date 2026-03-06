@@ -159,9 +159,6 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     }
 }
 
-// DEBUG: Exibir logs na tela
-$debugLogs = [];
-
 // DESABILITADO: API Evolution não retorna mensagens corretas
 // A API retorna sempre as mesmas mensagens antigas de canais, independente do filtro
 // Até que a API seja corrigida ou sincronizada, mensagens não serão carregadas
