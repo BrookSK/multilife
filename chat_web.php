@@ -104,6 +104,9 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     }
 }
 
+// DEBUG: Exibir logs na tela
+$debugLogs = [];
+
 // Buscar mensagens do chat selecionado DIRETAMENTE DA API EVOLUTION
 // NÃO USA BANCO DE DADOS LOCAL - TODAS AS MENSAGENS VÊM DA API EM TEMPO REAL
 if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
@@ -120,6 +123,10 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         $requestJson = json_encode($requestPayload);
         
         // Log detalhado da requisição
+        $debugLogs[] = "=== CHAT_WEB DEBUG ===";
+        $debugLogs[] = "Chat selecionado: " . $selectedChat;
+        $debugLogs[] = "URL: " . $baseUrl . '/message/findMessages/' . urlencode($instanceName);
+        $debugLogs[] = "Payload: " . $requestJson;
         error_log("=== CHAT_WEB DEBUG ===");
         error_log("Chat selecionado: " . $selectedChat);
         error_log("URL: " . $baseUrl . '/message/findMessages/' . urlencode($instanceName));
@@ -146,6 +153,11 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         curl_close($ch);
         
         // Log da resposta
+        $debugLogs[] = "HTTP Code: " . $httpCode;
+        if ($curlError) {
+            $debugLogs[] = "cURL Error: " . $curlError;
+        }
+        $debugLogs[] = "Resposta completa da API: " . substr($response, 0, 1000);
         error_log("HTTP Code: " . $httpCode);
         if ($curlError) {
             error_log("cURL Error: " . $curlError);
@@ -234,6 +246,16 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
 }
 
 view_header('Chat ao Vivo');
+
+// DEBUG: Exibir logs na tela
+if (!empty($debugLogs)) {
+    echo '<div style="background:#fff3cd;border:1px solid #ffc107;padding:15px;margin:15px;border-radius:5px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;">';
+    echo '<strong style="color:#856404;display:block;margin-bottom:10px;">🔍 DEBUG - Resposta da API Evolution:</strong>';
+    foreach ($debugLogs as $log) {
+        echo '<div style="margin:5px 0;padding:5px;background:#fff;border-left:3px solid #ffc107;">' . htmlspecialchars($log) . '</div>';
+    }
+    echo '</div>';
+}
 
 // Meta tags para prevenir cache
 echo '<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">';
