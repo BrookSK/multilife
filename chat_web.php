@@ -233,11 +233,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     } elseif ($_POST['action'] === 'create_group') {
         $specialty = trim($_POST['specialty'] ?? '');
         $location = strtoupper(trim($_POST['location'] ?? ''));
-        $participants = trim($_POST['participants'] ?? '');
         
         if (empty($specialty) || empty($location)) {
             $error = 'Especialidade e localização são obrigatórias.';
-        } elseif (!empty($participants)) {
+        } else {
             // Gerar número sequencial do grupo
             try {
                 $countStmt = db()->prepare('SELECT COUNT(*) FROM chat_groups WHERE specialty = ? AND region = ?');
@@ -250,63 +249,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Padrão: Especialidade - Localização - Número
             $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
             
-            // Formatar participantes
-            $participantsList = array_filter(array_map('trim', explode("\n", $participants)));
-            $formattedParticipants = [];
-            foreach ($participantsList as $phone) {
-                $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
-                if (!empty($cleanPhone)) {
-                    $formattedParticipants[] = $cleanPhone . '@s.whatsapp.net';
-                }
-            }
+            // Criar grupo vazio - participantes serão adicionados via convite no chat
+            // Usar número do próprio usuário logado como participante inicial (requisito da API)
+            $userPhone = auth_user()['phone'] ?? '5511999999999'; // Fallback se não tiver telefone
+            $cleanUserPhone = preg_replace('/[^0-9]/', '', $userPhone);
+            $formattedParticipants = [$cleanUserPhone . '@s.whatsapp.net'];
             
-            if (!empty($formattedParticipants)) {
-                $url = $baseUrl . '/group/create/' . urlencode($instanceName);
-                $payload = json_encode([
-                    'subject' => $groupName,
-                    'participants' => $formattedParticipants
-                ]);
+            $url = $baseUrl . '/group/create/' . urlencode($instanceName);
+            $payload = json_encode([
+                'subject' => $groupName,
+                'participants' => $formattedParticipants
+            ]);
+            
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'apikey: ' . $apiKey,
+                'Content-Type: application/json'
+            ]);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode === 200 || $httpCode === 201) {
+                $responseData = json_decode($response, true);
+                $groupJid = $responseData['id'] ?? '';
                 
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                    'apikey: ' . $apiKey,
-                    'Content-Type: application/json'
-                ]);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-                
-                $response = curl_exec($ch);
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
-                
-                if ($httpCode === 200 || $httpCode === 201) {
-                    $responseData = json_decode($response, true);
-                    $groupJid = $responseData['id'] ?? '';
-                    
-                    // Salvar grupo no banco de dados
-                    if (!empty($groupJid)) {
-                        try {
-                            $stmt = db()->prepare("
-                                INSERT INTO chat_groups (group_jid, group_name, specialty, region, created_at)
-                                VALUES (?, ?, ?, ?, NOW())
-                            ");
-                            $stmt->execute([$groupJid, $groupName, $specialty, $location]);
-                            
-                            audit_log('group_created', 'Grupo criado: ' . $groupName . ' (JID: ' . $groupJid . ')');
-                            $success = 'Grupo criado com sucesso: ' . $groupName;
-                        } catch (Exception $e) {
-                            error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
-                            $success = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
-                        }
-                    } else {
-                        $success = 'Grupo criado com sucesso: ' . $groupName;
+                // Salvar grupo no banco de dados
+                if (!empty($groupJid)) {
+                    try {
+                        $stmt = db()->prepare("
+                            INSERT INTO chat_groups (group_jid, group_name, specialty, region, created_at)
+                            VALUES (?, ?, ?, ?, NOW())
+                        ");
+                        $stmt->execute([$groupJid, $groupName, $specialty, $location]);
+                        
+                        audit_log('group_created', 'Grupo criado: ' . $groupName . ' (JID: ' . $groupJid . ')');
+                        $success = 'Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
+                    } catch (Exception $e) {
+                        error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
+                        $success = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
                     }
                 } else {
-                    $error = 'Erro ao criar grupo. HTTP Code: ' . $httpCode;
+                    $success = 'Grupo criado com sucesso: ' . $groupName;
                 }
+            } else {
+                error_log("Erro ao criar grupo - HTTP Code: $httpCode - Response: $response");
+                $error = 'Erro ao criar grupo. HTTP Code: ' . $httpCode . '. Verifique as configurações da Evolution API.';
             }
         }
     }
@@ -451,8 +445,6 @@ try {
             $whereClauses[] = "status = 'aguardando'";
         } elseif ($chatType === 'resolvidos') {
             $whereClauses[] = "status = 'resolvido'";
-        } elseif ($chatType === 'grupos') {
-            $whereClauses[] = "is_group = 1";
         } elseif ($chatType === 'organizacao') {
             $whereClauses[] = "contact_name LIKE '%Organização%' OR contact_name LIKE '%Admin%'";
         }
@@ -463,23 +455,26 @@ try {
             $params[] = '%' . $searchQuery . '%';
         }
         
-        $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
-        
-        $stmt = db()->prepare("
-            SELECT 
-                remote_jid as id,
-                contact_name as name,
-                profile_picture_url as profilePictureUrl,
-                is_group,
-                status,
-                last_message_timestamp as lastMsgTimestamp
-            FROM chat_contacts
-            $whereSQL
-            ORDER BY last_message_timestamp DESC
-            LIMIT 50
-        ");
-        $stmt->execute($params);
-        $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Não buscar chats se estiver na aba de grupos
+        if ($chatType !== 'grupos') {
+            $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
+            
+            $stmt = db()->prepare("
+                SELECT 
+                    remote_jid as id,
+                    contact_name as name,
+                    profile_picture_url as profilePictureUrl,
+                    is_group,
+                    status,
+                    last_message_timestamp as lastMsgTimestamp
+                FROM chat_contacts
+                $whereSQL
+                ORDER BY last_message_timestamp DESC
+                LIMIT 50
+            ");
+            $stmt->execute($params);
+            $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
     }
 } catch (Exception $e) {
     error_log("Erro ao carregar chats: " . $e->getMessage());
@@ -800,9 +795,9 @@ echo '</div>';
 
 // Modal: Criar Grupo
 echo '<div id="createGroupModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center">';
-echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">';
+echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:500px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">';
 echo '<div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">';
-echo '<h2 style="margin:0;font-size:20px;color:#111b21">Criar Grupo WhatsApp</h2>';
+echo '<h2 style="margin:0;font-size:20px;color:#111b21">Novo grupo WhatsApp</h2>';
 echo '<button onclick="closeCreateGroupModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>';
 echo '</div>';
 echo '<div style="flex:1;overflow-y:auto;padding:20px">';
@@ -828,26 +823,40 @@ echo '</select>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">UF *</label>';
 echo '<select name="state" id="modalGroupState" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
 echo '<option value="">Selecione...</option>';
-echo '<option value="SP">SP - São Paulo</option>';
-echo '<option value="RJ">RJ - Rio de Janeiro</option>';
-echo '<option value="MG">MG - Minas Gerais</option>';
-echo '<option value="RS">RS - Rio Grande do Sul</option>';
-echo '<option value="PR">PR - Paraná</option>';
-echo '<option value="SC">SC - Santa Catarina</option>';
+echo '<option value="AC">AC - Acre</option>';
+echo '<option value="AL">AL - Alagoas</option>';
+echo '<option value="AP">AP - Amapá</option>';
+echo '<option value="AM">AM - Amazonas</option>';
 echo '<option value="BA">BA - Bahia</option>';
-echo '<option value="PE">PE - Pernambuco</option>';
 echo '<option value="CE">CE - Ceará</option>';
 echo '<option value="DF">DF - Distrito Federal</option>';
+echo '<option value="ES">ES - Espírito Santo</option>';
+echo '<option value="GO">GO - Goiás</option>';
+echo '<option value="MA">MA - Maranhão</option>';
+echo '<option value="MT">MT - Mato Grosso</option>';
+echo '<option value="MS">MS - Mato Grosso do Sul</option>';
+echo '<option value="MG">MG - Minas Gerais</option>';
+echo '<option value="PA">PA - Pará</option>';
+echo '<option value="PB">PB - Paraíba</option>';
+echo '<option value="PR">PR - Paraná</option>';
+echo '<option value="PE">PE - Pernambuco</option>';
+echo '<option value="PI">PI - Piauí</option>';
+echo '<option value="RJ">RJ - Rio de Janeiro</option>';
+echo '<option value="RN">RN - Rio Grande do Norte</option>';
+echo '<option value="RS">RS - Rio Grande do Sul</option>';
+echo '<option value="RO">RO - Rondônia</option>';
+echo '<option value="RR">RR - Roraima</option>';
+echo '<option value="SC">SC - Santa Catarina</option>';
+echo '<option value="SP">SP - São Paulo</option>';
+echo '<option value="SE">SE - Sergipe</option>';
+echo '<option value="TO">TO - Tocantins</option>';
 echo '</select>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Cidade (opcional)</label>';
 echo '<select name="city" id="modalGroupCity" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
 echo '<option value="">Selecione o estado primeiro...</option>';
 echo '</select>';
 echo '<input type="hidden" name="location" id="modalLocation">';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Participantes (um número por linha)</label>';
-echo '<textarea name="participants" rows="5" placeholder="5511999999999&#10;5511888888888&#10;..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:8px"></textarea>';
-echo '<p style="font-size:12px;color:#667781;margin:0 0 16px">Digite um número por linha no formato: código do país + DDD + número</p>';
-echo '<div style="display:flex;gap:12px">';
+echo '<div style="display:flex;gap:12px;margin-top:24px">';
 echo '<button type="button" onclick="closeCreateGroupModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>';
 echo '<button type="submit" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Criar Grupo</button>';
 echo '</div>';
@@ -1133,47 +1142,86 @@ echo '</div>';
 
 // Abas removidas temporariamente para simplificar
 
-// Lista de conversas (máximo 10 conversas: grupos + privadas)
+// Lista de conversas
 echo '<div class="whatsapp-chats" id="chatsList">';
 
-if (empty($chats)) {
-    echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
-    echo '<p>Nenhuma conversa encontrada.</p>';
-    if (empty($baseUrl) || empty($apiKey)) {
-        echo '<p style="margin-top:12px;font-size:13px">Configure as credenciais da Evolution API em Configurações.</p>';
+// Se for aba de grupos, exibir grupos da tabela chat_groups
+if ($chatType === 'grupos') {
+    if (!empty($groups)) {
+        foreach ($groups as $group) {
+            $groupId = $group['id'] ?? '';
+            $groupName = $group['name'] ?? 'Grupo sem nome';
+            $groupPic = $group['profilePictureUrl'] ?? '';
+            $isActive = ($groupId === $selectedChat) ? ' active' : '';
+            
+            echo '<a href="/chat_web.php?chat=' . urlencode($groupId) . '&type=grupos" class="whatsapp-chat-item' . $isActive . '">';
+            if (!empty($groupPic)) {
+                echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($groupPic) . ');background-size:cover;background-position:center"></div>';
+            } else {
+                echo '<div class="whatsapp-chat-avatar" style="background:#00a884;color:#fff">';
+                echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+                echo '</div>';
+            }
+            echo '<div class="whatsapp-chat-info">';
+            echo '<div class="whatsapp-chat-name">' . h($groupName) . '</div>';
+            if (!empty($group['specialty']) || !empty($group['region'])) {
+                echo '<div class="whatsapp-chat-preview" style="font-size:12px;color:#667781">';
+                if (!empty($group['specialty'])) echo h($group['specialty']);
+                if (!empty($group['specialty']) && !empty($group['region'])) echo ' • ';
+                if (!empty($group['region'])) echo h($group['region']);
+                echo '</div>';
+            }
+            echo '</div>';
+            echo '</a>';
+        }
+    } else {
+        echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
+        echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;opacity:0.3"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+        echo '<p style="margin:0;font-weight:600">Nenhum grupo encontrado</p>';
+        echo '<p style="margin:8px 0 0;font-size:13px">Crie um grupo para começar</p>';
+        echo '</div>';
     }
-    echo '</div>';
 } else {
-    foreach ($chats as $chat) {
-        $chatId = $chat['id'] ?? '';
-        $chatName = $chat['name'] ?? $chatId;
-        $isGroup = strpos($chatId, '@g.us') !== false;
-        $isActive = $selectedChat === $chatId ? ' active' : '';
-        $lastMsg = ''; 
-        $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
-        
-        $initials = strtoupper(substr($chatName, 0, 2));
-        $profilePic = $chat['profilePictureUrl'] ?? '';
-        
-        echo '<a href="/chat_web.php?chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
-        if (!empty($profilePic)) {
-            echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
-        } else {
-            echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+    // Exibir chats normais
+    if (!empty($chats)) {
+        foreach ($chats as $chat) {
+            $chatId = $chat['id'] ?? '';
+            $chatName = $chat['name'] ?? $chatId;
+            $isGroup = strpos($chatId, '@g.us') !== false;
+            $isActive = $selectedChat === $chatId ? ' active' : '';
+            $lastMsg = ''; 
+            $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
+            
+            $initials = strtoupper(substr($chatName, 0, 2));
+            $profilePic = $chat['profilePictureUrl'] ?? '';
+            
+            echo '<a href="/chat_web.php?chat=' . urlencode($chatId) . '&type=' . urlencode($chatType) . '" class="whatsapp-chat-item' . $isActive . '">';
+            if (!empty($profilePic)) {
+                echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
+            } else {
+                echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+            }
+            echo '<div class="whatsapp-chat-info">';
+            echo '<div class="whatsapp-chat-name">' . h($chatName);
+            if ($isGroup) {
+                echo '<span class="whatsapp-group-badge">';
+                echo '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+                echo 'Grupo';
+                echo '</span>';
+            }
+            echo '</div>';
+            echo '<div class="whatsapp-chat-preview">' . h(mb_strimwidth($lastMsg, 0, 50, '...')) . '</div>';
+            echo '</div>';
+            echo '<div class="whatsapp-chat-meta">' . h($lastTime) . '</div>';
+            echo '</a>';
         }
-        echo '<div class="whatsapp-chat-info">';
-        echo '<div class="whatsapp-chat-name">' . h($chatName);
-        if ($isGroup) {
-            echo '<span class="whatsapp-group-badge">';
-            echo '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
-            echo 'Grupo';
-            echo '</span>';
+    } else {
+        echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
+        echo '<p>Nenhuma conversa encontrada.</p>';
+        if (empty($baseUrl) || empty($apiKey)) {
+            echo '<p style="margin-top:12px;font-size:13px">Configure as credenciais da Evolution API em Configurações.</p>';
         }
         echo '</div>';
-        echo '<div class="whatsapp-chat-preview">' . h(mb_strimwidth($lastMsg, 0, 50, '...')) . '</div>';
-        echo '</div>';
-        echo '<div class="whatsapp-chat-meta">' . h($lastTime) . '</div>';
-        echo '</a>';
     }
 }
 echo '</div>';
