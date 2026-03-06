@@ -1152,7 +1152,7 @@ echo '.whatsapp-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px so
 echo '.whatsapp-search{padding:8px 16px;background:#fff}';
 echo '.whatsapp-search input{width:100%;padding:8px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px}';
 echo '.whatsapp-tabs{display:flex;gap:0;padding:0;background:#fff;border-bottom:1px solid #d1d7db;overflow-x:auto}';
-echo '.whatsapp-tab{padding:10px 8px;font-size:12px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;flex-shrink:0}';
+echo '.whatsapp-tab{padding:12px 16px;font-size:12px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;justify-content:center}';
 echo '.whatsapp-tab:hover{background:#f5f6f6}';
 echo '.whatsapp-tab.active{color:#00a884;border-bottom-color:#00a884}';
 echo '.whatsapp-chats{flex:1;overflow-y:auto;background:#fff}';
@@ -1275,19 +1275,19 @@ echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placehol
 echo '</form>';
 echo '</div>';
 
-// Abas de navegação
+// Abas de navegação com ícones
 echo '<div class="whatsapp-tabs">';
 $tabs = [
-    'atendendo' => 'Atendendo',
-    'aguardando' => 'Aguardando',
-    'resolvidos' => 'Resolvidos',
-    'grupos' => 'Grupos',
-    'organizacao' => 'Chat Organização'
+    'atendendo' => ['label' => 'Atendendo', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'],
+    'aguardando' => ['label' => 'Aguardando', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'],
+    'resolvidos' => ['label' => 'Resolvidos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'],
+    'grupos' => ['label' => 'Grupos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'],
+    'organizacao' => ['label' => 'Interno', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>']
 ];
-foreach ($tabs as $tabKey => $tabLabel) {
+foreach ($tabs as $tabKey => $tabData) {
     $activeClass = ($chatType === $tabKey) ? 'active' : '';
-    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . '\'">';
-    echo h($tabLabel);
+    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . '\'" title="' . h($tabData['label']) . '">';
+    echo $tabData['icon'];
     echo '</div>';
 }
 echo '</div>';
