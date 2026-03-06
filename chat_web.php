@@ -163,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // OBRIGATÓRIO: Salvar mensagem no banco de dados
                 $savedToDb = false;
                 $dbError = '';
+                $lastId = 0;
                 $timestamp = time();
                 
                 try {
@@ -2001,14 +2002,16 @@ echo '    fetch(sendUrl,{method:"POST",body:formData})';
 echo '      .then(function(r){';
 echo '        console.timeEnd("[CHAT] fetch-duracao");';
 echo '        console.log("[CHAT] HTTP status:",r.status,r.statusText);';
-echo '        if(!r.ok)console.error("[CHAT] HTTP erro:",r.status);';
-echo '        return r.text().then(function(raw){';
-echo '          console.log("[CHAT] Resposta raw:",raw.substring(0,500));';
-echo '          try{return JSON.parse(raw);}catch(e){console.error("[CHAT] JSON inv\u00e1lido:",raw);throw e;}';
-echo '        });';
+echo '        return r.text();';
 echo '      })';
-echo '      .then(function(data){';
-echo '        console.log("[CHAT] Resposta JSON:",data);';
+echo '      .then(function(raw){';
+echo '        console.log("[CHAT] raw resp:",raw.substring(0,400));';
+echo '        let data;';
+echo '        try{data=JSON.parse(raw);}catch(e){';
+echo '          console.error("[CHAT] JSON parse falhou:",raw.substring(0,400));';
+echo '          throw new Error("Resposta invalida do servidor: "+raw.substring(0,100));';
+echo '        }';
+echo '        console.log("[CHAT] JSON parsed:",data);';
 echo '        sending=false;';
 echo '        if(!data.success){';
 echo '          console.error("[CHAT] ERRO API:",data.error);';
