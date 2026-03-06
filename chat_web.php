@@ -705,7 +705,6 @@ echo '</div>';
 // Busca
 echo '<div class="whatsapp-search">';
 echo '<form method="get" action="/chat_web.php">';
-echo '<input type="hidden" name="type" value="' . h($chatType ?? 'all') . '">';
 if (!empty($selectedChat)) {
     echo '<input type="hidden" name="chat" value="' . h($selectedChat) . '">';
 }
@@ -713,15 +712,7 @@ echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placehol
 echo '</form>';
 echo '</div>';
 
-// Abas de filtro
-echo '<div class="whatsapp-tabs">';
-$allActive = $chatType === 'all' ? ' active' : '';
-$groupsActive = $chatType === 'groups' ? ' active' : '';
-$privateActive = $chatType === 'private' ? ' active' : '';
-echo '<a href="/chat_web.php?type=all" class="whatsapp-tab' . $allActive . '">Todas</a>';
-echo '<a href="/chat_web.php?type=groups" class="whatsapp-tab' . $groupsActive . '">Grupos</a>';
-echo '<a href="/chat_web.php?type=private" class="whatsapp-tab' . $privateActive . '">Conversas</a>';
-echo '</div>';
+// Abas removidas temporariamente para simplificar
 
 // Lista de conversas (máximo 10 conversas: grupos + privadas)
 echo '<div class="whatsapp-chats" id="chatsList">';
@@ -738,34 +729,14 @@ if (empty($chats)) {
         $chatId = $chat['id'] ?? '';
         $chatName = $chat['name'] ?? $chatId;
         $isGroup = strpos($chatId, '@g.us') !== false;
-        
-        // Filtrar por tipo de aba (mas sempre mostrar o chat selecionado)
-        $showChat = false;
-        if ($chatType === 'all') {
-            $showChat = true;
-        } elseif ($chatType === 'groups' && $isGroup) {
-            $showChat = true;
-        } elseif ($chatType === 'private' && !$isGroup) {
-            $showChat = true;
-        }
-        
-        // Sempre mostrar o chat selecionado, independente do filtro
-        if ($selectedChat === $chatId) {
-            $showChat = true;
-        }
-        
-        if (!$showChat) {
-            continue;
-        }
-        
         $isActive = $selectedChat === $chatId ? ' active' : '';
-        $lastMsg = ''; // API não retorna preview da mensagem
+        $lastMsg = ''; 
         $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
         
         $initials = strtoupper(substr($chatName, 0, 2));
         $profilePic = $chat['profilePictureUrl'] ?? '';
         
-        echo '<a href="/chat_web.php?type=' . h($chatType ?? 'all') . '&chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
+        echo '<a href="/chat_web.php?chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
         if (!empty($profilePic)) {
             echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
         } else {
