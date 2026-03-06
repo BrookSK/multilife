@@ -352,7 +352,7 @@ echo '.whatsapp-main{flex:1;display:flex;flex-direction:column;background:#efeae
 echo '.whatsapp-chat-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-chat-header-info{display:flex;align-items:center;gap:12px}';
 echo '.whatsapp-chat-header-actions{display:flex;gap:8px}';
-echo '.whatsapp-action-btn{width:40px;height:40px;border-radius:50%;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#54656f;transition:background .2s}';
+echo '.whatsapp-action-btn{width:40px;height:40px;border-radius:50%;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#54656f;transition:background .2s;pointer-events:auto;position:relative;z-index:10}';
 echo '.whatsapp-action-btn:hover{background:#f5f6f6}';
 echo '.whatsapp-messages{flex:1;overflow-y:auto;padding:20px;background-image:url("data:image/svg+xml,%3Csvg width=\'100%25\' height=\'100%25\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cdefs%3E%3Cpattern id=\'pattern\' x=\'0\' y=\'0\' width=\'40\' height=\'40\' patternUnits=\'userSpaceOnUse\'%3E%3Cpath d=\'M0 20h40M20 0v40\' stroke=\'%23e9edef\' stroke-width=\'0.5\' fill=\'none\'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width=\'100%25\' height=\'100%25\' fill=\'url(%23pattern)\'/%3E%3C/svg%3E")}';
 echo '.whatsapp-message{margin-bottom:12px;display:flex}';
@@ -373,7 +373,7 @@ echo '.whatsapp-empty{display:flex;flex-direction:column;align-items:center;just
 echo '.whatsapp-empty svg{width:360px;height:360px;opacity:.6;margin-bottom:24px}';
 echo '.whatsapp-empty h2{font-size:32px;font-weight:300;margin-bottom:16px}';
 echo '.whatsapp-empty p{font-size:14px;line-height:1.5;text-align:center;max-width:480px}';
-echo '.whatsapp-dropdown{position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);min-width:200px;z-index:1000;display:none}';
+echo '.whatsapp-dropdown{position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);min-width:200px;z-index:9999;display:none}';
 echo '.whatsapp-dropdown.show{display:block}';
 echo '.whatsapp-dropdown-item{padding:12px 16px;font-size:14px;color:#3b4a54;cursor:pointer;transition:background .2s;display:flex;align-items:center;gap:12px}';
 echo '.whatsapp-dropdown-item:hover{background:#f5f6f6}';
@@ -390,8 +390,8 @@ echo '<div class="whatsapp-sidebar">';
 // Header com avatar do usuário
 echo '<div class="whatsapp-header">';
 echo '<div class="whatsapp-chat-avatar">' . strtoupper(substr(auth_user()['name'] ?? 'U', 0, 1)) . '</div>';
-echo '<div style="position:relative">';
-echo '<button class="whatsapp-action-btn" onclick="toggleActionsMenu(event)">';
+echo '<div style="position:relative;z-index:100">';
+echo '<button class="whatsapp-action-btn" onclick="toggleActionsMenu(event)" style="cursor:pointer;z-index:101">';
 echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
 echo '</button>';
 echo '<div id="actionsMenu" class="whatsapp-dropdown">';
