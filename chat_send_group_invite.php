@@ -19,47 +19,27 @@ if (empty($chatId) || empty($groupJid)) {
     exit;
 }
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
-
-if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
-    echo json_encode(['success' => false, 'error' => 'Evolution API não configurada']);
-    exit;
-}
-
 try {
+    // Usar EvolutionApiV1 (mesma classe que funciona no envio de mensagens)
+    $api = new EvolutionApiV1();
+    
     // Extrair número do telefone do chatId
-    $participantPhone = str_replace(['@s.whatsapp.net', '@g.us'], '', $chatId);
+    $participantPhone = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $chatId);
+    $participantJid = $participantPhone . '@s.whatsapp.net';
     
     // 1. Adicionar participante ao grupo
-    $addUrl = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName);
-    $addPayload = json_encode([
-        'groupJid' => $groupJid,
-        'action' => 'add',
-        'participants' => [$participantPhone . '@s.whatsapp.net']
-    ]);
-    
-    $ch = curl_init($addUrl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $addPayload);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'apikey: ' . $apiKey,
-        'Content-Type: application/json'
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $addResponse = curl_exec($ch);
-    $addHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $addResult = $api->updateGroupParticipant($groupJid, 'add', [$participantJid]);
+    $addHttpCode = (int)($addResult['status'] ?? 0);
     
     if ($addHttpCode !== 200 && $addHttpCode !== 201) {
+        $errorMsg = is_string($addResult['body_raw'] ?? null) 
+                    ? $addResult['body_raw'] 
+                    : json_encode($addResult['json'] ?? []);
         echo json_encode([
             'success' => false, 
-            'error' => 'Erro ao adicionar participante ao grupo. HTTP Code: ' . $addHttpCode,
-            'response' => $addResponse
+            'error' => 'Erro ao adicionar participante ao grupo',
+            'http_code' => $addHttpCode,
+            'details' => substr($errorMsg, 0, 200)
         ]);
         exit;
     }
@@ -68,26 +48,8 @@ try {
     if (!empty($welcomeMessage)) {
         sleep(2); // Aguardar 2 segundos para garantir que o participante foi adicionado
         
-        $messageUrl = $baseUrl . '/message/sendText/' . urlencode($instanceName);
-        $messagePayload = json_encode([
-            'number' => $groupJid,
-            'text' => $welcomeMessage
-        ]);
-        
-        $ch = curl_init($messageUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $messagePayload);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'apikey: ' . $apiKey,
-            'Content-Type: application/json'
-        ]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        
-        $messageResponse = curl_exec($ch);
-        $messageHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $messageResult = $api->sendText($groupJid, $welcomeMessage);
+        $messageHttpCode = (int)($messageResult['status'] ?? 0);
         
         if ($messageHttpCode !== 200 && $messageHttpCode !== 201) {
             // Participante foi adicionado, mas mensagem falhou
