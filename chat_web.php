@@ -176,15 +176,31 @@ if (!empty($selectedChat)) {
     $chatNumber = str_replace(['@s.whatsapp.net', '@g.us'], '', $selectedChat);
     $isGroup = strpos($selectedChat, '@g.us') !== false;
     
+    // Formatar nome do chat
+    $chatName = $chatNumber;
+    if (!$isGroup && strlen($chatNumber) >= 10) {
+        // Formatar número brasileiro: (XX) XXXXX-XXXX
+        if (preg_match('/^55(\d{2})(\d{4,5})(\d{4})$/', $chatNumber, $matches)) {
+            $chatName = '(' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3];
+        }
+    } elseif ($isGroup) {
+        $chatName = 'Grupo';
+    }
+    
     // Criar dados básicos do chat
     $selectedChatData = [
         'id' => $selectedChat,
-        'name' => $isGroup ? 'Grupo' : format_phone_evolution($chatNumber),
-        'profilePictureUrl' => null
+        'name' => $chatName,
+        'profilePictureUrl' => null,
+        'lastMsgTimestamp' => time()
     ];
     
     // Adicionar à lista de chats para aparecer na sidebar
     $chats[] = $selectedChatData;
+    
+    // Debug
+    error_log("Chat criado localmente: " . json_encode($selectedChatData));
+    error_log("Total de chats na lista: " . count($chats));
 }
 
 // Verificar se há mensagem de sucesso
@@ -665,6 +681,14 @@ echo '</div>';
 
 // Lista de conversas (máximo 10 conversas: grupos + privadas)
 echo '<div class="whatsapp-chats" id="chatsList">';
+
+// Debug: mostrar quantos chats existem
+if (!empty($selectedChat)) {
+    echo '<div style="padding:8px 16px;background:#e7f8f4;border-bottom:1px solid #00a884;font-size:11px;color:#00a884">';
+    echo 'DEBUG: ' . count($chats) . ' chat(s) na lista | Chat selecionado: ' . h($selectedChat);
+    echo '</div>';
+}
+
 if (empty($chats)) {
     echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
     echo '<p>Nenhuma conversa encontrada.</p>';
