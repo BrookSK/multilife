@@ -7,9 +7,11 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('patients.manage');
 
-// Capturar telefone se vier do chat
+// Capturar telefone e chat_id se vier do chat
 $phoneFromChat = isset($_GET['phone']) ? trim((string)$_GET['phone']) : '';
 $fromChat = isset($_GET['from_chat']) && $_GET['from_chat'] === '1';
+$fromAssignmentModal = isset($_GET['from_assignment_modal']) && $_GET['from_assignment_modal'] === '1';
+$chatId = isset($_GET['chat_id']) ? trim((string)$_GET['chat_id']) : '';
 
 // Buscar especialidades cadastradas
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
@@ -24,13 +26,28 @@ echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Novo pacient
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Cadastro inicial do paciente.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/patients_list.php">Voltar</a>';
+if ($fromChat && $chatId !== '') {
+    echo '<a class="btn" href="/chat_web.php?chat=' . urlencode($chatId) . '&type=all">Voltar ao Chat</a>';
+} else {
+    echo '<a class="btn" href="/patients_list.php">Voltar</a>';
+}
 echo '</div>';
 echo '</div>';
 
 echo '<div style="height:14px"></div>';
 
 echo '<form method="post" action="/patients_create_post.php" enctype="multipart/form-data">';
+
+// Campos hidden para retornar ao chat
+if ($fromChat) {
+    echo '<input type="hidden" name="from_chat" value="1">';
+    if ($fromAssignmentModal) {
+        echo '<input type="hidden" name="from_assignment_modal" value="1">';
+    }
+    if ($chatId !== '') {
+        echo '<input type="hidden" name="chat_id" value="' . h($chatId) . '">';
+    }
+}
 
 // 1. Identificação
 echo '<div class="formSection">';

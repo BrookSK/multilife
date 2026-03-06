@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = json_decode(file_get_contents('php://input'), true);
 
 $demandId = isset($input['demand_id']) ? (int)$input['demand_id'] : 0;
-$patientIdInput = $input['patient_id'] ?? '';
+$patientId = isset($input['patient_id']) ? (int)$input['patient_id'] : 0;
 $professionalJid = $input['professional_jid'] ?? '';
 $specialty = $input['specialty'] ?? '';
 $serviceType = $input['service_type'] ?? '';
@@ -25,71 +25,14 @@ $sessionFrequency = $input['session_frequency'] ?? '';
 $paymentValue = isset($input['payment_value']) ? (float)$input['payment_value'] : 0.0;
 $notes = $input['notes'] ?? '';
 
-// Dados de novo paciente (se aplicável)
-$newPatientName = $input['new_patient_name'] ?? '';
-$newPatientPhone = $input['new_patient_phone'] ?? '';
-$newPatientEmail = $input['new_patient_email'] ?? '';
-$newPatientCpf = $input['new_patient_cpf'] ?? '';
-$newPatientBirthdate = $input['new_patient_birthdate'] ?? '';
-$newPatientAddress = $input['new_patient_address'] ?? '';
-
 // Validações
 if ($demandId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Card de captação inválido']);
     exit;
 }
 
-$patientId = 0;
-
-// Se selecionou "Cadastrar Novo Paciente"
-if ($patientIdInput === 'new') {
-    if (empty($newPatientName) || empty($newPatientPhone)) {
-        echo json_encode(['success' => false, 'error' => 'Nome e telefone do paciente são obrigatórios']);
-        exit;
-    }
-    
-    try {
-        $db = db();
-        
-        // Criar novo paciente
-        $insertPatientStmt = $db->prepare("
-            INSERT INTO users (name, phone, email, cpf, birthdate, address, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'active', NOW())
-        ");
-        $insertPatientStmt->execute([
-            $newPatientName,
-            $newPatientPhone,
-            $newPatientEmail ?: null,
-            $newPatientCpf ?: null,
-            $newPatientBirthdate ?: null,
-            $newPatientAddress ?: null
-        ]);
-        
-        $patientId = (int)$db->lastInsertId();
-        
-        // Atribuir role 'paciente'
-        $roleStmt = $db->prepare("SELECT id FROM roles WHERE slug = 'paciente' LIMIT 1");
-        $roleStmt->execute();
-        $roleId = $roleStmt->fetchColumn();
-        
-        if ($roleId) {
-            $insertRoleStmt = $db->prepare("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)");
-            $insertRoleStmt->execute([$patientId, $roleId]);
-        }
-        
-        error_log("[ASSIGN_PATIENT] Novo paciente criado - ID: $patientId, Nome: $newPatientName");
-        
-    } catch (Exception $e) {
-        error_log("Erro ao criar novo paciente: " . $e->getMessage());
-        echo json_encode(['success' => false, 'error' => 'Erro ao criar paciente: ' . $e->getMessage()]);
-        exit;
-    }
-} else {
-    $patientId = (int)$patientIdInput;
-}
-
 if ($patientId <= 0) {
-    echo json_encode(['success' => false, 'error' => 'Paciente não selecionado ou não criado']);
+    echo json_encode(['success' => false, 'error' => 'Paciente não selecionado']);
     exit;
 }
 
@@ -121,8 +64,8 @@ try {
         exit;
     }
     
-    // Verificar se paciente existe
-    $patientStmt = $db->prepare("SELECT id, name, phone FROM users WHERE id = ? AND status = 'active'");
+    // Verificar se paciente existe na tabela patients
+    $patientStmt = $db->prepare("SELECT id, full_name, phone_primary, whatsapp FROM patients WHERE id = ? AND deleted_at IS NULL");
     $patientStmt->execute([$patientId]);
     $patient = $patientStmt->fetch(PDO::FETCH_ASSOC);
     
@@ -130,6 +73,9 @@ try {
         echo json_encode(['success' => false, 'error' => 'Paciente não encontrado']);
         exit;
     }
+    
+    $patientName = $patient['full_name'];
+    $patientPhone = $patient['whatsapp'] ?: $patient['phone_primary'];
     
     // Buscar professional_user_id se existir
     $professionalUserId = null;

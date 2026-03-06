@@ -244,5 +244,21 @@ try {
 }
 
 flash_set('success', 'Paciente criado com sucesso.');
-header('Location: /patients_view.php?id=' . urlencode($id));
+
+// Se veio do chat, redirecionar de volta
+$fromChat = isset($_POST['from_chat']) && $_POST['from_chat'] === '1';
+$fromAssignmentModal = isset($_POST['from_assignment_modal']) && $_POST['from_assignment_modal'] === '1';
+$chatId = isset($_POST['chat_id']) ? trim((string)$_POST['chat_id']) : '';
+
+if ($fromChat && $chatId !== '') {
+    // Só abre o modal automaticamente se veio DO modal de atribuição
+    if ($fromAssignmentModal) {
+        header('Location: /chat_web.php?chat=' . urlencode($chatId) . '&type=all&open_assignment=1&patient_id=' . urlencode($id));
+    } else {
+        // Se veio do chat mas não do modal, só volta para o chat
+        header('Location: /chat_web.php?chat=' . urlencode($chatId) . '&type=all');
+    }
+} else {
+    header('Location: /patients_view.php?id=' . urlencode($id));
+}
 exit;
