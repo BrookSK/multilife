@@ -22,16 +22,41 @@ $chats = [];
 $messages = [];
 $selectedChatData = null;
 
-// Buscar conversas da Evolution API
+// Buscar conversas da Evolution API (com cache de 30 segundos)
 $chats = [];
 $selectedChatData = [];
-if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+$cacheKey = 'evolution_chats_' . $instanceName;
+$cacheTime = 30; // 30 segundos
+
+// Verificar se há cache válido
+$useCache = false;
+$debugLogs = [];
+if (!$forceRefresh && isset($_SESSION[$cacheKey]) && isset($_SESSION[$cacheKey . '_time'])) {
+    $timeSinceCache = time() - $_SESSION[$cacheKey . '_time'];
+    if ($timeSinceCache < $cacheTime) {
+        $chats = $_SESSION[$cacheKey];
+        $useCache = true;
+        
+        // Debug para cache
+        $debugLogs[] = "=== 10 ÚLTIMOS CONTATOS (CACHE) ===";
+        $debugLogs[] = "Fonte: Cache (atualizado há " . $timeSinceCache . " segundos)";
+        $debugLogs[] = "Total de conversas: " . count($chats);
+        $debugLogs[] = "";
+        $debugLogs[] = "--- CONVERSAS DO CACHE ---";
+        foreach ($chats as $idx => $chat) {
+            $timestamp = $chat['lastMsgTimestamp'] ?? 0;
+            $chatId = $chat['id'] ?? 'N/A';
+            $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
+            $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
+        }
+    }
+}
+
+if (!$useCache && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         // Adicionar timestamp para evitar cache
         $url = $baseUrl . '/chat/findChats/' . urlencode($instanceName);
-        if ($forceRefresh) {
-            $url .= '?t=' . time();
-        }
+        $url .= '?t=' . time();
         
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -71,6 +96,7 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             // ORDENAR POR TIMESTAMP E PEGAR OS 10 MAIS RECENTES (SEM BUSCAR MENSAGENS)
             $debugLogs = [];
             $debugLogs[] = "=== 10 ÚLTIMOS CONTATOS (SEM HISTÓRICO) ===";
+            $debugLogs[] = "Fonte: API Evolution (dados salvos em cache por 30s)";
             $debugLogs[] = "Total de conversas disponíveis: " . count($chats);
             $debugLogs[] = "";
             
@@ -95,6 +121,10 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
                 $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
             }
+            
+            // Salvar no cache
+            $_SESSION[$cacheKey] = $chats;
+            $_SESSION[$cacheKey . '_time'] = time();
             
             // Enriquecer dados dos chats com nomes
             foreach ($chats as &$chat) {
