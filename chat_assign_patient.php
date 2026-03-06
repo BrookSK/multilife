@@ -134,13 +134,13 @@ try {
     // Substituir variáveis na mensagem
     $message = str_replace(
         ['{patient_name}', '{specialty}', '{service_type}', '{session_quantity}', '{session_frequency}', '{payment_value}'],
-        [$patient['name'], $specialty, $serviceType, $sessionQuantity, $sessionFrequency, number_format($paymentValue, 2, ',', '.')],
+        [$patientName, $specialty, $serviceType, $sessionQuantity, $sessionFrequency, number_format($paymentValue, 2, ',', '.')],
         $messageTemplate
     );
     
     // Enviar mensagem via Evolution API
     try {
-        require_once __DIR__ . '/app/EvolutionApiV1.php';
+        require_once __DIR__ . '/app/evolution_api_v1.php';
         $api = new EvolutionApiV1();
         $result = $api->sendText($professionalJid, $message);
         
@@ -173,7 +173,7 @@ try {
                 INSERT INTO medical_records (patient_id, record_type, record_date, description, created_by_user_id)
                 VALUES (?, 'assignment', NOW(), ?, ?)
             ");
-            $profRecordDescription = "Paciente atribuído: {$patient['name']}\nEspecialidade: {$specialty}\nServiço: {$serviceType}\nSessões: {$sessionQuantity}x ({$sessionFrequency})\nValor: R$ " . number_format($paymentValue, 2, ',', '.');
+            $profRecordDescription = "Paciente atribuído: {$patientName}\nEspecialidade: {$specialty}\nServiço: {$serviceType}\nSessões: {$sessionQuantity}x ({$sessionFrequency})\nValor: R$ " . number_format($paymentValue, 2, ',', '.');
             if ($notes) {
                 $profRecordDescription .= "\nObservações: {$notes}";
             }
