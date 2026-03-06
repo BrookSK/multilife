@@ -233,11 +233,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
     } elseif ($_POST['action'] === 'create_group') {
+        error_log("=== CRIAR GRUPO INICIADO ===");
         $specialty = trim($_POST['specialty'] ?? '');
         $location = strtoupper(trim($_POST['location'] ?? ''));
+        error_log("Specialty: $specialty, Location: $location");
         
         if (empty($specialty) || empty($location)) {
             $error = 'Especialidade e localização são obrigatórias.';
+            error_log("ERRO: Campos obrigatórios vazios");
+        } elseif (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
+            $error = 'Evolution API não configurada. Configure em Configurações > Evolution API.';
+            error_log("ERRO: Evolution API não configurada");
         } else {
             // Gerar número sequencial do grupo
             try {
@@ -264,6 +270,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'participants' => $formattedParticipants
             ]);
             
+            error_log("Criando grupo: $groupName");
+            error_log("URL: $url");
+            error_log("Payload: $payload");
+            
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -273,15 +283,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'Content-Type: application/json'
             ]);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
             
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
             curl_close($ch);
+            
+            error_log("HTTP Code: $httpCode");
+            error_log("Response: $response");
+            error_log("cURL Error: $curlError");
             
             if ($httpCode === 200 || $httpCode === 201) {
                 $responseData = json_decode($response, true);
                 $groupJid = $responseData['id'] ?? '';
+                
+                error_log("Group JID: $groupJid");
                 
                 // Salvar grupo no banco de dados
                 if (!empty($groupJid)) {
@@ -292,18 +310,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ");
                         $stmt->execute([$groupJid, $groupName, $specialty, $location]);
                         
+                        error_log("Grupo salvo no banco com sucesso");
                         audit_log('group_created', 'Grupo criado: ' . $groupName . ' (JID: ' . $groupJid . ')');
-                        $success = 'Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
+                        $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
                     } catch (Exception $e) {
                         error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
-                        $success = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
+                        $error = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
                     }
                 } else {
-                    $success = 'Grupo criado com sucesso: ' . $groupName;
+                    error_log("ERRO: Group JID vazio na resposta da API");
+                    $error = 'Erro: API não retornou o ID do grupo. Response: ' . $response;
                 }
             } else {
-                error_log("Erro ao criar grupo - HTTP Code: $httpCode - Response: $response");
-                $error = 'Erro ao criar grupo. HTTP Code: ' . $httpCode . '. Verifique as configurações da Evolution API.';
+                error_log("Erro ao criar grupo - HTTP Code: $httpCode - Response: $response - cURL Error: $curlError");
+                if ($httpCode === 0) {
+                    $error = '❌ Falha de conexão com a Evolution API. Verifique se a URL está correta e o servidor está acessível.';
+                } else {
+                    $error = '❌ Erro ao criar grupo. HTTP Code: ' . $httpCode . '. Detalhes: ' . ($response ?: $curlError);
+                }
             }
         }
     }
