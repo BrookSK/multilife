@@ -20,6 +20,7 @@ $instanceName = admin_setting_get('evolution.instance');
 
 $success = '';
 $error = '';
+$debugConsole = [];
 
 // Função para formatar telefone no padrão Evolution API
 function format_phone_evolution($phone) {
@@ -100,6 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // OBRIGATÓRIO: Salvar mensagem no banco de dados
                 $savedToDb = false;
                 $dbError = '';
+                $timestamp = time();
                 
                 try {
                     // Verificar se tabela existe
@@ -228,8 +230,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             } else {
                 $responseData = json_decode($response, true);
-                $errorMsg = $responseData['message'] ?? $response;
-                $error = 'Erro ao enviar mensagem. HTTP Code: ' . $httpCode . ' - ' . $errorMsg;
+                $errorMsg = $responseData['message'] ?? ($responseData['response']['message'][0] ?? $response);
+                
+                // Mensagem amigável para erros comuns
+                if (strpos($response, 'SessionError') !== false || strpos($response, 'No sessions') !== false) {
+                    $error = '❌ WhatsApp desconectado. Reconecte o WhatsApp na configuração da Evolution API e tente novamente.';
+                } elseif (strpos($response, 'Connection Closed') !== false) {
+                    $error = '❌ Conexão com WhatsApp fechada. Aguarde reconexão automática e tente novamente.';
+                } else {
+                    $error = 'Erro ao enviar mensagem. HTTP Code: ' . $httpCode . ' - ' . $errorMsg;
+                }
             }
         }
     } elseif ($_POST['action'] === 'create_group') {
@@ -316,15 +326,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $responseData = json_decode($response, true);
                 $errorMsg = $responseData['response']['message'][0] ?? '';
                 
-                // Se não for erro 1006, não faz sentido tentar novamente
-                if ($errorMsg !== 'Error creating group') {
+                // Se não for erro 1006 nem Connection Closed, não faz sentido tentar novamente
+                $responseArr = json_decode($response, true);
+                $msgs = $responseArr['response']['message'] ?? [];
+                $isRetryable = false;
+                foreach ($msgs as $m) {
+                    if (strpos((string)$m, 'Error creating group') !== false || strpos((string)$m, 'Connection Closed') !== false) {
+                        $isRetryable = true;
+                        break;
+                    }
+                }
+                if (!$isRetryable) {
                     break;
                 }
                 
                 // Aguardar antes de tentar novamente
                 if ($attempt < $maxRetries) {
-                    error_log("Erro 1006 - aguardando 3 segundos antes da próxima tentativa...");
-                    sleep(3);
+                    error_log("Erro ao criar grupo (tentativa $attempt) - aguardando 5 segundos...");
+                    sleep(5);
                 }
             }
             
@@ -344,29 +363,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $stmt->execute([$groupJid, $groupName, $specialty, $location]);
                         
                         error_log("Grupo salvo no banco com sucesso");
-                        audit_log('group_created', 'Grupo criado: ' . $groupName . ' (JID: ' . $groupJid . ')');
+                        audit_log('create', 'chat_groups', $groupJid, null, ['group_name' => $groupName, 'specialty' => $specialty, 'region' => $location]);
                         $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
-                        
-                        // Log no console do navegador
-                        echo '<script>console.log("✅ GRUPO CRIADO COM SUCESSO");';
-                        echo 'console.log("Nome:", ' . json_encode($groupName) . ');';
-                        echo 'console.log("JID:", ' . json_encode($groupJid) . ');';
-                        echo 'console.log("Specialty:", ' . json_encode($specialty) . ');';
-                        echo 'console.log("Region:", ' . json_encode($location) . ');';
-                        echo 'console.log("Salvo no banco: SIM");</script>';
+                        $debugConsole[] = 'console.log("✅ GRUPO CRIADO - Nome: ' . addslashes($groupName) . ' | JID: ' . addslashes($groupJid) . '")';
                     } catch (Exception $e) {
                         error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
                         $error = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
-                        
-                        echo '<script>console.error("❌ ERRO AO SALVAR NO BANCO");';
-                        echo 'console.error("Erro:", ' . json_encode($e->getMessage()) . ');</script>';
+                        $debugConsole[] = 'console.error("❌ ERRO AO SALVAR NO BANCO: ' . addslashes($e->getMessage()) . '")';
                     }
                 } else {
                     error_log("ERRO: Group JID vazio na resposta da API");
                     $error = 'Erro: API não retornou o ID do grupo. Response: ' . $response;
-                    
-                    echo '<script>console.error("❌ ERRO: API NÃO RETORNOU JID");';
-                    echo 'console.error("Response:", ' . json_encode($response) . ');</script>';
+                    $debugConsole[] = 'console.error("❌ ERRO: API NÃO RETORNOU JID | Response: ' . addslashes(substr($response, 0, 200)) . '")';
                 }
             } else {
                 error_log("Erro ao criar grupo - HTTP Code: $httpCode - Response: $response - cURL Error: $curlError");
@@ -375,11 +383,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 } else {
                     $error = '❌ Erro ao criar grupo. HTTP Code: ' . $httpCode . '. Detalhes: ' . ($response ?: $curlError);
                 }
-                
-                echo '<script>console.error("❌ ERRO AO CRIAR GRUPO NA API");';
-                echo 'console.error("HTTP Code:", ' . json_encode($httpCode) . ');';
-                echo 'console.error("Response:", ' . json_encode($response) . ');';
-                echo 'console.error("cURL Error:", ' . json_encode($curlError) . ');</script>';
+                $debugConsole[] = 'console.error("❌ ERRO HTTP ' . $httpCode . ' | ' . addslashes(substr($response, 0, 300)) . '")';
             }
         }
     }
@@ -592,27 +596,33 @@ $professionals = [];
 $patients = [];
 
 try {
-    // Buscar profissionais da tabela professionals (não users)
-    $stmt = db()->prepare("
-        SELECT id, name, phone_primary as phone
-        FROM professionals
-        WHERE phone_primary IS NOT NULL
-        AND phone_primary != ''
-        ORDER BY name ASC
-    ");
-    $stmt->execute();
-    $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Verificar se tabela professionals existe antes de buscar
+    $profTableExists = db()->query("SHOW TABLES LIKE 'professionals'")->fetch();
+    if ($profTableExists) {
+        $stmt = db()->prepare("
+            SELECT id, name, phone_primary as phone
+            FROM professionals
+            WHERE phone_primary IS NOT NULL
+            AND phone_primary != ''
+            ORDER BY name ASC
+        ");
+        $stmt->execute();
+        $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
     
-    // Buscar pacientes
-    $stmt = db()->prepare("
-        SELECT id, name, phone_primary as phone
-        FROM patients
-        WHERE phone_primary IS NOT NULL
-        AND phone_primary != ''
-        ORDER BY name ASC
-    ");
-    $stmt->execute();
-    $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Verificar se tabela patients existe antes de buscar
+    $patTableExists = db()->query("SHOW TABLES LIKE 'patients'")->fetch();
+    if ($patTableExists) {
+        $stmt = db()->prepare("
+            SELECT id, name, phone_primary as phone
+            FROM patients
+            WHERE phone_primary IS NOT NULL
+            AND phone_primary != ''
+            ORDER BY name ASC
+        ");
+        $stmt->execute();
+        $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 } catch (Exception $e) {
     error_log("Erro ao buscar contatos: " . $e->getMessage());
 }
@@ -764,6 +774,15 @@ if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($in
 }
 
 view_header('Chat ao Vivo');
+
+// Emitir logs de debug no console do navegador (gerados antes do HTML)
+if (!empty($debugConsole)) {
+    echo '<script>';
+    foreach ($debugConsole as $log) {
+        echo $log . ';';
+    }
+    echo '</script>';
+}
 
 // Renderizar modais PRIMEIRO (antes de qualquer JavaScript que os acesse)
 // Modal: Nova Conversa
@@ -1562,49 +1581,7 @@ echo '    });';
 echo '  }';
 echo '});';
 
-echo 'console.log("=== CHAT WEB DEBUG ===");';
-echo 'console.log("Chat selecionado:", "' . addslashes($selectedChat) . '");';
-echo 'console.log("Total de conversas carregadas:", ' . count($chats) . ');';
-echo 'console.log("Total de mensagens carregadas:", ' . count($messages) . ');';
-echo 'console.log("");';
-echo 'console.log("--- CONVERSAS RECEBIDAS ---");';
-echo 'const conversasRaw = [];'; // Temporariamente desabilitado: json_encode($chats)
-echo 'const conversas = Array.isArray(conversasRaw) ? conversasRaw : (conversasRaw ? Object.values(conversasRaw) : []);';
-echo 'console.log("Tipo de conversas:", typeof conversas, "- É array?", Array.isArray(conversas));';
-echo 'console.log("Total de conversas:", conversas.length);';
-echo 'if(conversas.length === 0){';
-echo '  console.warn("⚠️ NENHUMA CONVERSA CARREGADA!");';
-echo '}';
-echo 'conversas.forEach((conv, idx) => {';
-echo '  console.log(`Conversa #${idx}:`);';
-echo '  console.log("  ID:", conv.id);';
-echo '  console.log("  Nome:", conv.name || "Sem nome");';
-echo '  console.log("  pushName:", conv.pushName || "N/A");';
-echo '  console.log("  Foto URL:", conv.profilePictureUrl || "Sem foto");';
-echo '  if(conv.profilePictureUrl){';
-echo '    console.log("  ✅ TEM FOTO");';
-echo '  }else{';
-echo '    console.log("  ❌ SEM FOTO");';
-echo '  }';
-echo '});';
-echo 'console.log("");';
-echo 'console.log("--- CHAT SELECIONADO - DETALHES ---");';
-echo 'const chatSelecionado = conversas.find(c => c.id === "' . addslashes($selectedChat) . '");';
-echo 'if(chatSelecionado){';
-echo '  console.log("Nome do chat:", chatSelecionado.name);';
-echo '  console.log("Foto do chat:", chatSelecionado.profilePictureUrl || "SEM FOTO");';
-echo '  if(chatSelecionado.profilePictureUrl){';
-echo '    console.log("✅ FOTO ENCONTRADA:", chatSelecionado.profilePictureUrl);';
-echo '    const img = new Image();';
-echo '    img.onload = () => console.log("✅ FOTO CARREGOU COM SUCESSO");';
-echo '    img.onerror = () => console.error("❌ ERRO AO CARREGAR FOTO");';
-echo '    img.src = chatSelecionado.profilePictureUrl;';
-echo '  }else{';
-echo '    console.log("❌ FOTO NÃO DISPONÍVEL");';
-echo '  }';
-echo '}';
-echo 'console.log("");';
-echo 'console.log("--- MENSAGENS DO CHAT SELECIONADO ---");';
+echo 'console.log("Chat carregado:", "' . addslashes($selectedChat) . '");';
 
 // Função de sincronização com Evolution
 echo 'function syncEvolution() {';
@@ -1771,33 +1748,6 @@ echo 'function dispararFluxo() { alert("Funcionalidade em desenvolvimento"); }';
 echo 'function dispararRemarketing() { alert("Funcionalidade em desenvolvimento"); }';
 echo 'function closeInfoPanel() { window.location.href = "/chat_web.php"; }';
 
-echo 'const mensagensRaw = [];'; // Temporariamente desabilitado: json_encode($messages)
-echo 'const mensagens = Array.isArray(mensagensRaw) ? mensagensRaw : (mensagensRaw ? Object.values(mensagensRaw) : []);';
-echo 'console.log("Tipo de mensagens:", typeof mensagens, "- É array?", Array.isArray(mensagens));';
-echo 'console.log("Total de mensagens:", mensagens.length);';
-echo 'if(mensagens.length === 0){';
-echo '  console.warn("⚠️ NENHUMA MENSAGEM CARREGADA!");';
-echo '}';
-echo 'mensagens.slice(0, 5).forEach((msg, idx) => {';
-echo '  const remoteJid = msg.key?.remoteJid || "N/A";';
-echo '  const fromMe = msg.key?.fromMe || false;';
-echo '  const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "[Mídia/Outro]";';
-echo '  const timestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toLocaleString() : "N/A";';
-echo '  console.log(`Mensagem #${idx}:`);';
-echo '  console.log("  remoteJid:", remoteJid);';
-echo '  console.log("  De mim:", fromMe);';
-echo '  console.log("  Texto:", text.substring(0, 100));';
-echo '  console.log("  Data/Hora:", timestamp);';
-echo '});';
-echo 'if(mensagens.length > 5){';
-echo '  console.log(`... e mais ${mensagens.length - 5} mensagens`);';
-echo '}';
-echo 'console.log("");';
-echo 'console.log("=== DADOS COMPLETOS (JSON) ===");';
-echo 'console.log("Conversas completas:", conversas);';
-echo 'console.log("Mensagens completas:", mensagens);';
-echo 'console.log("=== FIM DEBUG ===");';
-echo '';
 echo 'function syncWhatsApp(){';
 echo '  var msg="Sincronizar todas as conversas e grupos do WhatsApp?";';
 echo '  if(confirm(msg)){';
