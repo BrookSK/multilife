@@ -921,6 +921,10 @@ if (!empty($debugLogs)) {
     echo '<h3 style="margin:0 0 10px;color:#856404">🔍 Debug de Ordenação</h3>';
     foreach ($debugLogs as $log) {
         echo '<div style="padding:2px 0;color:#856404">' . h($log) . '</div>';
+    }
+    echo '</div>';
+}
+
 echo '<div style="padding:16px 20px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;gap:12px;align-items:center">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
 echo '<button onclick="openNewChatModal()" style="padding:10px 20px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
