@@ -96,18 +96,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             if ($httpCode === 200 || $httpCode === 201) {
                 // Salvar mensagem enviada no banco de dados
+                $savedToDb = false;
                 try {
+                    // Garantir que tabela existe
+                    db()->exec("
+                        CREATE TABLE IF NOT EXISTS chat_messages (
+                            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                            remote_jid VARCHAR(100) NOT NULL,
+                            message_text TEXT NOT NULL,
+                            from_me TINYINT(1) NOT NULL DEFAULT 0,
+                            message_timestamp INT UNSIGNED NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (id),
+                            INDEX idx_remote_jid (remote_jid),
+                            INDEX idx_timestamp (message_timestamp)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    ");
+                    
                     $stmt = db()->prepare("
                         INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
                         VALUES (?, ?, 1, ?)
                     ");
-                    $stmt->execute([$remoteJid, $message, time()]);
+                    $savedToDb = $stmt->execute([$remoteJid, $message, time()]);
+                    
+                    if (!$savedToDb) {
+                        error_log("ERRO: Falha ao salvar mensagem no banco");
+                    }
                 } catch (Exception $e) {
-                    error_log("Erro ao salvar mensagem no banco: " . $e->getMessage());
+                    error_log("ERRO ao salvar mensagem: " . $e->getMessage());
                 }
                 
+                // Salvar também em sessão como backup
+                if (!isset($_SESSION['temp_messages'])) {
+                    $_SESSION['temp_messages'] = [];
+                }
+                $_SESSION['temp_messages'][$remoteJid][] = [
+                    'text' => $message,
+                    'timestamp' => time(),
+                    'fromMe' => true
+                ];
+                
                 // Redirecionar para o chat criado para permitir continuidade
-                header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1');
+                header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1&saved=' . ($savedToDb ? '1' : '0'));
                 exit();
             } else {
                 $responseData = json_decode($response, true);
@@ -181,7 +211,6 @@ if (!empty($selectedChat)) {
         // Verificar se tabela existe, se não, criar
         $tableCheck = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
         if (!$tableCheck) {
-            // Criar tabela automaticamente
             db()->exec("
                 CREATE TABLE IF NOT EXISTS chat_messages (
                     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -213,6 +242,16 @@ if (!empty($selectedChat)) {
         unset($msg);
     } catch (Exception $e) {
         error_log("Erro ao carregar mensagens do banco: " . $e->getMessage());
+        $messages = [];
+    }
+    
+    // Carregar também mensagens temporárias da sessão (fallback)
+    if (isset($_SESSION['temp_messages'][$selectedChat])) {
+        $messages = array_merge($messages, $_SESSION['temp_messages'][$selectedChat]);
+        // Ordenar por timestamp
+        usort($messages, function($a, $b) {
+            return ($a['timestamp'] ?? 0) - ($b['timestamp'] ?? 0);
+        });
     }
 }
 
@@ -248,7 +287,8 @@ if (!empty($selectedChat)) {
 
 // Verificar se há mensagem de sucesso
 if (isset($_GET['success']) && $_GET['success'] === '1') {
-    $success = 'Mensagem enviada com sucesso! Você pode continuar a conversa abaixo.';
+    $savedStatus = isset($_GET['saved']) && $_GET['saved'] === '1' ? 'salva no banco' : 'salva em sessão (banco falhou)';
+    $success = 'Mensagem enviada com sucesso (' . $savedStatus . ')! Total de mensagens: ' . count($messages);
 }
 
 // Buscar profissionais e pacientes para seletor de contatos
