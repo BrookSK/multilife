@@ -107,11 +107,11 @@ function isSystemMessageType(array $message): bool {
         'reactionMessage',
         'pollCreationMessage',
         'pollUpdateMessage',
-        'messageContextInfo',
         'callLogMessage',
         'requestPhoneNumberMessage',
         'encReactionMessage',
     ];
+    // messageContextInfo removido - é metadados de criptografia, não mensagem de sistema
     foreach ($systemTypes as $type) {
         if (isset($message[$type])) return true;
     }
