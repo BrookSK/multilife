@@ -273,32 +273,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("URL: $url");
             error_log("Payload: $payload");
             
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $url,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_ENCODING => "",
-                CURLOPT_MAXREDIRS => 10,
-                CURLOPT_TIMEOUT => 30,
-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                CURLOPT_CUSTOMREQUEST => "POST",
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
-                    "Content-Type: application/json",
-                    "apikey: " . $apiKey
-                ],
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
-            ]);
+            // Tentar criar o grupo com até 3 tentativas (erro 1006 é intermitente)
+            $maxRetries = 3;
+            $response = '';
+            $httpCode = 0;
+            $curlError = '';
             
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlError = curl_error($ch);
-            curl_close($ch);
-            
-            error_log("HTTP Code: $httpCode");
-            error_log("Response: $response");
-            error_log("cURL Error: $curlError");
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                error_log("Tentativa $attempt de $maxRetries para criar grupo: $groupName");
+                
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL => $url,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_ENCODING => "",
+                    CURLOPT_MAXREDIRS => 10,
+                    CURLOPT_TIMEOUT => 30,
+                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                    CURLOPT_CUSTOMREQUEST => "POST",
+                    CURLOPT_POSTFIELDS => $payload,
+                    CURLOPT_HTTPHEADER => [
+                        "Content-Type: application/json",
+                        "apikey: " . $apiKey
+                    ],
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false
+                ]);
+                
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($ch);
+                curl_close($ch);
+                
+                error_log("Tentativa $attempt - HTTP Code: $httpCode - Response: $response");
+                
+                // Se sucesso ou erro que não seja 1006, parar tentativas
+                if ($httpCode === 200 || $httpCode === 201) {
+                    error_log("Grupo criado com sucesso na tentativa $attempt");
+                    break;
+                }
+                
+                $responseData = json_decode($response, true);
+                $errorMsg = $responseData['response']['message'][0] ?? '';
+                
+                // Se não for erro 1006, não faz sentido tentar novamente
+                if ($errorMsg !== 'Error creating group') {
+                    break;
+                }
+                
+                // Aguardar antes de tentar novamente
+                if ($attempt < $maxRetries) {
+                    error_log("Erro 1006 - aguardando 3 segundos antes da próxima tentativa...");
+                    sleep(3);
+                }
+            }
             
             if ($httpCode === 200 || $httpCode === 201) {
                 $responseData = json_decode($response, true);
