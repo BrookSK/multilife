@@ -15,6 +15,9 @@ if (!$data) {
 }
 
 $event = $data['event'] ?? '';
+// Normalizar: MESSAGES_UPSERT → messages.upsert (diferentes versões da Evolution API)
+$event = strtolower(str_replace('_', '.', $event));
+error_log("[WEBHOOK] event:'$event' instance:'" . ($data['instance'] ?? '') . "'");
 
 // Ignorar eventos que não precisam de processamento
 $ignoredEvents = [
