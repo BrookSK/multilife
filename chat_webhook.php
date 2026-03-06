@@ -185,6 +185,15 @@ if ($event === 'messages.upsert') {
             } catch (Exception $e) {
                 error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
             }
+        } else {
+            $reason = [];
+            if ($fromMe) $reason[] = 'fromMe';
+            if (empty($remoteJid)) $reason[] = 'jid_vazio';
+            if (empty($messageText)) $reason[] = 'text_vazio';
+            if ($isStatusBroadcast) $reason[] = 'broadcast';
+            if ($isSystemType) $reason[] = 'systemType';
+            if ($isSystemMsg) $reason[] = 'systemMsg';
+            error_log("[WEBHOOK] mensagem IGNORADA: " . implode(', ', $reason) . " | jid='$remoteJid'");
         }
     }
 }
