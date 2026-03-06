@@ -77,3 +77,12 @@ Atenciosamente,
 Equipe MultiLife',
 'Mensagem padrão enviada ao profissional quando um paciente é atribuído')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
+
+-- Adicionar colunas de aprovação se não existirem (para tabelas já criadas)
+ALTER TABLE patient_assignments 
+ADD COLUMN IF NOT EXISTS approved_at DATETIME NULL AFTER confirmed_at,
+ADD COLUMN IF NOT EXISTS approved_by_user_id INT UNSIGNED NULL AFTER approved_at;
+
+-- Atualizar ENUM de status se necessário
+ALTER TABLE patient_assignments 
+MODIFY COLUMN status ENUM('pending','confirmed','approved','cancelled') NOT NULL DEFAULT 'pending';

@@ -61,7 +61,7 @@ try {
     $recordDescription .= "Tipo de Serviço: " . $assignment['service_type'] . "\n";
     $recordDescription .= "Quantidade de Sessões: " . $assignment['session_quantity'] . "x\n";
     $recordDescription .= "Frequência: " . $assignment['session_frequency'] . "\n";
-    $recordDescription .= "Valor por Sessão: R$ " . number_format($assignment['payment_value'], 2, ',', '.') . "\n";
+    $recordDescription .= "Valor por Sessão: R$ " . number_format((float)$assignment['payment_value'], 2, ',', '.') . "\n";
     $recordDescription .= "\nAprovado por: " . auth_user_name() . "\n";
     $recordDescription .= "Data de Aprovação: " . date('d/m/Y H:i:s');
     
