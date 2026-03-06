@@ -1052,8 +1052,9 @@ echo '<p style="margin:8px 0 0;font-size:13px;color:#667781">Card: <span id="dem
 echo '</div>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Selecionar Paciente *</label>';
-echo '<select id="patientId" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<select id="patientId" onchange="toggleNewPatientFields()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
 echo '<option value="">-- Selecione um paciente --</option>';
+echo '<option value="new" style="background:#e7f8f4;font-weight:600;color:#00a884">➕ Cadastrar Novo Paciente</option>';
 try {
     $patientsStmt = db()->prepare("
         SELECT u.id, u.name, u.phone
@@ -1067,12 +1068,29 @@ try {
     $patientsStmt->execute();
     $allPatients = $patientsStmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($allPatients as $pat) {
-        echo '<option value="' . h($pat['id']) . '">' . h($pat['name']) . ' - ' . h($pat['phone'] ?? 'Sem telefone') . '</option>';
+        echo '<option value="' . (int)$pat['id'] . '">' . h($pat['name']) . ' - ' . h($pat['phone'] ?? 'Sem telefone') . '</option>';
     }
 } catch (Exception $e) {
     error_log("Erro ao buscar pacientes: " . $e->getMessage());
 }
 echo '</select>';
+
+// Campos dinâmicos para cadastrar novo paciente
+echo '<div id="newPatientFields" style="display:none;background:#f0f9ff;padding:16px;border-radius:8px;margin-bottom:16px;border:2px solid #00a884">';
+echo '<h3 style="margin:0 0 12px;font-size:16px;color:#00a884">📋 Cadastrar Novo Paciente</h3>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Nome Completo *</label>';
+echo '<input type="text" id="newPatientName" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px" placeholder="Nome completo do paciente">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Telefone *</label>';
+echo '<input type="tel" id="newPatientPhone" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px" placeholder="(00) 00000-0000">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Email</label>';
+echo '<input type="email" id="newPatientEmail" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px" placeholder="email@exemplo.com">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">CPF</label>';
+echo '<input type="text" id="newPatientCpf" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px" placeholder="000.000.000-00">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Data de Nascimento</label>';
+echo '<input type="date" id="newPatientBirthdate" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Endereço</label>';
+echo '<textarea id="newPatientAddress" rows="2" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical" placeholder="Rua, número, bairro, cidade, estado"></textarea>';
+echo '</div>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
 echo '<input type="text" id="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="Ex: Fisioterapia">';
@@ -1948,6 +1966,17 @@ echo '}';
 echo 'function closeAssignmentModal() {';
 echo '  document.getElementById("assignmentModal").style.display = "none";';
 echo '  document.getElementById("assignmentForm").reset();';
+echo '  document.getElementById("newPatientFields").style.display = "none";';
+echo '}';
+
+echo 'function toggleNewPatientFields() {';
+echo '  const patientSelect = document.getElementById("patientId");';
+echo '  const newPatientFields = document.getElementById("newPatientFields");';
+echo '  if (patientSelect.value === "new") {';
+echo '    newPatientFields.style.display = "block";';
+echo '  } else {';
+echo '    newPatientFields.style.display = "none";';
+echo '  }';
 echo '}';
 
 echo 'document.getElementById("assignmentForm").addEventListener("submit", function(e) {';
@@ -1961,20 +1990,38 @@ echo '  const sessionFrequency = document.getElementById("sessionFrequency").val
 echo '  const paymentValue = document.getElementById("paymentValue").value;';
 echo '  const notes = document.getElementById("assignmentNotes").value;';
 echo '  const professionalJid = "' . addslashes($selectedChat) . '";';
+echo '  ';
+echo '  const payload = {';
+echo '    demand_id: demandId,';
+echo '    patient_id: patientId,';
+echo '    professional_jid: professionalJid,';
+echo '    specialty: specialty,';
+echo '    service_type: serviceType,';
+echo '    session_quantity: sessionQuantity,';
+echo '    session_frequency: sessionFrequency,';
+echo '    payment_value: paymentValue,';
+echo '    notes: notes';
+echo '  };';
+echo '  ';
+echo '  if (patientId === "new") {';
+echo '    const newPatientName = document.getElementById("newPatientName").value;';
+echo '    const newPatientPhone = document.getElementById("newPatientPhone").value;';
+echo '    if (!newPatientName || !newPatientPhone) {';
+echo '      alert("Por favor, preencha o nome e telefone do novo paciente.");';
+echo '      return;';
+echo '    }';
+echo '    payload.new_patient_name = newPatientName;';
+echo '    payload.new_patient_phone = newPatientPhone;';
+echo '    payload.new_patient_email = document.getElementById("newPatientEmail").value;';
+echo '    payload.new_patient_cpf = document.getElementById("newPatientCpf").value;';
+echo '    payload.new_patient_birthdate = document.getElementById("newPatientBirthdate").value;';
+echo '    payload.new_patient_address = document.getElementById("newPatientAddress").value;';
+echo '  }';
+echo '  ';
 echo '  fetch("/chat_assign_patient.php", {';
 echo '    method: "POST",';
 echo '    headers: {"Content-Type": "application/json"},';
-echo '    body: JSON.stringify({';
-echo '      demand_id: demandId,';
-echo '      patient_id: patientId,';
-echo '      professional_jid: professionalJid,';
-echo '      specialty: specialty,';
-echo '      service_type: serviceType,';
-echo '      session_quantity: sessionQuantity,';
-echo '      session_frequency: sessionFrequency,';
-echo '      payment_value: paymentValue,';
-echo '      notes: notes';
-echo '    })';
+echo '    body: JSON.stringify(payload)';
 echo '  })';
 echo '  .then(r => r.json())';
 echo '  .then(data => {';
