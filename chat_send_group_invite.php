@@ -60,7 +60,7 @@ try {
     $participantJid = $participantPhone . '@s.whatsapp.net';
     
     // 1. Adicionar participante ao grupo
-    $addResult = $api->updateGroupParticipant($groupJid, 'add', [$participantJid]);
+    $addResult = $api->updateGroupMembers($groupJid, 'add', [$participantJid]);
     $addHttpCode = (int)($addResult['status'] ?? 0);
     
     if ($addHttpCode !== 200 && $addHttpCode !== 201) {
