@@ -309,17 +309,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
     } elseif ($_POST['action'] === 'create_group') {
-        error_log("=== CRIAR GRUPO INICIADO ===");
         $specialty = trim($_POST['specialty'] ?? '');
         $location = strtoupper(trim($_POST['location'] ?? ''));
-        error_log("Specialty: $specialty, Location: $location");
         
         if (empty($specialty) || empty($location)) {
             $error = 'Especialidade e localização são obrigatórias.';
-            error_log("ERRO: Campos obrigatórios vazios");
         } elseif (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
             $error = 'Evolution API não configurada. Configure em Configurações > Evolution API.';
-            error_log("ERRO: Evolution API não configurada");
         } else {
             // Gerar número sequencial do grupo
             try {
@@ -345,9 +341,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'participants' => ['5517991253062']
             ]);
             
-            error_log("Criando grupo: $groupName");
-            error_log("URL: $url");
-            error_log("Payload: $payload");
             
             // Tentar criar o grupo com até 3 tentativas (erro 1006 é intermitente)
             $maxRetries = 3;
@@ -356,7 +349,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $curlError = '';
             
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-                error_log("Tentativa $attempt de $maxRetries para criar grupo: $groupName");
                 
                 $ch = curl_init();
                 curl_setopt_array($ch, [
@@ -381,11 +373,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $curlError = curl_error($ch);
                 curl_close($ch);
                 
-                error_log("Tentativa $attempt - HTTP Code: $httpCode - Response: $response");
                 
                 // Se sucesso ou erro que não seja 1006, parar tentativas
                 if ($httpCode === 200 || $httpCode === 201) {
-                    error_log("Grupo criado com sucesso na tentativa $attempt");
                     break;
                 }
                 
@@ -408,7 +398,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 // Aguardar antes de tentar novamente
                 if ($attempt < $maxRetries) {
-                    error_log("Erro ao criar grupo (tentativa $attempt) - aguardando 5 segundos...");
                     sleep(5);
                 }
             }
@@ -417,7 +406,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $responseData = json_decode($response, true);
                 $groupJid = $responseData['id'] ?? '';
                 
-                error_log("Group JID: $groupJid");
                 
                 // Salvar grupo no banco de dados
                 if (!empty($groupJid)) {
@@ -428,7 +416,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ");
                         $stmt->execute([$groupJid, $groupName, $specialty, $location]);
                         
-                        error_log("Grupo salvo no banco com sucesso");
                         audit_log('create', 'chat_groups', $groupJid, null, ['group_name' => $groupName, 'specialty' => $specialty, 'region' => $location]);
                         $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
                         $debugConsole[] = 'console.log("✅ GRUPO CRIADO - Nome: ' . addslashes($groupName) . ' | JID: ' . addslashes($groupJid) . '")';
@@ -523,10 +510,6 @@ try {
         ");
         $stmt->execute($params);
         $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        error_log("Grupos encontrados no banco: " . count($groups));
-        if (count($groups) > 0) {
-            error_log("Primeiro grupo: " . json_encode($groups[0]));
-        }
     }
 } catch (Exception $e) {
     error_log("Erro ao carregar grupos do banco: " . $e->getMessage());
@@ -648,6 +631,27 @@ if (!empty($selectedChat)) {
             $chatExists = true;
             $selectedChatData = $chat;
             break;
+        }
+    }
+
+    // Para grupos: buscar nome e foto na tabela chat_groups
+    if (strpos($selectedChat, '@g.us') !== false && empty($selectedChatData['name'])) {
+        try {
+            $tableCheck = db()->query("SHOW TABLES LIKE 'chat_groups'")->fetch();
+            if ($tableCheck) {
+                $gStmt = db()->prepare("
+                    SELECT group_name as name, group_picture_url as profilePictureUrl,
+                           specialty, region
+                    FROM chat_groups WHERE group_jid = ?
+                ");
+                $gStmt->execute([$selectedChat]);
+                $gData = $gStmt->fetch(PDO::FETCH_ASSOC);
+                if ($gData) {
+                    $selectedChatData = array_merge($selectedChatData, $gData);
+                }
+            }
+        } catch (Exception $e) {
+            // silencioso
         }
     }
 }
@@ -1435,7 +1439,7 @@ if (empty($selectedChat)) {
     
     // Se não houver mensagens, mostrar mensagem informativa
     if (empty($messages)) {
-        echo '<div style="text-align:center;padding:40px;color:#667781">';
+        echo '<div class="whatsapp-empty-chat" style="text-align:center;padding:40px;color:#667781">';
         echo '<p style="font-size:14px">Nenhuma mensagem ainda.</p>';
         echo '<p style="font-size:13px;opacity:0.7;margin-top:8px">Envie uma mensagem para iniciar a conversa.</p>';
         echo '</div>';
@@ -1923,6 +1927,8 @@ echo '}';
 // Envio de mensagem via AJAX
 echo 'const sendForm=document.getElementById("sendMessageForm");';
 echo 'const textarea=document.querySelector(".whatsapp-input");';
+// URL fixa para o envio - evita que input[name=action] sobreescreva sendForm.action
+echo 'const sendUrl="/chat_web.php?chat="+encodeURIComponent(chatId);';
 echo 'if(sendForm&&textarea){';
 // Auto-resize do textarea
 echo '  textarea.addEventListener("input",function(){';
@@ -1935,7 +1941,9 @@ echo '    e.preventDefault();';
 echo '    if(sending)return;';
 echo '    const text=textarea.value.trim();';
 echo '    if(!text)return;';
-// Mostrar mensagem imediatamente no UI
+// Limpar texto "nenhuma mensagem" e mostrar mensagem imediatamente no UI
+echo '    const emptyState=messagesContainer.querySelector(".whatsapp-empty-chat");';
+echo '    if(emptyState)emptyState.remove();';
 echo '    const ts=Math.floor(Date.now()/1000);';
 echo '    const msgEl=createMsgEl(text,true,ts);';
 echo '    messagesContainer.appendChild(msgEl);';
@@ -1943,11 +1951,11 @@ echo '    scrollToBottom();';
 echo '    textarea.value="";';
 echo '    textarea.style.height="auto";';
 echo '    sending=true;';
-// Enviar via AJAX
+// Enviar via AJAX usando URL fixa (não sendForm.action que pode ser o input[name=action])
 echo '    const formData=new FormData(sendForm);';
 echo '    formData.set("message",text);';
 echo '    formData.set("ajax","1");';
-echo '    fetch(sendForm.action,{method:"POST",body:formData})';
+echo '    fetch(sendUrl,{method:"POST",body:formData})';
 echo '      .then(function(r){return r.json();})';
 echo '      .then(function(data){';
 echo '        sending=false;';
