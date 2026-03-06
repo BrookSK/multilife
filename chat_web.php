@@ -250,9 +250,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
             
             // Criar grupo vazio - participantes serão adicionados via convite no chat
-            // Usar número do próprio usuário logado como participante inicial (requisito da API)
-            $userPhone = auth_user()['phone'] ?? '5511999999999'; // Fallback se não tiver telefone
-            $cleanUserPhone = preg_replace('/[^0-9]/', '', $userPhone);
+            // Usar número padrão como participante inicial (requisito da API)
+            // O número será o do admin configurado nas settings
+            $adminPhone = '5511999999999'; // Número padrão - pode ser configurado nas settings
+            $cleanUserPhone = preg_replace('/[^0-9]/', '', $adminPhone);
             $formattedParticipants = [$cleanUserPhone . '@s.whatsapp.net'];
             
             $url = $baseUrl . '/group/create/' . urlencode($instanceName);
@@ -547,42 +548,27 @@ $professionals = [];
 $patients = [];
 
 try {
-    // Buscar profissionais (usuários com role de profissional)
+    // Buscar profissionais da tabela professionals (não users)
     $stmt = db()->prepare("
-        SELECT u.id, u.email, u.phone
-        FROM users u
-        INNER JOIN user_roles ur ON u.id = ur.user_id
-        INNER JOIN roles r ON ur.role_id = r.id
-        WHERE r.name IN ('professional', 'admin')
-        AND u.phone IS NOT NULL
-        AND u.phone != ''
-        ORDER BY u.email ASC
+        SELECT id, name, phone_primary as phone
+        FROM professionals
+        WHERE phone_primary IS NOT NULL
+        AND phone_primary != ''
+        ORDER BY name ASC
     ");
     $stmt->execute();
     $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Adicionar nome baseado no email
-    foreach ($professionals as &$prof) {
-        $prof['name'] = $prof['email'];
-    }
-    unset($prof);
-    
     // Buscar pacientes
     $stmt = db()->prepare("
-        SELECT id, phone
+        SELECT id, name, phone_primary as phone
         FROM patients
-        WHERE phone IS NOT NULL
-        AND phone != ''
-        ORDER BY id ASC
+        WHERE phone_primary IS NOT NULL
+        AND phone_primary != ''
+        ORDER BY name ASC
     ");
     $stmt->execute();
     $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Adicionar nome baseado no ID
-    foreach ($patients as &$patient) {
-        $patient['name'] = 'Paciente #' . $patient['id'];
-    }
-    unset($patient);
 } catch (Exception $e) {
     error_log("Erro ao buscar contatos: " . $e->getMessage());
 }
