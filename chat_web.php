@@ -42,12 +42,19 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             'Expires: 0'
         ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 3); // Reduzido para 3 segundos
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2); // Timeout de conexão
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
+        
+        // Log de erro se houver
+        if ($curlError) {
+            error_log("Evolution API Error: " . $curlError);
+        }
         
         if ($httpCode === 200) {
             $chats = json_decode($response, true);
