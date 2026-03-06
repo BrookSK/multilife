@@ -465,8 +465,8 @@ if (empty($chats)) {
         $chatName = $chat['name'] ?? $chatId;
         $isGroup = strpos($chatId, '@g.us') !== false;
         $isActive = $selectedChat === $chatId ? ' active' : '';
-        $lastMsg = $chat['lastMessage']['message'] ?? '';
-        $lastTime = isset($chat['lastMessage']['messageTimestamp']) ? date('H:i', $chat['lastMessage']['messageTimestamp']) : '';
+        $lastMsg = ''; // API não retorna preview da mensagem
+        $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
         
         $initials = strtoupper(substr($chatName, 0, 2));
         $profilePic = $chat['profilePictureUrl'] ?? '';
