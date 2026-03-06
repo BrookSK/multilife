@@ -295,6 +295,17 @@ try {
     // Garantir que tabela existe
     $tableCheck = db()->query("SHOW TABLES LIKE 'chat_contacts'")->fetch();
     if ($tableCheck) {
+        // Verificar se coluna profile_picture_url existe, se não, adicionar
+        try {
+            $columns = db()->query("SHOW COLUMNS FROM chat_contacts LIKE 'profile_picture_url'")->fetch();
+            if (!$columns) {
+                db()->exec("ALTER TABLE chat_contacts ADD COLUMN profile_picture_url TEXT DEFAULT NULL AFTER contact_name");
+                error_log("Coluna profile_picture_url adicionada à tabela chat_contacts");
+            }
+        } catch (Exception $e) {
+            error_log("Erro ao verificar/adicionar coluna: " . $e->getMessage());
+        }
+        
         $stmt = db()->query("
             SELECT 
                 remote_jid as id,
