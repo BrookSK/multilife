@@ -493,7 +493,8 @@ if (!empty($success)) {
     echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
     echo '<strong>✓ Sucesso:</strong> ' . h($success);
     echo '</div>';
-    echo '<script>setTimeout(() => { window.location.href = "/chat_web.php"; }, 2000);</script>';
+    // Não redirecionar - manter o chat aberto
+    echo '<script>setTimeout(() => { document.querySelector(".fixed").style.display = "none"; }, 3000);</script>';
 }
 if (!empty($error)) {
     echo '<div style="position:fixed;top:20px;right:20px;background:#f8d7da;color:#721c24;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
