@@ -92,18 +92,60 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
 }
 
+// Tipos de mensagem que são sistema/protocolo e devem ser ignorados
+function isSystemMessageType(array $message): bool {
+    $systemTypes = [
+        'protocolMessage',
+        'ephemeralMessage',
+        'senderKeyDistributionMessage',
+        'reactionMessage',
+        'pollCreationMessage',
+        'pollUpdateMessage',
+        'messageContextInfo',
+        'callLogMessage',
+        'requestPhoneNumberMessage',
+        'encReactionMessage',
+    ];
+    foreach ($systemTypes as $type) {
+        if (isset($message[$type])) return true;
+    }
+    return false;
+}
+
+// Textos de sistema conhecidos do WhatsApp
+function isSystemText(string $text): bool {
+    $systemPatterns = [
+        'Aguardando mensagem',
+        'Waiting for message',
+        'Essa mensagem foi eliminada',
+        'This message was deleted',
+        'Uma mensagem foi eliminada',
+    ];
+    foreach ($systemPatterns as $pattern) {
+        if (stripos($text, $pattern) !== false) return true;
+    }
+    return false;
+}
+
 // Processar mensagens recebidas
 if ($event === 'messages.upsert') {
     $messageData = $data['data'] ?? [];
     $remoteJid   = $messageData['key']['remoteJid'] ?? '';
     $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
-    $messageText = $messageData['message']['conversation']
-                   ?? $messageData['message']['extendedTextMessage']['text']
+    $msgPayload  = $messageData['message'] ?? [];
+    $messageText = $msgPayload['conversation']
+                   ?? $msgPayload['extendedTextMessage']['text']
                    ?? '';
     $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
-    // Salvar apenas mensagens recebidas (não enviadas por mim)
-    if (!$fromMe && !empty($remoteJid) && !empty($messageText)) {
+    // Ignorar: status@broadcast, JIDs de sistema, tipos de protocolo, textos de sistema
+    $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
+                       || strpos($remoteJid, 'broadcast') !== false;
+    $isSystemType = isSystemMessageType($msgPayload);
+    $isSystemMsg  = isSystemText($messageText);
+
+    if (!$fromMe && !empty($remoteJid) && !empty($messageText)
+        && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg) {
         try {
             saveMessage($remoteJid, $messageText, 0, $timestamp);
         } catch (Exception $e) {
@@ -116,12 +158,17 @@ if ($event === 'messages.upsert') {
 if ($event === 'send.message') {
     $messageData = $data['data'] ?? [];
     $remoteJid   = $messageData['key']['remoteJid'] ?? '';
-    $messageText = $messageData['message']['conversation']
-                   ?? $messageData['message']['extendedTextMessage']['text']
+    $msgPayload  = $messageData['message'] ?? [];
+    $messageText = $msgPayload['conversation']
+                   ?? $msgPayload['extendedTextMessage']['text']
                    ?? '';
     $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
-    if (!empty($remoteJid) && !empty($messageText)) {
+    $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
+                       || strpos($remoteJid, 'broadcast') !== false;
+
+    if (!empty($remoteJid) && !empty($messageText)
+        && !$isStatusBroadcast && !isSystemMessageType($msgPayload) && !isSystemText($messageText)) {
         try {
             saveMessage($remoteJid, $messageText, 1, $timestamp);
         } catch (Exception $e) {
