@@ -304,7 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $isGroup = strpos($remoteJid, '@g.us') !== false;
                 if (strpos($response, 'SessionError') !== false || strpos($response, 'No sessions') !== false) {
                     if ($isGroup) {
-                        $error = '❌ Grupo sem participantes. Adicione participantes em /chat_groups.php → Gerenciar Participantes.';
+                        $error = '❌ WhatsApp instável no grupo. A conexão caiu ou as sessões de encriptação não estão ativas. Reconecte o WhatsApp e tente novamente.';
                     } else {
                         $error = '❌ WhatsApp desconectado. Reconecte em Configurações → Evolution API.';
                     }
@@ -1430,8 +1430,11 @@ if (empty($selectedChat)) {
     echo '<div>';
     echo '<div style="font-weight:600;font-size:16px;color:#111b21">' . h($chatName) . '</div>';
     if ($isGroup) {
-        $participantCount = count($selectedChatData['participants'] ?? []);
-        echo '<div style="font-size:13px;color:#667781">' . $participantCount . ' participantes</div>';
+        $participantLabel = !empty($selectedChatData['region']) ? h($selectedChatData['region']) : 'Grupo';
+        if (!empty($selectedChatData['specialty'])) {
+            $participantLabel = h($selectedChatData['specialty']) . ' · ' . $participantLabel;
+        }
+        echo '<div style="font-size:13px;color:#667781">' . $participantLabel . '</div>';
     } else {
         echo '<div style="font-size:13px;color:#667781">online</div>';
     }
