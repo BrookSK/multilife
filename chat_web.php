@@ -55,10 +55,10 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 $chats = [];
             }
             
-            // FILTRO 1: Apenas conversas privadas (excluir grupos @g.us e @lid)
+            // FILTRO 1: Excluir apenas canais @lid (manter grupos e conversas privadas)
             $chats = array_filter($chats, function($chat) {
                 $chatId = $chat['id'] ?? '';
-                return !empty($chatId) && strpos($chatId, '@g.us') === false;
+                return !empty($chatId) && strpos($chatId, '@lid') === false;
             });
             
             // Ordenar por timestamp da última mensagem (mais recentes primeiro)
@@ -68,7 +68,7 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 return $timeB - $timeA;
             });
             
-            // FILTRO 2: Limitar a apenas 10 conversas privadas mais recentes
+            // FILTRO 2: Limitar a 10 conversas mais recentes (grupos + privadas)
             $chats = array_slice($chats, 0, 10);
             
             // Enriquecer dados dos chats com nomes
@@ -78,12 +78,32 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 // Buscar nome - usar dados já disponíveis da API
                 if (!isset($chat['name']) || empty($chat['name'])) {
                     if (!empty($chatId)) {
-                        // Prioridade: pushName > número
+                        $isGroup = strpos($chatId, '@g.us') !== false;
+                        
+                        // Prioridade: pushName > subject (grupos) > número formatado
                         if (isset($chat['pushName']) && !empty($chat['pushName'])) {
                             $chat['name'] = $chat['pushName'];
-                        } else {
+                        } elseif ($isGroup && isset($chat['subject']) && !empty($chat['subject'])) {
+                            // Grupos têm um campo 'subject' com o nome do grupo
+                            $chat['name'] = $chat['subject'];
+                        } elseif (!$isGroup) {
+                            // Apenas formatar número se for conversa privada
                             $number = str_replace(['@s.whatsapp.net', '@lid'], '', $chatId);
-                            $chat['name'] = $number;
+                            
+                            // Formatar número brasileiro: +55 (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+                            if (preg_match('/^55(\d{2})(\d{4,5})(\d{4})$/', $number, $matches)) {
+                                // Número brasileiro com DDI 55
+                                $chat['name'] = '+55 (' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3];
+                            } elseif (preg_match('/^(\d{2})(\d{4,5})(\d{4})$/', $number, $matches)) {
+                                // Número brasileiro sem DDI
+                                $chat['name'] = '(' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3];
+                            } else {
+                                // Outros formatos - adicionar + se tiver mais de 10 dígitos
+                                $chat['name'] = strlen($number) > 10 ? '+' . $number : $number;
+                            }
+                        } else {
+                            // Fallback para grupos sem subject
+                            $chat['name'] = 'Grupo';
                         }
                     }
                 }
@@ -114,7 +134,9 @@ $debugLogs = [];
 
 // Buscar mensagens do chat selecionado DIRETAMENTE DA API EVOLUTION
 // NÃO USA BANCO DE DADOS LOCAL - TODAS AS MENSAGENS VÊM DA API EM TEMPO REAL
-if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+// APENAS PARA CONVERSAS PRIVADAS - GRUPOS NÃO CARREGAM HISTÓRICO
+$isPrivateChat = !empty($selectedChat) && strpos($selectedChat, '@g.us') === false;
+if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         // Preparar payload da requisição - buscar apenas 10 mensagens
         $requestPayload = [
@@ -384,11 +406,11 @@ echo '<a href="/chat_web.php?type=groups" class="whatsapp-tab' . $groupsActive .
 echo '<a href="/chat_web.php?type=private" class="whatsapp-tab' . $privateActive . '">Conversas</a>';
 echo '</div>';
 
-// Lista de conversas (máximo 10 conversas privadas)
+// Lista de conversas (máximo 10 conversas: grupos + privadas)
 echo '<div class="whatsapp-chats" id="chatsList">';
 if (empty($chats)) {
     echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
-    echo '<p>Nenhuma conversa privada encontrada.</p>';
+    echo '<p>Nenhuma conversa encontrada.</p>';
     if (empty($baseUrl) || empty($apiKey)) {
         echo '<p style="margin-top:12px;font-size:13px">Configure as credenciais da Evolution API em Configurações.</p>';
     }
@@ -483,7 +505,15 @@ if (empty($selectedChat)) {
     
     // Área de mensagens
     echo '<div class="whatsapp-messages" id="messagesContainer">';
-    if (empty($messages)) {
+    if ($isGroup) {
+        // Mensagem informativa para grupos
+        echo '<div style="text-align:center;padding:40px;color:#667781;background:#f0f2f5;margin:20px;border-radius:8px">';
+        echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;opacity:0.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+        echo '<h3 style="margin:0 0 8px;color:#111b21">Grupo: ' . h($chatName) . '</h3>';
+        echo '<p style="margin:0;font-size:14px">Histórico de mensagens não disponível para grupos.</p>';
+        echo '<p style="margin:8px 0 0;font-size:13px;opacity:0.7">Apenas conversas privadas carregam mensagens.</p>';
+        echo '</div>';
+    } elseif (empty($messages)) {
         echo '<div style="text-align:center;padding:40px;color:#667781">';
         echo '<p>Nenhuma mensagem ainda.</p>';
         echo '</div>';
