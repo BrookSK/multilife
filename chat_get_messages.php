@@ -55,7 +55,14 @@ try {
     if ($httpCode === 200) {
         $data = json_decode($response, true);
         if (isset($data) && is_array($data)) {
-            $messages = $data;
+            // FILTRO: A API Evolution ignora o filtro remoteJid, então filtramos no PHP
+            $messages = array_filter($data, function($msg) use ($chatId) {
+                $msgRemoteJid = $msg['key']['remoteJid'] ?? '';
+                return $msgRemoteJid === $chatId;
+            });
+            
+            // Reindexar array após filtro
+            $messages = array_values($messages);
         }
     }
 } catch (Exception $e) {
