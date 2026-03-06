@@ -61,17 +61,30 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 return !empty($chatId) && strpos($chatId, '@lid') === false;
             });
             
-            // BUSCAR ÚLTIMA MENSAGEM REAL DE CADA CONVERSA
+            // BUSCAR APENAS AS 10 ÚLTIMAS CONVERSAS DAS ÚLTIMAS 3 HORAS
             $debugLogs = [];
-            $debugLogs[] = "=== BUSCANDO MENSAGENS REAIS ===";
-            $debugLogs[] = "Total de conversas: " . count($chats);
-            $debugLogs[] = "Buscando última mensagem de cada conversa...";
+            $debugLogs[] = "=== BUSCANDO 10 CONVERSAS MAIS RECENTES (ÚLTIMAS 3 HORAS) ===";
+            $debugLogs[] = "Total de conversas disponíveis: " . count($chats);
+            
+            // Timestamp de 3 horas atrás
+            $threeHoursAgo = time() - (3 * 60 * 60);
+            $debugLogs[] = "Filtrando mensagens após: " . date('Y-m-d H:i:s', $threeHoursAgo);
             $debugLogs[] = "";
             
-            // Para cada conversa, buscar a última mensagem real
-            foreach ($chats as &$chat) {
+            $validChats = [];
+            $checkedCount = 0;
+            $skippedOld = 0;
+            $maxToCheck = 100; // Verificar até 100 conversas para encontrar 10 das últimas 3 horas
+            
+            // Buscar até encontrar 10 conversas com mensagens das últimas 3 horas
+            foreach ($chats as $idx => $chat) {
+                if (count($validChats) >= 10) break; // Parar quando tiver 10
+                if ($checkedCount >= $maxToCheck) break; // Limite de segurança
+                
                 $chatId = $chat['id'] ?? '';
                 if (empty($chatId)) continue;
+                
+                $checkedCount++;
                 
                 // Buscar última mensagem desta conversa
                 $msgUrl = $baseUrl . '/chat/findMessages/' . urlencode($instanceName);
@@ -94,7 +107,8 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                     'Content-Type: application/json'
                 ]);
                 curl_setopt($chMsg, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($chMsg, CURLOPT_TIMEOUT, 5);
+                curl_setopt($chMsg, CURLOPT_TIMEOUT, 2);
+                curl_setopt($chMsg, CURLOPT_CONNECTTIMEOUT, 1);
                 
                 $msgResponse = curl_exec($chMsg);
                 curl_close($chMsg);
@@ -102,12 +116,29 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 $messages = json_decode($msgResponse, true);
                 if (is_array($messages) && !empty($messages)) {
                     $lastMsg = $messages[0];
-                    $chat['realLastMsgTimestamp'] = $lastMsg['messageTimestamp'] ?? 0;
-                } else {
-                    $chat['realLastMsgTimestamp'] = 0;
+                    $timestamp = $lastMsg['messageTimestamp'] ?? 0;
+                    
+                    // Normalizar timestamp se estiver em milissegundos
+                    if ($timestamp > 9999999999) {
+                        $timestamp = intval($timestamp / 1000);
+                    }
+                    
+                    // Aceitar apenas mensagens das últimas 3 horas
+                    if ($timestamp > 0 && $timestamp >= $threeHoursAgo) {
+                        $chat['realLastMsgTimestamp'] = $timestamp;
+                        $validChats[] = $chat;
+                    } elseif ($timestamp > 0) {
+                        $skippedOld++;
+                    }
                 }
             }
-            unset($chat);
+            
+            $debugLogs[] = "Conversas verificadas: {$checkedCount}";
+            $debugLogs[] = "Conversas antigas ignoradas: {$skippedOld}";
+            $debugLogs[] = "Conversas recentes encontradas: " . count($validChats);
+            
+            // Substituir array de chats pelos válidos encontrados
+            $chats = $validChats;
             
             $debugLogs[] = "Mensagens buscadas. Ordenando...";
             $debugLogs[] = "";
@@ -123,16 +154,13 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 return $timeB - $timeA;
             });
             
-            $debugLogs[] = "--- TOP 10 CONVERSAS MAIS RECENTES (DADOS REAIS) ---";
-            foreach (array_slice($chats, 0, 10) as $idx => $chat) {
+            $debugLogs[] = "--- CONVERSAS MAIS RECENTES (DADOS REAIS) ---";
+            foreach ($chats as $idx => $chat) {
                 $timestamp = $chat['realLastMsgTimestamp'] ?? 0;
                 $chatId = $chat['id'] ?? 'N/A';
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
                 $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
             }
-            
-            // FILTRO 2: Limitar a 10 conversas mais recentes (grupos + privadas)
-            $chats = array_slice($chats, 0, 10);
             
             // Enriquecer dados dos chats com nomes
             foreach ($chats as &$chat) {
