@@ -1672,7 +1672,7 @@ if (!empty($selectedChat)) {
                 SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status
                 FROM demands d
                 WHERE d.assumed_by_user_id = :user_id
-                AND d.status IN ('em_captacao', 'admitido')
+                AND d.status IN ('tratamento_manual', 'em_captacao', 'admitido')
                 ORDER BY d.created_at DESC
                 LIMIT 50
             ");
@@ -1691,7 +1691,7 @@ if (!empty($selectedChat)) {
                     $label = '#' . $demand['id'] . ' - ' . $demand['title'];
                     if ($specialty) $label .= ' (' . $specialty . ')';
                     if ($location) $label .= ' - ' . $location;
-                    echo '<option value="' . h($demand['id']) . '">' . h($label) . '</option>';
+                    echo '<option value="' . (int)$demand['id'] . '">' . h($label) . '</option>';
                 }
                 echo '</select>';
                 
