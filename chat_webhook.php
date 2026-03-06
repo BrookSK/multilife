@@ -6,9 +6,12 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 // Receber payload JSON
 $payload = file_get_contents('php://input');
+error_log('[WEBHOOK] chamado method:' . ($_SERVER['REQUEST_METHOD'] ?? '?') . ' payload_len:' . strlen($payload) . ' payload_sample:' . substr($payload, 0, 200));
+
 $data = json_decode($payload, true);
 
 if (!$data) {
+    error_log('[WEBHOOK] payload invalido ou vazio - json_last_error:' . json_last_error_msg());
     http_response_code(200);
     echo json_encode(['status' => 'ok']);
     exit;
