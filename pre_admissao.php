@@ -11,34 +11,43 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $status = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
 $selectedId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-$allowedStatuses = ['', 'aguardando_captacao', 'tratamento_manual', 'em_captacao', 'admitido', 'cancelado'];
+$allowedStatuses = ['', 'pending', 'confirmed', 'cancelled'];
 if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
 
-$sql = 'SELECT d.id, d.title, d.location_city, d.location_state, d.specialty, d.status, d.assumed_by_user_id, d.created_at, d.origin_email, d.description,
-               u.name AS assumed_by_name
-        FROM demands d
-        LEFT JOIN users u ON u.id = d.assumed_by_user_id';
+// Buscar apenas atribuições confirmadas (atendimentos que completaram cadastro de paciente, profissional e serviço)
+$sql = 'SELECT pa.id, pa.demand_id, pa.created_at, pa.status,
+               d.title, d.location_city, d.location_state, d.origin_email, d.description,
+               pa.specialty, pa.service_type, pa.session_quantity, pa.session_frequency, pa.payment_value,
+               patient.name AS patient_name, patient.phone AS patient_phone,
+               prof.name AS professional_name, prof.phone AS professional_phone,
+               assigned_by.name AS assigned_by_name
+        FROM patient_assignments pa
+        INNER JOIN demands d ON d.id = pa.demand_id
+        INNER JOIN users patient ON patient.id = pa.patient_id
+        LEFT JOIN users prof ON prof.id = pa.professional_user_id
+        LEFT JOIN users assigned_by ON assigned_by.id = pa.assigned_by_user_id
+        WHERE pa.status = \'confirmed\'';
 
 $where = [];
 $params = [];
 
-if ($status !== '') {
-    $where[] = 'd.status = :status';
+if ($status !== '' && $status !== 'confirmed') {
+    $where[] = 'pa.status = :status';
     $params['status'] = $status;
 }
 
 if ($q !== '') {
-    $where[] = '(d.title LIKE :q OR d.specialty LIKE :q OR d.location_city LIKE :q OR d.origin_email LIKE :q)';
+    $where[] = '(d.title LIKE :q OR pa.specialty LIKE :q OR d.location_city LIKE :q OR patient.name LIKE :q OR prof.name LIKE :q)';
     $params['q'] = '%' . $q . '%';
 }
 
 if (count($where) > 0) {
-    $sql .= ' WHERE ' . implode(' AND ', $where);
+    $sql .= ' AND ' . implode(' AND ', $where);
 }
 
-$sql .= ' ORDER BY d.id DESC LIMIT 80';
+$sql .= ' ORDER BY pa.id DESC LIMIT 80';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
@@ -54,7 +63,20 @@ if ($selectedId > 0) {
     }
 
     if ($selected === null) {
-        $stmt = db()->prepare('SELECT d.*, u.name AS assumed_by_name FROM demands d LEFT JOIN users u ON u.id = d.assumed_by_user_id WHERE d.id = :id LIMIT 1');
+        $stmt = db()->prepare('
+            SELECT pa.*, 
+                   d.title, d.location_city, d.location_state, d.origin_email, d.description,
+                   patient.name AS patient_name, patient.phone AS patient_phone,
+                   prof.name AS professional_name, prof.phone AS professional_phone,
+                   assigned_by.name AS assigned_by_name
+            FROM patient_assignments pa
+            INNER JOIN demands d ON d.id = pa.demand_id
+            INNER JOIN users patient ON patient.id = pa.patient_id
+            LEFT JOIN users prof ON prof.id = pa.professional_user_id
+            LEFT JOIN users assigned_by ON assigned_by.id = pa.assigned_by_user_id
+            WHERE pa.id = :id
+            LIMIT 1
+        ');
         $stmt->execute(['id' => $selectedId]);
         $selected = $stmt->fetch() ?: null;
     }
@@ -144,11 +166,9 @@ echo '</div>';
 echo '<select name="status" style="width:180px">';
 $opts = [
     '' => 'Todos',
-    'tratamento_manual' => 'Tratamento Manual',
-    'em_captacao' => 'Em Captação',
-    'admitido' => 'Admitido',
-    'aguardando_captacao' => 'Aguardando',
-    'cancelado' => 'Cancelado',
+    'confirmed' => 'Confirmado',
+    'pending' => 'Pendente',
+    'cancelled' => 'Cancelado',
 ];
 foreach ($opts as $k => $lab) {
     $sel = ($status === $k) ? ' selected' : '';
@@ -277,39 +297,63 @@ echo '</div>';
 echo '<div class="drawerBody">';
 
 if ($selected) {
-    $id = (int)$selected['id'];
+    $assignmentId = (int)$selected['id'];
+    $demandId = (int)($selected['demand_id'] ?? 0);
     $loc = trim((string)($selected['location_city'] ?? ''));
     $uf = trim((string)($selected['location_state'] ?? ''));
     $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
+    
+    $patientName = (string)($selected['patient_name'] ?? '-');
+    $patientPhone = (string)($selected['patient_phone'] ?? '-');
+    $professionalName = (string)($selected['professional_name'] ?? '-');
+    $professionalPhone = (string)($selected['professional_phone'] ?? '-');
+    $specialty = (string)($selected['specialty'] ?? '-');
+    $serviceType = (string)($selected['service_type'] ?? '-');
+    $sessionQty = (int)($selected['session_quantity'] ?? 0);
+    $sessionFreq = (string)($selected['session_frequency'] ?? '-');
+    $paymentValue = (float)($selected['payment_value'] ?? 0);
 
     echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-    echo '<a class="btn" href="/demands_view.php?id=' . $id . '">Abrir card</a>';
-    echo '<a class="btn" href="/demands_edit.php?id=' . $id . '">Editar card</a>';
+    echo '<a class="btn" href="/demands_view.php?id=' . $demandId . '">Abrir card</a>';
+    echo '<a class="btn" href="/demands_edit.php?id=' . $demandId . '">Editar card</a>';
     echo '</div>';
 
     echo '<div style="height:12px"></div>';
+    
+    echo '<div style="background:hsla(var(--primary)/.08);padding:12px;border-radius:8px;margin-bottom:16px">';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:8px">Atribuição confirmada</div>';
+    echo '<div style="font-weight:600">Paciente: ' . h($patientName) . '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($patientPhone) . '</div>';
+    echo '<div style="font-weight:600;margin-top:8px">Profissional: ' . h($professionalName) . '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($professionalPhone) . '</div>';
+    echo '</div>';
 
     echo '<div class="tabPanel isActive" data-panel="faturamento">';
     echo '<div style="display:grid;gap:12px">';
     echo '<label>Empresa/Origem<input value="' . h((string)($selected['origin_email'] ?? '')) . '" readonly></label>';
     echo '<label>Local<input value="' . h($locTxt) . '" readonly></label>';
+    echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
+    echo '<label>Tipo de Serviço<input value="' . h($serviceType) . '" readonly></label>';
+    echo '<label>Sessões<input value="' . h($sessionQty . 'x - ' . $sessionFreq) . '" readonly></label>';
+    echo '<label>Valor por Sessão<input value="R$ ' . h(number_format($paymentValue, 2, ',', '.')) . '" readonly></label>';
     echo '<label>Plano<input placeholder="Plano do convênio"></label>';
     echo '<label>Dados financeiros<input placeholder="Nº contrato / autorização"></label>';
     echo '</div>';
     echo '</div>';
 
     echo '<div class="tabPanel" data-panel="whatsapp">';
-    echo '<div class="card" style="box-shadow:var(--shadow-card)">';
-    echo '<div style="text-align:center">';
-    echo '<div style="margin:10px auto 6px;width:42px;height:42px;border-radius:999px;background:hsla(var(--primary)/.10);display:flex;align-items:center;justify-content:center;color:hsl(var(--primary));font-weight:900">WA</div>';
-    echo '<div style="font-weight:900">Confirmação</div>';
-    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:13px">Use o card de Captação para envio/controle de mensagens.</div>';
+    echo '<div style="display:grid;gap:12px">';
+    echo '<label>Paciente<input value="' . h($patientName . ' - ' . $patientPhone) . '" readonly></label>';
+    echo '<label>Profissional<input value="' . h($professionalName . ' - ' . $professionalPhone) . '" readonly></label>';
+    echo '<div style="margin-top:8px;padding:12px;background:hsla(var(--info)/.08);border-radius:6px;font-size:13px;color:hsl(var(--muted-foreground))">';
+    echo '💬 Use o Chat ao Vivo para enviar mensagens de confirmação ao paciente e profissional.';
     echo '</div>';
     echo '</div>';
     echo '</div>';
 
     echo '<div class="tabPanel" data-panel="prontuario">';
     echo '<div style="display:grid;gap:12px">';
+    echo '<label>Paciente<input value="' . h($patientName) . '" readonly></label>';
     echo '<label>Diagnóstico principal<input placeholder="CID / Diagnóstico"></label>';
     echo '<label>Medicamentos<input placeholder="Medicações em uso"></label>';
     echo '<label>Observações clínicas<textarea placeholder="Notas" rows="3"></textarea></label>';
@@ -318,26 +362,14 @@ if ($selected) {
 
     echo '<div class="tabPanel" data-panel="profissional">';
     echo '<div style="display:grid;gap:12px">';
-    echo '<label>Profissional vinculado<input placeholder="Nome do profissional"></label>';
-    echo '<label>Especialidade<input placeholder="Especialidade"></label>';
-    echo '<label>COREN/CRM<input placeholder="Registro"></label>';
+    echo '<label>Profissional vinculado<input value="' . h($professionalName) . '" readonly></label>';
+    echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
+    echo '<label>Telefone<input value="' . h($professionalPhone) . '" readonly></label>';
+    echo '<label>COREN/CRM<input placeholder="Registro profissional"></label>';
     echo '</div>';
     echo '</div>';
 
     echo '<div style="height:14px"></div>';
-
-    echo '<form method="post" action="/demands_set_status_post.php" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">';
-    echo '<input type="hidden" name="id" value="' . $id . '">';
-    echo '<label style="min-width:240px">Status<select name="status">';
-    $allowed = ['aguardando_captacao', 'tratamento_manual', 'em_captacao', 'admitido', 'cancelado'];
-    foreach ($allowed as $st) {
-        $sel = ((string)$selected['status'] === $st) ? ' selected' : '';
-        echo '<option value="' . h($st) . '"' . $sel . '>' . h($st) . '</option>';
-    }
-    echo '</select></label>';
-    echo '<label style="flex:1;min-width:220px">Observação<input name="note" placeholder="Observação (opcional)"></label>';
-    echo '<button class="btn btnPrimary" type="submit">Salvar alterações</button>';
-    echo '</form>';
 }
 
 echo '</div>';

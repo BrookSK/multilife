@@ -1036,6 +1036,86 @@ echo '});';
 echo '</script>';
 echo '</div>';
 
+// Modal: Atribuir Paciente
+echo '<div id="assignmentModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;overflow-y:auto">';
+echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;margin:20px 0">';
+echo '<div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">';
+echo '<h2 style="margin:0;font-size:20px;color:#111b21">Atribuir Paciente ao Profissional</h2>';
+echo '<button onclick="closeAssignmentModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>';
+echo '</div>';
+echo '<div style="flex:1;overflow-y:auto;padding:20px">';
+echo '<form id="assignmentForm">';
+
+echo '<div style="background:#e7f8f4;padding:16px;border-radius:8px;margin-bottom:20px">';
+echo '<p style="margin:0;font-size:14px;color:#00a884;font-weight:600">Profissional: <span id="professionalName"></span></p>';
+echo '<p style="margin:8px 0 0;font-size:13px;color:#667781">Card: <span id="demandInfo"></span></p>';
+echo '</div>';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Selecionar Paciente *</label>';
+echo '<select id="patientId" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">-- Selecione um paciente --</option>';
+try {
+    $patientsStmt = db()->prepare("
+        SELECT u.id, u.name, u.phone
+        FROM users u
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        LEFT JOIN roles r ON r.id = ur.role_id
+        WHERE r.slug = 'paciente'
+        AND u.status = 'active'
+        ORDER BY u.name ASC
+    ");
+    $patientsStmt->execute();
+    $allPatients = $patientsStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($allPatients as $pat) {
+        echo '<option value="' . h($pat['id']) . '">' . h($pat['name']) . ' - ' . h($pat['phone'] ?? 'Sem telefone') . '</option>';
+    }
+} catch (Exception $e) {
+    error_log("Erro ao buscar pacientes: " . $e->getMessage());
+}
+echo '</select>';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
+echo '<input type="text" id="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="Ex: Fisioterapia">';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Tipo de Serviço *</label>';
+echo '<input type="text" id="serviceType" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="Ex: Atendimento Domiciliar">';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Quantidade de Sessões *</label>';
+echo '<input type="number" id="sessionQuantity" required min="1" value="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Frequência *</label>';
+echo '<select id="sessionFrequency" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '<option value="">Selecione...</option>';
+echo '<option value="1x/semana">1x por semana</option>';
+echo '<option value="2x/semana">2x por semana</option>';
+echo '<option value="3x/semana">3x por semana</option>';
+echo '<option value="diária">Diária</option>';
+echo '<option value="quinzenal">Quinzenal</option>';
+echo '<option value="mensal">Mensal</option>';
+echo '</select>';
+echo '</div>';
+echo '</div>';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor por Sessão (R$) *</label>';
+echo '<input type="number" id="paymentValue" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="0.00">';
+echo '<p style="font-size:12px;color:#667781;margin:-8px 0 16px">Valor mínimo será validado conforme configuração do serviço</p>';
+
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Observações</label>';
+echo '<textarea id="assignmentNotes" rows="3" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:16px" placeholder="Informações adicionais sobre o atendimento..."></textarea>';
+
+echo '<div style="display:flex;gap:12px;margin-top:20px">';
+echo '<button type="button" onclick="closeAssignmentModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>';
+echo '<button type="submit" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Confirmar Atribuição</button>';
+echo '</div>';
+
+echo '</form>';
+echo '</div>';
+echo '</div>';
+echo '</div>';
+
 // Exibir mensagens de sucesso/erro
 if (!empty($success)) {
     echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
@@ -1613,6 +1693,55 @@ if (!empty($selectedChat)) {
     echo '</button>';
     echo '</div>';
     
+    // Atribuir Paciente (apenas para profissionais)
+    if (!$isGroup && strpos($selectedChat, '@s.whatsapp.net') !== false) {
+        echo '<div class="whatsapp-info-section">';
+        echo '<div class="whatsapp-info-label">Atribuir Paciente</div>';
+        
+        // Buscar demands assumidas pelo usuário logado que estão disponíveis
+        try {
+            $demandsStmt = db()->prepare("
+                SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status
+                FROM demands d
+                WHERE d.assumed_by_user_id = :user_id
+                AND d.status IN ('em_captacao', 'admitido')
+                ORDER BY d.created_at DESC
+                LIMIT 50
+            ");
+            $demandsStmt->execute(['user_id' => auth_user_id()]);
+            $availableDemands = $demandsStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (!empty($availableDemands)) {
+                echo '<select id="demandSelect" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
+                echo '<option value="">Selecione um card de captação...</option>';
+                foreach ($availableDemands as $demand) {
+                    $location = trim($demand['location_city'] ?? '');
+                    if (!empty($demand['location_state'])) {
+                        $location .= '/' . $demand['location_state'];
+                    }
+                    $specialty = $demand['specialty'] ?? '';
+                    $label = '#' . $demand['id'] . ' - ' . $demand['title'];
+                    if ($specialty) $label .= ' (' . $specialty . ')';
+                    if ($location) $label .= ' - ' . $location;
+                    echo '<option value="' . h($demand['id']) . '">' . h($label) . '</option>';
+                }
+                echo '</select>';
+                
+                echo '<button onclick="openAssignmentModal()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+                echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>';
+                echo 'Confirmar Atribuição';
+                echo '</button>';
+            } else {
+                echo '<p style="color:#667781;font-size:13px;margin:0">Nenhum card de captação disponível.</p>';
+            }
+        } catch (Exception $e) {
+            error_log("Erro ao buscar demands: " . $e->getMessage());
+            echo '<p style="color:#dc2626;font-size:13px;margin:0">Erro ao carregar cards.</p>';
+        }
+        
+        echo '</div>';
+    }
+    
     // Cadastro de Profissional/Paciente
     echo '<div class="whatsapp-info-section">';
     echo '<div class="whatsapp-info-label">Cadastrar Contato</div>';
@@ -1798,6 +1927,66 @@ echo '  const chatId = "' . addslashes($selectedChat) . '";';
 echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "");';
 echo '  window.location.href = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
 echo '}';
+
+echo 'function openAssignmentModal() {';
+echo '  const demandSelect = document.getElementById("demandSelect");';
+echo '  if(!demandSelect || !demandSelect.value) {';
+echo '    alert("Por favor, selecione um card de captação primeiro.");';
+echo '    return;';
+echo '  }';
+echo '  const selectedOption = demandSelect.options[demandSelect.selectedIndex];';
+echo '  const demandId = demandSelect.value;';
+echo '  const demandText = selectedOption.text;';
+echo '  document.getElementById("professionalName").textContent = "' . addslashes($chatName ?? $selectedChat) . '";';
+echo '  document.getElementById("demandInfo").textContent = demandText;';
+echo '  document.getElementById("assignmentModal").style.display = "flex";';
+echo '}';
+
+echo 'function closeAssignmentModal() {';
+echo '  document.getElementById("assignmentModal").style.display = "none";';
+echo '  document.getElementById("assignmentForm").reset();';
+echo '}';
+
+echo 'document.getElementById("assignmentForm").addEventListener("submit", function(e) {';
+echo '  e.preventDefault();';
+echo '  const demandId = document.getElementById("demandSelect").value;';
+echo '  const patientId = document.getElementById("patientId").value;';
+echo '  const specialty = document.getElementById("specialty").value;';
+echo '  const serviceType = document.getElementById("serviceType").value;';
+echo '  const sessionQuantity = document.getElementById("sessionQuantity").value;';
+echo '  const sessionFrequency = document.getElementById("sessionFrequency").value;';
+echo '  const paymentValue = document.getElementById("paymentValue").value;';
+echo '  const notes = document.getElementById("assignmentNotes").value;';
+echo '  const professionalJid = "' . addslashes($selectedChat) . '";';
+echo '  fetch("/chat_assign_patient.php", {';
+echo '    method: "POST",';
+echo '    headers: {"Content-Type": "application/json"},';
+echo '    body: JSON.stringify({';
+echo '      demand_id: demandId,';
+echo '      patient_id: patientId,';
+echo '      professional_jid: professionalJid,';
+echo '      specialty: specialty,';
+echo '      service_type: serviceType,';
+echo '      session_quantity: sessionQuantity,';
+echo '      session_frequency: sessionFrequency,';
+echo '      payment_value: paymentValue,';
+echo '      notes: notes';
+echo '    })';
+echo '  })';
+echo '  .then(r => r.json())';
+echo '  .then(data => {';
+echo '    if(data.success) {';
+echo '      alert("Paciente atribuído com sucesso! Mensagem enviada ao profissional.");';
+echo '      closeAssignmentModal();';
+echo '      location.reload();';
+echo '    } else {';
+echo '      alert("Erro: " + (data.error || "Erro ao atribuir paciente"));';
+echo '    }';
+echo '  })';
+echo '  .catch(err => {';
+echo '    alert("Erro ao processar atribuição: " + err.message);';
+echo '  });';
+echo '});';
 
 echo 'function loadGroupsByFilter() {';
 echo '  const specialty = document.getElementById("groupSpecialty").value;';
