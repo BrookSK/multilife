@@ -662,9 +662,16 @@ echo '    window.location.href=window.location.pathname+"?refresh=1&t="+Date.now
 echo '  }';
 echo '}';
 echo 'function toggleActionsMenu(e){';
+echo '  console.log("toggleActionsMenu chamado");';
 echo '  e.stopPropagation();';
 echo '  const menu=document.getElementById("actionsMenu");';
-echo '  menu.classList.toggle("show");';
+echo '  console.log("Menu encontrado:", menu);';
+echo '  if(menu){';
+echo '    menu.classList.toggle("show");';
+echo '    console.log("Menu toggled. Classes:", menu.className);';
+echo '  }else{';
+echo '    console.error("Menu actionsMenu não encontrado!");';
+echo '  }';
 echo '}';
 echo 'function toggleChatMenu(e){';
 echo '  e.stopPropagation();';
