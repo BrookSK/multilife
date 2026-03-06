@@ -709,7 +709,7 @@ echo 'let lastMessageCount=' . count($messages) . ';';
 echo 'console.log("Polling iniciado. lastMessageCount:", lastMessageCount);';
 echo 'if(messagesContainer){';
 echo '  setInterval(function(){';
-echo '    const chatId="' . addslashes($selectedChat) . '"';
+echo '    const chatId="' . addslashes($selectedChat) . '";';
 echo '    if(!chatId)return;';
 echo '    console.log("Polling mensagens para chat:", chatId);';
 echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&t="+Date.now(),{';
