@@ -8,6 +8,12 @@ auth_require_login();
 
 header('Content-Type: application/json');
 
+// Aceitar tanto GET quanto POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
+    echo json_encode(['success' => false, 'error' => 'Método não permitido']);
+    exit;
+}
+
 $input = json_decode(file_get_contents('php://input'), true);
 $chatId = $input['chat_id'] ?? '';
 $captureType = $input['capture_type'] ?? '';

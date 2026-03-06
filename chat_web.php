@@ -947,8 +947,12 @@ echo '.whatsapp-group-badge{display:inline-flex;align-items:center;gap:4px;paddi
 echo '.whatsapp-info-panel{width:340px;background:#fff;border-left:1px solid #d1d7db;display:flex;flex-direction:column;overflow-y:auto}';
 echo '.whatsapp-info-header{padding:16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;font-weight:600;font-size:16px;color:#111b21;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-info-section{padding:16px;border-bottom:1px solid #f0f2f5}';
-echo '.whatsapp-info-label{font-size:12px;color:#667781;margin-bottom:4px;font-weight:500}';
+echo '.whatsapp-info-label{font-size:12px;color:#667781;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}';
 echo '.whatsapp-info-value{font-size:14px;color:#111b21;margin-bottom:12px}';
+echo '.whatsapp-info-section button{transition:all .2s}';
+echo '.whatsapp-info-section button:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(0,0,0,.1)}';
+echo '.whatsapp-info-section select, .whatsapp-info-section textarea{font-family:inherit;font-size:14px}';
+echo '.whatsapp-info-section select:focus, .whatsapp-info-section textarea:focus{outline:none;border-color:#00a884;box-shadow:0 0 0 2px rgba(0,168,132,.1)}';
 echo '.whatsapp-info-avatar{width:120px;height:120px;border-radius:50%;background:#dfe5e7;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:600;color:#54656f;margin:0 auto 16px}';
 echo '.whatsapp-status-badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}';
 echo '.whatsapp-status-badge.atendendo{background:#dcf8c6;color:#0a8754}';
@@ -1256,13 +1260,78 @@ if (!empty($selectedChat)) {
     echo '</button>';
     echo '</div>';
     
+    // Cadastro de Profissional/Paciente
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Cadastrar Contato</div>';
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    echo '<button onclick="cadastrarProfissional()" style="padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">';
+    echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    echo 'Profissional';
+    echo '</button>';
+    echo '<button onclick="cadastrarPaciente()" style="padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">';
+    echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>';
+    echo 'Paciente';
+    echo '</button>';
+    echo '</div>';
+    echo '</div>';
+    
+    // Convidar para Grupo
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Convidar para Grupo</div>';
+    
+    echo '<div class="whatsapp-info-label" style="margin-top:12px">Especialidade</div>';
+    echo '<select id="groupSpecialty" onchange="loadGroupsByFilter()" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
+    echo '<option value="">Todas as especialidades</option>';
+    
+    // Buscar especialidades únicas dos grupos
+    try {
+        $specialtiesStmt = db()->query("SELECT DISTINCT specialty FROM chat_groups WHERE specialty IS NOT NULL AND specialty != '' ORDER BY specialty");
+        $groupSpecialties = $specialtiesStmt->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($groupSpecialties as $spec) {
+            echo '<option value="' . h($spec) . '">' . h($spec) . '</option>';
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar especialidades: " . $e->getMessage());
+    }
+    echo '</select>';
+    
+    echo '<div class="whatsapp-info-label">Cidade/Região</div>';
+    echo '<select id="groupRegion" onchange="loadGroupsByFilter()" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
+    echo '<option value="">Todas as regiões</option>';
+    
+    // Buscar regiões únicas dos grupos
+    try {
+        $regionsStmt = db()->query("SELECT DISTINCT region FROM chat_groups WHERE region IS NOT NULL AND region != '' ORDER BY region");
+        $groupRegions = $regionsStmt->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($groupRegions as $reg) {
+            echo '<option value="' . h($reg) . '">' . h($reg) . '</option>';
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar regiões: " . $e->getMessage());
+    }
+    echo '</select>';
+    
+    echo '<div class="whatsapp-info-label">Selecionar Grupo</div>';
+    echo '<select id="selectedGroup" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
+    echo '<option value="">Carregando grupos...</option>';
+    echo '</select>';
+    
+    echo '<div class="whatsapp-info-label">Mensagem de Boas-Vindas</div>';
+    echo '<textarea id="welcomeMessage" rows="3" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;resize:vertical;margin-bottom:12px" placeholder="Olá! Você foi convidado(a) para participar do nosso grupo...">Olá! Você foi convidado(a) para participar do nosso grupo. Seja bem-vindo(a)!</textarea>';
+    
+    echo '<button onclick="sendGroupInvite()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:6px"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+    echo 'Enviar Convite';
+    echo '</button>';
+    echo '</div>';
+    
     // Ações rápidas
     echo '<div class="whatsapp-info-section">';
     echo '<div class="whatsapp-info-label">Ações Rápidas</div>';
-    echo '<button onclick="dispararFluxo()" style="width:100%;margin-bottom:8px;padding:10px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo '<button onclick="dispararFluxo()" style="width:100%;margin-bottom:8px;padding:10px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:6px;font-weight:600;cursor:pointer;transition:background .2s">';
     echo 'Disparar Fluxo';
     echo '</button>';
-    echo '<button onclick="dispararRemarketing()" style="width:100%;padding:10px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo '<button onclick="dispararRemarketing()" style="width:100%;padding:10px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:6px;font-weight:600;cursor:pointer;transition:background .2s">';
     echo 'Disparar Remarketing';
     echo '</button>';
     echo '</div>';
@@ -1399,9 +1468,100 @@ echo '    }';
 echo '  });';
 echo '}';
 
+echo 'function cadastrarProfissional() {';
+echo '  const chatId = "' . addslashes($selectedChat) . '";';
+echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "");';
+echo '  window.location.href = "/professionals_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
+echo '}';
+
+echo 'function cadastrarPaciente() {';
+echo '  const chatId = "' . addslashes($selectedChat) . '";';
+echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "");';
+echo '  window.location.href = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
+echo '}';
+
+echo 'function loadGroupsByFilter() {';
+echo '  const specialty = document.getElementById("groupSpecialty").value;';
+echo '  const region = document.getElementById("groupRegion").value;';
+echo '  const select = document.getElementById("selectedGroup");';
+echo '  ';
+echo '  select.innerHTML = "<option value=\"\">Carregando...</option>";';
+echo '  ';
+echo '  fetch("/chat_get_filtered_groups.php?specialty=" + encodeURIComponent(specialty) + "&region=" + encodeURIComponent(region))';
+echo '    .then(r => r.json())';
+echo '    .then(data => {';
+echo '      if(data.success && data.groups) {';
+echo '        select.innerHTML = "<option value=\"\">Selecione um grupo...</option>";';
+echo '        data.groups.forEach(group => {';
+echo '          const option = document.createElement("option");';
+echo '          option.value = group.group_jid;';
+echo '          option.textContent = group.group_name + (group.specialty ? " (" + group.specialty + ")" : "");';
+echo '          select.appendChild(option);';
+echo '        });';
+echo '        if(data.groups.length === 0) {';
+echo '          select.innerHTML = "<option value=\"\">Nenhum grupo encontrado</option>";';
+echo '        }';
+echo '      } else {';
+echo '        select.innerHTML = "<option value=\"\">Erro ao carregar grupos</option>";';
+echo '      }';
+echo '    })';
+echo '    .catch(e => {';
+echo '      select.innerHTML = "<option value=\"\">Erro ao carregar grupos</option>";';
+echo '      console.error("Erro:", e);';
+echo '    });';
+echo '}';
+
+echo 'function sendGroupInvite() {';
+echo '  const chatId = "' . addslashes($selectedChat) . '";';
+echo '  const groupJid = document.getElementById("selectedGroup").value;';
+echo '  const welcomeMessage = document.getElementById("welcomeMessage").value;';
+echo '  ';
+echo '  if(!groupJid) {';
+echo '    alert("Por favor, selecione um grupo");';
+echo '    return;';
+echo '  }';
+echo '  ';
+echo '  if(confirm("Deseja enviar o convite para este grupo?")) {';
+echo '    const btn = event.target;';
+echo '    btn.disabled = true;';
+echo '    btn.textContent = "Enviando...";';
+echo '    ';
+echo '    fetch("/chat_send_group_invite.php", {';
+echo '      method: "POST",';
+echo '      headers: {"Content-Type": "application/json"},';
+echo '      body: JSON.stringify({';
+echo '        chat_id: chatId,';
+echo '        group_jid: groupJid,';
+echo '        welcome_message: welcomeMessage';
+echo '      })';
+echo '    })';
+echo '    .then(r => r.json())';
+echo '    .then(data => {';
+echo '      if(data.success) {';
+echo '        alert("Convite enviado com sucesso!");';
+echo '        document.getElementById("selectedGroup").value = "";';
+echo '      } else {';
+echo '        alert("Erro ao enviar convite: " + (data.error || "Erro desconhecido"));';
+echo '      }';
+echo '    })';
+echo '    .catch(e => {';
+echo '      alert("Erro ao enviar convite: " + e.message);';
+echo '    })';
+echo '    .finally(() => {';
+echo '      btn.disabled = false;';
+echo '      btn.innerHTML = \'<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" style=\"display:inline-block;vertical-align:middle;margin-right:6px\"><path d=\"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75\"/></svg>Enviar Convite\';';';
+echo '    });';
+echo '  }';
+echo '}';
+
+echo 'if(document.getElementById("groupSpecialty")) {';
+echo '  loadGroupsByFilter();';
+echo '}';
+
 echo 'function dispararFluxo() { alert("Funcionalidade em desenvolvimento"); }';
 echo 'function dispararRemarketing() { alert("Funcionalidade em desenvolvimento"); }';
 echo 'function closeInfoPanel() { window.location.href = "/chat_web.php"; }';
+
 echo 'const mensagensRaw = [];'; // Temporariamente desabilitado: json_encode($messages)
 echo 'const mensagens = Array.isArray(mensagensRaw) ? mensagensRaw : (mensagensRaw ? Object.values(mensagensRaw) : []);';
 echo 'console.log("Tipo de mensagens:", typeof mensagens, "- É array?", Array.isArray(mensagens));';

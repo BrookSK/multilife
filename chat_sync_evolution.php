@@ -8,6 +8,12 @@ auth_require_login();
 
 header('Content-Type: application/json');
 
+// Aceitar tanto GET quanto POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
+    echo json_encode(['success' => false, 'error' => 'Método não permitido']);
+    exit;
+}
+
 $baseUrl = admin_setting_get('evolution.base_url');
 $apiKey = admin_setting_get('evolution.api_key');
 $instanceName = admin_setting_get('evolution.instance');

@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('patients.manage');
 
+// Capturar telefone se vier do chat
+$phoneFromChat = isset($_GET['phone']) ? trim((string)$_GET['phone']) : '';
+$fromChat = isset($_GET['from_chat']) && $_GET['from_chat'] === '1';
+
 // Buscar especialidades cadastradas
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
 $specialties = $specialtiesStmt->fetchAll();
@@ -53,7 +57,7 @@ echo '</div></div>';
 echo '<div class="formSection">';
 echo '<div class="formSectionTitle">2. Informações de Contato</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label>Telefone principal<input name="phone_primary" maxlength="30" placeholder="5511999999999"></label></div>';
+echo '<div class="col6"><label>Telefone principal<input name="phone_primary" maxlength="30" placeholder="5511999999999" value="' . h($phoneFromChat) . '"></label></div>';
 echo '<div class="col6"><label>Telefone secundário<input name="phone_secondary" maxlength="30" placeholder="5511999999999"></label></div>';
 echo '<div class="col6"><label>WhatsApp<input name="whatsapp" maxlength="30" placeholder="5511999999999"></label></div>';
 echo '<div class="col6"><label>E-mail<input type="email" name="email" maxlength="190" placeholder="email@exemplo.com"></label></div>';
