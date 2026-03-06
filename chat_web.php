@@ -1710,9 +1710,12 @@ if (!empty($selectedChat)) {
         echo '</div>';
     }
     
+    error_log("[INFO_PANEL] Renderizando seções após Atribuir Paciente");
+    echo '<!-- DEBUG: Iniciando seções após Atribuir Paciente -->';
+    
     // Status do atendimento
     echo '<div class="whatsapp-info-section">';
-    echo '<div class="whatsapp-info-label">Status do Atendimento</div>';
+    echo '<div class="whatsapp-info-label">STATUS DO ATENDIMENTO</div>';
     $statusClass = $contactStatus === 'atendendo' ? 'atendendo' : ($contactStatus === 'resolvido' ? 'resolvido' : 'aguardando');
     $statusLabel = $contactStatus === 'atendendo' ? 'Atendendo' : ($contactStatus === 'resolvido' ? 'Resolvido' : 'Aguardando');
     echo '<span class="whatsapp-status-badge ' . $statusClass . '">' . h($statusLabel) . '</span>';
