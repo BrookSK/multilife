@@ -44,13 +44,25 @@ try {
         'Cache-Control: no-cache'
     ]);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Timeout de 10 segundos
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5); // Timeout de conexão de 5 segundos
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
+    
+    // Tratar erro de timeout
+    if ($curlError) {
+        echo json_encode([
+            'error' => 'Timeout ao buscar mensagens',
+            'messages' => [],
+            'count' => 0
+        ]);
+        exit;
+    }
     
     if ($httpCode === 200) {
         $data = json_decode($response, true);

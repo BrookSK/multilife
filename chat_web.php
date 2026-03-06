@@ -62,11 +62,32 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             });
             
             // Ordenar por timestamp da última mensagem (mais recentes primeiro)
+            error_log("=== DEBUG ORDENAÇÃO DE CONVERSAS ===");
+            foreach ($chats as $idx => $chat) {
+                $timestamp = $chat['lastMessage']['messageTimestamp'] ?? 0;
+                $chatId = $chat['id'] ?? 'N/A';
+                $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
+                error_log("Conversa #{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}");
+            }
+            
             usort($chats, function($a, $b) {
                 $timeA = $a['lastMessage']['messageTimestamp'] ?? 0;
                 $timeB = $b['lastMessage']['messageTimestamp'] ?? 0;
+                
+                // Normalizar timestamps: se estiver em milissegundos (> 10 dígitos), converter para segundos
+                if ($timeA > 9999999999) $timeA = intval($timeA / 1000);
+                if ($timeB > 9999999999) $timeB = intval($timeB / 1000);
+                
                 return $timeB - $timeA;
             });
+            
+            error_log("=== APÓS ORDENAÇÃO ===");
+            foreach (array_slice($chats, 0, 5) as $idx => $chat) {
+                $timestamp = $chat['lastMessage']['messageTimestamp'] ?? 0;
+                $chatId = $chat['id'] ?? 'N/A';
+                $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
+                error_log("Top #{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}");
+            }
             
             // FILTRO 2: Limitar a 10 conversas mais recentes (grupos + privadas)
             $chats = array_slice($chats, 0, 10);
@@ -657,7 +678,7 @@ echo 'let lastMessageCount=' . count($messages) . ';';
 echo 'console.log("Polling iniciado. lastMessageCount:", lastMessageCount);';
 echo 'if(messagesContainer){';
 echo '  setInterval(function(){';
-echo '    const chatId="' . addslashes($selectedChat) . '";';
+echo '    const chatId="' . addslashes($selectedChat) . '"';
 echo '    if(!chatId)return;';
 echo '    console.log("Polling mensagens para chat:", chatId);';
 echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&t="+Date.now(),{';
@@ -666,22 +687,28 @@ echo '      headers:{"Cache-Control":"no-cache","Pragma":"no-cache"}';
 echo '    })';
 echo '      .then(r=>r.json())';
 echo '      .then(data=>{';
+echo '        if(data.error){';
+echo '          console.warn("Erro no polling:", data.error);';
+echo '          return;';
+echo '        }';
 echo '        console.log("Resposta do polling:", data);';
 echo '        console.log("Mensagens recebidas:", data.messages?.length || 0);';
 echo '        if(data.messages){';
 echo '          data.messages.forEach((msg, idx) => {';
 echo '            const remoteJid = msg.key?.remoteJid || "N/A";';
 echo '            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";';
-echo '            console.log(`Mensagem #${idx} - remoteJid: ${remoteJid} - Texto: ${text.substring(0, 50)}`);';
+echo '            console.log(`Mensagem #${idx} - remoteJid: ${remoteJid} - Texto: ${text.substring(0, 50)}`);
+';
 echo '          });';
 echo '        }';
 echo '        if(data.messages && data.messages.length > lastMessageCount){';
 echo '          console.log("Novas mensagens detectadas! Recarregando...");';
-echo '          location.reload(true);';
+echo '          lastMessageCount=data.messages.length;';
+echo '          location.reload();';
 echo '        }';
 echo '      })';
-echo '      .catch(e=>console.error("Erro ao buscar mensagens:",e));';
-echo '  }, 3000);';
+echo '      .catch(e=>console.error("Erro no polling:",e));';
+echo '  },10000);';
 echo '}';
 echo 'const textarea=document.querySelector(".whatsapp-input");';
 echo 'if(textarea){';
