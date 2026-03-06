@@ -108,8 +108,26 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
 // NÃO USA BANCO DE DADOS LOCAL - TODAS AS MENSAGENS VÊM DA API EM TEMPO REAL
 if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        // Log para debug - confirmar que está buscando da API
-        error_log("CHAT_WEB: Buscando mensagens da API Evolution para chat: " . $selectedChat);
+        // Preparar payload da requisição
+        $requestPayload = [
+            'where' => [
+                'key' => [
+                    'remoteJid' => $selectedChat
+                ]
+            ],
+            'limit' => 10,
+            'sort' => [
+                'messageTimestamp' => -1
+            ]
+        ];
+        
+        $requestJson = json_encode($requestPayload);
+        
+        // Log detalhado da requisição
+        error_log("=== CHAT_WEB DEBUG ===");
+        error_log("Chat selecionado: " . $selectedChat);
+        error_log("URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName));
+        error_log("Payload: " . $requestJson);
         
         // Buscar apenas 10 mensagens mais recentes da conversa específica
         $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
@@ -124,30 +142,47 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            'where' => [
-                'key' => [
-                    'remoteJid' => $selectedChat
-                ]
-            ],
-            'limit' => 10,
-            'sort' => [
-                'messageTimestamp' => -1
-            ]
-        ]));
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $requestJson);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
         
-        // Log da resposta da API
-        error_log("CHAT_WEB: Resposta da API - HTTP " . $httpCode . " - Chat: " . $selectedChat);
+        // Log da resposta
+        error_log("HTTP Code: " . $httpCode);
+        if ($curlError) {
+            error_log("cURL Error: " . $curlError);
+        }
         
         if ($httpCode === 200) {
             $data = json_decode($response, true);
             if (isset($data) && is_array($data)) {
                 $messages = $data;
-                error_log("CHAT_WEB: " . count($messages) . " mensagens recebidas da API para chat " . $selectedChat);
+                error_log("Total mensagens recebidas: " . count($messages));
+                
+                // Log dos remoteJid de cada mensagem para verificar se estão corretos
+                foreach ($messages as $idx => $msg) {
+                    $msgRemoteJid = $msg['key']['remoteJid'] ?? 'N/A';
+                    $msgText = substr($msg['message']['conversation'] ?? $msg['message']['extendedTextMessage']['text'] ?? '', 0, 50);
+                    error_log("Mensagem #" . $idx . " - remoteJid: " . $msgRemoteJid . " - Texto: " . $msgText);
+                }
+                error_log("=== FIM DEBUG ===");
+                // FILTRO EXTRA: Garantir que apenas mensagens do chat correto sejam exibidas
+                $messages = array_filter($messages, function($msg) use ($selectedChat) {
+                    $msgRemoteJid = $msg['key']['remoteJid'] ?? '';
+                    $isCorrectChat = ($msgRemoteJid === $selectedChat);
+                    if (!$isCorrectChat) {
+                        error_log("AVISO: Mensagem de chat diferente filtrada! Esperado: " . $selectedChat . " | Recebido: " . $msgRemoteJid);
+                    }
+                    return $isCorrectChat;
+                });
+                
+                // Reindexar array após filtro
+                $messages = array_values($messages);
+                
+                error_log("Após filtro PHP: " . count($messages) . " mensagens do chat correto");
+                
                 // Ordenar mensagens por timestamp
                 usort($messages, function($a, $b) {
                     $timeA = $a['messageTimestamp'] ?? 0;
@@ -461,6 +496,64 @@ echo '</div>'; // Fecha whatsapp-container
 
 // JavaScript para funcionalidades
 echo '<script>';
+echo 'console.log("=== CHAT WEB DEBUG ===");';
+echo 'console.log("Chat selecionado:", "' . addslashes($selectedChat) . '");';
+echo 'console.log("Total de conversas carregadas:", ' . count($chats) . ');';
+echo 'console.log("Total de mensagens carregadas:", ' . count($messages) . ');';
+echo 'console.log("");';
+echo 'console.log("--- CONVERSAS RECEBIDAS ---");';
+echo 'const conversas = ' . json_encode($chats) . ';';
+echo 'conversas.forEach((conv, idx) => {';
+echo '  console.log(`Conversa #${idx}:`);';
+echo '  console.log("  ID:", conv.id);';
+echo '  console.log("  Nome:", conv.name || "Sem nome");';
+echo '  console.log("  pushName:", conv.pushName || "N/A");';
+echo '  console.log("  Foto URL:", conv.profilePictureUrl || "Sem foto");';
+echo '  if(conv.profilePictureUrl){';
+echo '    console.log("  ✅ TEM FOTO");';
+echo '  }else{';
+echo '    console.log("  ❌ SEM FOTO");';
+echo '  }';
+echo '});';
+echo 'console.log("");';
+echo 'console.log("--- CHAT SELECIONADO - DETALHES ---");';
+echo 'const chatSelecionado = conversas.find(c => c.id === "' . addslashes($selectedChat) . '");';
+echo 'if(chatSelecionado){';
+echo '  console.log("Nome do chat:", chatSelecionado.name);';
+echo '  console.log("Foto do chat:", chatSelecionado.profilePictureUrl || "SEM FOTO");';
+echo '  if(chatSelecionado.profilePictureUrl){';
+echo '    console.log("✅ FOTO ENCONTRADA:", chatSelecionado.profilePictureUrl);';
+echo '    const img = new Image();';
+echo '    img.onload = () => console.log("✅ FOTO CARREGOU COM SUCESSO");';
+echo '    img.onerror = () => console.error("❌ ERRO AO CARREGAR FOTO");';
+echo '    img.src = chatSelecionado.profilePictureUrl;';
+echo '  }else{';
+echo '    console.log("❌ FOTO NÃO DISPONÍVEL");';
+echo '  }';
+echo '}';
+echo 'console.log("");';
+echo 'console.log("--- MENSAGENS DO CHAT SELECIONADO ---");';
+echo 'const mensagens = ' . json_encode($messages) . ';';
+echo 'console.log("Total de mensagens:", mensagens.length);';
+echo 'mensagens.slice(0, 5).forEach((msg, idx) => {';
+echo '  const remoteJid = msg.key?.remoteJid || "N/A";';
+echo '  const fromMe = msg.key?.fromMe || false;';
+echo '  const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "[Mídia/Outro]";';
+echo '  const timestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000).toLocaleString() : "N/A";';
+echo '  console.log(`Mensagem #${idx}:`);';
+echo '  console.log("  remoteJid:", remoteJid);';
+echo '  console.log("  De mim:", fromMe);';
+echo '  console.log("  Texto:", text.substring(0, 100));';
+echo '  console.log("  Data/Hora:", timestamp);';
+echo '});';
+echo 'if(mensagens.length > 5){';
+echo '  console.log(`... e mais ${mensagens.length - 5} mensagens`);';
+echo '}';
+echo 'console.log("");';
+echo 'console.log("=== DADOS COMPLETOS (JSON) ===");';
+echo 'console.log("Conversas completas:", conversas);';
+echo 'console.log("Mensagens completas:", mensagens);';
+echo 'console.log("=== FIM DEBUG ===");';
 echo 'if(sessionStorage.getItem("forceReload")==="1"){';
 echo '  sessionStorage.removeItem("forceReload");';
 echo '  if(!window.location.search.includes("refresh=1")){';
@@ -494,17 +587,29 @@ echo 'if(messagesContainer){';
 echo '  messagesContainer.scrollTop=messagesContainer.scrollHeight;';
 echo '}';
 echo 'let lastMessageCount=' . count($messages) . ';';
+echo 'console.log("Polling iniciado. lastMessageCount:", lastMessageCount);';
 echo 'if(messagesContainer){';
 echo '  setInterval(function(){';
 echo '    const chatId="' . addslashes($selectedChat) . '";';
 echo '    if(!chatId)return;';
+echo '    console.log("Polling mensagens para chat:", chatId);';
 echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&t="+Date.now(),{';
 echo '      cache:"no-cache",';
 echo '      headers:{"Cache-Control":"no-cache","Pragma":"no-cache"}';
 echo '    })';
 echo '      .then(r=>r.json())';
 echo '      .then(data=>{';
+echo '        console.log("Resposta do polling:", data);';
+echo '        console.log("Mensagens recebidas:", data.messages?.length || 0);';
+echo '        if(data.messages){';
+echo '          data.messages.forEach((msg, idx) => {';
+echo '            const remoteJid = msg.key?.remoteJid || "N/A";';
+echo '            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";';
+echo '            console.log(`Mensagem #${idx} - remoteJid: ${remoteJid} - Texto: ${text.substring(0, 50)}`);';
+echo '          });';
+echo '        }';
 echo '        if(data.messages && data.messages.length > lastMessageCount){';
+echo '          console.log("Novas mensagens detectadas! Recarregando...");';
 echo '          location.reload(true);';
 echo '        }';
 echo '      })';
