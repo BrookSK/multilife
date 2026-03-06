@@ -72,6 +72,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'text' => $message
             ]);
             
+            // Log de debug
+            error_log("=== ENVIO DE MENSAGEM ===");
+            error_log("URL: " . $url);
+            error_log("Número formatado: " . $phoneNumber);
+            error_log("RemoteJid: " . $remoteJid);
+            error_log("Payload: " . $payload);
+            
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -87,10 +94,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             
+            // Log da resposta
+            error_log("HTTP Code: " . $httpCode);
+            error_log("Resposta: " . $response);
+            
             if ($httpCode === 200 || $httpCode === 201) {
                 $success = 'Mensagem enviada com sucesso!';
             } else {
-                $error = 'Erro ao enviar mensagem. HTTP Code: ' . $httpCode;
+                $responseData = json_decode($response, true);
+                $errorMsg = $responseData['message'] ?? $response;
+                $error = 'Erro ao enviar mensagem. HTTP Code: ' . $httpCode . ' - ' . $errorMsg;
             }
         }
     } elseif ($_POST['action'] === 'create_group') {
@@ -160,28 +173,40 @@ $patients = [];
 try {
     // Buscar profissionais (usuários com role de profissional)
     $stmt = db()->prepare("
-        SELECT u.id, u.name, u.phone, u.email
+        SELECT u.id, u.email, u.phone
         FROM users u
         INNER JOIN user_roles ur ON u.id = ur.user_id
         INNER JOIN roles r ON ur.role_id = r.id
         WHERE r.name IN ('professional', 'admin')
         AND u.phone IS NOT NULL
         AND u.phone != ''
-        ORDER BY u.name ASC
+        ORDER BY u.email ASC
     ");
     $stmt->execute();
     $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    // Adicionar nome baseado no email
+    foreach ($professionals as &$prof) {
+        $prof['name'] = $prof['email'];
+    }
+    unset($prof);
+    
     // Buscar pacientes
     $stmt = db()->prepare("
-        SELECT id, name, phone, email
+        SELECT id, phone
         FROM patients
         WHERE phone IS NOT NULL
         AND phone != ''
-        ORDER BY name ASC
+        ORDER BY id ASC
     ");
     $stmt->execute();
     $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Adicionar nome baseado no ID
+    foreach ($patients as &$patient) {
+        $patient['name'] = 'Paciente #' . $patient['id'];
+    }
+    unset($patient);
 } catch (Exception $e) {
     error_log("Erro ao buscar contatos: " . $e->getMessage());
 }
@@ -594,11 +619,11 @@ echo '</div>';
 // Busca
 echo '<div class="whatsapp-search">';
 echo '<form method="get" action="/chat_web.php">';
-echo '<input type="hidden" name="type" value="' . h($chatType) . '">';
+echo '<input type="hidden" name="type" value="' . h($chatType ?? 'all') . '">';
 if (!empty($selectedChat)) {
     echo '<input type="hidden" name="chat" value="' . h($selectedChat) . '">';
 }
-echo '<input type="text" name="q" value="' . h($searchQuery) . '" placeholder="Pesquisar ou começar uma nova conversa">';
+echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar ou começar uma nova conversa">';
 echo '</form>';
 echo '</div>';
 
@@ -633,7 +658,7 @@ if (empty($chats)) {
         $initials = strtoupper(substr($chatName, 0, 2));
         $profilePic = $chat['profilePictureUrl'] ?? '';
         
-        echo '<a href="/chat_web.php?type=' . h($chatType) . '&chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
+        echo '<a href="/chat_web.php?type=' . h($chatType ?? 'all') . '&chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
         if (!empty($profilePic)) {
             echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
         } else {
