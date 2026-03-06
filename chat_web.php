@@ -62,12 +62,19 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             });
             
             // Ordenar por timestamp da última mensagem (mais recentes primeiro)
-            error_log("=== DEBUG ORDENAÇÃO DE CONVERSAS ===");
-            foreach ($chats as $idx => $chat) {
+            $debugLogs = [];
+            $debugLogs[] = "=== DEBUG ORDENAÇÃO DE CONVERSAS ===";
+            $debugLogs[] = "Total de conversas recebidas da API: " . count($chats);
+            $debugLogs[] = "";
+            $debugLogs[] = "--- ANTES DA ORDENAÇÃO (Top 10) ---";
+            
+            // Log das primeiras 10 conversas ANTES da ordenação
+            foreach (array_slice($chats, 0, 10) as $idx => $chat) {
                 $timestamp = $chat['lastMessage']['messageTimestamp'] ?? 0;
                 $chatId = $chat['id'] ?? 'N/A';
+                $chatName = $chat['name'] ?? $chat['subject'] ?? 'Sem nome';
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-                error_log("Conversa #{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}");
+                $debugLogs[] = "#{$idx} - {$chatName} - Timestamp: {$timestamp} - Data: {$date}";
             }
             
             usort($chats, function($a, $b) {
@@ -81,12 +88,14 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 return $timeB - $timeA;
             });
             
-            error_log("=== APÓS ORDENAÇÃO ===");
-            foreach (array_slice($chats, 0, 5) as $idx => $chat) {
+            $debugLogs[] = "";
+            $debugLogs[] = "--- APÓS ORDENAÇÃO (Top 10) ---";
+            foreach (array_slice($chats, 0, 10) as $idx => $chat) {
                 $timestamp = $chat['lastMessage']['messageTimestamp'] ?? 0;
                 $chatId = $chat['id'] ?? 'N/A';
+                $chatName = $chat['name'] ?? $chat['subject'] ?? 'Sem nome';
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-                error_log("Top #{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}");
+                $debugLogs[] = "#{$idx} - {$chatName} - Timestamp: {$timestamp} - Data: {$date}";
             }
             
             // FILTRO 2: Limitar a 10 conversas mais recentes (grupos + privadas)
@@ -381,6 +390,16 @@ echo '.whatsapp-dropdown-item:first-child{border-radius:8px 8px 0 0}';
 echo '.whatsapp-dropdown-item:last-child{border-radius:0 0 8px 8px}';
 echo '.whatsapp-group-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#e9edef;border-radius:12px;font-size:12px;color:#54656f;margin-left:8px}';
 echo '</style>';
+
+// Exibir logs de debug no topo da página
+if (!empty($debugLogs)) {
+    echo '<div style="background:#fff3cd;border:2px solid #ffc107;padding:20px;margin:20px;border-radius:8px;font-family:monospace;font-size:12px;max-height:400px;overflow-y:auto">';
+    echo '<h3 style="margin:0 0 10px;color:#856404">🔍 Debug de Ordenação</h3>';
+    foreach ($debugLogs as $log) {
+        echo '<div style="padding:2px 0;color:#856404">' . h($log) . '</div>';
+    }
+    echo '</div>';
+}
 
 echo '<div class="whatsapp-container">';
 
