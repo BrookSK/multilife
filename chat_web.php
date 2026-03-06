@@ -100,9 +100,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $dbError = '';
                 
                 try {
-                    // Garantir que tabela existe
+                    // Garantir que tabela existe com estrutura correta
+                    // Primeiro, dropar se existir com estrutura errada
+                    db()->exec("DROP TABLE IF EXISTS chat_messages");
+                    
+                    // Criar tabela com estrutura correta
                     db()->exec("
-                        CREATE TABLE IF NOT EXISTS chat_messages (
+                        CREATE TABLE chat_messages (
                             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
                             remote_jid VARCHAR(100) NOT NULL,
                             message_text TEXT NOT NULL,
@@ -213,11 +217,12 @@ $debugLogs = [];
 // Carregar mensagens do banco de dados para o chat selecionado
 if (!empty($selectedChat)) {
     try {
-        // Verificar se tabela existe, se não, criar
+        // Garantir que tabela existe com estrutura correta
         $tableCheck = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
         if (!$tableCheck) {
+            // Criar tabela com estrutura correta
             db()->exec("
-                CREATE TABLE IF NOT EXISTS chat_messages (
+                CREATE TABLE chat_messages (
                     id INT UNSIGNED NOT NULL AUTO_INCREMENT,
                     remote_jid VARCHAR(100) NOT NULL,
                     message_text TEXT NOT NULL,
