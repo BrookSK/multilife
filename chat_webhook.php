@@ -131,28 +131,41 @@ function isSystemText(string $text): bool {
 }
 
 // Processar mensagens recebidas
+// Evolution API V1: data.messages[] é um array de mensagens
 if ($event === 'messages.upsert') {
-    $messageData = $data['data'] ?? [];
-    $remoteJid   = $messageData['key']['remoteJid'] ?? '';
-    $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
-    $msgPayload  = $messageData['message'] ?? [];
-    $messageText = $msgPayload['conversation']
-                   ?? $msgPayload['extendedTextMessage']['text']
-                   ?? '';
-    $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
+    $rawData  = $data['data'] ?? [];
+    // V1: data.messages[]. V2 fallback: data direto como objeto único
+    $msgList  = isset($rawData['messages']) && is_array($rawData['messages'])
+                ? $rawData['messages']
+                : (isset($rawData['key']) ? [$rawData] : []);
 
-    // Ignorar: status@broadcast, JIDs de sistema, tipos de protocolo, textos de sistema
-    $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
-                       || strpos($remoteJid, 'broadcast') !== false;
-    $isSystemType = isSystemMessageType($msgPayload);
-    $isSystemMsg  = isSystemText($messageText);
+    error_log('[WEBHOOK] messages.upsert recebido: ' . count($msgList) . ' mensagem(ns)');
 
-    if (!$fromMe && !empty($remoteJid) && !empty($messageText)
-        && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg) {
-        try {
-            saveMessage($remoteJid, $messageText, 0, $timestamp);
-        } catch (Exception $e) {
-            error_log("Webhook erro ao salvar mensagem recebida: " . $e->getMessage());
+    foreach ($msgList as $messageData) {
+        $remoteJid   = $messageData['key']['remoteJid'] ?? '';
+        $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
+        $msgPayload  = $messageData['message'] ?? [];
+        $messageText = $msgPayload['conversation']
+                       ?? $msgPayload['extendedTextMessage']['text']
+                       ?? '';
+        $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
+
+        error_log("[WEBHOOK] msg jid:'$remoteJid' fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
+
+        // Ignorar: status@broadcast, JIDs de sistema, tipos de protocolo, textos de sistema
+        $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
+                           || strpos($remoteJid, 'broadcast') !== false;
+        $isSystemType = isSystemMessageType($msgPayload);
+        $isSystemMsg  = isSystemText($messageText);
+
+        if (!$fromMe && !empty($remoteJid) && !empty($messageText)
+            && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg) {
+            try {
+                saveMessage($remoteJid, $messageText, 0, $timestamp);
+                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' text='" . substr($messageText,0,50) . "'");
+            } catch (Exception $e) {
+                error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
+            }
         }
     }
 }

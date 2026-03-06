@@ -82,100 +82,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
-            // PRÉ-SESSÃO: Para contatos individuais, estabelecer sessão Signal antes de enviar
-            // Isso evita o "Aguardando mensagem" no destinatário
-            if (strpos($remoteJid, '@s.whatsapp.net') !== false) {
-                $plainNumber = str_replace('@s.whatsapp.net', '', $remoteJid);
-                $sessionUrl  = $baseUrl . '/chat/whatsappNumbers/' . urlencode($instanceName);
-                $sessionPayload = json_encode(['numbers' => [$plainNumber]]);
-                $chSession = curl_init($sessionUrl);
-                curl_setopt($chSession, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($chSession, CURLOPT_POST, true);
-                curl_setopt($chSession, CURLOPT_POSTFIELDS, $sessionPayload);
-                curl_setopt($chSession, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-                curl_setopt($chSession, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($chSession, CURLOPT_SSL_VERIFYHOST, false);
-                curl_setopt($chSession, CURLOPT_TIMEOUT, 8);
-                $sessionResp = curl_exec($chSession);
-                $sessionCode = curl_getinfo($chSession, CURLINFO_HTTP_CODE);
-                curl_close($chSession);
-                error_log("[$debugId] PRE_SESSION HTTP:$sessionCode resp:" . substr((string)$sessionResp, 0, 150));
+            // Enviar via EvolutionApiV1 (mesmo método dos cron jobs — formato V1 garantido)
+            error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid'");
+            try {
+                $api = new EvolutionApiV1();
+                $res = $api->sendText($remoteJid, $message);
+            } catch (Exception $apiEx) {
+                $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
-
-            // Enviar mensagem via API Evolution
-            // FORMATO OFICIAL da documentação Evolution API
-            $url = $baseUrl . '/message/sendText/' . urlencode($instanceName);
-            $payload = json_encode([
-                'number'      => $remoteJid,
-                'textMessage' => ['text' => $message],
-            ]);
-            error_log("[$debugId] URL:'$url' | payload:$payload");
-            
-            // Verificar estado real da conexão antes de enviar
-            $stateUrl = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
-            $chState = curl_init($stateUrl);
-            curl_setopt($chState, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($chState, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-            curl_setopt($chState, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($chState, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($chState, CURLOPT_TIMEOUT, 10);
-            $stateResponse = curl_exec($chState);
-            $stateHttpCode = curl_getinfo($chState, CURLINFO_HTTP_CODE);
-            curl_close($chState);
-            $stateData = json_decode($stateResponse, true);
-            $connState = $stateData['instance']['state'] ?? $stateData['state'] ?? 'unknown';
-            error_log("[$debugId] CONN_STATE HTTP:$stateHttpCode state:'$connState' resp:" . substr($stateResponse,0,200));
-            error_log("[$debugId] SEND_API url:'$url'");
-            
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'apikey: ' . $apiKey,
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlMsgError = curl_error($ch);
-            curl_close($ch);
-            error_log("[$debugId] RESP_1 HTTP:$httpCode curlErr:'$curlMsgError' resp:" . substr($response,0,300));
-
-            // Retry automático: tenta formato alternativo para 400 ou SessionError
-            $needsRetry = ($httpCode !== 200 && $httpCode !== 201) &&
-                          ($httpCode === 400 || strpos($response, 'SessionError') !== false || strpos($response, 'Connection Closed') !== false);
-
-            if ($needsRetry) {
-                error_log("[$debugId] RETRY com formato text direto (fallback)");
-                // Retry: formato simples sem wrapper (chat_send_message.php)
-                $altPayload = json_encode([
-                    'number' => $remoteJid,
-                    'text'   => $message,
-                ]);
-                $ch2 = curl_init($url);
-                curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch2, CURLOPT_POST, true);
-                curl_setopt($ch2, CURLOPT_POSTFIELDS, $altPayload);
-                curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-                curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST, false);
-                curl_setopt($ch2, CURLOPT_TIMEOUT, 30);
-                $altResponse = curl_exec($ch2);
-                $altHttpCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-                curl_close($ch2);
-                error_log("[$debugId] RESP_2_RETRY HTTP:$altHttpCode resp:" . substr($altResponse,0,300));
-                if ($altHttpCode === 200 || $altHttpCode === 201) {
-                    $response = $altResponse;
-                    $httpCode = $altHttpCode;
-                    error_log("[$debugId] RETRY bem-sucedido HTTP:$altHttpCode");
-                } else {
-                    error_log("[$debugId] RETRY falhou HTTP:$altHttpCode");
-                }
-            }
+            $httpCode = (int)($res['status'] ?? 0);
+            $response = is_string($res['body_raw'] ?? null)
+                        ? $res['body_raw']
+                        : json_encode($res['json'] ?? []);
+            error_log("[$debugId] RESP HTTP:$httpCode resp:" . substr((string)$response, 0, 300));
             
             if ($httpCode === 200 || $httpCode === 201) {
                 // OBRIGATÓRIO: Salvar mensagem no banco de dados
