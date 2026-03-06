@@ -168,30 +168,38 @@ if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceNam
         
         $requestJson = json_encode($requestPayload);
         
+        // Preparar payload com ordenação por data DESC (mais recentes primeiro)
+        $requestPayload = [
+            'limit' => 100,
+            'sort' => [
+                'messageTimestamp' => -1  // -1 = DESC (mais recentes primeiro)
+            ]
+        ];
+        $requestJson = json_encode($requestPayload);
+        
         // Log detalhado da requisição
         $debugLogs[] = "=== CHAT_WEB DEBUG ===";
         $debugLogs[] = "Chat selecionado: " . $selectedChat;
-        
-        // TENTAR ENDPOINT ALTERNATIVO: /chat/fetchMessages com parâmetros GET
-        $urlWithParams = $baseUrl . '/chat/fetchMessages/' . urlencode($instanceName) 
-            . '?remoteJid=' . urlencode($selectedChat) 
-            . '&limit=10';
-        
-        $debugLogs[] = "URL: " . $urlWithParams;
+        $debugLogs[] = "URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName);
+        $debugLogs[] = "Payload: " . $requestJson;
         error_log("=== CHAT_WEB DEBUG ===");
         error_log("Chat selecionado: " . $selectedChat);
-        error_log("URL: " . $urlWithParams);
+        error_log("URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName));
+        error_log("Payload: " . $requestJson);
         
-        // Usar endpoint /chat/fetchMessages com GET
-        $ch = curl_init($urlWithParams);
+        // Usar endpoint /chat/findMessages com POST e ordenação
+        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'apikey: ' . $apiKey,
+            'Content-Type: application/json',
             'Cache-Control: no-cache, no-store, must-revalidate',
             'Pragma: no-cache'
         ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $requestJson);
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         
         $response = curl_exec($ch);
@@ -215,7 +223,7 @@ if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceNam
             $data = json_decode($response, true);
             if (isset($data) && is_array($data)) {
                 $messages = $data;
-                error_log("Total mensagens recebidas do endpoint fetchMessages: " . count($messages));
+                error_log("Total mensagens recebidas (ordenadas por data DESC): " . count($messages));
                 
                 // Log das primeiras mensagens para verificar
                 foreach (array_slice($messages, 0, 5) as $idx => $msg) {
@@ -224,20 +232,18 @@ if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceNam
                     error_log("Mensagem #" . $idx . " - remoteJid: " . $msgRemoteJid . " - Texto: " . $msgText);
                 }
                 
-                // Verificar se endpoint retornou mensagens corretas
-                if (!empty($messages)) {
-                    $firstMsgJid = $messages[0]['key']['remoteJid'] ?? '';
-                    if ($firstMsgJid !== $selectedChat) {
-                        error_log("AVISO: Endpoint fetchMessages também retornou chat errado! Esperado: {$selectedChat}, Recebido: {$firstMsgJid}");
-                        error_log("Aplicando filtro PHP como fallback...");
-                        
-                        // Filtro PHP como fallback
-                        $messages = array_filter($messages, function($msg) use ($selectedChat) {
-                            return ($msg['key']['remoteJid'] ?? '') === $selectedChat;
-                        });
-                        $messages = array_values($messages);
-                        error_log("Após filtro PHP: " . count($messages) . " mensagens");
-                    }
+                // Aplicar filtro PHP (API ignora remoteJid no payload)
+                error_log("Aplicando filtro PHP para chat: {$selectedChat}");
+                $messages = array_filter($messages, function($msg) use ($selectedChat) {
+                    return ($msg['key']['remoteJid'] ?? '') === $selectedChat;
+                });
+                $messages = array_values($messages);
+                error_log("Após filtro PHP: " . count($messages) . " mensagens do chat correto");
+                
+                // Limitar a 10 mensagens
+                if (count($messages) > 10) {
+                    $messages = array_slice($messages, 0, 10);
+                    error_log("Limitado a 10 mensagens mais recentes");
                 }
                 
                 // Ordenar mensagens por timestamp (mais recentes no topo)
