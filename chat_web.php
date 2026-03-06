@@ -334,11 +334,6 @@ if (!empty($selectedChat)) {
             ");
         }
         
-        // Debug: ver todos os remote_jid no banco
-        $allChats = db()->query("SELECT DISTINCT remote_jid FROM chat_messages")->fetchAll(PDO::FETCH_COLUMN);
-        error_log("Remote JIDs no banco: " . json_encode($allChats));
-        error_log("Selected chat buscando: " . $selectedChat);
-        
         $stmt = db()->prepare("
             SELECT message_text as text, from_me as fromMe, message_timestamp as timestamp
             FROM chat_messages
@@ -347,8 +342,6 @@ if (!empty($selectedChat)) {
         ");
         $stmt->execute([$selectedChat]);
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        error_log("Mensagens encontradas: " . count($messages));
         
         // Converter fromMe para boolean
         foreach ($messages as &$msg) {
@@ -945,12 +938,6 @@ if (empty($selectedChat)) {
     // Área de mensagens
     echo '<div class="whatsapp-messages" id="messagesContainer">';
     
-    // Debug visual
-    echo '<div style="padding:8px;background:#fff3cd;border-bottom:1px solid #ffc107;font-size:11px">';
-    echo 'DEBUG: Buscando mensagens para: ' . h($selectedChat) . '<br>';
-    echo 'Total encontrado: ' . count($messages) . ' mensagem(ns)';
-    echo '</div>';
-    
     // Se não houver mensagens, mostrar mensagem informativa
     if (empty($messages)) {
         echo '<div style="text-align:center;padding:40px;color:#667781">';
@@ -1158,8 +1145,7 @@ echo '        if(data.messages){';
 echo '          data.messages.forEach((msg, idx) => {';
 echo '            const remoteJid = msg.key?.remoteJid || "N/A";';
 echo '            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";';
-echo '            console.log(`Mensagem #${idx} - remoteJid: ${remoteJid} - Texto: ${text.substring(0, 50)}`);
-';
+echo '            console.log(`Mensagem #${idx} - remoteJid: ${remoteJid} - Texto: ${text.substring(0, 50)}`);';
 echo '          });';
 echo '        }';
 echo '        if(data.messages && data.messages.length > lastMessageCount){';
