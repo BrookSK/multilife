@@ -185,15 +185,19 @@ if ($event === 'messages.upsert') {
     error_log('[WEBHOOK] messages.upsert recebido: ' . count($msgList) . ' mensagem(ns)');
 
     foreach ($msgList as $messageData) {
+        // LOG COMPLETO DO PAYLOAD PARA DIAGNÓSTICO
+        error_log("[WEBHOOK] FULL MESSAGE DATA: " . json_encode($messageData));
+        
         $remoteJid   = $messageData['key']['remoteJid'] ?? '';
         $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
+        $participant = $messageData['key']['participant'] ?? '';
         $msgPayload  = $messageData['message'] ?? [];
         $messageText = $msgPayload['conversation']
                        ?? $msgPayload['extendedTextMessage']['text']
                        ?? '';
         $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
-        error_log("[WEBHOOK] msg jid:'$remoteJid' fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
+        error_log("[WEBHOOK] msg jid:'$remoteJid' | participant:'$participant' | fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
         error_log("[WEBHOOK] DIAGNOSTIC - remoteJid recebido: '$remoteJid' | length: " . strlen($remoteJid) . " | contains @: " . (strpos($remoteJid, '@') !== false ? 'yes' : 'no'));
 
         // Ignorar: status@broadcast, JIDs de sistema, tipos de protocolo, textos de sistema
