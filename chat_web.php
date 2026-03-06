@@ -258,16 +258,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
             
             // Criar grupo vazio - participantes serão adicionados via convite no chat
-            // Usar número padrão como participante inicial (requisito da API)
-            // O número será o do admin configurado nas settings
-            $adminPhone = '5511999999999'; // Número padrão - pode ser configurado nas settings
-            $cleanUserPhone = preg_replace('/[^0-9]/', '', $adminPhone);
-            $formattedParticipants = [$cleanUserPhone . '@s.whatsapp.net'];
-            
+            // Tentar criar sem participantes ou com array vazio
             $url = $baseUrl . '/group/create/' . urlencode($instanceName);
             $payload = json_encode([
                 'subject' => $groupName,
-                'participants' => $formattedParticipants
+                'participants' => []
             ]);
             
             error_log("Criando grupo: $groupName");
