@@ -82,6 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ]
             ]);
             
+            error_log("=== ENVIO MENSAGEM === JID: $remoteJid | URL: $url | Payload: $payload");
+            
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -91,11 +93,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'Content-Type: application/json'
             ]);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
             
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlMsgError = curl_error($ch);
             curl_close($ch);
+            
+            error_log("=== RESP MENSAGEM === HTTP: $httpCode | Response: $response | cURL: $curlMsgError");
             
             if ($httpCode === 200 || $httpCode === 201) {
                 // OBRIGATÓRIO: Salvar mensagem no banco de dados
@@ -224,8 +230,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (!$savedToDb) {
                     $error = "ERRO CRÍTICO: Mensagem não foi salva no banco de dados. Erro: " . $dbError . ". Entre em contato com o suporte.";
                 } else {
-                    // Sucesso - redirecionar
-                    header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1');
+                    // Sucesso - redirecionar preservando type
+                    $redirectType = isset($_GET['type']) ? '&type=' . urlencode($_GET['type']) : '';
+                    $redirectType = $redirectType ?: (strpos($remoteJid, '@g.us') !== false ? '&type=grupos' : '');
+                    header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1' . $redirectType);
                     exit();
                 }
             } else {
@@ -599,12 +607,15 @@ try {
     // Verificar se tabela professionals existe antes de buscar
     $profTableExists = db()->query("SHOW TABLES LIKE 'professionals'")->fetch();
     if ($profTableExists) {
+        // Detectar coluna correta de nome na tabela professionals
+        $profCols = db()->query("SHOW COLUMNS FROM professionals LIKE 'full_name'")->fetch();
+        $profNameCol = $profCols ? 'full_name' : 'name';
         $stmt = db()->prepare("
-            SELECT id, name, phone_primary as phone
+            SELECT id, $profNameCol as name, phone_primary as phone
             FROM professionals
             WHERE phone_primary IS NOT NULL
             AND phone_primary != ''
-            ORDER BY name ASC
+            ORDER BY $profNameCol ASC
         ");
         $stmt->execute();
         $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -614,11 +625,11 @@ try {
     $patTableExists = db()->query("SHOW TABLES LIKE 'patients'")->fetch();
     if ($patTableExists) {
         $stmt = db()->prepare("
-            SELECT id, name, phone_primary as phone
+            SELECT id, full_name as name, phone_primary as phone
             FROM patients
             WHERE phone_primary IS NOT NULL
             AND phone_primary != ''
-            ORDER BY name ASC
+            ORDER BY full_name ASC
         ");
         $stmt->execute();
         $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
