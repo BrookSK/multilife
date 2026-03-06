@@ -301,6 +301,49 @@ if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($in
 
 view_header('Chat ao Vivo');
 
+// JavaScript para funcionalidades dos modais (carregar ANTES dos botões)
+echo '<script>';
+echo 'function openNewChatModal() {';
+echo '  document.getElementById("newChatModal").style.display = "flex";';
+echo '}';
+echo 'function closeNewChatModal() {';
+echo '  document.getElementById("newChatModal").style.display = "none";';
+echo '}';
+echo 'function openCreateGroupModal() {';
+echo '  document.getElementById("createGroupModal").style.display = "flex";';
+echo '}';
+echo 'function closeCreateGroupModal() {';
+echo '  document.getElementById("createGroupModal").style.display = "none";';
+echo '}';
+echo 'function switchTab(tab) {';
+echo '  document.getElementById("tabProfessionals").style.borderBottomColor = "transparent";';
+echo '  document.getElementById("tabProfessionals").style.color = "#54656f";';
+echo '  document.getElementById("tabPatients").style.borderBottomColor = "transparent";';
+echo '  document.getElementById("tabPatients").style.color = "#54656f";';
+echo '  document.getElementById("tabManual").style.borderBottomColor = "transparent";';
+echo '  document.getElementById("tabManual").style.color = "#54656f";';
+echo '  document.getElementById("contentProfessionals").style.display = "none";';
+echo '  document.getElementById("contentPatients").style.display = "none";';
+echo '  document.getElementById("contentManual").style.display = "none";';
+echo '  document.getElementById("professionalSelect").value = "";';
+echo '  document.getElementById("patientSelect").value = "";';
+echo '  document.getElementById("manualPhone").value = "";';
+echo '  if (tab === "professionals") {';
+echo '    document.getElementById("tabProfessionals").style.borderBottomColor = "#00a884";';
+echo '    document.getElementById("tabProfessionals").style.color = "#00a884";';
+echo '    document.getElementById("contentProfessionals").style.display = "block";';
+echo '  } else if (tab === "patients") {';
+echo '    document.getElementById("tabPatients").style.borderBottomColor = "#00a884";';
+echo '    document.getElementById("tabPatients").style.color = "#00a884";';
+echo '    document.getElementById("contentPatients").style.display = "block";';
+echo '  } else if (tab === "manual") {';
+echo '    document.getElementById("tabManual").style.borderBottomColor = "#00a884";';
+echo '    document.getElementById("tabManual").style.color = "#00a884";';
+echo '    document.getElementById("contentManual").style.display = "block";';
+echo '  }';
+echo '}';
+echo '</script>';
+
 // DEBUG: Exibir logs na tela
 if (!empty($debugLogs)) {
     echo '<div style="background:#fff3cd;border:1px solid #ffc107;padding:15px;margin:15px;border-radius:5px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;">';
@@ -704,69 +747,27 @@ if (!empty($error)) {
 // JavaScript para funcionalidades
 echo '<script>';
 
-// Funções para controlar modais
-echo 'function openNewChatModal() {';
-echo '  document.getElementById("newChatModal").style.display = "flex";';
-echo '}';
-echo 'function closeNewChatModal() {';
-echo '  document.getElementById("newChatModal").style.display = "none";';
-echo '}';
-echo 'function openCreateGroupModal() {';
-echo '  document.getElementById("createGroupModal").style.display = "flex";';
-echo '}';
-echo 'function closeCreateGroupModal() {';
-echo '  document.getElementById("createGroupModal").style.display = "none";';
-echo '}';
-
-// Função para trocar tabs
-echo 'function switchTab(tab) {';
-echo '  // Resetar todos os tabs';
-echo '  document.getElementById("tabProfessionals").style.borderBottomColor = "transparent";';
-echo '  document.getElementById("tabProfessionals").style.color = "#54656f";';
-echo '  document.getElementById("tabPatients").style.borderBottomColor = "transparent";';
-echo '  document.getElementById("tabPatients").style.color = "#54656f";';
-echo '  document.getElementById("tabManual").style.borderBottomColor = "transparent";';
-echo '  document.getElementById("tabManual").style.color = "#54656f";';
-echo '  document.getElementById("contentProfessionals").style.display = "none";';
-echo '  document.getElementById("contentPatients").style.display = "none";';
-echo '  document.getElementById("contentManual").style.display = "none";';
-echo '  // Limpar campos';
-echo '  document.getElementById("professionalSelect").value = "";';
-echo '  document.getElementById("patientSelect").value = "";';
-echo '  document.getElementById("manualPhone").value = "";';
-echo '  // Ativar tab selecionada';
-echo '  if (tab === "professionals") {';
-echo '    document.getElementById("tabProfessionals").style.borderBottomColor = "#00a884";';
-echo '    document.getElementById("tabProfessionals").style.color = "#00a884";';
-echo '    document.getElementById("contentProfessionals").style.display = "block";';
-echo '  } else if (tab === "patients") {';
-echo '    document.getElementById("tabPatients").style.borderBottomColor = "#00a884";';
-echo '    document.getElementById("tabPatients").style.color = "#00a884";';
-echo '    document.getElementById("contentPatients").style.display = "block";';
-echo '  } else if (tab === "manual") {';
-echo '    document.getElementById("tabManual").style.borderBottomColor = "#00a884";';
-echo '    document.getElementById("tabManual").style.color = "#00a884";';
-echo '    document.getElementById("contentManual").style.display = "block";';
+// Validação do formulário antes de enviar (usar DOMContentLoaded para garantir que elementos existam)
+echo 'document.addEventListener("DOMContentLoaded", function() {';
+echo '  const form = document.getElementById("newChatForm");';
+echo '  if (form) {';
+echo '    form.addEventListener("submit", function(e) {';
+echo '      const profPhone = document.getElementById("professionalSelect").value;';
+echo '      const patPhone = document.getElementById("patientSelect").value;';
+echo '      const manualPhone = document.getElementById("manualPhone").value;';
+echo '      if (!profPhone && !patPhone && !manualPhone) {';
+echo '        e.preventDefault();';
+echo '        alert("Por favor, selecione um contato ou digite um número manualmente.");';
+echo '        return false;';
+echo '      }';
+echo '      const phoneValue = profPhone || patPhone || manualPhone;';
+echo '      const hiddenInput = document.createElement("input");';
+echo '      hiddenInput.type = "hidden";';
+echo '      hiddenInput.name = "phone_number";';
+echo '      hiddenInput.value = phoneValue;';
+echo '      this.appendChild(hiddenInput);';
+echo '    });';
 echo '  }';
-echo '}';
-
-// Validação do formulário antes de enviar
-echo 'document.getElementById("newChatForm").addEventListener("submit", function(e) {';
-echo '  const profPhone = document.getElementById("professionalSelect").value;';
-echo '  const patPhone = document.getElementById("patientSelect").value;';
-echo '  const manualPhone = document.getElementById("manualPhone").value;';
-echo '  if (!profPhone && !patPhone && !manualPhone) {';
-echo '    e.preventDefault();';
-echo '    alert("Por favor, selecione um contato ou digite um número manualmente.");';
-echo '    return false;';
-echo '  }';
-echo '  // Criar campo phone_number com o valor correto';
-echo '  const phoneValue = profPhone || patPhone || manualPhone;';
-echo '  const hiddenInput = document.createElement("input");';
-echo '  hiddenInput.type = "hidden";';
-echo '  hiddenInput.name = "phone_number";';
-echo '  hiddenInput.value = phoneValue;';
-echo '  this.appendChild(hiddenInput);';
 echo '});';
 
 echo 'console.log("=== CHAT WEB DEBUG ===");';
