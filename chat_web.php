@@ -95,8 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             curl_close($ch);
             
             if ($httpCode === 200 || $httpCode === 201) {
-                // Salvar mensagem enviada no banco de dados
+                // OBRIGATÓRIO: Salvar mensagem no banco de dados
                 $savedToDb = false;
+                $dbError = '';
+                
                 try {
                     // Garantir que tabela existe
                     db()->exec("
@@ -113,32 +115,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     ");
                     
+                    $timestamp = time();
                     $stmt = db()->prepare("
                         INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
                         VALUES (?, ?, 1, ?)
                     ");
-                    $savedToDb = $stmt->execute([$remoteJid, $message, time()]);
+                    $savedToDb = $stmt->execute([$remoteJid, $message, $timestamp]);
                     
-                    if (!$savedToDb) {
-                        error_log("ERRO: Falha ao salvar mensagem no banco");
+                    // Verificar se realmente salvou
+                    if ($savedToDb) {
+                        $lastId = db()->lastInsertId();
+                        if (!$lastId) {
+                            $savedToDb = false;
+                            $dbError = "INSERT não retornou ID";
+                        }
                     }
+                    
                 } catch (Exception $e) {
-                    error_log("ERRO ao salvar mensagem: " . $e->getMessage());
+                    $dbError = $e->getMessage();
+                    error_log("ERRO CRÍTICO ao salvar mensagem: " . $dbError);
                 }
                 
-                // Salvar também em sessão como backup
-                if (!isset($_SESSION['temp_messages'])) {
-                    $_SESSION['temp_messages'] = [];
+                // Se não salvou no banco, mostrar erro e NÃO redirecionar
+                if (!$savedToDb) {
+                    $error = "ERRO CRÍTICO: Mensagem não foi salva no banco de dados. Erro: " . $dbError . ". Entre em contato com o suporte.";
+                } else {
+                    // Sucesso - redirecionar
+                    header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1');
+                    exit();
                 }
-                $_SESSION['temp_messages'][$remoteJid][] = [
-                    'text' => $message,
-                    'timestamp' => time(),
-                    'fromMe' => true
-                ];
-                
-                // Redirecionar para o chat criado para permitir continuidade
-                header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1&saved=' . ($savedToDb ? '1' : '0'));
-                exit();
             } else {
                 $responseData = json_decode($response, true);
                 $errorMsg = $responseData['message'] ?? $response;
@@ -245,24 +250,8 @@ if (!empty($selectedChat)) {
         $messages = [];
     }
     
-    // Carregar também mensagens temporárias da sessão (fallback)
-    // SEMPRE carregar da sessão, não apenas após envio
-    if (isset($_SESSION['temp_messages'][$selectedChat])) {
-        $tempMessages = $_SESSION['temp_messages'][$selectedChat];
-        
-        // Adicionar apenas mensagens que não estão no banco (evitar duplicatas)
-        $existingTimestamps = array_column($messages, 'timestamp');
-        foreach ($tempMessages as $tempMsg) {
-            if (!in_array($tempMsg['timestamp'], $existingTimestamps)) {
-                $messages[] = $tempMsg;
-            }
-        }
-        
-        // Ordenar por timestamp
-        usort($messages, function($a, $b) {
-            return ($a['timestamp'] ?? 0) - ($b['timestamp'] ?? 0);
-        });
-    }
+    // Mensagens vêm APENAS do banco de dados
+    // Não usar sessão - tudo deve estar no banco
 }
 
 // Se um chat foi selecionado, criar dados locais para ele
