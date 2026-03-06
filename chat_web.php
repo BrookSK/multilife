@@ -680,7 +680,6 @@ echo '  }';
 echo '}';
 echo 'function toggleActionsMenu(e){';
 echo '  if(e){e.preventDefault();e.stopPropagation();}else{e=window.event;if(e){e.cancelBubble=true;}}';
-
 echo '  console.log("toggleActionsMenu chamado");';
 echo '  e.stopPropagation();';
 echo '  const menu=document.getElementById("actionsMenu");';
