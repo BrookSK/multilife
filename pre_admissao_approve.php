@@ -55,6 +55,9 @@ try {
     $updateDemandStmt->execute([$demandId]);
     
     // Registrar no prontuário do paciente
+    $currentUser = auth_user();
+    $approvedByName = $currentUser ? $currentUser['name'] : 'Sistema';
+    
     $recordDescription = "✅ ATENDIMENTO APROVADO\n\n";
     $recordDescription .= "Profissional: " . ($assignment['professional_name'] ?? 'Não informado') . "\n";
     $recordDescription .= "Especialidade: " . $assignment['specialty'] . "\n";
@@ -62,7 +65,7 @@ try {
     $recordDescription .= "Quantidade de Sessões: " . $assignment['session_quantity'] . "x\n";
     $recordDescription .= "Frequência: " . $assignment['session_frequency'] . "\n";
     $recordDescription .= "Valor por Sessão: R$ " . number_format((float)$assignment['payment_value'], 2, ',', '.') . "\n";
-    $recordDescription .= "\nAprovado por: " . auth_user_name() . "\n";
+    $recordDescription .= "\nAprovado por: " . $approvedByName . "\n";
     $recordDescription .= "Data de Aprovação: " . date('d/m/Y H:i:s');
     
     $patientRecordStmt = $db->prepare("
