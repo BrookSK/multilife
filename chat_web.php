@@ -567,15 +567,20 @@ try {
             
             $stmt = db()->prepare("
                 SELECT 
-                    remote_jid as id,
-                    contact_name as name,
-                    profile_picture_url as profilePictureUrl,
-                    is_group,
-                    status,
-                    last_message_timestamp as lastMsgTimestamp
-                FROM chat_contacts
+                    cc.remote_jid as id,
+                    COALESCE(u.name, cc.contact_name) as name,
+                    cc.profile_picture_url as profilePictureUrl,
+                    cc.is_group,
+                    cc.status,
+                    cc.last_message_timestamp as lastMsgTimestamp
+                FROM chat_contacts cc
+                LEFT JOIN users u ON (
+                    REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '') = u.phone
+                    OR CONCAT('55', u.phone) = REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '')
+                    OR u.phone = CONCAT('55', REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', ''))
+                )
                 $whereSQL
-                ORDER BY last_message_timestamp DESC
+                ORDER BY cc.last_message_timestamp DESC
                 LIMIT 50
             ");
             $stmt->execute($params);
@@ -1970,7 +1975,19 @@ echo '        data.messages.forEach(function(msg){';
 echo '          const text=msg.message_text||"";';
 echo '          const fromMe=parseInt(msg.from_me)===1;';
 echo '          const ts=parseInt(msg.message_timestamp)||0;';
-echo '          messagesContainer.appendChild(createMsgEl(text,fromMe,ts));';
+echo '          if(ts<=lastTimestamp)return;';
+echo '          const existingMsgs=messagesContainer.querySelectorAll(".whatsapp-message");';
+echo '          let isDuplicate=false;';
+echo '          existingMsgs.forEach(function(el){';
+echo '            const elText=el.querySelector(".whatsapp-message-text");';
+echo '            const elTime=el.querySelector(".whatsapp-message-time");';
+echo '            if(elText&&elTime&&elText.textContent===text&&elTime.textContent.includes(new Date(ts*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}))){';
+echo '              isDuplicate=true;';
+echo '            }';
+echo '          });';
+echo '          if(!isDuplicate){';
+echo '            messagesContainer.appendChild(createMsgEl(text,fromMe,ts));';
+echo '          }';
 echo '        });';
 echo '        lastTimestamp=data.last_timestamp;';
 echo '        scrollToBottom();';
