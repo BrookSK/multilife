@@ -59,9 +59,15 @@ try {
     $participantPhone = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $chatId);
     $participantJid = $participantPhone . '@s.whatsapp.net';
     
+    error_log("[GROUP_INVITE] chatId='$chatId' participantJid='$participantJid' groupJid='$groupJid'");
+    
     // 1. Adicionar participante ao grupo
+    error_log("[GROUP_INVITE] Chamando updateGroupMembers...");
     $addResult = $api->updateGroupMembers($groupJid, 'add', [$participantJid]);
+    error_log("[GROUP_INVITE] updateGroupMembers retornou: " . json_encode($addResult));
+    
     $addHttpCode = (int)($addResult['status'] ?? 0);
+    error_log("[GROUP_INVITE] HTTP code: $addHttpCode");
     
     if ($addHttpCode !== 200 && $addHttpCode !== 201) {
         $errorMsg = is_string($addResult['body_raw'] ?? null) 
