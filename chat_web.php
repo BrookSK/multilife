@@ -871,27 +871,31 @@ echo '<button type="button" onclick="switchTab(\'patients\')" id="tabPatients" s
 echo '<button type="button" onclick="switchTab(\'manual\')" id="tabManual" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#54656f;cursor:pointer">Número Manual</button>';
 echo '</div>';
 echo '<div id="contentProfessionals" style="display:block">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Buscar Profissional:</label>';
+echo '<input type="text" id="professionalSearch" placeholder="Digite o nome ou telefone..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px" oninput="filterProfessionals()">';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Selecione um Profissional:</label>';
-echo '<select name="contact_phone_professional" id="professionalSelect" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<select name="contact_phone_professional" id="professionalSelect" size="8" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px;height:200px">';
 echo '<option value="">-- Selecione --</option>';
 foreach ($professionals as $prof) {
     $phone = $prof['phone'] ?? '';
     $name = $prof['name'] ?? '';
     if (!empty($phone)) {
-        echo '<option value="' . h($phone) . '">' . h($name) . ' - ' . h($phone) . '</option>';
+        echo '<option value="' . h($phone) . '" data-name="' . h(strtolower($name)) . '" data-phone="' . h($phone) . '">' . h($name) . ' - ' . h($phone) . '</option>';
     }
 }
 echo '</select>';
 echo '</div>';
 echo '<div id="contentPatients" style="display:none">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Buscar Paciente:</label>';
+echo '<input type="text" id="patientSearch" placeholder="Digite o nome ou telefone..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:12px" oninput="filterPatients()">';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Selecione um Paciente:</label>';
-echo '<select name="contact_phone_patient" id="patientSelect" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<select name="contact_phone_patient" id="patientSelect" size="8" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px;height:200px">';
 echo '<option value="">-- Selecione --</option>';
 foreach ($patients as $patient) {
     $phone = $patient['phone'] ?? '';
     $name = $patient['name'] ?? '';
     if (!empty($phone)) {
-        echo '<option value="' . h($phone) . '">' . h($name) . ' - ' . h($phone) . '</option>';
+        echo '<option value="' . h($phone) . '" data-name="' . h(strtolower($name)) . '" data-phone="' . h($phone) . '">' . h($name) . ' - ' . h($phone) . '</option>';
     }
 }
 echo '</select>';
@@ -1087,6 +1091,38 @@ echo '    } else {';
 echo '      modalLocationInput.value = uf;';
 echo '    }';
 echo '  });';
+echo '}';
+echo 'function filterProfessionals() {';
+echo '  const search = document.getElementById("professionalSearch").value.toLowerCase();';
+echo '  const select = document.getElementById("professionalSelect");';
+echo '  const options = select.options;';
+echo '  for (let i = 0; i < options.length; i++) {';
+echo '    const option = options[i];';
+echo '    if (i === 0) continue;';
+echo '    const name = option.getAttribute("data-name") || "";';
+echo '    const phone = option.getAttribute("data-phone") || "";';
+echo '    if (name.includes(search) || phone.includes(search)) {';
+echo '      option.style.display = "";';
+echo '    } else {';
+echo '      option.style.display = "none";';
+echo '    }';
+echo '  }';
+echo '}';
+echo 'function filterPatients() {';
+echo '  const search = document.getElementById("patientSearch").value.toLowerCase();';
+echo '  const select = document.getElementById("patientSelect");';
+echo '  const options = select.options;';
+echo '  for (let i = 0; i < options.length; i++) {';
+echo '    const option = options[i];';
+echo '    if (i === 0) continue;';
+echo '    const name = option.getAttribute("data-name") || "";';
+echo '    const phone = option.getAttribute("data-phone") || "";';
+echo '    if (name.includes(search) || phone.includes(search)) {';
+echo '      option.style.display = "";';
+echo '    } else {';
+echo '      option.style.display = "none";';
+echo '    }';
+echo '  }';
 echo '}';
 echo 'function switchTab(tab) {';
 echo '  document.getElementById("tabProfessionals").style.borderBottomColor = "transparent";';
