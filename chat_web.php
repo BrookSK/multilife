@@ -61,51 +61,71 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 return !empty($chatId) && strpos($chatId, '@lid') === false;
             });
             
-            // Ordenar por timestamp da última mensagem (mais recentes primeiro)
+            // BUSCAR ÚLTIMA MENSAGEM REAL DE CADA CONVERSA
             $debugLogs = [];
-            $debugLogs[] = "=== DEBUG ORDENAÇÃO DE CONVERSAS ===";
-            $debugLogs[] = "Total de conversas recebidas da API: " . count($chats);
+            $debugLogs[] = "=== BUSCANDO MENSAGENS REAIS ===";
+            $debugLogs[] = "Total de conversas: " . count($chats);
+            $debugLogs[] = "Buscando última mensagem de cada conversa...";
             $debugLogs[] = "";
             
-            // DEBUG: Ver estrutura da primeira conversa
-            if (!empty($chats)) {
-                $debugLogs[] = "--- ESTRUTURA DA PRIMEIRA CONVERSA ---";
-                $firstChat = $chats[0];
-                $debugLogs[] = "Chaves disponíveis: " . implode(', ', array_keys($firstChat));
-                $debugLogs[] = "ID: " . ($firstChat['id'] ?? 'N/A');
-                $debugLogs[] = "lastMsgTimestamp: " . ($firstChat['lastMsgTimestamp'] ?? 'N/A');
-                $timestamp = $firstChat['lastMsgTimestamp'] ?? 0;
-                if ($timestamp > 0) {
-                    $debugLogs[] = "Data formatada: " . date('Y-m-d H:i:s', $timestamp);
-                }
-                $debugLogs[] = "";
-            }
-            
-            $debugLogs[] = "--- ANTES DA ORDENAÇÃO (Top 10) ---";
-            
-            // Log das primeiras 10 conversas ANTES da ordenação
-            foreach (array_slice($chats, 0, 10) as $idx => $chat) {
-                $timestamp = $chat['lastMsgTimestamp'] ?? 0;
-                $chatId = $chat['id'] ?? 'N/A';
-                $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-                $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
-            }
-            
-            usort($chats, function($a, $b) {
-                $timeA = $a['lastMsgTimestamp'] ?? 0;
-                $timeB = $b['lastMsgTimestamp'] ?? 0;
+            // Para cada conversa, buscar a última mensagem real
+            foreach ($chats as &$chat) {
+                $chatId = $chat['id'] ?? '';
+                if (empty($chatId)) continue;
                 
-                // Normalizar timestamps: se estiver em milissegundos (> 10 dígitos), converter para segundos
+                // Buscar última mensagem desta conversa
+                $msgUrl = $baseUrl . '/chat/findMessages/' . urlencode($instanceName);
+                $payload = json_encode([
+                    'where' => [
+                        'key' => [
+                            'remoteJid' => $chatId
+                        ]
+                    ],
+                    'limit' => 1,
+                    'sort' => ['messageTimestamp' => -1]
+                ]);
+                
+                $chMsg = curl_init($msgUrl);
+                curl_setopt($chMsg, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($chMsg, CURLOPT_POST, true);
+                curl_setopt($chMsg, CURLOPT_POSTFIELDS, $payload);
+                curl_setopt($chMsg, CURLOPT_HTTPHEADER, [
+                    'apikey: ' . $apiKey,
+                    'Content-Type: application/json'
+                ]);
+                curl_setopt($chMsg, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($chMsg, CURLOPT_TIMEOUT, 5);
+                
+                $msgResponse = curl_exec($chMsg);
+                curl_close($chMsg);
+                
+                $messages = json_decode($msgResponse, true);
+                if (is_array($messages) && !empty($messages)) {
+                    $lastMsg = $messages[0];
+                    $chat['realLastMsgTimestamp'] = $lastMsg['messageTimestamp'] ?? 0;
+                } else {
+                    $chat['realLastMsgTimestamp'] = 0;
+                }
+            }
+            unset($chat);
+            
+            $debugLogs[] = "Mensagens buscadas. Ordenando...";
+            $debugLogs[] = "";
+            
+            // Ordenar por timestamp REAL da última mensagem
+            usort($chats, function($a, $b) {
+                $timeA = $a['realLastMsgTimestamp'] ?? 0;
+                $timeB = $b['realLastMsgTimestamp'] ?? 0;
+                
                 if ($timeA > 9999999999) $timeA = intval($timeA / 1000);
                 if ($timeB > 9999999999) $timeB = intval($timeB / 1000);
                 
                 return $timeB - $timeA;
             });
             
-            $debugLogs[] = "";
-            $debugLogs[] = "--- APÓS ORDENAÇÃO (Top 10) ---";
+            $debugLogs[] = "--- TOP 10 CONVERSAS MAIS RECENTES (DADOS REAIS) ---";
             foreach (array_slice($chats, 0, 10) as $idx => $chat) {
-                $timestamp = $chat['lastMsgTimestamp'] ?? 0;
+                $timestamp = $chat['realLastMsgTimestamp'] ?? 0;
                 $chatId = $chat['id'] ?? 'N/A';
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
                 $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
@@ -466,7 +486,7 @@ if (empty($chats)) {
         $isGroup = strpos($chatId, '@g.us') !== false;
         $isActive = $selectedChat === $chatId ? ' active' : '';
         $lastMsg = ''; // API não retorna preview da mensagem
-        $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
+        $lastTime = isset($chat['realLastMsgTimestamp']) && $chat['realLastMsgTimestamp'] > 0 ? date('H:i', $chat['realLastMsgTimestamp']) : '';
         
         $initials = strtoupper(substr($chatName, 0, 2));
         $profilePic = $chat['profilePictureUrl'] ?? '';
