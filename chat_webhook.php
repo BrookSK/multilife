@@ -78,19 +78,37 @@ function ensureChatTables(): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 }
 
+// Normalizar JID para evitar duplicação de chats
+// Remove sufixos e garante formato consistente: apenas número + @s.whatsapp.net (ou @g.us para grupos)
+function normalizeJid(string $jid): string {
+    // Extrair apenas o número base (sem sufixos)
+    $numberOnly = preg_replace('/@(s\.whatsapp\.net|g\.us|lid|c\.us|broadcast)$/', '', $jid);
+    
+    // Se é grupo, manter @g.us
+    if (strpos($jid, '@g.us') !== false) {
+        return $numberOnly . '@g.us';
+    }
+    
+    // Para números individuais, sempre usar @s.whatsapp.net (padrão)
+    return $numberOnly . '@s.whatsapp.net';
+}
+
 function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp): void {
     ensureChatTables();
     
-    error_log("[SAVE_MSG] Salvando mensagem - remoteJid: '$remoteJid' | fromMe: $fromMe | text: '" . substr($text, 0, 30) . "'");
+    // NORMALIZAR JID para evitar duplicação
+    $normalizedJid = normalizeJid($remoteJid);
+    
+    error_log("[SAVE_MSG] Original JID: '$remoteJid' | Normalized: '$normalizedJid' | fromMe: $fromMe | text: '" . substr($text, 0, 30) . "'");
     
     $stmt = db()->prepare("INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp) VALUES (?, ?, ?, ?)");
-    $stmt->execute([$remoteJid, $text, $fromMe, $timestamp]);
+    $stmt->execute([$normalizedJid, $text, $fromMe, $timestamp]);
 
     // Atualizar contato
-    $isGroup = strpos($remoteJid, '@g.us') !== false ? 1 : 0;
-    $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $remoteJid);
+    $isGroup = strpos($normalizedJid, '@g.us') !== false ? 1 : 0;
+    $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $normalizedJid);
 
-    error_log("[SAVE_CONTACT] Salvando/atualizando contato - remoteJid: '$remoteJid' | contactName: '$contactName' | isGroup: $isGroup");
+    error_log("[SAVE_CONTACT] Salvando/atualizando contato - normalizedJid: '$normalizedJid' | contactName: '$contactName' | isGroup: $isGroup");
 
     $stmtContact = db()->prepare("
         INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
@@ -99,9 +117,9 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
             last_message_timestamp = VALUES(last_message_timestamp),
             updated_at = CURRENT_TIMESTAMP
     ");
-    $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
+    $stmtContact->execute([$normalizedJid, $contactName, $isGroup, $timestamp]);
     
-    error_log("[SAVE_CONTACT] Contato salvo com sucesso - remoteJid: '$remoteJid'");
+    error_log("[SAVE_CONTACT] Contato salvo com sucesso - normalizedJid: '$normalizedJid'");
 }
 
 // Tipos de mensagem que são sistema/protocolo e devem ser ignorados

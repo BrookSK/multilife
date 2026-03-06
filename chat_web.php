@@ -42,6 +42,20 @@ function format_phone_evolution($phone) {
     return $cleaned;
 }
 
+// Normalizar JID para evitar duplicação de chats (mesma função do webhook)
+function normalizeJid(string $jid): string {
+    // Extrair apenas o número base (sem sufixos)
+    $numberOnly = preg_replace('/@(s\.whatsapp\.net|g\.us|lid|c\.us|broadcast)$/', '', $jid);
+    
+    // Se é grupo, manter @g.us
+    if (strpos($jid, '@g.us') !== false) {
+        return $numberOnly . '@g.us';
+    }
+    
+    // Para números individuais, sempre usar @s.whatsapp.net (padrão)
+    return $numberOnly . '@s.whatsapp.net';
+}
+
 // PROCESSAR ENVIO DE MENSAGEM
 $isAjax = (isset($_POST['ajax']) && $_POST['ajax'] === '1') || 
           (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
@@ -139,11 +153,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                     
                     $timestamp = time();
+                    
+                    // NORMALIZAR JID antes de salvar para evitar duplicação
+                    $normalizedJid = normalizeJid($remoteJid);
+                    error_log("[$debugId] DB_SAVE - Original JID: '$remoteJid' | Normalized: '$normalizedJid'");
+                    
                     $stmt = db()->prepare("
                         INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
                         VALUES (?, ?, 1, ?)
                     ");
-                    $savedToDb = $stmt->execute([$remoteJid, $message, $timestamp]);
+                    $savedToDb = $stmt->execute([$normalizedJid, $message, $timestamp]);
                     
                     // Verificar se realmente salvou
                     if ($savedToDb) {
@@ -172,9 +191,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                                 ");
                                 
-                                // Inserir ou atualizar contato
-                                $isGroup = strpos($remoteJid, '@g.us') !== false ? 1 : 0;
-                                $contactName = str_replace(['@s.whatsapp.net', '@g.us'], '', $remoteJid);
+                                // Inserir ou atualizar contato (usar JID normalizado)
+                                $isGroup = strpos($normalizedJid, '@g.us') !== false ? 1 : 0;
+                                $contactName = str_replace(['@s.whatsapp.net', '@g.us'], '', $normalizedJid);
+                                
+                                error_log("[$debugId] CONTACT_SAVE - normalizedJid: '$normalizedJid' | contactName: '$contactName'");
                                 
                                 $stmtContact = db()->prepare("
                                     INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
@@ -183,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                         last_message_timestamp = VALUES(last_message_timestamp),
                                         updated_at = CURRENT_TIMESTAMP
                                 ");
-                                $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
+                                $stmtContact->execute([$normalizedJid, $contactName, $isGroup, $timestamp]);
                                 
                                 // Buscar perfil do contato da Evolution API
                                 try {
