@@ -153,11 +153,11 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
 // DEBUG: Exibir logs na tela
 $debugLogs = [];
 
-// Buscar mensagens do chat selecionado DIRETAMENTE DA API EVOLUTION
-// NÃO USA BANCO DE DADOS LOCAL - TODAS AS MENSAGENS VÊM DA API EM TEMPO REAL
-// APENAS PARA CONVERSAS PRIVADAS - GRUPOS NÃO CARREGAM HISTÓRICO
+// DESABILITADO: API Evolution não retorna mensagens corretas
+// A API retorna sempre as mesmas mensagens antigas de canais, independente do filtro
+// Até que a API seja corrigida ou sincronizada, mensagens não serão carregadas
 $isPrivateChat = !empty($selectedChat) && strpos($selectedChat, '@g.us') === false;
-if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         // Preparar payload da requisição
         // NOTA: A API Evolution IGNORA o filtro remoteJid, então buscamos mais mensagens
@@ -539,11 +539,19 @@ if (empty($selectedChat)) {
         echo '<p style="margin:0;font-size:14px">Histórico de mensagens não disponível para grupos.</p>';
         echo '<p style="margin:8px 0 0;font-size:13px;opacity:0.7">Apenas conversas privadas carregam mensagens.</p>';
         echo '</div>';
-    } elseif (empty($messages)) {
-        echo '<div style="text-align:center;padding:40px;color:#667781">';
-        echo '<p>Nenhuma mensagem ainda.</p>';
-        echo '</div>';
     } else {
+        // Mensagem explicativa sobre API Evolution
+        echo '<div style="text-align:center;padding:40px;color:#667781;background:#fff3cd;margin:20px;border-radius:8px;border:1px solid #ffc107">';
+        echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ffc107" stroke-width="1.5" style="margin:0 auto 16px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+        echo '<h3 style="margin:0 0 8px;color:#856404">Mensagens Temporariamente Indisponíveis</h3>';
+        echo '<p style="margin:0;font-size:14px;color:#856404">A API Evolution está retornando dados desatualizados.</p>';
+        echo '<p style="margin:8px 0 0;font-size:13px;color:#856404;opacity:0.8">As mensagens serão carregadas assim que a API sincronizar corretamente.</p>';
+        echo '<p style="margin:12px 0 0;font-size:13px;color:#856404"><strong>Conversa:</strong> ' . h($chatName) . '</p>';
+        echo '</div>';
+    }
+    
+    // Código antigo de renderização de mensagens (desabilitado)
+    if (false) {
         foreach ($messages as $msg) {
             $isFromMe = isset($msg['key']['fromMe']) && $msg['key']['fromMe'] === true;
             $messageClass = $isFromMe ? 'out' : 'in';
