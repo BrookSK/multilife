@@ -171,36 +171,26 @@ try {
         error_log("Erro ao enviar mensagem via Evolution API: " . $e->getMessage());
     }
     
-    // Registrar no prontuário do paciente
+    // Registrar no prontuário do paciente (usando tabela existente)
     try {
-        $patientRecordStmt = $db->prepare("
-            INSERT INTO medical_records (patient_id, record_type, record_date, description, created_by_user_id)
-            VALUES (?, 'assignment', NOW(), ?, ?)
-        ");
-        $recordDescription = "Atribuído ao profissional: {$professionalName}\nEspecialidade: {$specialty}\nServiço: {$serviceType}\nSessões: {$sessionQuantity}x ({$sessionFrequency})\nValor: R$ " . number_format($paymentValue, 2, ',', '.');
+        $recordNotes = "📋 ATENDIMENTO ATRIBUÍDO\n\n";
+        $recordNotes .= "Profissional: {$professionalName}\n";
+        $recordNotes .= "Especialidade: {$specialty}\n";
+        $recordNotes .= "Serviço: {$serviceType}\n";
+        $recordNotes .= "Sessões: {$sessionQuantity}x ({$sessionFrequency})\n";
+        $recordNotes .= "Valor: R$ " . number_format($paymentValue, 2, ',', '.');
         if ($notes) {
-            $recordDescription .= "\nObservações: {$notes}";
+            $recordNotes .= "\n\nObservações: {$notes}";
         }
-        $patientRecordStmt->execute([$patientId, $recordDescription, auth_user_id()]);
+        
+        $prontuarioStmt = $db->prepare("
+            INSERT INTO patient_prontuario_entries 
+            (patient_id, professional_user_id, origin, occurred_at, sessions_count, notes)
+            VALUES (?, ?, 'atribuicao_captacao', NOW(), ?, ?)
+        ");
+        $prontuarioStmt->execute([$patientId, $professionalUserId, $sessionQuantity, $recordNotes]);
     } catch (Exception $e) {
         error_log("Erro ao registrar no prontuário do paciente: " . $e->getMessage());
-    }
-    
-    // Registrar no prontuário do profissional (se existir)
-    if ($professionalUserId) {
-        try {
-            $profRecordStmt = $db->prepare("
-                INSERT INTO medical_records (patient_id, record_type, record_date, description, created_by_user_id)
-                VALUES (?, 'assignment', NOW(), ?, ?)
-            ");
-            $profRecordDescription = "Paciente atribuído: {$patientName}\nEspecialidade: {$specialty}\nServiço: {$serviceType}\nSessões: {$sessionQuantity}x ({$sessionFrequency})\nValor: R$ " . number_format($paymentValue, 2, ',', '.');
-            if ($notes) {
-                $profRecordDescription .= "\nObservações: {$notes}";
-            }
-            $profRecordStmt->execute([$professionalUserId, $profRecordDescription, auth_user_id()]);
-        } catch (Exception $e) {
-            error_log("Erro ao registrar no prontuário do profissional: " . $e->getMessage());
-        }
     }
     
     echo json_encode([

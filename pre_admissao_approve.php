@@ -54,28 +54,30 @@ try {
     ");
     $updateDemandStmt->execute([$demandId]);
     
-    // Registrar no prontuário do paciente
+    // Registrar no prontuário do paciente (usando tabela existente)
     $currentUser = auth_user();
     $approvedByName = $currentUser ? $currentUser['name'] : 'Sistema';
     
-    $recordDescription = "✅ ATENDIMENTO APROVADO\n\n";
-    $recordDescription .= "Profissional: " . ($assignment['professional_name'] ?? 'Não informado') . "\n";
-    $recordDescription .= "Especialidade: " . $assignment['specialty'] . "\n";
-    $recordDescription .= "Tipo de Serviço: " . $assignment['service_type'] . "\n";
-    $recordDescription .= "Quantidade de Sessões: " . $assignment['session_quantity'] . "x\n";
-    $recordDescription .= "Frequência: " . $assignment['session_frequency'] . "\n";
-    $recordDescription .= "Valor por Sessão: R$ " . number_format((float)$assignment['payment_value'], 2, ',', '.') . "\n";
-    $recordDescription .= "\nAprovado por: " . $approvedByName . "\n";
-    $recordDescription .= "Data de Aprovação: " . date('d/m/Y H:i:s');
+    $recordNotes = "✅ ATENDIMENTO APROVADO\n\n";
+    $recordNotes .= "Profissional: " . ($assignment['professional_name'] ?? 'Não informado') . "\n";
+    $recordNotes .= "Especialidade: " . $assignment['specialty'] . "\n";
+    $recordNotes .= "Tipo de Serviço: " . $assignment['service_type'] . "\n";
+    $recordNotes .= "Quantidade de Sessões: " . $assignment['session_quantity'] . "x\n";
+    $recordNotes .= "Frequência: " . $assignment['session_frequency'] . "\n";
+    $recordNotes .= "Valor por Sessão: R$ " . number_format((float)$assignment['payment_value'], 2, ',', '.') . "\n";
+    $recordNotes .= "\nAprovado por: " . $approvedByName . "\n";
+    $recordNotes .= "Data de Aprovação: " . date('d/m/Y H:i:s');
     
-    $patientRecordStmt = $db->prepare("
-        INSERT INTO medical_records (patient_id, record_type, record_date, description, created_by_user_id)
-        VALUES (?, 'approval', NOW(), ?, ?)
+    $prontuarioStmt = $db->prepare("
+        INSERT INTO patient_prontuario_entries 
+        (patient_id, professional_user_id, origin, occurred_at, sessions_count, notes)
+        VALUES (?, ?, 'pre_admissao_aprovacao', NOW(), ?, ?)
     ");
-    $patientRecordStmt->execute([
+    $prontuarioStmt->execute([
         $assignment['patient_id'],
-        $recordDescription,
-        auth_user_id()
+        $assignment['professional_user_id'],
+        $assignment['session_quantity'],
+        $recordNotes
     ]);
     
     // Log de auditoria

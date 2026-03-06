@@ -7,41 +7,56 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('documents.manage');
 
-$entityType = isset($_GET['entity_type']) ? (string)$_GET['entity_type'] : '';
-$entityId = isset($_GET['entity_id']) ? trim((string)$_GET['entity_id']) : '';
-$category = isset($_GET['category']) ? trim((string)$_GET['category']) : '';
+$tab = isset($_GET['tab']) ? (string)$_GET['tab'] : 'patients';
+$searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$selectedFolderId = isset($_GET['folder_id']) ? (int)$_GET['folder_id'] : 0;
 
-$allowedTypes = ['', 'patient', 'professional', 'company'];
-if (!in_array($entityType, $allowedTypes, true)) {
-    $entityType = '';
+$allowedTabs = ['patients', 'professionals', 'employees'];
+if (!in_array($tab, $allowedTabs, true)) {
+    $tab = 'patients';
 }
 
-$sql = 'SELECT d.id, d.entity_type, d.entity_id, d.category, d.title, d.status, d.created_at,
-               (SELECT MAX(v.version_no) FROM document_versions v WHERE v.document_id = d.id) AS last_version
+// Mapear tab para entity_type
+$entityTypeMap = [
+    'patients' => 'patient',
+    'professionals' => 'professional',
+    'employees' => 'employee'
+];
+$entityType = $entityTypeMap[$tab];
+
+// Buscar pastas de documentos por tipo
+$foldersStmt = db()->prepare("
+    SELECT df.id, df.folder_name, df.entity_id, df.description,
+           CASE 
+               WHEN df.entity_type = 'patient' THEN p.full_name
+               WHEN df.entity_type = 'professional' THEN u.name
+               WHEN df.entity_type = 'employee' THEN u.name
+           END as entity_name,
+           (SELECT COUNT(*) FROM documents d WHERE d.folder_id = df.id AND d.deleted_at IS NULL) as document_count
+    FROM document_folders df
+    LEFT JOIN patients p ON df.entity_type = 'patient' AND df.entity_id = p.id
+    LEFT JOIN users u ON df.entity_type IN ('professional', 'employee') AND df.entity_id = u.id
+    WHERE df.entity_type = ?
+    ORDER BY df.folder_name ASC
+");
+$foldersStmt->execute([$entityType]);
+$folders = $foldersStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Buscar documentos da pasta selecionada
+$documents = [];
+if ($selectedFolderId > 0) {
+    $docsStmt = db()->prepare("
+        SELECT d.id, d.document_name, d.document_type, d.file_path, d.file_size,
+               d.document_date, d.description, d.category, d.version,
+               u.name as uploaded_by_name, d.created_at
         FROM documents d
-        WHERE 1=1';
-$params = [];
-
-if ($entityType !== '') {
-    $sql .= ' AND d.entity_type = :entity_type';
-    $params['entity_type'] = $entityType;
+        LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+        WHERE d.folder_id = ? AND d.deleted_at IS NULL
+        ORDER BY d.document_date DESC, d.created_at DESC
+    ");
+    $docsStmt->execute([$selectedFolderId]);
+    $documents = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
 }
-
-if ($entityId !== '') {
-    $sql .= ' AND d.entity_id = :entity_id';
-    $params['entity_id'] = (int)$entityId;
-}
-
-if ($category !== '') {
-    $sql .= ' AND d.category LIKE :category';
-    $params['category'] = '%' . $category . '%';
-}
-
-$sql .= ' ORDER BY d.id DESC';
-
-$stmt = db()->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
 
 view_header('Gestão Documental');
 
@@ -50,67 +65,101 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">Gestão Documental</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Documentos por entidade + versões + validade.</div>';
+echo '<div style="font-size:22px;font-weight:900">📁 Gestão Documental</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Documentos consolidados por paciente, profissional ou funcionário</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn btnPrimary" href="/documents_upload.php">Novo documento</a>';
+if ($selectedFolderId > 0) {
+    echo '<a class="btn btnPrimary" href="/documents_upload.php?folder_id=' . $selectedFolderId . '">📤 Upload Documento</a>';
+}
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="get" action="/documents_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+// Abas de navegação
+echo '<div style="margin-top:20px;border-bottom:2px solid #e5e7eb">';
+echo '<div style="display:flex;gap:4px">';
 
-echo '<select name="entity_type" style="min-width:200px">';
-$labels = ['' => 'Todos', 'patient' => 'Paciente', 'professional' => 'Profissional', 'company' => 'Empresa'];
-foreach ($labels as $k => $label) {
-    $sel = ($entityType === $k) ? ' selected' : '';
-    echo '<option value="' . h($k) . '"' . $sel . '>' . h($label) . '</option>';
+$tabs = [
+    'patients' => '👤 Pacientes',
+    'professionals' => '🩺 Profissionais',
+    'employees' => '👔 Funcionários'
+];
+
+foreach ($tabs as $tabKey => $tabLabel) {
+    $isActive = $tab === $tabKey;
+    $activeStyle = $isActive ? 'background:#00a884;color:white;border-color:#00a884' : 'background:white;color:#667781;border-color:transparent';
+    echo '<a href="/documents_list.php?tab=' . $tabKey . '" style="padding:12px 24px;text-decoration:none;font-weight:600;border:2px solid;border-bottom:none;border-radius:8px 8px 0 0;' . $activeStyle . '">' . $tabLabel . '</a>';
 }
-echo '</select>';
 
-echo '<input name="entity_id" value="' . h($entityId) . '" placeholder="ID entidade" style="width:160px">';
-
-echo '<input name="category" value="' . h($category) . '" placeholder="Categoria (ex: Faturamento)" style="flex:1;min-width:220px">';
-
-echo '<button class="btn" type="submit">Filtrar</button>';
-echo '</form>';
+echo '</div>';
+echo '</div>';
 
 echo '</section>';
 
+// Grid com 2 colunas: Lista de pastas | Documentos da pasta
+echo '<section class="card col4">';
+echo '<div style="font-size:16px;font-weight:700;margin-bottom:12px">📂 Pastas</div>';
+echo '<div style="max-height:600px;overflow-y:auto">';
 
-echo '<section class="card col12">';
-echo '<div style="overflow:auto">';
-echo '<table>';
-echo '<thead><tr>';
-echo '<th>ID</th><th>Entidade</th><th>Categoria</th><th>Título</th><th>Versão</th><th>Status</th><th style="text-align:right">Ações</th>';
-echo '</tr></thead><tbody>';
-foreach ($rows as $r) {
-    $ent = (string)$r['entity_type'] . ' #' . (string)($r['entity_id'] ?? '-');
-    $ver = $r['last_version'] !== null ? 'v' . (int)$r['last_version'] : '-';
-
-    echo '<tr>';
-    echo '<td>' . (int)$r['id'] . '</td>';
-    echo '<td style="font-weight:700">' . h($ent) . '</td>';
-    echo '<td>' . h((string)$r['category']) . '</td>';
-    echo '<td>' . h((string)($r['title'] ?? '')) . '</td>';
-    echo '<td>' . h($ver) . '</td>';
-    echo '<td>' . h((string)$r['status']) . '</td>';
-    echo '<td style="text-align:right">';
-    echo '<a class="btn" href="/documents_view.php?id=' . (int)$r['id'] . '">Abrir</a> ';
-    echo '<form method="post" action="/documents_archive_post.php" style="display:inline">';
-    echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
-    echo '<button class="btn" type="submit" style="height:34px">Arquivar</button>';
-    echo '</form>';
-    echo '</td>';
-    echo '</tr>';
-}
-if (count($rows) === 0) {
-    echo '<tr><td colspan="7" class="pill" style="display:table-cell;padding:12px">Sem registros.</td></tr>';
+if (count($folders) === 0) {
+    echo '<div class="pill" style="padding:12px;text-align:center;color:#667781">Nenhuma pasta encontrada</div>';
+} else {
+    foreach ($folders as $folder) {
+        $isSelected = $selectedFolderId === (int)$folder['id'];
+        $bgColor = $isSelected ? '#e7f8f4' : '#f8f9fa';
+        $borderColor = $isSelected ? '#00a884' : '#e5e7eb';
+        
+        echo '<a href="/documents_list.php?tab=' . $tab . '&folder_id=' . (int)$folder['id'] . '" style="display:block;padding:12px;margin-bottom:8px;background:' . $bgColor . ';border:2px solid ' . $borderColor . ';border-radius:8px;text-decoration:none;color:#111b21">';
+        echo '<div style="font-weight:600;font-size:14px">' . h($folder['entity_name'] ?? $folder['folder_name']) . '</div>';
+        echo '<div style="font-size:12px;color:#667781;margin-top:4px">' . (int)$folder['document_count'] . ' documento(s)</div>';
+        echo '</a>';
+    }
 }
 
-echo '</tbody></table>';
 echo '</div>';
+echo '</section>';
+
+echo '<section class="card col8">';
+echo '<div style="font-size:16px;font-weight:700;margin-bottom:12px">📄 Documentos</div>';
+
+if ($selectedFolderId === 0) {
+    echo '<div class="pill" style="padding:20px;text-align:center;color:#667781">';
+    echo '← Selecione uma pasta para ver os documentos';
+    echo '</div>';
+} elseif (count($documents) === 0) {
+    echo '<div class="pill" style="padding:20px;text-align:center;color:#667781">';
+    echo 'Nenhum documento nesta pasta';
+    echo '</div>';
+} else {
+    echo '<div style="overflow:auto">';
+    echo '<table>';
+    echo '<thead><tr>';
+    echo '<th>Nome</th><th>Tipo</th><th>Data</th><th>Categoria</th><th>Tamanho</th><th>Enviado por</th><th style="text-align:right">Ações</th>';
+    echo '</tr></thead><tbody>';
+    
+    foreach ($documents as $doc) {
+        $fileSize = (int)$doc['file_size'];
+        $fileSizeFormatted = $fileSize > 1048576 ? number_format($fileSize / 1048576, 2) . ' MB' : number_format($fileSize / 1024, 2) . ' KB';
+        
+        echo '<tr>';
+        echo '<td style="font-weight:600">' . h($doc['document_name']) . '</td>';
+        echo '<td>' . h($doc['document_type'] ?? '-') . '</td>';
+        echo '<td>' . ($doc['document_date'] ? date('d/m/Y', strtotime($doc['document_date'])) : '-') . '</td>';
+        echo '<td>' . h($doc['category'] ?? '-') . '</td>';
+        echo '<td>' . $fileSizeFormatted . '</td>';
+        echo '<td>' . h($doc['uploaded_by_name'] ?? '-') . '</td>';
+        echo '<td style="text-align:right">';
+        echo '<a class="btn" href="' . h($doc['file_path']) . '" target="_blank">📥 Download</a> ';
+        echo '<a class="btn" href="/documents_edit.php?id=' . (int)$doc['id'] . '">✏️ Editar</a>';
+        echo '</td>';
+        echo '</tr>';
+    }
+    
+    echo '</tbody></table>';
+    echo '</div>';
+}
+
 echo '</section>';
 
 echo '</div>';
