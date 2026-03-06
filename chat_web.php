@@ -559,6 +559,16 @@ try {
             ");
             $stmt->execute($params);
             $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Log para diagnóstico de duplicação
+            error_log("[CHAT_LIST] Total de chats carregados: " . count($chats));
+            if (count($chats) > 0) {
+                $jids = array_column($chats, 'id');
+                $duplicates = array_diff_assoc($jids, array_unique($jids));
+                if (!empty($duplicates)) {
+                    error_log("[CHAT_LIST] DUPLICATAS ENCONTRADAS: " . json_encode($duplicates));
+                }
+            }
         }
     }
 } catch (Exception $e) {
