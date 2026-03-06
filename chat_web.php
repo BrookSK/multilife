@@ -1661,39 +1661,7 @@ if (!empty($selectedChat)) {
     echo '<p style="margin:0;font-size:13px;color:#667781">' . h($selectedChat) . '</p>';
     echo '</div>';
     
-    // Status do atendimento
-    echo '<div class="whatsapp-info-section">';
-    echo '<div class="whatsapp-info-label">Status do Atendimento</div>';
-    $statusClass = $contactStatus === 'atendendo' ? 'atendendo' : ($contactStatus === 'resolvido' ? 'resolvido' : 'aguardando');
-    $statusLabel = $contactStatus === 'atendendo' ? 'Atendendo' : ($contactStatus === 'resolvido' ? 'Resolvido' : 'Aguardando');
-    echo '<span class="whatsapp-status-badge ' . $statusClass . '">' . h($statusLabel) . '</span>';
-    echo '<select onchange="updateStatus(this.value)" style="width:100%;margin-top:8px;padding:8px;border:1px solid #d1d7db;border-radius:6px">';
-    echo '<option value="aguardando" ' . ($contactStatus === 'aguardando' ? 'selected' : '') . '>Aguardando</option>';
-    echo '<option value="atendendo" ' . ($contactStatus === 'atendendo' ? 'selected' : '') . '>Atendendo</option>';
-    echo '<option value="resolvido" ' . ($contactStatus === 'resolvido' ? 'selected' : '') . '>Resolvido</option>';
-    echo '</select>';
-    echo '</div>';
-    
-    // Informações de captação
-    echo '<div class="whatsapp-info-section">';
-    echo '<div class="whatsapp-info-label">Tipo de Captação</div>';
-    echo '<select id="captureType" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
-    echo '<option value="">Selecione...</option>';
-    echo '<option value="paciente">Paciente</option>';
-    echo '<option value="profissional">Profissional</option>';
-    echo '<option value="empresa">Empresa</option>';
-    echo '<option value="parceiro">Parceiro</option>';
-    echo '</select>';
-    
-    echo '<div class="whatsapp-info-label">Observações</div>';
-    echo '<textarea id="captureNotes" rows="4" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;resize:vertical" placeholder="Anotações sobre a captação..."></textarea>';
-    
-    echo '<button onclick="saveCaptureInfo()" style="width:100%;margin-top:12px;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
-    echo 'Salvar Informações';
-    echo '</button>';
-    echo '</div>';
-    
-    // Atribuir Paciente (apenas para profissionais)
+    // Atribuir Paciente (logo após a foto - apenas para profissionais)
     if (!$isGroup && strpos($selectedChat, '@s.whatsapp.net') !== false) {
         echo '<div class="whatsapp-info-section">';
         echo '<div class="whatsapp-info-label">Atribuir Paciente</div>';
@@ -1741,6 +1709,38 @@ if (!empty($selectedChat)) {
         
         echo '</div>';
     }
+    
+    // Status do atendimento
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Status do Atendimento</div>';
+    $statusClass = $contactStatus === 'atendendo' ? 'atendendo' : ($contactStatus === 'resolvido' ? 'resolvido' : 'aguardando');
+    $statusLabel = $contactStatus === 'atendendo' ? 'Atendendo' : ($contactStatus === 'resolvido' ? 'Resolvido' : 'Aguardando');
+    echo '<span class="whatsapp-status-badge ' . $statusClass . '">' . h($statusLabel) . '</span>';
+    echo '<select onchange="updateStatus(this.value)" style="width:100%;margin-top:8px;padding:8px;border:1px solid #d1d7db;border-radius:6px">';
+    echo '<option value="aguardando" ' . ($contactStatus === 'aguardando' ? 'selected' : '') . '>Aguardando</option>';
+    echo '<option value="atendendo" ' . ($contactStatus === 'atendendo' ? 'selected' : '') . '>Atendendo</option>';
+    echo '<option value="resolvido" ' . ($contactStatus === 'resolvido' ? 'selected' : '') . '>Resolvido</option>';
+    echo '</select>';
+    echo '</div>';
+    
+    // Informações de captação
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Tipo de Captação</div>';
+    echo '<select id="captureType" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
+    echo '<option value="">Selecione...</option>';
+    echo '<option value="paciente">Paciente</option>';
+    echo '<option value="profissional">Profissional</option>';
+    echo '<option value="empresa">Empresa</option>';
+    echo '<option value="parceiro">Parceiro</option>';
+    echo '</select>';
+    
+    echo '<div class="whatsapp-info-label">Observações</div>';
+    echo '<textarea id="captureNotes" rows="4" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;resize:vertical" placeholder="Anotações sobre a captação..."></textarea>';
+    
+    echo '<button onclick="saveCaptureInfo()" style="width:100%;margin-top:12px;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo 'Salvar Informações';
+    echo '</button>';
+    echo '</div>';
     
     // Cadastro de Profissional/Paciente
     echo '<div class="whatsapp-info-section">';

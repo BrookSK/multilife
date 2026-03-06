@@ -241,7 +241,14 @@ foreach ($columns as $col) {
                 echo '<div class="kanbanMeta" style="color:hsl(var(--success));font-weight:600">💰 R$ ' . number_format($procedureValue, 2, ',', '.') . '</div>';
             }
             
-            echo '<div class="kanbanMeta">' . h($assumed) . ' • ' . h((string)$r['created_at']) . '</div>';
+            // Mostrar quem assumiu a demanda
+            if ($r['assumed_by_user_id'] && $r['assumed_by_name']) {
+                echo '<div style="margin-top:8px;padding:8px;background:hsla(var(--primary)/.12);border-radius:6px;font-size:12px;font-weight:600;color:hsl(var(--primary))">';
+                echo '👤 Captação sob os cuidados de: ' . h($assumed);
+                echo '</div>';
+            } else {
+                echo '<div class="kanbanMeta">' . h($assumed) . ' • ' . h((string)$r['created_at']) . '</div>';
+            }
             
             // Badges de status, urgência e valor
             echo '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
