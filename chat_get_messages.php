@@ -35,7 +35,7 @@ try {
         ]
     ]);
     
-    $ch = curl_init($baseUrl . '/message/findMessages/' . urlencode($instanceName));
+    $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'apikey: ' . $apiKey,

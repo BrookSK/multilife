@@ -125,15 +125,15 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         // Log detalhado da requisição
         $debugLogs[] = "=== CHAT_WEB DEBUG ===";
         $debugLogs[] = "Chat selecionado: " . $selectedChat;
-        $debugLogs[] = "URL: " . $baseUrl . '/message/findMessages/' . urlencode($instanceName);
+        $debugLogs[] = "URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName);
         $debugLogs[] = "Payload: " . $requestJson;
         error_log("=== CHAT_WEB DEBUG ===");
         error_log("Chat selecionado: " . $selectedChat);
-        error_log("URL: " . $baseUrl . '/message/findMessages/' . urlencode($instanceName));
+        error_log("URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName));
         error_log("Payload: " . $requestJson);
         
-        // Usar endpoint correto /message/findMessages com POST
-        $ch = curl_init($baseUrl . '/message/findMessages/' . urlencode($instanceName));
+        // Usar endpoint correto /chat/findMessages com POST
+        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'apikey: ' . $apiKey,
