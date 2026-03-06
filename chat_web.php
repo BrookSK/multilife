@@ -318,13 +318,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         error_log("Grupo salvo no banco com sucesso");
                         audit_log('group_created', 'Grupo criado: ' . $groupName . ' (JID: ' . $groupJid . ')');
                         $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
+                        
+                        // Log no console do navegador
+                        echo '<script>console.log("✅ GRUPO CRIADO COM SUCESSO");';
+                        echo 'console.log("Nome:", ' . json_encode($groupName) . ');';
+                        echo 'console.log("JID:", ' . json_encode($groupJid) . ');';
+                        echo 'console.log("Specialty:", ' . json_encode($specialty) . ');';
+                        echo 'console.log("Region:", ' . json_encode($location) . ');';
+                        echo 'console.log("Salvo no banco: SIM");</script>';
                     } catch (Exception $e) {
                         error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
                         $error = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
+                        
+                        echo '<script>console.error("❌ ERRO AO SALVAR NO BANCO");';
+                        echo 'console.error("Erro:", ' . json_encode($e->getMessage()) . ');</script>';
                     }
                 } else {
                     error_log("ERRO: Group JID vazio na resposta da API");
                     $error = 'Erro: API não retornou o ID do grupo. Response: ' . $response;
+                    
+                    echo '<script>console.error("❌ ERRO: API NÃO RETORNOU JID");';
+                    echo 'console.error("Response:", ' . json_encode($response) . ');</script>';
                 }
             } else {
                 error_log("Erro ao criar grupo - HTTP Code: $httpCode - Response: $response - cURL Error: $curlError");
@@ -333,6 +347,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 } else {
                     $error = '❌ Erro ao criar grupo. HTTP Code: ' . $httpCode . '. Detalhes: ' . ($response ?: $curlError);
                 }
+                
+                echo '<script>console.error("❌ ERRO AO CRIAR GRUPO NA API");';
+                echo 'console.error("HTTP Code:", ' . json_encode($httpCode) . ');';
+                echo 'console.error("Response:", ' . json_encode($response) . ');';
+                echo 'console.error("cURL Error:", ' . json_encode($curlError) . ');</script>';
             }
         }
     }
@@ -1324,15 +1343,14 @@ if (empty($selectedChat)) {
     }
     echo '</div>';
     
-    // Auto-refresh para mostrar novas mensagens recebidas
-    if (!empty($selectedChat)) {
-        echo '<script>';
-        echo 'setInterval(function() {';
-        echo '  // Recarregar página silenciosamente para mostrar novas mensagens';
-        echo '  window.location.reload();';
-        echo '}, 10000);'; // A cada 10 segundos
-        echo '</script>';
-    }
+    // Auto-refresh desabilitado para não atrapalhar o uso
+    // if (!empty($selectedChat)) {
+    //     echo '<script>';
+    //     echo 'setInterval(function() {';
+    //     echo '  window.location.reload();';
+    //     echo '}, 10000);';
+    //     echo '</script>';
+    // }
     
     // Formulário de envio
     echo '<div class="whatsapp-input-area">';
