@@ -101,7 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("Resposta: " . $response);
             
             if ($httpCode === 200 || $httpCode === 201) {
-                $success = 'Mensagem enviada com sucesso!';
+                // Redirecionar para o chat criado para permitir continuidade
+                header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1');
+                exit();
             } else {
                 $responseData = json_decode($response, true);
                 $errorMsg = $responseData['message'] ?? $response;
@@ -167,6 +169,28 @@ $chats = [];
 $messages = [];
 $selectedChatData = [];
 $debugLogs = [];
+
+// Se um chat foi selecionado, criar dados locais para ele
+if (!empty($selectedChat)) {
+    // Extrair número do remoteJid
+    $chatNumber = str_replace(['@s.whatsapp.net', '@g.us'], '', $selectedChat);
+    $isGroup = strpos($selectedChat, '@g.us') !== false;
+    
+    // Criar dados básicos do chat
+    $selectedChatData = [
+        'id' => $selectedChat,
+        'name' => $isGroup ? 'Grupo' : format_phone_evolution($chatNumber),
+        'profilePictureUrl' => null
+    ];
+    
+    // Adicionar à lista de chats para aparecer na sidebar
+    $chats[] = $selectedChatData;
+}
+
+// Verificar se há mensagem de sucesso
+if (isset($_GET['success']) && $_GET['success'] === '1') {
+    $success = 'Mensagem enviada com sucesso! Você pode continuar a conversa abaixo.';
+}
 
 // Buscar profissionais e pacientes para seletor de contatos
 $professionals = [];
