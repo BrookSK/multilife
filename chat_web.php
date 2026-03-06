@@ -159,14 +159,11 @@ $debugLogs = [];
 $isPrivateChat = !empty($selectedChat) && strpos($selectedChat, '@g.us') === false;
 if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        // Preparar payload da requisição - buscar apenas 10 mensagens
+        // Preparar payload da requisição
+        // NOTA: A API Evolution IGNORA o filtro remoteJid, então buscamos mais mensagens
+        // e filtramos no PHP depois para garantir que pegamos as corretas
         $requestPayload = [
-            'where' => [
-                'key' => [
-                    'remoteJid' => $selectedChat
-                ]
-            ],
-            'limit' => 10
+            'limit' => 100  // Buscar 100 mensagens para ter certeza de pegar as do chat correto
         ];
         
         $requestJson = json_encode($requestPayload);
@@ -240,6 +237,12 @@ if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceNam
                 $messages = array_values($messages);
                 
                 error_log("Após filtro PHP: " . count($messages) . " mensagens do chat correto");
+                
+                // Limitar a 10 mensagens após filtrar
+                if (count($messages) > 10) {
+                    error_log("Limitando de " . count($messages) . " para 10 mensagens");
+                    $messages = array_slice($messages, 0, 10);
+                }
                 
                 // Ordenar mensagens por timestamp (mais recentes no topo)
                 usort($messages, function($a, $b) {

@@ -27,13 +27,10 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 $messages = [];
 
 try {
+    // A API Evolution IGNORA o filtro remoteJid, então buscamos mais mensagens
+    // e filtramos no PHP depois
     $payload = json_encode([
-        'where' => [
-            'key' => [
-                'remoteJid' => $chatId
-            ]
-        ],
-        'limit' => 10
+        'limit' => 100
     ]);
     
     $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
@@ -75,6 +72,11 @@ try {
             
             // Reindexar array após filtro
             $messages = array_values($messages);
+            
+            // Limitar a 10 mensagens após filtrar
+            if (count($messages) > 10) {
+                $messages = array_slice($messages, 0, 10);
+            }
         }
     }
 } catch (Exception $e) {
