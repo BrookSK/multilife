@@ -453,29 +453,25 @@ echo 'document.addEventListener("click",function(){';
 echo '  const menu=document.getElementById("actionsMenu");';
 echo '  if(menu)menu.classList.remove("show");';
 echo '});';
-const messagesContainer=document.getElementById("messagesContainer");
-if(messagesContainer){
-  messagesContainer.scrollTop=messagesContainer.scrollHeight;
-}
-
-// Polling para novas mensagens a cada 3 segundos
-let lastMessageCount=' . count($messages) . ';
-if(messagesContainer){
-  setInterval(function(){
-    const chatId="' . addslashes($selectedChat) . '";
-    if(!chatId)return;
-    
-    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId))
-      .then(r=>r.json())
-      .then(data=>{
-        if(data.messages && data.messages.length > lastMessageCount){
-          // Recarregar página para mostrar novas mensagens
-          window.location.reload();
-        }
-      })
-      .catch(e=>console.error("Erro ao buscar mensagens:",e));
-  }, 3000);
-}
+echo 'const messagesContainer=document.getElementById("messagesContainer");';
+echo 'if(messagesContainer){';
+echo '  messagesContainer.scrollTop=messagesContainer.scrollHeight;';
+echo '}';
+echo 'let lastMessageCount=' . count($messages) . ';';
+echo 'if(messagesContainer){';
+echo '  setInterval(function(){';
+echo '    const chatId="' . addslashes($selectedChat) . '";';
+echo '    if(!chatId)return;';
+echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId))';
+echo '      .then(r=>r.json())';
+echo '      .then(data=>{';
+echo '        if(data.messages && data.messages.length > lastMessageCount){';
+echo '          window.location.reload();';
+echo '        }';
+echo '      })';
+echo '      .catch(e=>console.error("Erro ao buscar mensagens:",e));';
+echo '  }, 3000);';
+echo '}';
 echo 'const textarea=document.querySelector(".whatsapp-input");';
 echo 'if(textarea){';
 echo '  textarea.addEventListener("input",function(){';
