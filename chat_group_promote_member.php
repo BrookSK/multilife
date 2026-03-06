@@ -48,7 +48,7 @@ try {
     
     if ($httpCode === 200 || $httpCode === 201) {
         flash_set('success', 'Participante promovido a administrador!');
-        audit_log('whatsapp_group_member_promoted', 'Membro promovido no grupo: ' . $groupId);
+        audit_log('update', 'chat_groups', $groupId, null, ['action' => 'promote_member', 'participant' => $participantId]);
     } else {
         flash_set('error', 'Erro ao promover participante. Código: ' . $httpCode);
     }

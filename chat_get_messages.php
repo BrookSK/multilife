@@ -7,87 +7,46 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 
 header('Content-Type: application/json');
+header('Cache-Control: no-cache, no-store, must-revalidate');
 
-$chatId = isset($_GET['chat_id']) ? trim((string)$_GET['chat_id']) : '';
+$chatId = trim($_GET['chat_id'] ?? '');
+$since  = (int)($_GET['since'] ?? 0); // timestamp UNIX - retorna apenas msgs após este momento
 
 if (empty($chatId)) {
     echo json_encode(['error' => 'chat_id obrigatório']);
     exit;
 }
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
-
-if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
-    echo json_encode(['error' => 'Credenciais Evolution não configuradas']);
-    exit;
-}
-
-$messages = [];
-
 try {
-    // Buscar mensagens com ordenação por data DESC
-    $payload = json_encode([
-        'limit' => 100,
-        'sort' => [
-            'messageTimestamp' => -1
-        ]
-    ]);
-    
-    $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'apikey: ' . $apiKey,
-        'Content-Type: application/json',
-        'Cache-Control: no-cache'
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-    
-    // Tratar erro de timeout
-    if ($curlError) {
-        echo json_encode([
-            'error' => 'Timeout ao buscar mensagens',
-            'messages' => [],
-            'count' => 0
-        ]);
+    $tableExists = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
+    if (!$tableExists) {
+        echo json_encode(['messages' => [], 'count' => 0, 'last_timestamp' => 0]);
         exit;
     }
-    
-    if ($httpCode === 200) {
-        $data = json_decode($response, true);
-        if (isset($data) && is_array($data)) {
-            $messages = $data;
-            
-            // Verificar se retornou mensagens do chat correto
-            if (!empty($messages)) {
-                $firstMsgJid = $messages[0]['key']['remoteJid'] ?? '';
-                if ($firstMsgJid !== $chatId) {
-                    // Filtro PHP como fallback
-                    $messages = array_filter($messages, function($msg) use ($chatId) {
-                        return ($msg['key']['remoteJid'] ?? '') === $chatId;
-                    });
-                    $messages = array_values($messages);
-                }
-            }
-        }
-    }
-} catch (Exception $e) {
-    echo json_encode(['error' => $e->getMessage()]);
-    exit;
-}
 
-echo json_encode([
-    'messages' => $messages,
-    'count' => count($messages)
-]);
+    // Buscar mensagens novas desde o último timestamp
+    $stmt = db()->prepare("
+        SELECT id, remote_jid, message_text, from_me, message_timestamp
+        FROM chat_messages
+        WHERE remote_jid = ?
+          AND message_timestamp > ?
+        ORDER BY message_timestamp ASC, id ASC
+        LIMIT 50
+    ");
+    $stmt->execute([$chatId, $since]);
+    $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $lastTimestamp = $since;
+    if (!empty($messages)) {
+        $lastTimestamp = (int)end($messages)['message_timestamp'];
+    }
+
+    echo json_encode([
+        'messages'       => $messages,
+        'count'          => count($messages),
+        'last_timestamp' => $lastTimestamp,
+    ]);
+} catch (Exception $e) {
+    echo json_encode(['error' => $e->getMessage(), 'messages' => [], 'count' => 0]);
+}
 exit;

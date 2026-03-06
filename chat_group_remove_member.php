@@ -48,7 +48,7 @@ try {
     
     if ($httpCode === 200 || $httpCode === 201) {
         flash_set('success', 'Participante removido com sucesso!');
-        audit_log('whatsapp_group_member_removed', 'Membro removido do grupo: ' . $groupId);
+        audit_log('update', 'chat_groups', $groupId, null, ['action' => 'remove_member', 'participant' => $participantId]);
     } else {
         flash_set('error', 'Erro ao remover participante. Código: ' . $httpCode);
     }

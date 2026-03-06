@@ -56,7 +56,7 @@ try {
     
     if ($httpCode === 200 || $httpCode === 201) {
         flash_set('success', 'Participantes adicionados com sucesso!');
-        audit_log('whatsapp_group_members_added', 'Membros adicionados ao grupo: ' . $groupId);
+        audit_log('update', 'chat_groups', $groupId, null, ['action' => 'add_members', 'participants' => $formattedParticipants]);
     } else {
         flash_set('error', 'Erro ao adicionar participantes. Código: ' . $httpCode);
     }

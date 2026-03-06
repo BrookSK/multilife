@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
 
-view_header('Grupos WhatsApp');
+auth_require_login();
 
 // Buscar configurações da Evolution API
 $baseUrl = admin_setting_get('evolution.base_url');
@@ -226,211 +226,146 @@ try {
     $regions = [];
 }
 
-?>
+view_header('Grupos WhatsApp');
 
-<div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>Grupos WhatsApp</h2>
-                <a href="/chat_web.php" class="btn btn-secondary">
-                    <i class="fas fa-arrow-left"></i> Voltar para Chat
-                </a>
-            </div>
+echo '<div class="grid">';
+echo '<section class="card col12">';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Grupos WhatsApp</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px">Gerencie os grupos criados e adicione participantes.</div>';
+echo '</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn" href="/chat_web.php?type=grupos">← Voltar ao Chat</a>';
+echo '</div>';
+echo '</div>';
 
-            <?php if ($success): ?>
-                <div class="alert alert-success alert-dismissible fade show">
-                    <?= h($success) ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            <?php endif; ?>
+if (!empty($success)) {
+    echo '<div style="background:#dcfce7;border:1px solid #86efac;padding:12px 16px;border-radius:8px;margin-top:16px;color:#166534">' . h($success) . '</div>';
+}
+if (!empty($error)) {
+    echo '<div style="background:#fee2e2;border:1px solid #fca5a5;padding:12px 16px;border-radius:8px;margin-top:16px;color:#991b1b">' . h($error) . '</div>';
+}
 
-            <?php if ($error): ?>
-                <div class="alert alert-danger alert-dismissible fade show">
-                    <?= h($error) ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            <?php endif; ?>
+// Filtros
+echo '<form method="get" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">';
+echo '<select name="specialty" style="padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;min-width:180px">';
+echo '<option value="">Todas as especialidades</option>';
+foreach ($specialties as $spec) {
+    $sel = $specialtyFilter === $spec ? ' selected' : '';
+    echo '<option value="' . h($spec) . '"' . $sel . '>' . h($spec) . '</option>';
+}
+echo '</select>';
+echo '<select name="region" style="padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;min-width:180px">';
+echo '<option value="">Todas as regiões</option>';
+foreach ($regions as $reg) {
+    $sel = $regionFilter === $reg ? ' selected' : '';
+    echo '<option value="' . h($reg) . '"' . $sel . '>' . h($reg) . '</option>';
+}
+echo '</select>';
+echo '<button type="submit" class="btn btnPrimary">Filtrar</button>';
+echo '<a href="/chat_groups.php" class="btn">Limpar</a>';
+echo '</form>';
+echo '</section>';
 
-            <!-- Filtros -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <form method="get" class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Especialidade</label>
-                            <select name="specialty" class="form-select">
-                                <option value="">Todas</option>
-                                <?php foreach ($specialties as $spec): ?>
-                                    <option value="<?= h($spec) ?>" <?= $specialtyFilter === $spec ? 'selected' : '' ?>>
-                                        <?= h($spec) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Região</label>
-                            <select name="region" class="form-select">
-                                <option value="">Todas</option>
-                                <?php foreach ($regions as $reg): ?>
-                                    <option value="<?= h($reg) ?>" <?= $regionFilter === $reg ? 'selected' : '' ?>>
-                                        <?= h($reg) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary me-2">
-                                <i class="fas fa-filter"></i> Filtrar
-                            </button>
-                            <a href="/chat_groups.php" class="btn btn-secondary">
-                                <i class="fas fa-times"></i> Limpar
-                            </a>
-                        </div>
-                    </form>
-                </div>
-            </div>
+if (empty($groups)) {
+    echo '<section class="card col12">';
+    echo '<div style="text-align:center;padding:40px;color:hsl(var(--muted-foreground))">Nenhum grupo encontrado. Crie um grupo via Chat ao Vivo.</div>';
+    echo '</section>';
+} else {
+    foreach ($groups as $group) {
+        $jid  = $group['group_jid'];
+        $name = $group['group_name'];
+        $pic  = $group['group_picture_url'] ?? '';
+        $spec = $group['specialty'] ?? '';
+        $reg  = $group['region'] ?? '';
+        $modalId = 'g' . md5($jid);
 
-            <!-- Lista de Grupos -->
-            <div class="row">
-                <?php if (empty($groups)): ?>
-                    <div class="col-12">
-                        <div class="alert alert-info">
-                            Nenhum grupo encontrado. Os grupos serão sincronizados automaticamente da Evolution API.
-                        </div>
-                    </div>
-                <?php else: ?>
-                    <?php foreach ($groups as $group): ?>
-                        <div class="col-md-6 col-lg-4 mb-4">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <div class="d-flex align-items-start mb-3">
-                                        <?php if ($group['group_picture_url']): ?>
-                                            <img src="<?= h($group['group_picture_url']) ?>" 
-                                                 alt="Foto do grupo" 
-                                                 class="rounded-circle me-3" 
-                                                 style="width:60px;height:60px;object-fit:cover;">
-                                        <?php else: ?>
-                                            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" 
-                                                 style="width:60px;height:60px;font-size:24px;">
-                                                <i class="fas fa-users"></i>
-                                            </div>
-                                        <?php endif; ?>
-                                        <div class="flex-grow-1">
-                                            <h5 class="card-title mb-1"><?= h($group['group_name']) ?></h5>
-                                            <?php if ($group['specialty']): ?>
-                                                <span class="badge bg-primary"><?= h($group['specialty']) ?></span>
-                                            <?php endif; ?>
-                                            <?php if ($group['region']): ?>
-                                                <span class="badge bg-info"><?= h($group['region']) ?></span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
+        echo '<section class="card col4" style="min-width:280px">';
+        echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">';
+        if (!empty($pic)) {
+            echo '<img src="' . h($pic) . '" style="width:56px;height:56px;border-radius:50%;object-fit:cover" alt="">';
+        } else {
+            echo '<div style="width:56px;height:56px;border-radius:50%;background:#00a884;display:flex;align-items:center;justify-content:center">';
+            echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+            echo '</div>';
+        }
+        echo '<div style="flex:1;min-width:0">';
+        echo '<div style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . h($name) . '</div>';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:2px">';
+        if ($spec) echo '<span style="background:hsl(var(--accent));color:hsl(var(--accent-foreground));padding:2px 6px;border-radius:4px;margin-right:4px">' . h($spec) . '</span>';
+        if ($reg)  echo '<span style="background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:4px">' . h($reg) . '</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
 
-                                    <?php if ($group['group_description']): ?>
-                                        <p class="card-text text-muted small">
-                                            <?= h(mb_strimwidth($group['group_description'], 0, 100, '...')) ?>
-                                        </p>
-                                    <?php endif; ?>
+        echo '<div style="display:flex;flex-direction:column;gap:8px">';
+        echo '<a href="/chat_web.php?chat=' . urlencode($jid) . '&type=grupos" class="btn btnPrimary" style="text-align:center">💬 Abrir Chat</a>';
+        echo '<button type="button" class="btn" onclick="openModal(\'' . $modalId . '_meta\')">✏️ Editar Metadados</button>';
+        echo '<button type="button" class="btn" onclick="openModal(\'' . $modalId . '_part\')" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd">👥 Gerenciar Participantes</button>';
+        echo '</div>';
+        echo '</section>';
 
-                                    <div class="d-grid gap-2">
-                                        <a href="/chat_web.php?chat=<?= urlencode($group['group_jid']) ?>" 
-                                           class="btn btn-success btn-sm">
-                                            <i class="fas fa-comments"></i> Abrir Chat
-                                        </a>
-                                        <button type="button" 
-                                                class="btn btn-outline-primary btn-sm" 
-                                                data-bs-toggle="modal" 
-                                                data-bs-target="#metadataModal<?= md5($group['group_jid']) ?>">
-                                            <i class="fas fa-edit"></i> Editar Metadados
-                                        </button>
-                                        <button type="button" 
-                                                class="btn btn-outline-secondary btn-sm" 
-                                                data-bs-toggle="modal" 
-                                                data-bs-target="#participantsModal<?= md5($group['group_jid']) ?>">
-                                            <i class="fas fa-users"></i> Gerenciar Participantes
-                                        </button>
-                                        <?php if (rbac_has_permission('admin.settings.manage')): ?>
-                                        <button type="button" 
-                                                class="btn btn-outline-danger btn-sm" 
-                                                onclick="if(confirm('Deseja realmente excluir este grupo do sistema? Esta ação não pode ser desfeita.')) { window.location.href='/chat_groups_delete.php?id=<?= urlencode($group['group_jid']) ?>'; }">
-                                            <i class="fas fa-trash"></i> Excluir
-                                        </button>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+        // Modal Metadados
+        echo '<div id="' . $modalId . '_meta" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">';
+        echo '<div style="background:#fff;border-radius:12px;padding:24px;width:100%;max-width:440px;box-shadow:0 20px 40px rgba(0,0,0,.2)">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
+        echo '<div style="font-size:18px;font-weight:700">Editar Metadados</div>';
+        echo '<button onclick="closeModal(\'' . $modalId . '_meta\')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>';
+        echo '</div>';
+        echo '<form method="post">';
+        echo '<input type="hidden" name="action" value="update_metadata">';
+        echo '<input type="hidden" name="group_jid" value="' . h($jid) . '">';
+        echo '<div style="margin-bottom:16px">';
+        echo '<label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Especialidade</label>';
+        echo '<input type="text" name="specialty" value="' . h($spec) . '" placeholder="Ex: ADS" style="width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '</div>';
+        echo '<div style="margin-bottom:20px">';
+        echo '<label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Região</label>';
+        echo '<input type="text" name="region" value="' . h($reg) . '" placeholder="Ex: CARAPEBUS - RJ" style="width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '</div>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button type="button" class="btn" onclick="closeModal(\'' . $modalId . '_meta\')">Cancelar</button>';
+        echo '<button type="submit" class="btn btnPrimary">Salvar</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        echo '</div>';
 
-                        <!-- Modal Metadados -->
-                        <div class="modal fade" id="metadataModal<?= md5($group['group_jid']) ?>" tabindex="-1">
-                            <div class="modal-dialog">
-                                <div class="modal-content">
-                                    <form method="post">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title">Editar Metadados - <?= h($group['group_name']) ?></h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body">
-                                            <input type="hidden" name="action" value="update_metadata">
-                                            <input type="hidden" name="group_jid" value="<?= h($group['group_jid']) ?>">
-                                            
-                                            <div class="mb-3">
-                                                <label class="form-label">Especialidade</label>
-                                                <input type="text" name="specialty" class="form-control" 
-                                                       value="<?= h($group['specialty'] ?? '') ?>" 
-                                                       placeholder="Ex: Cardiologia">
-                                            </div>
-                                            
-                                            <div class="mb-3">
-                                                <label class="form-label">Região</label>
-                                                <input type="text" name="region" class="form-control" 
-                                                       value="<?= h($group['region'] ?? '') ?>" 
-                                                       placeholder="Ex: São Paulo">
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                            <button type="submit" class="btn btn-primary">Salvar</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
+        // Modal Participantes
+        echo '<div id="' . $modalId . '_part" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">';
+        echo '<div style="background:#fff;border-radius:12px;padding:24px;width:100%;max-width:500px;box-shadow:0 20px 40px rgba(0,0,0,.2)">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
+        echo '<div style="font-size:18px;font-weight:700">Gerenciar Participantes</div>';
+        echo '<button onclick="closeModal(\'' . $modalId . '_part\')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>';
+        echo '</div>';
+        echo '<div style="margin-bottom:16px;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:13px;color:#856404">';
+        echo '⚠️ Adicione pelo menos 1 participante para poder enviar mensagens ao grupo.';
+        echo '</div>';
+        echo '<form method="post">';
+        echo '<input type="hidden" name="action" value="add_participant">';
+        echo '<input type="hidden" name="group_jid" value="' . h($jid) . '">';
+        echo '<div style="margin-bottom:16px">';
+        echo '<label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Número do participante</label>';
+        echo '<input type="text" name="participant_phone" placeholder="Ex: 5511999999999" required style="width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">DDI + DDD + número, apenas dígitos</div>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button type="button" class="btn" onclick="closeModal(\'' . $modalId . '_part\')">Cancelar</button>';
+        echo '<button type="submit" class="btn btnPrimary">➕ Adicionar ao Grupo</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        echo '</div>';
+    }
+}
 
-                        <!-- Modal Participantes -->
-                        <div class="modal fade" id="participantsModal<?= md5($group['group_jid']) ?>" tabindex="-1">
-                            <div class="modal-dialog modal-lg">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title">Gerenciar Participantes - <?= h($group['group_name']) ?></h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        <!-- Adicionar Participante -->
-                                        <form method="post" class="mb-4">
-                                            <input type="hidden" name="action" value="add_participant">
-                                            <input type="hidden" name="group_jid" value="<?= h($group['group_jid']) ?>">
-                                            <div class="input-group">
-                                                <input type="text" name="participant_phone" class="form-control" 
-                                                       placeholder="Número do participante (ex: 5511999999999)" required>
-                                                <button type="submit" class="btn btn-success">
-                                                    <i class="fas fa-plus"></i> Adicionar
-                                                </button>
-                                            </div>
-                                        </form>
+echo '</div>';
 
-                                        <p class="text-muted small">
-                                            Para remover participantes, use a interface do WhatsApp diretamente.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
+echo '<script>';
+echo 'function openModal(id){var el=document.getElementById(id);if(el){el.style.display="flex";}}';
+echo 'function closeModal(id){var el=document.getElementById(id);if(el){el.style.display="none";}}';
+echo 'document.addEventListener("keydown",function(e){if(e.key==="Escape"){document.querySelectorAll("[id$=_meta],[id$=_part]").forEach(function(el){el.style.display="none";});}});';
+echo '</script>';
 
-<?php view_footer(); ?>
+view_footer();

@@ -43,6 +43,9 @@ function format_phone_evolution($phone) {
 }
 
 // PROCESSAR ENVIO DE MENSAGEM
+$isAjax = (isset($_POST['ajax']) && $_POST['ajax'] === '1') || 
+          (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'send_message') {
         // Buscar número de qualquer um dos 3 campos possíveis
@@ -269,8 +272,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Se não salvou no banco, mostrar erro e NÃO redirecionar
                 if (!$savedToDb) {
                     $error = "ERRO CRÍTICO: Mensagem não foi salva no banco de dados. Erro: " . $dbError . ". Entre em contato com o suporte.";
+                    if ($isAjax) {
+                        header('Content-Type: application/json');
+                        echo json_encode(['success' => false, 'error' => $error]);
+                        exit();
+                    }
                 } else {
-                    // Sucesso - redirecionar preservando type
+                    // Sucesso
+                    if ($isAjax) {
+                        header('Content-Type: application/json');
+                        echo json_encode(['success' => true, 'message' => $message, 'timestamp' => time()]);
+                        exit();
+                    }
                     $redirectType = isset($_GET['type']) ? '&type=' . urlencode($_GET['type']) : '';
                     $redirectType = $redirectType ?: (strpos($remoteJid, '@g.us') !== false ? '&type=grupos' : '');
                     header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1' . $redirectType);
@@ -287,6 +300,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $error = '❌ Conexão com WhatsApp fechada. Aguarde reconexão automática e tente novamente.';
                 } else {
                     $error = 'Erro ao enviar mensagem. HTTP Code: ' . $httpCode . ' - ' . $errorMsg;
+                }
+                if ($isAjax) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'error' => $error]);
+                    exit();
                 }
             }
         }
@@ -1837,54 +1855,120 @@ echo '  const menu=document.getElementById("actionsMenu");';
 echo '  if(menu)menu.classList.remove("show");';
 echo '});';
 echo 'const messagesContainer=document.getElementById("messagesContainer");';
-echo 'if(messagesContainer){';
-echo '  messagesContainer.scrollTop=messagesContainer.scrollHeight;';
+echo 'const chatId="' . addslashes($selectedChat) . '";';
+
+// Calcular o último timestamp das mensagens já carregadas na página
+// A query usa aliases: text, fromMe, timestamp
+$lastTs = 0;
+if (!empty($messages)) {
+    foreach ($messages as $m) {
+        $ts = (int)($m['timestamp'] ?? $m['message_timestamp'] ?? 0);
+        if ($ts > $lastTs) $lastTs = $ts;
+    }
+}
+
+echo 'let lastTimestamp=' . $lastTs . ';';
+echo 'let sending=false;';
+
+// Função para formatar hora
+echo 'function formatTime(ts){';
+echo '  const d=new Date(ts*1000);';
+echo '  return d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");';
 echo '}';
-echo 'let lastMessageCount=' . count($messages) . ';';
-echo 'console.log("Polling iniciado. lastMessageCount:", lastMessageCount);';
-echo 'if(messagesContainer){';
+
+// Função para criar elemento de mensagem
+echo 'function createMsgEl(text,fromMe,ts){';
+echo '  const wrap=document.createElement("div");';
+echo '  wrap.className="whatsapp-message "+(fromMe?"out":"in");';
+echo '  const bubble=document.createElement("div");';
+echo '  bubble.className="whatsapp-message-bubble";';
+echo '  const textEl=document.createElement("div");';
+echo '  textEl.className="whatsapp-message-text";';
+echo '  textEl.textContent=text;';
+echo '  const timeEl=document.createElement("div");';
+echo '  timeEl.className="whatsapp-message-time";';
+echo '  timeEl.textContent=formatTime(ts);';
+echo '  bubble.appendChild(textEl);';
+echo '  bubble.appendChild(timeEl);';
+echo '  wrap.appendChild(bubble);';
+echo '  return wrap;';
+echo '}';
+
+// Scroll para o final
+echo 'function scrollToBottom(){';
+echo '  if(messagesContainer)messagesContainer.scrollTop=messagesContainer.scrollHeight;';
+echo '}';
+echo 'scrollToBottom();';
+
+// Polling a cada 3 segundos - busca apenas msgs novas (since=lastTimestamp)
+echo 'if(messagesContainer && chatId){';
 echo '  setInterval(function(){';
-echo '    const chatId="' . addslashes($selectedChat) . '";';
-echo '    if(!chatId)return;';
-echo '    console.log("Polling mensagens para chat:", chatId);';
-echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&t="+Date.now(),{';
-echo '      cache:"no-cache",';
-echo '      headers:{"Cache-Control":"no-cache","Pragma":"no-cache"}';
-echo '    })';
-echo '      .then(r=>r.json())';
-echo '      .then(data=>{';
-echo '        if(data.error){';
-echo '          console.warn("Erro no polling:", data.error);';
-echo '          return;';
-echo '        }';
-echo '        console.log("Resposta do polling:", data);';
-echo '        console.log("Mensagens recebidas:", data.messages?.length || 0);';
-echo '        if(data.messages){';
-echo '          data.messages.forEach((msg, idx) => {';
-echo '            const remoteJid = msg.key?.remoteJid || "N/A";';
-echo '            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";';
-echo '            console.log(`Mensagem #${idx} - remoteJid: ${remoteJid} - Texto: ${text.substring(0, 50)}`);';
-echo '          });';
-echo '        }';
-echo '        if(data.messages && data.messages.length > lastMessageCount){';
-echo '          console.log("Novas mensagens detectadas! Recarregando...");';
-echo '          lastMessageCount=data.messages.length;';
-echo '          location.reload();';
-echo '        }';
+echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&since="+lastTimestamp)';
+echo '      .then(function(r){return r.json();})';
+echo '      .then(function(data){';
+echo '        if(data.error||!data.messages||data.messages.length===0)return;';
+echo '        data.messages.forEach(function(msg){';
+echo '          const text=msg.message_text||"";';
+echo '          const fromMe=parseInt(msg.from_me)===1;';
+echo '          const ts=parseInt(msg.message_timestamp)||0;';
+echo '          messagesContainer.appendChild(createMsgEl(text,fromMe,ts));';
+echo '        });';
+echo '        lastTimestamp=data.last_timestamp;';
+echo '        scrollToBottom();';
 echo '      })';
-echo '      .catch(e=>console.error("Erro no polling:",e));';
-echo '  },10000);';
+echo '      .catch(function(){});';
+echo '  },3000);';
 echo '}';
+
+// Envio de mensagem via AJAX
+echo 'const sendForm=document.getElementById("sendMessageForm");';
 echo 'const textarea=document.querySelector(".whatsapp-input");';
-echo 'if(textarea){';
+echo 'if(sendForm&&textarea){';
+// Auto-resize do textarea
 echo '  textarea.addEventListener("input",function(){';
 echo '    this.style.height="auto";';
 echo '    this.style.height=this.scrollHeight+"px";';
 echo '  });';
+// Interceptar submit
+echo '  sendForm.addEventListener("submit",function(e){';
+echo '    e.preventDefault();';
+echo '    if(sending)return;';
+echo '    const text=textarea.value.trim();';
+echo '    if(!text)return;';
+// Mostrar mensagem imediatamente no UI
+echo '    const ts=Math.floor(Date.now()/1000);';
+echo '    const msgEl=createMsgEl(text,true,ts);';
+echo '    messagesContainer.appendChild(msgEl);';
+echo '    scrollToBottom();';
+echo '    textarea.value="";';
+echo '    textarea.style.height="auto";';
+echo '    sending=true;';
+// Enviar via AJAX
+echo '    const formData=new FormData(sendForm);';
+echo '    formData.set("message",text);';
+echo '    formData.set("ajax","1");';
+echo '    fetch(sendForm.action,{method:"POST",body:formData})';
+echo '      .then(function(r){return r.json();})';
+echo '      .then(function(data){';
+echo '        sending=false;';
+echo '        if(!data.success){';
+echo '          msgEl.querySelector(".whatsapp-message-text").style.color="#dc2626";';
+echo '          msgEl.querySelector(".whatsapp-message-text").textContent=text+" [❌ "+( data.error||"Erro ao enviar")+"]";';
+echo '        } else {';
+// Atualizar lastTimestamp para incluir a mensagem enviada
+echo '          if(data.timestamp&&data.timestamp>lastTimestamp)lastTimestamp=data.timestamp;';
+echo '        }';
+echo '      })';
+echo '      .catch(function(){';
+echo '        sending=false;';
+echo '        msgEl.querySelector(".whatsapp-message-text").style.color="#dc2626";';
+echo '      });';
+echo '  });';
+// Enter para enviar
 echo '  textarea.addEventListener("keydown",function(e){';
 echo '    if(e.key==="Enter"&&!e.shiftKey){';
 echo '      e.preventDefault();';
-echo '      document.getElementById("sendMessageForm").submit();';
+echo '      sendForm.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));';
 echo '    }';
 echo '  });';
 echo '}';

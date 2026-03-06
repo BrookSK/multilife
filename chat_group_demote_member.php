@@ -48,7 +48,7 @@ try {
     
     if ($httpCode === 200 || $httpCode === 201) {
         flash_set('success', 'Participante rebaixado de administrador!');
-        audit_log('whatsapp_group_member_demoted', 'Membro rebaixado no grupo: ' . $groupId);
+        audit_log('update', 'chat_groups', $groupId, null, ['action' => 'demote_member', 'participant' => $participantId]);
     } else {
         flash_set('error', 'Erro ao rebaixar participante. Código: ' . $httpCode);
     }
