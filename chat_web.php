@@ -42,20 +42,48 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 $chats = [];
             }
             
-            // Enriquecer dados dos chats com nomes
+            // Enriquecer dados dos chats com nomes e fotos
             foreach ($chats as &$chat) {
+                $chatId = $chat['id'] ?? '';
+                
+                // Buscar nome
                 if (!isset($chat['name']) || empty($chat['name'])) {
-                    // Tentar buscar nome do contato
-                    $chatId = $chat['id'] ?? '';
                     if (!empty($chatId)) {
-                        // Usar pushName se disponível
+                        // Prioridade: name > pushName > número
                         if (isset($chat['pushName']) && !empty($chat['pushName'])) {
                             $chat['name'] = $chat['pushName'];
                         } else {
-                            // Extrair número do ID
                             $number = str_replace(['@s.whatsapp.net', '@g.us'], '', $chatId);
                             $chat['name'] = $number;
                         }
+                    }
+                }
+                
+                // Buscar foto de perfil se não tiver
+                if (!isset($chat['profilePictureUrl']) && !empty($chatId)) {
+                    try {
+                        $number = str_replace(['@s.whatsapp.net', '@g.us'], '', $chatId);
+                        $chProfile = curl_init($baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode($number));
+                        curl_setopt($chProfile, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($chProfile, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+                        curl_setopt($chProfile, CURLOPT_SSL_VERIFYPEER, false);
+                        curl_setopt($chProfile, CURLOPT_TIMEOUT, 3);
+                        
+                        $profileResponse = curl_exec($chProfile);
+                        $profileHttpCode = curl_getinfo($chProfile, CURLINFO_HTTP_CODE);
+                        curl_close($chProfile);
+                        
+                        if ($profileHttpCode === 200) {
+                            $profileData = json_decode($profileResponse, true);
+                            if (isset($profileData['profilePictureUrl'])) {
+                                $chat['profilePictureUrl'] = $profileData['profilePictureUrl'];
+                            }
+                            if (isset($profileData['name']) && !empty($profileData['name'])) {
+                                $chat['name'] = $profileData['name'];
+                            }
+                        }
+                    } catch (Exception $e) {
+                        // Ignorar erro
                     }
                 }
             }
@@ -89,11 +117,24 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
 // Buscar mensagens do chat selecionado
 if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName) . '?remoteJid=' . urlencode($selectedChat));
+        // Buscar mensagens com limite maior para histórico completo
+        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'apikey: ' . $apiKey,
+            'Content-Type: application/json'
+        ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+            'where' => [
+                'key' => [
+                    'remoteJid' => $selectedChat
+                ]
+            ],
+            'limit' => 100
+        ]));
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -103,16 +144,48 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
             $data = json_decode($response, true);
             if (isset($data) && is_array($data)) {
                 $messages = $data;
+                // Ordenar mensagens por timestamp
+                usort($messages, function($a, $b) {
+                    $timeA = $a['messageTimestamp'] ?? 0;
+                    $timeB = $b['messageTimestamp'] ?? 0;
+                    return $timeA - $timeB;
+                });
             }
         }
         
-        // Buscar dados do chat selecionado
-        foreach ($chats as $chat) {
+        // Buscar dados do chat selecionado e foto de perfil
+        foreach ($chats as &$chat) {
             if (($chat['id'] ?? '') === $selectedChat) {
                 $selectedChatData = $chat;
+                
+                // Buscar foto de perfil
+                try {
+                    $chProfile = curl_init($baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode(str_replace(['@s.whatsapp.net', '@g.us'], '', $selectedChat)));
+                    curl_setopt($chProfile, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($chProfile, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+                    curl_setopt($chProfile, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_setopt($chProfile, CURLOPT_TIMEOUT, 5);
+                    
+                    $profileResponse = curl_exec($chProfile);
+                    $profileHttpCode = curl_getinfo($chProfile, CURLINFO_HTTP_CODE);
+                    curl_close($chProfile);
+                    
+                    if ($profileHttpCode === 200) {
+                        $profileData = json_decode($profileResponse, true);
+                        if (isset($profileData['profilePictureUrl'])) {
+                            $selectedChatData['profilePictureUrl'] = $profileData['profilePictureUrl'];
+                        }
+                        if (isset($profileData['name']) && !empty($profileData['name'])) {
+                            $selectedChatData['name'] = $profileData['name'];
+                        }
+                    }
+                } catch (Exception $e) {
+                    // Ignorar erro de foto
+                }
                 break;
             }
         }
+        unset($chat);
     } catch (Exception $e) {
         // Erro ao buscar mensagens
     }
@@ -242,9 +315,14 @@ if (empty($chats)) {
         $lastTime = isset($chat['lastMessage']['messageTimestamp']) ? date('H:i', $chat['lastMessage']['messageTimestamp']) : '';
         
         $initials = strtoupper(substr($chatName, 0, 2));
+        $profilePic = $chat['profilePictureUrl'] ?? '';
         
         echo '<a href="/chat_web.php?type=' . h($chatType) . '&chat=' . urlencode($chatId) . '" class="whatsapp-chat-item' . $isActive . '">';
-        echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+        if (!empty($profilePic)) {
+            echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
+        } else {
+            echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+        }
         echo '<div class="whatsapp-chat-info">';
         echo '<div class="whatsapp-chat-name">' . h($chatName);
         if ($isGroup) {
@@ -277,12 +355,17 @@ if (empty($selectedChat)) {
 } else {
     $chatName = $selectedChatData['name'] ?? $selectedChat;
     $isGroup = strpos($selectedChat, '@g.us') !== false;
+    $profilePic = $selectedChatData['profilePictureUrl'] ?? '';
 
     // Cabeçalho do chat
     echo '<div class="whatsapp-chat-header">';
     echo '<div class="whatsapp-chat-header-info">';
     $initials = strtoupper(substr($chatName, 0, 2));
-    echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+    if (!empty($profilePic)) {
+        echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
+    } else {
+        echo '<div class="whatsapp-chat-avatar">' . h($initials) . '</div>';
+    }
     echo '<div>';
     echo '<div style="font-weight:600;font-size:16px;color:#111b21">' . h($chatName) . '</div>';
     if ($isGroup) {
@@ -370,10 +453,29 @@ echo 'document.addEventListener("click",function(){';
 echo '  const menu=document.getElementById("actionsMenu");';
 echo '  if(menu)menu.classList.remove("show");';
 echo '});';
-echo 'const messagesContainer=document.getElementById("messagesContainer");';
-echo 'if(messagesContainer){';
-echo '  messagesContainer.scrollTop=messagesContainer.scrollHeight;';
-echo '}';
+const messagesContainer=document.getElementById("messagesContainer");
+if(messagesContainer){
+  messagesContainer.scrollTop=messagesContainer.scrollHeight;
+}
+
+// Polling para novas mensagens a cada 3 segundos
+let lastMessageCount=' . count($messages) . ';
+if(messagesContainer){
+  setInterval(function(){
+    const chatId="' . addslashes($selectedChat) . '";
+    if(!chatId)return;
+    
+    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId))
+      .then(r=>r.json())
+      .then(data=>{
+        if(data.messages && data.messages.length > lastMessageCount){
+          // Recarregar página para mostrar novas mensagens
+          window.location.reload();
+        }
+      })
+      .catch(e=>console.error("Erro ao buscar mensagens:",e));
+  }, 3000);
+}
 echo 'const textarea=document.querySelector(".whatsapp-input");';
 echo 'if(textarea){';
 echo '  textarea.addEventListener("input",function(){';
