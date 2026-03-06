@@ -73,13 +73,10 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 $firstChat = $chats[0];
                 $debugLogs[] = "Chaves disponíveis: " . implode(', ', array_keys($firstChat));
                 $debugLogs[] = "ID: " . ($firstChat['id'] ?? 'N/A');
-                $debugLogs[] = "name: " . ($firstChat['name'] ?? 'N/A');
-                $debugLogs[] = "pushName: " . ($firstChat['pushName'] ?? 'N/A');
-                $debugLogs[] = "subject: " . ($firstChat['subject'] ?? 'N/A');
-                $debugLogs[] = "lastMessage existe? " . (isset($firstChat['lastMessage']) ? 'SIM' : 'NÃO');
-                if (isset($firstChat['lastMessage'])) {
-                    $debugLogs[] = "lastMessage chaves: " . implode(', ', array_keys($firstChat['lastMessage']));
-                    $debugLogs[] = "messageTimestamp: " . ($firstChat['lastMessage']['messageTimestamp'] ?? 'N/A');
+                $debugLogs[] = "lastMsgTimestamp: " . ($firstChat['lastMsgTimestamp'] ?? 'N/A');
+                $timestamp = $firstChat['lastMsgTimestamp'] ?? 0;
+                if ($timestamp > 0) {
+                    $debugLogs[] = "Data formatada: " . date('Y-m-d H:i:s', $timestamp);
                 }
                 $debugLogs[] = "";
             }
@@ -88,16 +85,15 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             
             // Log das primeiras 10 conversas ANTES da ordenação
             foreach (array_slice($chats, 0, 10) as $idx => $chat) {
-                $timestamp = $chat['lastMessage']['messageTimestamp'] ?? 0;
+                $timestamp = $chat['lastMsgTimestamp'] ?? 0;
                 $chatId = $chat['id'] ?? 'N/A';
-                $chatName = $chat['name'] ?? $chat['subject'] ?? $chat['pushName'] ?? 'Sem nome';
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-                $debugLogs[] = "#{$idx} - {$chatName} - Timestamp: {$timestamp} - Data: {$date}";
+                $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
             }
             
             usort($chats, function($a, $b) {
-                $timeA = $a['lastMessage']['messageTimestamp'] ?? 0;
-                $timeB = $b['lastMessage']['messageTimestamp'] ?? 0;
+                $timeA = $a['lastMsgTimestamp'] ?? 0;
+                $timeB = $b['lastMsgTimestamp'] ?? 0;
                 
                 // Normalizar timestamps: se estiver em milissegundos (> 10 dígitos), converter para segundos
                 if ($timeA > 9999999999) $timeA = intval($timeA / 1000);
@@ -109,11 +105,10 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             $debugLogs[] = "";
             $debugLogs[] = "--- APÓS ORDENAÇÃO (Top 10) ---";
             foreach (array_slice($chats, 0, 10) as $idx => $chat) {
-                $timestamp = $chat['lastMessage']['messageTimestamp'] ?? 0;
+                $timestamp = $chat['lastMsgTimestamp'] ?? 0;
                 $chatId = $chat['id'] ?? 'N/A';
-                $chatName = $chat['name'] ?? $chat['subject'] ?? 'Sem nome';
                 $date = $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : 'Sem timestamp';
-                $debugLogs[] = "#{$idx} - {$chatName} - Timestamp: {$timestamp} - Data: {$date}";
+                $debugLogs[] = "#{$idx} - ID: {$chatId} - Timestamp: {$timestamp} - Data: {$date}";
             }
             
             // FILTRO 2: Limitar a 10 conversas mais recentes (grupos + privadas)
