@@ -663,15 +663,17 @@ $professionals = [];
 $patients = [];
 
 try {
-    // Buscar profissionais da tabela users com role='profissional'
+    // Buscar profissionais da tabela users usando JOIN com user_roles e roles
     $stmt = db()->prepare("
-        SELECT id, name, phone
-        FROM users
-        WHERE role = 'profissional'
-        AND phone IS NOT NULL
-        AND phone != ''
-        AND status = 'active'
-        ORDER BY name ASC
+        SELECT DISTINCT u.id, u.name, u.phone
+        FROM users u
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        LEFT JOIN roles r ON r.id = ur.role_id
+        WHERE r.slug = 'profissional'
+        AND u.phone IS NOT NULL
+        AND u.phone != ''
+        AND u.status = 'active'
+        ORDER BY u.name ASC
     ");
     $stmt->execute();
     $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
