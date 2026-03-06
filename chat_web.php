@@ -61,14 +61,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (empty($phoneNumber) || empty($message)) {
             $error = 'Número e mensagem são obrigatórios';
         } else {
-            // Formatar número automaticamente para padrão Evolution API
-            $phoneNumber = format_phone_evolution($phoneNumber);
-            
-            // Adicionar @s.whatsapp.net se necessário
+            // Usar o JID diretamente se já contém @
             $remoteJid = $phoneNumber;
+            
+            // Se não contém @, formatar como número de telefone individual
             if (strpos($remoteJid, '@') === false) {
+                // Formatar número automaticamente para padrão Evolution API
+                $remoteJid = format_phone_evolution($phoneNumber);
                 $remoteJid .= '@s.whatsapp.net';
             }
+            // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             
             // Enviar mensagem via API Evolution
             $url = $baseUrl . '/message/sendText/' . urlencode($instanceName);
@@ -397,6 +399,9 @@ try {
         $whereClauses = [];
         $params = [];
         
+        // FILTRO OBRIGATÓRIO: Apenas grupos criados pelo sistema (com specialty preenchida)
+        $whereClauses[] = "specialty IS NOT NULL AND specialty != ''";
+        
         if (!empty($specialtyFilter)) {
             $whereClauses[] = "specialty = ?";
             $params[] = $specialtyFilter;
@@ -407,7 +412,7 @@ try {
             $params[] = $regionFilter;
         }
         
-        $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
+        $whereSQL = 'WHERE ' . implode(' AND ', $whereClauses);
         
         $stmt = db()->prepare("
             SELECT 
