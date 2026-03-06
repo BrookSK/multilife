@@ -126,23 +126,22 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         // Log detalhado da requisição
         error_log("=== CHAT_WEB DEBUG ===");
         error_log("Chat selecionado: " . $selectedChat);
-        error_log("URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName));
+        error_log("URL: " . $baseUrl . '/chat/fetchMessages/' . urlencode($instanceName) . '/' . urlencode($selectedChat) . '?limit=50');
         error_log("Payload: " . $requestJson);
         
-        // Buscar apenas 10 mensagens mais recentes da conversa específica
-        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
+        // Usar endpoint correto que filtra por chat
+        $number = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $selectedChat);
+        $ch = curl_init($baseUrl . '/chat/fetchMessages/' . urlencode($instanceName) . '/' . urlencode($selectedChat) . '?limit=50');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'apikey: ' . $apiKey,
-            'Content-Type: application/json',
             'Cache-Control: no-cache, no-store, must-revalidate',
             'Pragma: no-cache'
         ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPGET, true);
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $requestJson);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
