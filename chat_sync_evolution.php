@@ -25,7 +25,7 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 
 try {
     // Buscar grupos da Evolution API
-    $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName);
+    $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
     $ch = curl_init($groupsUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);

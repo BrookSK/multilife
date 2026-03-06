@@ -337,7 +337,7 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
         ");
         
         // SEMPRE buscar grupos da API (sincronização automática)
-        $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName);
+        $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
         $ch = curl_init($groupsUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
