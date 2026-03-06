@@ -246,8 +246,18 @@ if (!empty($selectedChat)) {
     }
     
     // Carregar também mensagens temporárias da sessão (fallback)
+    // SEMPRE carregar da sessão, não apenas após envio
     if (isset($_SESSION['temp_messages'][$selectedChat])) {
-        $messages = array_merge($messages, $_SESSION['temp_messages'][$selectedChat]);
+        $tempMessages = $_SESSION['temp_messages'][$selectedChat];
+        
+        // Adicionar apenas mensagens que não estão no banco (evitar duplicatas)
+        $existingTimestamps = array_column($messages, 'timestamp');
+        foreach ($tempMessages as $tempMsg) {
+            if (!in_array($tempMsg['timestamp'], $existingTimestamps)) {
+                $messages[] = $tempMsg;
+            }
+        }
+        
         // Ordenar por timestamp
         usort($messages, function($a, $b) {
             return ($a['timestamp'] ?? 0) - ($b['timestamp'] ?? 0);
@@ -287,8 +297,7 @@ if (!empty($selectedChat)) {
 
 // Verificar se há mensagem de sucesso
 if (isset($_GET['success']) && $_GET['success'] === '1') {
-    $savedStatus = isset($_GET['saved']) && $_GET['saved'] === '1' ? 'salva no banco' : 'salva em sessão (banco falhou)';
-    $success = 'Mensagem enviada com sucesso (' . $savedStatus . ')! Total de mensagens: ' . count($messages);
+    $success = 'Mensagem enviada com sucesso!';
 }
 
 // Buscar profissionais e pacientes para seletor de contatos
