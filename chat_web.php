@@ -82,7 +82,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ]
             ]);
             
-            error_log("=== ENVIO MENSAGEM === JID: $remoteJid | URL: $url | Payload: $payload");
+            // Verificar estado real da conexão antes de enviar
+            $stateUrl = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
+            $chState = curl_init($stateUrl);
+            curl_setopt($chState, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($chState, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+            curl_setopt($chState, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($chState, CURLOPT_SSL_VERIFYHOST, false);
+            curl_setopt($chState, CURLOPT_TIMEOUT, 10);
+            $stateResponse = curl_exec($chState);
+            $stateHttpCode = curl_getinfo($chState, CURLINFO_HTTP_CODE);
+            curl_close($chState);
+            $stateData = json_decode($stateResponse, true);
+            $connState = $stateData['instance']['state'] ?? $stateData['state'] ?? 'unknown';
+            error_log("=== CONN STATE === HTTP: $stateHttpCode | State: $connState | Response: $stateResponse");
+
+            error_log("=== ENVIO MENSAGEM === JID: $remoteJid | State: $connState | Payload: $payload");
             
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -102,6 +117,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             curl_close($ch);
             
             error_log("=== RESP MENSAGEM === HTTP: $httpCode | Response: $response | cURL: $curlMsgError");
+            
+            // Se SessionError, tentar com formato alternativo (sem @g.us explícito)
+            if ($httpCode !== 200 && $httpCode !== 201 && strpos($response, 'SessionError') !== false) {
+                $altPayload = json_encode([
+                    'number' => $remoteJid,
+                    'options' => ['delay' => 1200, 'presence' => 'composing'],
+                    'textMessage' => ['text' => $message]
+                ]);
+                $ch2 = curl_init($url);
+                curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch2, CURLOPT_POST, true);
+                curl_setopt($ch2, CURLOPT_POSTFIELDS, $altPayload);
+                curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+                curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST, false);
+                curl_setopt($ch2, CURLOPT_TIMEOUT, 30);
+                $altResponse = curl_exec($ch2);
+                $altHttpCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+                curl_close($ch2);
+                error_log("=== RETRY ALTERNATIVO === HTTP: $altHttpCode | Response: $altResponse");
+                if ($altHttpCode === 200 || $altHttpCode === 201) {
+                    $response = $altResponse;
+                    $httpCode = $altHttpCode;
+                }
+            }
             
             if ($httpCode === 200 || $httpCode === 201) {
                 // OBRIGATÓRIO: Salvar mensagem no banco de dados
