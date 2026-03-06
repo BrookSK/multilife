@@ -30,12 +30,25 @@ try {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
     curl_close($ch);
+    
+    if ($httpCode === 0) {
+        error_log("Erro de conexão ao buscar grupos - URL: $groupsUrl - cURL Error: $curlError");
+        echo json_encode([
+            'success' => false, 
+            'error' => 'Falha de conexão com a Evolution API. Verifique se a URL está correta e acessível.',
+            'details' => 'URL: ' . $groupsUrl,
+            'curl_error' => $curlError
+        ]);
+        exit;
+    }
     
     if ($httpCode !== 200) {
         error_log("Erro ao buscar grupos - HTTP Code: $httpCode - Response: $response - cURL Error: $curlError");

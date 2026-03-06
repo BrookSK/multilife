@@ -336,17 +336,26 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
         
-        // SEMPRE buscar grupos da API (sincronização automática)
+        // Buscar grupos da API (sincronização rápida - timeout curto para não travar a página)
         $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
         $ch = curl_init($groupsUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
         
         $groupsResponse = curl_exec($ch);
         $groupsHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
+        
+        if ($groupsHttpCode === 0) {
+            error_log("Erro de conexão ao buscar grupos - URL: $groupsUrl - cURL Error: $curlError");
+        } elseif ($groupsHttpCode !== 200) {
+            error_log("Erro ao buscar grupos - HTTP Code: $groupsHttpCode - Response: $groupsResponse - cURL Error: $curlError");
+        }
         
         if ($groupsHttpCode === 200 && $groupsResponse) {
             $groupsData = json_decode($groupsResponse, true);
@@ -1536,18 +1545,26 @@ echo '  const btn = document.getElementById("syncBtn");';
 echo '  const icon = document.getElementById("syncIcon");';
 echo '  btn.disabled = true;';
 echo '  icon.classList.add("rotating");';
-echo '  fetch("/chat_sync_evolution.php", {method: "POST"})';
+echo '  fetch("/chat_sync_evolution.php")';
 echo '    .then(r => r.json())';
 echo '    .then(data => {';
 echo '      if(data.success) {';
-echo '        alert("Sincronização concluída! " + (data.count || 0) + " grupos sincronizados.");';
+echo '        alert("✅ Sincronização concluída!\\n\\n" + data.count + " grupos sincronizados.");';
 echo '        window.location.reload();';
 echo '      } else {';
-echo '        alert("Erro na sincronização: " + (data.error || "Erro desconhecido"));';
+echo '        let errorMsg = "❌ Erro na sincronização:\\n\\n" + data.error;';
+echo '        if(data.curl_error) {';
+echo '          errorMsg += "\\n\\nDetalhes: " + data.curl_error;';
+echo '        }';
+echo '        if(data.details) {';
+echo '          errorMsg += "\\n\\n" + data.details;';
+echo '        }';
+echo '        errorMsg += "\\n\\n💡 Verifique:\\n- URL da Evolution API está correta\\n- Servidor Evolution está online\\n- Firewall não está bloqueando";';
+echo '        alert(errorMsg);';
 echo '      }';
 echo '    })';
 echo '    .catch(e => {';
-echo '      alert("Erro ao sincronizar: " + e.message);';
+echo '      alert("❌ Erro ao sincronizar:\\n\\n" + e.message + "\\n\\n💡 Verifique se o servidor está acessível.");';
 echo '    })';
 echo '    .finally(() => {';
 echo '      btn.disabled = false;';
