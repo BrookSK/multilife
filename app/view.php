@@ -492,6 +492,31 @@ function view_footer(): void
         echo 'function nextHistoryPage(){';
         echo '  loadPageHistory(currentHistoryPage+1);';
         echo '}';
+        
+        // Normalização global de telefones em todos os formulários
+        echo 'function normalizePhone(value){';
+        echo '  if(!value)return value;';
+        echo '  return String(value).replace(/[^0-9]/g,"");';
+        echo '}';
+        echo 'document.addEventListener("DOMContentLoaded",function(){';
+        echo '  document.querySelectorAll("form").forEach(function(form){';
+        echo '    form.addEventListener("submit",function(e){';
+        echo '      form.querySelectorAll("input").forEach(function(input){';
+        echo '        const name=input.name||"";';
+        echo '        const id=input.id||"";';
+        echo '        const label=input.labels&&input.labels[0]?input.labels[0].textContent.toLowerCase():"";';
+        echo '        if(name.toLowerCase().includes("phone")||name.toLowerCase().includes("telefone")||';
+        echo '           name.toLowerCase().includes("whatsapp")||name.toLowerCase().includes("celular")||';
+        echo '           id.toLowerCase().includes("phone")||id.toLowerCase().includes("telefone")||';
+        echo '           id.toLowerCase().includes("whatsapp")||id.toLowerCase().includes("celular")||';
+        echo '           label.includes("telefone")||label.includes("whatsapp")||label.includes("celular")){';
+        echo '          input.value=normalizePhone(input.value);';
+        echo '        }';
+        echo '      });';
+        echo '    });';
+        echo '  });';
+        echo '});';
+        
         echo '</script>';
     }
     
