@@ -22,7 +22,16 @@ if (!$pa) {
 }
 
 if ((string)$pa['status'] === 'approved' && $pa['created_user_id'] !== null) {
-    flash_set('success', 'Candidatura já aprovada.');
+    page_history_log(
+        '/professional_applications_list.php',
+        'Candidaturas',
+        'approve',
+        'Aprovou candidatura',
+        'professional_application',
+        $id
+    );
+
+    flash_set('success', 'Candidatura aprovada.');
     header('Location: /professional_applications_view.php?id=' . $id);
     exit;
 }

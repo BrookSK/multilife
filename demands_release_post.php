@@ -21,6 +21,14 @@ if (!$d) {
 }
 
 if ($d['assumed_by_user_id'] === null) {
+    page_history_log(
+        '/demands_view.php?id=' . $id,
+        'Demanda',
+        'release',
+        'Liberou a demanda',
+        'demand',
+        $id
+    );
     flash_set('success', 'Demanda já estava no pool.');
     header('Location: /demands_view.php?id=' . $id);
     exit;

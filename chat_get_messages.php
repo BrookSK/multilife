@@ -42,7 +42,7 @@ try {
                 'remoteJid' => $chatId
             ]
         ],
-        'limit' => 100
+        'limit' => 10
     ]));
     
     $response = curl_exec($ch);

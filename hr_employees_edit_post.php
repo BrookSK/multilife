@@ -55,6 +55,15 @@ $stmt->execute([
 
 audit_log('update', 'hr_employees', (string)$id, $old, ['full_name' => $fullName, 'status' => $status]);
 
+page_history_log(
+    '/hr_employees_list.php',
+    'Funcionários',
+    'update',
+    'Atualizou funcionário: ' . $name,
+    'employee',
+    $id
+);
+
 flash_set('success', 'Funcionário atualizado.');
 header('Location: /hr_employees_list.php');
 exit;

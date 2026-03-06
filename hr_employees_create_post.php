@@ -43,6 +43,15 @@ $stmt->execute([
 $id = (string)db()->lastInsertId();
 audit_log('create', 'hr_employees', $id, null, ['full_name' => $fullName, 'status' => $status]);
 
+page_history_log(
+    '/hr_employees_list.php',
+    'Funcionários',
+    'create',
+    'Criou novo funcionário: ' . $name,
+    'employee',
+    (int)$employeeId
+);
+
 flash_set('success', 'Funcionário criado.');
 header('Location: /hr_employees_list.php');
 exit;

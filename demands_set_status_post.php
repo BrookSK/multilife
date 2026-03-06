@@ -49,6 +49,15 @@ $stmt->execute([
 
 audit_log('update', 'demands_status', (string)$id, ['status' => $oldStatus], ['status' => $newStatus]);
 
+page_history_log(
+    '/demands_view.php?id=' . $id,
+    'Demanda',
+    'status_change',
+    'Alterou status para: ' . $newStatus,
+    'demand',
+    $id
+);
+
 flash_set('success', 'Status atualizado.');
 header('Location: /demands_view.php?id=' . $id);
 exit;

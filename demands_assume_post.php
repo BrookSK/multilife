@@ -37,6 +37,15 @@ $stmt->execute(['uid' => $uid, 'id' => $id]);
 
 audit_log('update', 'demands_assume', (string)$id, ['assumed_by_user_id' => $d['assumed_by_user_id']], ['assumed_by_user_id' => $uid]);
 
+page_history_log(
+    '/demands_view.php?id=' . $id,
+    'Demanda',
+    'assign',
+    'Assumiu a demanda',
+    'demand',
+    $id
+);
+
 flash_set('success', 'Demanda assumida.');
 header('Location: /demands_view.php?id=' . $id);
 exit;

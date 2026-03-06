@@ -263,6 +263,15 @@ try {
     throw $e;
 }
 
+page_history_log(
+    '/appointments_list.php',
+    'Agendamentos',
+    'create',
+    'Criou novo agendamento',
+    'appointment',
+    (int)$appointmentId
+);
+
 flash_set('success', 'Agendamento criado e pendência gerada para o profissional.');
 header('Location: /appointments_view.php?id=' . $appointmentId);
 exit;

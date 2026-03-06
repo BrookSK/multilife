@@ -94,7 +94,7 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
 // Buscar mensagens do chat selecionado
 if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        // Buscar mensagens com limite maior para histórico completo
+        // Buscar apenas 10 mensagens mais recentes da conversa específica
         $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -110,7 +110,7 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
                     'remoteJid' => $selectedChat
                 ]
             ],
-            'limit' => 100
+            'limit' => 10
         ]));
         
         $response = curl_exec($ch);

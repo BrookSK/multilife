@@ -54,6 +54,15 @@ $payload = [
 integration_job_enqueue('evolution', 'professional_application_notify', $payload, null);
 integration_job_enqueue('smtp', 'professional_application_notify_email', $payload, null);
 
-flash_set('success', 'Candidatura reprovada. Notificações (WhatsApp/e-mail) enfileiradas.');
+page_history_log(
+    '/professional_applications_list.php',
+    'Candidaturas',
+    'reject',
+    'Rejeitou candidatura',
+    'professional_application',
+    $id
+);
+
+flash_set('success', 'Candidatura rejeitada. Notificações (WhatsApp/e-mail) enfileiradas.');
 header('Location: /professional_applications_view.php?id=' . $id);
 exit;

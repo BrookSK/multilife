@@ -41,6 +41,15 @@ try {
     throw $e;
 }
 
+page_history_log(
+    '/appointments_list.php',
+    'Agendamentos',
+    'cancel',
+    'Cancelou agendamento',
+    'appointment',
+    $id
+);
+
 flash_set('success', 'Agendamento cancelado.');
 header('Location: /appointments_view.php?id=' . $id);
 exit;

@@ -76,6 +76,15 @@ $stmt->execute([
 
 audit_log('update', 'appointments', (string)$id, $old, ['patient_id' => $patientId, 'professional_user_id' => $professionalUserId, 'first_at' => $firstAtDb]);
 
+page_history_log(
+    '/appointments_view.php?id=' . $id,
+    'Agendamento',
+    'update',
+    'Atualizou dados do agendamento',
+    'appointment',
+    $id
+);
+
 flash_set('success', 'Agendamento atualizado.');
 header('Location: /appointments_view.php?id=' . $id);
 exit;
