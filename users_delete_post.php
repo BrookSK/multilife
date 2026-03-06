@@ -30,6 +30,15 @@ $stmt->execute(['id' => $id]);
 
 audit_log('delete', 'users', (string)$id, $old, null);
 
+page_history_log(
+    '/users_list.php',
+    'Usuários',
+    'delete',
+    'Excluiu usuário: ' . ($old['name'] ?? 'ID ' . $id),
+    'user',
+    $id
+);
+
 flash_set('success', 'Usuário excluído.');
 header('Location: /users_list.php');
 exit;

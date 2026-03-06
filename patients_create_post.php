@@ -227,6 +227,15 @@ try {
 
     $id = (string)$db->lastInsertId();
     audit_log('create', 'patients', $id, null, ['full_name' => $fullName]);
+    
+    page_history_log(
+        '/patients_list.php',
+        'Pacientes',
+        'create',
+        'Criou novo paciente: ' . $fullName,
+        'patient',
+        (int)$id
+    );
 
     $db->commit();
 } catch (Throwable $e) {

@@ -82,7 +82,18 @@ try {
         $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status, 'id' => $id]);
     }
 
-    audit_log('update', 'users', (string)$id, $old, ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status]);
+    $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status];
+
+    audit_log('update', 'users', (string)$id, $old, $new);
+
+    page_history_log(
+        '/users_list.php',
+        'Usuários',
+        'update',
+        'Atualizou usuário: ' . $name,
+        'user',
+        $id
+    );
 
     db()->commit();
 } catch (Throwable $e) {

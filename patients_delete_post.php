@@ -24,6 +24,15 @@ $stmt->execute(['id' => $id]);
 
 audit_log('delete', 'patients', (string)$id, $old, null);
 
+page_history_log(
+    '/patients_list.php',
+    'Pacientes',
+    'delete',
+    'Excluiu paciente: ' . ($old['full_name'] ?? 'ID ' . $id),
+    'patient',
+    $id
+);
+
 flash_set('success', 'Paciente excluído (lógico).');
 header('Location: /patients_list.php');
 exit;

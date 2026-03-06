@@ -191,6 +191,15 @@ $stmt->execute($params);
 
 audit_log('update', 'patients', (string)$id, $old, ['full_name' => $fullName]);
 
+page_history_log(
+    '/patients_view.php?id=' . $id,
+    'Paciente',
+    'update',
+    'Atualizou dados do paciente: ' . $fullName,
+    'patient',
+    $id
+);
+
 flash_set('success', 'Paciente atualizado.');
 header('Location: /patients_view.php?id=' . $id);
 exit;

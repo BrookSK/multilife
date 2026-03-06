@@ -61,6 +61,15 @@ $stmt->execute([
 
 audit_log('create', 'demands', $id, null, ['title' => $title, 'status' => $status]);
 
+page_history_log(
+    '/demands_list.php',
+    'Captação',
+    'create',
+    'Criou nova demanda: ' . $title,
+    'demand',
+    (int)$id
+);
+
 flash_set('success', 'Card criado.');
 header('Location: /demands_view.php?id=' . urlencode($id));
 exit;

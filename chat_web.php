@@ -42,14 +42,14 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                 $chats = [];
             }
             
-            // Enriquecer dados dos chats com nomes e fotos
+            // Enriquecer dados dos chats com nomes
             foreach ($chats as &$chat) {
                 $chatId = $chat['id'] ?? '';
                 
-                // Buscar nome
+                // Buscar nome - usar dados já disponíveis da API
                 if (!isset($chat['name']) || empty($chat['name'])) {
                     if (!empty($chatId)) {
-                        // Prioridade: name > pushName > número
+                        // Prioridade: pushName > número
                         if (isset($chat['pushName']) && !empty($chat['pushName'])) {
                             $chat['name'] = $chat['pushName'];
                         } else {
@@ -59,32 +59,9 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
                     }
                 }
                 
-                // Buscar foto de perfil se não tiver
-                if (!isset($chat['profilePictureUrl']) && !empty($chatId)) {
-                    try {
-                        $number = str_replace(['@s.whatsapp.net', '@g.us'], '', $chatId);
-                        $chProfile = curl_init($baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode($number));
-                        curl_setopt($chProfile, CURLOPT_RETURNTRANSFER, true);
-                        curl_setopt($chProfile, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-                        curl_setopt($chProfile, CURLOPT_SSL_VERIFYPEER, false);
-                        curl_setopt($chProfile, CURLOPT_TIMEOUT, 3);
-                        
-                        $profileResponse = curl_exec($chProfile);
-                        $profileHttpCode = curl_getinfo($chProfile, CURLINFO_HTTP_CODE);
-                        curl_close($chProfile);
-                        
-                        if ($profileHttpCode === 200) {
-                            $profileData = json_decode($profileResponse, true);
-                            if (isset($profileData['profilePictureUrl'])) {
-                                $chat['profilePictureUrl'] = $profileData['profilePictureUrl'];
-                            }
-                            if (isset($profileData['name']) && !empty($profileData['name'])) {
-                                $chat['name'] = $profileData['name'];
-                            }
-                        }
-                    } catch (Exception $e) {
-                        // Ignorar erro
-                    }
+                // Usar profilePictureUrl se já vier da API
+                if (!isset($chat['profilePictureUrl'])) {
+                    $chat['profilePictureUrl'] = null;
                 }
             }
             unset($chat);
@@ -153,39 +130,13 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
             }
         }
         
-        // Buscar dados do chat selecionado e foto de perfil
-        foreach ($chats as &$chat) {
+        // Buscar dados do chat selecionado
+        foreach ($chats as $chat) {
             if (($chat['id'] ?? '') === $selectedChat) {
                 $selectedChatData = $chat;
-                
-                // Buscar foto de perfil
-                try {
-                    $chProfile = curl_init($baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode(str_replace(['@s.whatsapp.net', '@g.us'], '', $selectedChat)));
-                    curl_setopt($chProfile, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($chProfile, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-                    curl_setopt($chProfile, CURLOPT_SSL_VERIFYPEER, false);
-                    curl_setopt($chProfile, CURLOPT_TIMEOUT, 5);
-                    
-                    $profileResponse = curl_exec($chProfile);
-                    $profileHttpCode = curl_getinfo($chProfile, CURLINFO_HTTP_CODE);
-                    curl_close($chProfile);
-                    
-                    if ($profileHttpCode === 200) {
-                        $profileData = json_decode($profileResponse, true);
-                        if (isset($profileData['profilePictureUrl'])) {
-                            $selectedChatData['profilePictureUrl'] = $profileData['profilePictureUrl'];
-                        }
-                        if (isset($profileData['name']) && !empty($profileData['name'])) {
-                            $selectedChatData['name'] = $profileData['name'];
-                        }
-                    }
-                } catch (Exception $e) {
-                    // Ignorar erro de foto
-                }
                 break;
             }
         }
-        unset($chat);
     } catch (Exception $e) {
         // Erro ao buscar mensagens
     }

@@ -57,6 +57,15 @@ $stmt->execute([
 
 audit_log('update', 'demands', (string)$id, $old, ['title' => $title, 'location_city' => $city, 'location_state' => $state, 'specialty' => $specialty, 'origin_email' => $originEmail]);
 
+page_history_log(
+    '/demands_view.php?id=' . $id,
+    'Demanda',
+    'update',
+    'Atualizou demanda: ' . $title,
+    'demand',
+    $id
+);
+
 flash_set('success', 'Demanda atualizada.');
 header('Location: /demands_view.php?id=' . $id);
 exit;

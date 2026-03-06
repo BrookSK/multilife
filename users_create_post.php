@@ -73,6 +73,15 @@ $stmt->execute([
 $id = (string)db()->lastInsertId();
 audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status]);
 
+page_history_log(
+    '/users_list.php',
+    'Usuários',
+    'create',
+    'Criou novo usuário: ' . $name,
+    'user',
+    (int)$id
+);
+
 flash_set('success', 'Usuário criado.');
 header('Location: /users_list.php');
 exit;
