@@ -73,12 +73,22 @@ try {
         $errorMsg = is_string($addResult['body_raw'] ?? null) 
                     ? $addResult['body_raw'] 
                     : json_encode($addResult['json'] ?? []);
-        echo json_encode([
-            'success' => false, 
-            'error' => 'Erro ao adicionar participante ao grupo',
-            'http_code' => $addHttpCode,
-            'details' => substr($errorMsg, 0, 200)
-        ]);
+        
+        // Mensagem específica para erro 400 forbidden
+        if ($addHttpCode === 400 && stripos($errorMsg, 'forbidden') !== false) {
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Sem permissão para adicionar participantes',
+                'details' => 'A instância WhatsApp conectada precisa ser ADMINISTRADORA do grupo selecionado. Verifique se o número ' . admin_setting_get('evolution.instance') . ' é admin do grupo ou crie um novo grupo pelo sistema.'
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Erro ao adicionar participante ao grupo',
+                'http_code' => $addHttpCode,
+                'details' => substr($errorMsg, 0, 200)
+            ]);
+        }
         exit;
     }
     
