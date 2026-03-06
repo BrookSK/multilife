@@ -100,24 +100,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $dbError = '';
                 
                 try {
-                    // Garantir que tabela existe com estrutura correta
-                    // Primeiro, dropar se existir com estrutura errada
-                    db()->exec("DROP TABLE IF EXISTS chat_messages");
+                    // Verificar se tabela existe
+                    $tableExists = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
                     
-                    // Criar tabela com estrutura correta
-                    db()->exec("
-                        CREATE TABLE chat_messages (
-                            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                            remote_jid VARCHAR(100) NOT NULL,
-                            message_text TEXT NOT NULL,
-                            from_me TINYINT(1) NOT NULL DEFAULT 0,
-                            message_timestamp INT UNSIGNED NOT NULL,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            PRIMARY KEY (id),
-                            INDEX idx_remote_jid (remote_jid),
-                            INDEX idx_timestamp (message_timestamp)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                    ");
+                    if (!$tableExists) {
+                        // Criar tabela apenas se não existir
+                        db()->exec("
+                            CREATE TABLE chat_messages (
+                                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                                remote_jid VARCHAR(100) NOT NULL,
+                                message_text TEXT NOT NULL,
+                                from_me TINYINT(1) NOT NULL DEFAULT 0,
+                                message_timestamp INT UNSIGNED NOT NULL,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                PRIMARY KEY (id),
+                                INDEX idx_remote_jid (remote_jid),
+                                INDEX idx_timestamp (message_timestamp)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                        ");
+                    }
                     
                     $timestamp = time();
                     $stmt = db()->prepare("
