@@ -83,12 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
             // Enviar mensagem via API Evolution
+            // FORMATO OFICIAL da documentação Evolution API
             $url = $baseUrl . '/message/sendText/' . urlencode($instanceName);
             $payload = json_encode([
-                'number' => $remoteJid,
-                'textMessage' => [
-                    'text' => $message
-                ]
+                'number'      => $remoteJid,
+                'textMessage' => ['text' => $message],
+                'options'     => [
+                    'delay'    => 1200,
+                    'presence' => 'composing',
+                ],
             ]);
             error_log("[$debugId] URL:'$url' | payload:$payload");
             
@@ -131,12 +134,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                           ($httpCode === 400 || strpos($response, 'SessionError') !== false || strpos($response, 'Connection Closed') !== false);
 
             if ($needsRetry) {
-                error_log("[$debugId] RETRY formato alternativo (text direto)");
-                // Formato alternativo: campo "text" direto (sem wrapper textMessage)
+                error_log("[$debugId] RETRY com formato text direto (fallback)");
+                // Retry: formato simples sem wrapper (chat_send_message.php)
                 $altPayload = json_encode([
-                    'number'  => $remoteJid,
-                    'text'    => $message,
-                    'options' => ['delay' => 1000, 'presence' => 'composing'],
+                    'number' => $remoteJid,
+                    'text'   => $message,
                 ]);
                 $ch2 = curl_init($url);
                 curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
