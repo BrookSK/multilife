@@ -192,11 +192,11 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
                 
                 error_log("Após filtro PHP: " . count($messages) . " mensagens do chat correto");
                 
-                // Ordenar mensagens por timestamp
+                // Ordenar mensagens por timestamp (mais recentes no topo)
                 usort($messages, function($a, $b) {
                     $timeA = $a['messageTimestamp'] ?? 0;
                     $timeB = $b['messageTimestamp'] ?? 0;
-                    return $timeA - $timeB;
+                    return $timeB - $timeA; // Invertido para mais recentes primeiro
                 });
             }
         }
@@ -314,6 +314,7 @@ echo '.whatsapp-input{flex:1;padding:10px 12px;border:none;border-radius:8px;fon
 echo '.whatsapp-send-btn{width:48px;height:48px;border-radius:50%;background:#00a884;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;transition:background .2s}';
 echo '.whatsapp-send-btn:hover{background:#06cf9c}';
 echo '.whatsapp-send-btn:disabled{background:#d1d7db;cursor:not-allowed}';
+echo '@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
 echo '.whatsapp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#667781}';
 echo '.whatsapp-empty svg{width:360px;height:360px;opacity:.6;margin-bottom:24px}';
 echo '.whatsapp-empty h2{font-size:32px;font-weight:300;margin-bottom:16px}';
@@ -377,8 +378,8 @@ echo '<a href="/chat_web.php?type=groups" class="whatsapp-tab' . $groupsActive .
 echo '<a href="/chat_web.php?type=private" class="whatsapp-tab' . $privateActive . '">Conversas</a>';
 echo '</div>';
 
-// Lista de conversas
-echo '<div class="whatsapp-chats">';
+// Lista de conversas com lazy loading
+echo '<div class="whatsapp-chats" id="chatsList">';
 if (empty($chats)) {
     echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
     echo '<p>Nenhuma conversa encontrada.</p>';
@@ -387,7 +388,11 @@ if (empty($chats)) {
     }
     echo '</div>';
 } else {
-    foreach ($chats as $chat) {
+    // Renderizar apenas as primeiras 10 conversas inicialmente
+    $initialChats = array_slice($chats, 0, 10);
+    $remainingChats = array_slice($chats, 10);
+    
+    foreach ($initialChats as $chat) {
         $chatId = $chat['id'] ?? '';
         $chatName = $chat['name'] ?? $chatId;
         $isGroup = strpos($chatId, '@g.us') !== false;
@@ -417,6 +422,17 @@ if (empty($chats)) {
         echo '</div>';
         echo '<div class="whatsapp-chat-meta">' . h($lastTime) . '</div>';
         echo '</a>';
+    }
+    
+    // Conversas restantes (ocultas, carregadas via JavaScript)
+    if (!empty($remainingChats)) {
+        echo '<div id="remainingChats" style="display:none;">';
+        echo json_encode($remainingChats);
+        echo '</div>';
+        echo '<div id="loadingIndicator" style="padding:20px;text-align:center;color:#667781;display:none;">';
+        echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>';
+        echo '<p style="margin-top:8px;font-size:13px">Carregando mais conversas...</p>';
+        echo '</div>';
     }
 }
 echo '</div>';
@@ -656,6 +672,63 @@ echo '  textarea.addEventListener("keydown",function(e){';
 echo '    if(e.key==="Enter"&&!e.shiftKey){';
 echo '      e.preventDefault();';
 echo '      document.getElementById("sendMessageForm").submit();';
+echo '    }';
+echo '  });';
+echo '}';
+echo '// Lazy loading de conversas';
+echo 'const chatsList=document.getElementById("chatsList");';
+echo 'const remainingChatsData=document.getElementById("remainingChats");';
+echo 'const loadingIndicator=document.getElementById("loadingIndicator");';
+echo 'let remainingChats=[];';
+echo 'let loadedCount=0;';
+echo 'const batchSize=10;';
+echo 'if(remainingChatsData){';
+echo '  try{';
+echo '    remainingChats=JSON.parse(remainingChatsData.textContent);';
+echo '    console.log("Conversas restantes para carregar:", remainingChats.length);';
+echo '  }catch(e){';
+echo '    console.error("Erro ao parsear conversas restantes:", e);';
+echo '  }';
+echo '}';
+echo 'function loadMoreChats(){';
+echo '  if(loadedCount>=remainingChats.length)return;';
+echo '  const batch=remainingChats.slice(loadedCount,loadedCount+batchSize);';
+echo '  loadedCount+=batch.length;';
+echo '  batch.forEach(chat=>{';
+echo '    const chatId=chat.id||"";';
+echo '    const chatName=chat.name||chatId;';
+echo '    const isGroup=chatId.includes("@g.us");';
+echo '    const lastMsg=chat.lastMessage?.message||"";';
+echo '    const lastTime=chat.lastMessage?.messageTimestamp?new Date(chat.lastMessage.messageTimestamp*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";';
+echo '    const initials=chatName.substring(0,2).toUpperCase();';
+echo '    const profilePic=chat.profilePictureUrl||"";';
+echo '    const chatType="' . addslashes($chatType) . '";';
+echo '    const chatHtml=`';
+echo '      <a href="/chat_web.php?type=${chatType}&chat=${encodeURIComponent(chatId)}" class="whatsapp-chat-item">';
+echo '        ${profilePic?`<div class="whatsapp-chat-avatar" style="background-image:url(${profilePic});background-size:cover;background-position:center"></div>`:`<div class="whatsapp-chat-avatar">${initials}</div>`}';
+echo '        <div class="whatsapp-chat-info">';
+echo '          <div class="whatsapp-chat-name">${chatName}${isGroup?`<span class="whatsapp-group-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Grupo</span>`:""}</div>';
+echo '          <div class="whatsapp-chat-preview">${lastMsg.substring(0,50)}${lastMsg.length>50?"...":""}</div>';
+echo '        </div>';
+echo '        <div class="whatsapp-chat-meta">${lastTime}</div>';
+echo '      </a>`;';
+echo '    const tempDiv=document.createElement("div");';
+echo '    tempDiv.innerHTML=chatHtml;';
+echo '    chatsList.insertBefore(tempDiv.firstElementChild,loadingIndicator);';
+echo '  });';
+echo '  console.log(`Carregadas ${batch.length} conversas. Total carregado: ${loadedCount}/${remainingChats.length}`);';
+echo '}';
+echo 'if(chatsList&&remainingChats.length>0){';
+echo '  chatsList.addEventListener("scroll",function(){';
+echo '    const scrollTop=this.scrollTop;';
+echo '    const scrollHeight=this.scrollHeight;';
+echo '    const clientHeight=this.clientHeight;';
+echo '    if(scrollTop+clientHeight>=scrollHeight-100&&loadedCount<remainingChats.length){';
+echo '      if(loadingIndicator)loadingIndicator.style.display="block";';
+echo '      setTimeout(()=>{';
+echo '        loadMoreChats();';
+echo '        if(loadingIndicator)loadingIndicator.style.display="none";';
+echo '      },300);';
 echo '    }';
 echo '  });';
 echo '}';
