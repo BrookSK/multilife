@@ -133,6 +133,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         if (!$lastId) {
                             $savedToDb = false;
                             $dbError = "INSERT não retornou ID";
+                        } else {
+                            // Salvar/atualizar contato na tabela de chats ativos
+                            try {
+                                // Criar tabela de contatos se não existir
+                                db()->exec("
+                                    CREATE TABLE IF NOT EXISTS chat_contacts (
+                                        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                                        remote_jid VARCHAR(100) NOT NULL UNIQUE,
+                                        contact_name VARCHAR(255) DEFAULT NULL,
+                                        is_group TINYINT(1) NOT NULL DEFAULT 0,
+                                        last_message_timestamp INT UNSIGNED DEFAULT NULL,
+                                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                        PRIMARY KEY (id),
+                                        UNIQUE INDEX idx_remote_jid (remote_jid),
+                                        INDEX idx_last_message (last_message_timestamp)
+                                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                                ");
+                                
+                                // Inserir ou atualizar contato
+                                $isGroup = strpos($remoteJid, '@g.us') !== false ? 1 : 0;
+                                $contactName = str_replace(['@s.whatsapp.net', '@g.us'], '', $remoteJid);
+                                
+                                $stmtContact = db()->prepare("
+                                    INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
+                                    VALUES (?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE 
+                                        last_message_timestamp = VALUES(last_message_timestamp),
+                                        updated_at = CURRENT_TIMESTAMP
+                                ");
+                                $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
+                            } catch (Exception $e) {
+                                error_log("Erro ao salvar contato: " . $e->getMessage());
+                            }
                         }
                     }
                     
@@ -209,11 +243,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// NÃO BUSCAR CONVERSAS OU MENSAGENS - Interface apenas para envio
+// Carregar chats salvos do banco de dados
 $chats = [];
 $messages = [];
 $selectedChatData = [];
 $debugLogs = [];
+
+// Buscar chats ativos da tabela chat_contacts
+try {
+    // Garantir que tabela existe
+    $tableCheck = db()->query("SHOW TABLES LIKE 'chat_contacts'")->fetch();
+    if ($tableCheck) {
+        $stmt = db()->query("
+            SELECT 
+                remote_jid as id,
+                contact_name as name,
+                is_group,
+                last_message_timestamp as lastMsgTimestamp
+            FROM chat_contacts
+            ORDER BY last_message_timestamp DESC
+            LIMIT 50
+        ");
+        $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Adicionar profilePictureUrl vazio para cada chat
+        foreach ($chats as &$chat) {
+            $chat['profilePictureUrl'] = null;
+        }
+        unset($chat);
+    }
+} catch (Exception $e) {
+    error_log("Erro ao carregar chats: " . $e->getMessage());
+}
 
 // Carregar mensagens do banco de dados para o chat selecionado
 if (!empty($selectedChat)) {
@@ -267,34 +328,16 @@ if (!empty($selectedChat)) {
     // Não usar sessão - tudo deve estar no banco
 }
 
-// Se um chat foi selecionado, criar dados locais para ele
+// Se um chat foi selecionado, verificar se existe na lista de chats
 if (!empty($selectedChat)) {
-    // Extrair número do remoteJid
-    $chatNumber = str_replace(['@s.whatsapp.net', '@g.us'], '', $selectedChat);
-    $isGroup = strpos($selectedChat, '@g.us') !== false;
-    
-    // Formatar nome do chat
-    $chatName = $chatNumber;
-    if (!$isGroup && strlen($chatNumber) >= 10) {
-        // Formatar número brasileiro: (XX) XXXXX-XXXX
-        if (preg_match('/^55(\d{2})(\d{4,5})(\d{4})$/', $chatNumber, $matches)) {
-            $chatName = '(' . $matches[1] . ') ' . $matches[2] . '-' . $matches[3];
+    $chatExists = false;
+    foreach ($chats as $chat) {
+        if ($chat['id'] === $selectedChat) {
+            $chatExists = true;
+            $selectedChatData = $chat;
+            break;
         }
-    } elseif ($isGroup) {
-        $chatName = 'Grupo';
     }
-    
-    // Criar dados básicos do chat
-    $selectedChatData = [
-        'id' => $selectedChat,
-        'name' => $chatName,
-        'profilePictureUrl' => null,
-        'lastMsgTimestamp' => time()
-    ];
-    
-    // Adicionar à lista de chats para aparecer na sidebar
-    $chats[] = $selectedChatData;
-    
 }
 
 // Verificar se há mensagem de sucesso

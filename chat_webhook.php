@@ -72,6 +72,39 @@ if (isset($data['event']) && $data['event'] === 'messages.upsert') {
             
             if ($saved) {
                 error_log("Mensagem salva no banco com sucesso");
+                
+                // Salvar/atualizar contato também
+                try {
+                    db()->exec("
+                        CREATE TABLE IF NOT EXISTS chat_contacts (
+                            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                            remote_jid VARCHAR(100) NOT NULL UNIQUE,
+                            contact_name VARCHAR(255) DEFAULT NULL,
+                            is_group TINYINT(1) NOT NULL DEFAULT 0,
+                            last_message_timestamp INT UNSIGNED DEFAULT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                            PRIMARY KEY (id),
+                            UNIQUE INDEX idx_remote_jid (remote_jid),
+                            INDEX idx_last_message (last_message_timestamp)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    ");
+                    
+                    $isGroup = strpos($remoteJid, '@g.us') !== false ? 1 : 0;
+                    $contactName = str_replace(['@s.whatsapp.net', '@g.us'], '', $remoteJid);
+                    
+                    $stmtContact = db()->prepare("
+                        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
+                        VALUES (?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE 
+                            last_message_timestamp = VALUES(last_message_timestamp),
+                            updated_at = CURRENT_TIMESTAMP
+                    ");
+                    $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
+                    error_log("Contato salvo/atualizado com sucesso");
+                } catch (Exception $e) {
+                    error_log("Erro ao salvar contato: " . $e->getMessage());
+                }
             } else {
                 error_log("ERRO: Falha ao salvar mensagem no banco");
             }
