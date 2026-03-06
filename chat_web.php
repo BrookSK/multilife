@@ -257,17 +257,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Padrão: Especialidade - Localização - Número
             $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
             
-            // Criar grupo com o número do WhatsApp conectado como participante inicial
-            // Usar o número que aparece nos logs do webhook: 5517991253062
-            $connectedPhone = '5517991253062@s.whatsapp.net';
-            
+            // Criar grupo - tentar com número no formato correto
+            // Nos logs do webhook, o número aparece como sender
+            // Vamos tentar apenas com o número sem @s.whatsapp.net
             $url = $baseUrl . '/group/create/' . urlencode($instanceName);
             
-            // Seguir formato exato do exemplo oficial da Evolution API
+            // Tentar com apenas o número (a API pode adicionar o sufixo automaticamente)
             $payload = json_encode([
                 'subject' => $groupName,
                 'description' => 'Grupo criado pelo sistema MultiLife',
-                'participants' => [$connectedPhone]
+                'participants' => ['5517991253062']
             ]);
             
             error_log("Criando grupo: $groupName");
