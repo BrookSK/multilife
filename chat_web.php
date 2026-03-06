@@ -1152,7 +1152,7 @@ echo '.whatsapp-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px so
 echo '.whatsapp-search{padding:8px 16px;background:#fff}';
 echo '.whatsapp-search input{width:100%;padding:8px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px}';
 echo '.whatsapp-tabs{display:flex;gap:0;padding:0;background:#fff;border-bottom:1px solid #d1d7db;overflow-x:auto}';
-echo '.whatsapp-tab{padding:10px 12px;font-size:13px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;flex-shrink:0}';
+echo '.whatsapp-tab{padding:10px 8px;font-size:12px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;flex-shrink:0}';
 echo '.whatsapp-tab:hover{background:#f5f6f6}';
 echo '.whatsapp-tab.active{color:#00a884;border-bottom-color:#00a884}';
 echo '.whatsapp-chats{flex:1;overflow-y:auto;background:#fff}';
