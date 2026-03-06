@@ -82,6 +82,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
+            // PRÉ-SESSÃO: Para contatos individuais, estabelecer sessão Signal antes de enviar
+            // Isso evita o "Aguardando mensagem" no destinatário
+            if (strpos($remoteJid, '@s.whatsapp.net') !== false) {
+                $plainNumber = str_replace('@s.whatsapp.net', '', $remoteJid);
+                $sessionUrl  = $baseUrl . '/chat/whatsappNumbers/' . urlencode($instanceName);
+                $sessionPayload = json_encode(['numbers' => [$plainNumber]]);
+                $chSession = curl_init($sessionUrl);
+                curl_setopt($chSession, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($chSession, CURLOPT_POST, true);
+                curl_setopt($chSession, CURLOPT_POSTFIELDS, $sessionPayload);
+                curl_setopt($chSession, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+                curl_setopt($chSession, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($chSession, CURLOPT_SSL_VERIFYHOST, false);
+                curl_setopt($chSession, CURLOPT_TIMEOUT, 8);
+                $sessionResp = curl_exec($chSession);
+                $sessionCode = curl_getinfo($chSession, CURLINFO_HTTP_CODE);
+                curl_close($chSession);
+                error_log("[$debugId] PRE_SESSION HTTP:$sessionCode resp:" . substr((string)$sessionResp, 0, 150));
+            }
+
             // Enviar mensagem via API Evolution
             // FORMATO OFICIAL da documentação Evolution API
             $url = $baseUrl . '/message/sendText/' . urlencode($instanceName);
