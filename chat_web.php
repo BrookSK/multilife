@@ -339,78 +339,28 @@ $messages = [];
 $selectedChatData = [];
 $debugLogs = [];
 
-// SEMPRE buscar grupos da Evolution API e sincronizar com banco
+// Criar tabela de grupos se não existir
 $groups = [];
-if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
-    try {
-        // Criar tabelas de grupos se não existirem
-        db()->exec("
-            CREATE TABLE IF NOT EXISTS chat_groups (
-                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                group_jid VARCHAR(100) NOT NULL UNIQUE,
-                group_name VARCHAR(255) NOT NULL,
-                group_description TEXT DEFAULT NULL,
-                group_picture_url TEXT DEFAULT NULL,
-                specialty VARCHAR(100) DEFAULT NULL,
-                region VARCHAR(100) DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE INDEX idx_group_jid (group_jid),
-                INDEX idx_specialty (specialty),
-                INDEX idx_region (region)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-        
-        // Buscar grupos da API (sincronização rápida - timeout curto para não travar a página)
-        $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
-        $ch = curl_init($groupsUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-        
-        $groupsResponse = curl_exec($ch);
-        $groupsHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        if ($groupsHttpCode === 0) {
-            error_log("Erro de conexão ao buscar grupos - URL: $groupsUrl - cURL Error: $curlError");
-        } elseif ($groupsHttpCode !== 200) {
-            error_log("Erro ao buscar grupos - HTTP Code: $groupsHttpCode - Response: $groupsResponse - cURL Error: $curlError");
-        }
-        
-        if ($groupsHttpCode === 200 && $groupsResponse) {
-            $groupsData = json_decode($groupsResponse, true);
-            
-            // Salvar/atualizar TODOS os grupos no banco
-            if (is_array($groupsData)) {
-                foreach ($groupsData as $group) {
-                    $groupJid = $group['id'] ?? '';
-                    $groupName = $group['subject'] ?? 'Grupo sem nome';
-                    $groupPic = $group['picture'] ?? null;
-                    
-                    if (!empty($groupJid)) {
-                        $stmt = db()->prepare("
-                            INSERT INTO chat_groups (group_jid, group_name, group_picture_url)
-                            VALUES (?, ?, ?)
-                            ON DUPLICATE KEY UPDATE 
-                                group_name = VALUES(group_name),
-                                group_picture_url = VALUES(group_picture_url),
-                                updated_at = CURRENT_TIMESTAMP
-                        ");
-                        $stmt->execute([$groupJid, $groupName, $groupPic]);
-                    }
-                }
-                error_log("Sincronizados " . count($groupsData) . " grupos da Evolution API");
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Erro ao buscar grupos: " . $e->getMessage());
-    }
+try {
+    db()->exec("
+        CREATE TABLE IF NOT EXISTS chat_groups (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            group_jid VARCHAR(100) NOT NULL UNIQUE,
+            group_name VARCHAR(255) NOT NULL,
+            group_description TEXT DEFAULT NULL,
+            group_picture_url TEXT DEFAULT NULL,
+            specialty VARCHAR(100) DEFAULT NULL,
+            region VARCHAR(100) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE INDEX idx_group_jid (group_jid),
+            INDEX idx_specialty (specialty),
+            INDEX idx_region (region)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+} catch (Exception $e) {
+    error_log("Erro ao criar tabela chat_groups: " . $e->getMessage());
 }
 
 // Buscar grupos do banco com filtros
@@ -451,6 +401,10 @@ try {
         ");
         $stmt->execute($params);
         $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        error_log("Grupos encontrados no banco: " . count($groups));
+        if (count($groups) > 0) {
+            error_log("Primeiro grupo: " . json_encode($groups[0]));
+        }
     }
 } catch (Exception $e) {
     error_log("Erro ao carregar grupos do banco: " . $e->getMessage());
