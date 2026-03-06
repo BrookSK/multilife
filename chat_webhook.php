@@ -189,6 +189,7 @@ if ($event === 'messages.upsert') {
         error_log("[WEBHOOK] FULL MESSAGE DATA: " . json_encode($messageData));
         
         $remoteJid   = $messageData['key']['remoteJid'] ?? '';
+        $senderPn    = $messageData['key']['senderPn'] ?? ''; // Número real do remetente
         $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
         $participant = $messageData['key']['participant'] ?? '';
         $msgPayload  = $messageData['message'] ?? [];
@@ -197,8 +198,15 @@ if ($event === 'messages.upsert') {
                        ?? '';
         $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
-        error_log("[WEBHOOK] msg jid:'$remoteJid' | participant:'$participant' | fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
-        error_log("[WEBHOOK] DIAGNOSTIC - remoteJid recebido: '$remoteJid' | length: " . strlen($remoteJid) . " | contains @: " . (strpos($remoteJid, '@') !== false ? 'yes' : 'no'));
+        // CORREÇÃO: Se senderPn existe, usar ele em vez de remoteJid
+        // Isso acontece quando remoteJid é um canal (@lid) mas senderPn tem o número real
+        if (!empty($senderPn) && !$fromMe) {
+            error_log("[WEBHOOK] CORREÇÃO: Usando senderPn '$senderPn' em vez de remoteJid '$remoteJid'");
+            $remoteJid = $senderPn;
+        }
+
+        error_log("[WEBHOOK] msg jid:'$remoteJid' | senderPn:'$senderPn' | participant:'$participant' | fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
+        error_log("[WEBHOOK] DIAGNOSTIC - remoteJid final: '$remoteJid' | length: " . strlen($remoteJid) . " | contains @: " . (strpos($remoteJid, '@') !== false ? 'yes' : 'no'));
 
         // Ignorar: status@broadcast, JIDs de sistema, tipos de protocolo, textos de sistema
         $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
