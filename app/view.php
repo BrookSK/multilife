@@ -356,6 +356,12 @@ function view_header(string $title): void
         echo '<div style="padding:12px 16px;border-top:1px solid hsl(var(--border));text-align:center"><a href="/notifications_list.php" style="font-size:13px;color:hsl(var(--primary))">Ver todas</a></div>';
         echo '</div>';
         echo '</div>';
+        
+        // Botão de logout
+        echo '<a href="/logout.php" class="notifBell" title="Sair">';
+        echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+        echo '</a>';
+        
         echo '</div>';
         echo '</header>';
         echo '<main class="wrap">';
