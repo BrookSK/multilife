@@ -8,6 +8,11 @@ auth_require_login();
 // Qualquer usuário logado pode acessar o chat
 // rbac_require_permission('chat.manage');
 
+// Definir variáveis GET no início
+$selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
+$chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all';
+$searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+
 // Buscar configurações da Evolution API
 $baseUrl = admin_setting_get('evolution.base_url');
 $apiKey = admin_setting_get('evolution.api_key');
