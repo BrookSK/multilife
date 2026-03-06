@@ -48,6 +48,9 @@ $isAjax = (isset($_POST['ajax']) && $_POST['ajax'] === '1') ||
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'send_message') {
+        $debugId = uniqid('MSG_'); // ID único por tentativa de envio
+        error_log("[$debugId] === INICIO ENVIO === isAjax:" . ($isAjax?'sim':'nao') . " | POST:" . json_encode(array_keys($_POST)));
+
         // Buscar número de qualquer um dos 3 campos possíveis
         $phoneNumber = trim($_POST['phone_number'] ?? '');
         if (empty($phoneNumber)) {
@@ -61,8 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
         
         $message = trim($_POST['message'] ?? '');
+        error_log("[$debugId] phone_number:'$phoneNumber' | message_len:" . strlen($message));
         
         if (empty($phoneNumber) || empty($message)) {
+            error_log("[$debugId] ERRO: phone ou message vazio");
             $error = 'Número e mensagem são obrigatórios';
         } else {
             // Usar o JID diretamente se já contém @
@@ -75,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $remoteJid .= '@s.whatsapp.net';
             }
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
+            error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
             // Enviar mensagem via API Evolution
             $url = $baseUrl . '/message/sendText/' . urlencode($instanceName);
@@ -84,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'text' => $message
                 ]
             ]);
+            error_log("[$debugId] URL:'$url' | payload:$payload");
             
             // Verificar estado real da conexão antes de enviar
             $stateUrl = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
@@ -98,9 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             curl_close($chState);
             $stateData = json_decode($stateResponse, true);
             $connState = $stateData['instance']['state'] ?? $stateData['state'] ?? 'unknown';
-            error_log("=== CONN STATE === HTTP: $stateHttpCode | State: $connState | Response: $stateResponse");
-
-            error_log("=== ENVIO MENSAGEM === JID: $remoteJid | State: $connState | Payload: $payload");
+            error_log("[$debugId] CONN_STATE HTTP:$stateHttpCode state:'$connState' resp:" . substr($stateResponse,0,200));
+            error_log("[$debugId] SEND_API url:'$url'");
             
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -118,12 +124,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $curlMsgError = curl_error($ch);
             curl_close($ch);
-            
+            error_log("[$debugId] RESP_1 HTTP:$httpCode curlErr:'$curlMsgError' resp:" . substr($response,0,300));
+
             // Retry automático: tenta formato alternativo para 400 ou SessionError
             $needsRetry = ($httpCode !== 200 && $httpCode !== 201) &&
                           ($httpCode === 400 || strpos($response, 'SessionError') !== false || strpos($response, 'Connection Closed') !== false);
 
             if ($needsRetry) {
+                error_log("[$debugId] RETRY formato alternativo (text direto)");
                 // Formato alternativo: campo "text" direto (sem wrapper textMessage)
                 $altPayload = json_encode([
                     'number'  => $remoteJid,
@@ -141,9 +149,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $altResponse = curl_exec($ch2);
                 $altHttpCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
                 curl_close($ch2);
+                error_log("[$debugId] RESP_2_RETRY HTTP:$altHttpCode resp:" . substr($altResponse,0,300));
                 if ($altHttpCode === 200 || $altHttpCode === 201) {
                     $response = $altResponse;
                     $httpCode = $altHttpCode;
+                    error_log("[$debugId] RETRY bem-sucedido HTTP:$altHttpCode");
+                } else {
+                    error_log("[$debugId] RETRY falhou HTTP:$altHttpCode");
                 }
             }
             
@@ -187,6 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         if (!$lastId) {
                             $savedToDb = false;
                             $dbError = "INSERT não retornou ID";
+                            error_log("[$debugId] DB_SAVE FALHOU: INSERT sem ID");
                         } else {
                             // Salvar/atualizar contato na tabela de chats ativos
                             try {
@@ -267,13 +280,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                 } catch (Exception $e) {
                     $dbError = $e->getMessage();
-                    error_log("ERRO CRÍTICO ao salvar mensagem: " . $dbError);
+                    error_log("[$debugId] DB_SAVE EXCECAO: $dbError");
                 }
-                
+
+                error_log("[$debugId] DB_SAVE resultado: " . ($savedToDb ? "OK id=$lastId" : "FALHOU err=$dbError"));
+
                 // Se não salvou no banco, mostrar erro e NÃO redirecionar
                 if (!$savedToDb) {
                     $error = "ERRO CRÍTICO: Mensagem não foi salva no banco de dados. Erro: " . $dbError . ". Entre em contato com o suporte.";
                     if ($isAjax) {
+                        error_log("[$debugId] JSON_RESP success:false erro_db");
                         header('Content-Type: application/json');
                         echo json_encode(['success' => false, 'error' => $error]);
                         exit();
@@ -281,8 +297,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 } else {
                     // Sucesso
                     if ($isAjax) {
+                        error_log("[$debugId] JSON_RESP success:true ts=$timestamp");
                         header('Content-Type: application/json');
-                        echo json_encode(['success' => true, 'message' => $message, 'timestamp' => time()]);
+                        echo json_encode(['success' => true, 'message' => $message, 'timestamp' => $timestamp]);
                         exit();
                     }
                     $redirectType = isset($_GET['type']) ? '&type=' . urlencode($_GET['type']) : '';
@@ -1959,9 +1976,10 @@ echo '  });';
 // Interceptar submit
 echo '  sendForm.addEventListener("submit",function(e){';
 echo '    e.preventDefault();';
-echo '    if(sending)return;';
+echo '    if(sending){console.warn("[CHAT] Envio bloqueado: j\u00e1 enviando");return;}';
 echo '    const text=textarea.value.trim();';
-echo '    if(!text)return;';
+echo '    if(!text){console.warn("[CHAT] Texto vazio");return;}';
+echo '    console.log("[CHAT] \u25ba SUBMIT",{chatId:chatId,texto:text,url:sendUrl});';
 // Limpar texto "nenhuma mensagem" e mostrar mensagem imediatamente no UI
 echo '    const emptyState=messagesContainer.querySelector(".whatsapp-empty-chat");';
 echo '    if(emptyState)emptyState.remove();';
@@ -1976,11 +1994,24 @@ echo '    sending=true;';
 echo '    const formData=new FormData(sendForm);';
 echo '    formData.set("message",text);';
 echo '    formData.set("ajax","1");';
+echo '    const debugFields={};formData.forEach(function(v,k){debugFields[k]=v;});';
+echo '    console.log("[CHAT] FormData enviado:",debugFields);';
+echo '    console.time("[CHAT] fetch-duracao");';
 echo '    fetch(sendUrl,{method:"POST",body:formData})';
-echo '      .then(function(r){return r.json();})';
+echo '      .then(function(r){';
+echo '        console.timeEnd("[CHAT] fetch-duracao");';
+echo '        console.log("[CHAT] HTTP status:",r.status,r.statusText);';
+echo '        if(!r.ok)console.error("[CHAT] HTTP erro:",r.status);';
+echo '        return r.text().then(function(raw){';
+echo '          console.log("[CHAT] Resposta raw:",raw.substring(0,500));';
+echo '          try{return JSON.parse(raw);}catch(e){console.error("[CHAT] JSON inv\u00e1lido:",raw);throw e;}';
+echo '        });';
+echo '      })';
 echo '      .then(function(data){';
+echo '        console.log("[CHAT] Resposta JSON:",data);';
 echo '        sending=false;';
 echo '        if(!data.success){';
+echo '          console.error("[CHAT] ERRO API:",data.error);';
 echo '          msgEl.querySelector(".whatsapp-message-text").style.color="#dc2626";';
 echo '          msgEl.querySelector(".whatsapp-message-text").textContent=text+" [❌ "+( data.error||"Erro ao enviar")+"]";';
 echo '        } else {';
@@ -1988,9 +2019,11 @@ echo '        } else {';
 echo '          if(data.timestamp&&data.timestamp>lastTimestamp)lastTimestamp=data.timestamp;';
 echo '        }';
 echo '      })';
-echo '      .catch(function(){';
+echo '      .catch(function(err){';
 echo '        sending=false;';
+echo '        console.error("[CHAT] FETCH FALHOU:",err);';
 echo '        msgEl.querySelector(".whatsapp-message-text").style.color="#dc2626";';
+echo '        msgEl.querySelector(".whatsapp-message-text").textContent=text+" [\u274c Falha na conex\u00e3o com o servidor]";';
 echo '      });';
 echo '  });';
 // Enter para enviar
