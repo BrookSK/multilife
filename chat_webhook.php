@@ -133,11 +133,27 @@ function isSystemText(string $text): bool {
 // Processar mensagens recebidas
 // Evolution API V1: data.messages[] é um array de mensagens
 if ($event === 'messages.upsert') {
-    $rawData  = $data['data'] ?? [];
-    // V1: data.messages[]. V2 fallback: data direto como objeto único
-    $msgList  = isset($rawData['messages']) && is_array($rawData['messages'])
-                ? $rawData['messages']
-                : (isset($rawData['key']) ? [$rawData] : []);
+    $rawData = $data['data'] ?? [];
+
+    // Log da estrutura para diagnóstico
+    $dataKeys = is_array($rawData) ? array_keys($rawData) : gettype($rawData);
+    error_log('[WEBHOOK] messages.upsert data keys: ' . json_encode($dataKeys));
+    error_log('[WEBHOOK] messages.upsert data sample: ' . substr(json_encode($rawData), 0, 300));
+
+    // Detectar formato:
+    // Formato A (V1 array direto): data = [{key:..., message:...}, ...]
+    // Formato B (obj com messages): data = {messages:[...], type:"notify"}
+    // Formato C (V2 obj único):     data = {key:..., message:...}
+    if (is_array($rawData) && isset($rawData[0]) && is_array($rawData[0])) {
+        $msgList = $rawData; // Formato A
+    } elseif (isset($rawData['messages']) && is_array($rawData['messages'])) {
+        $msgList = $rawData['messages']; // Formato B
+    } elseif (isset($rawData['key'])) {
+        $msgList = [$rawData]; // Formato C
+    } else {
+        $msgList = [];
+        error_log('[WEBHOOK] messages.upsert: formato nao reconhecido');
+    }
 
     error_log('[WEBHOOK] messages.upsert recebido: ' . count($msgList) . ' mensagem(ns)');
 
