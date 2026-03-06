@@ -831,8 +831,9 @@ if (empty($selectedChat)) {
     
     // Formulário de envio
     echo '<div class="whatsapp-input-area">';
-    echo '<form method="post" action="/chat_send_message.php" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
-    echo '<input type="hidden" name="chat_id" value="' . h($selectedChat) . '">';
+    echo '<form method="post" action="/chat_web.php?chat=' . urlencode($selectedChat) . '" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
+    echo '<input type="hidden" name="action" value="send_message">';
+    echo '<input type="hidden" name="phone_number" value="' . h($selectedChat) . '">';
     echo '<textarea class="whatsapp-input" name="message" placeholder="Digite uma mensagem" rows="1" required></textarea>';
     echo '<button type="submit" class="whatsapp-send-btn">';
     echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
