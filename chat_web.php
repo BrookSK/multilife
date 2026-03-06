@@ -231,58 +231,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
     } elseif ($_POST['action'] === 'create_group') {
-        $groupName = trim($_POST['group_name'] ?? '');
+        $specialty = trim($_POST['specialty'] ?? '');
+        $location = strtoupper(trim($_POST['location'] ?? ''));
         $participants = trim($_POST['participants'] ?? '');
         
-        if (empty($groupName)) {
-            $error = 'Nome do grupo é obrigatório';
-        } else {
-            // Processar participantes (um por linha)
-            $participantsList = [];
-            if (!empty($participants)) {
-                $lines = explode("\n", $participants);
-                foreach ($lines as $line) {
-                    $phone = trim($line);
-                    if (!empty($phone)) {
-                        // Formatar automaticamente cada número
-                        $phone = format_phone_evolution($phone);
-                        if (!empty($phone)) {
-                            $participantsList[] = $phone . '@s.whatsapp.net';
-                        }
-                    }
+        if (empty($specialty) || empty($location)) {
+            $error = 'Especialidade e localização são obrigatórias.';
+        } elseif (!empty($participants)) {
+            // Gerar número sequencial do grupo
+            try {
+                $countStmt = db()->prepare('SELECT COUNT(*) FROM chat_groups WHERE specialty = ? AND region = ?');
+                $countStmt->execute([$specialty, $location]);
+                $groupNumber = (int)$countStmt->fetchColumn() + 1;
+            } catch (Exception $e) {
+                $groupNumber = 1;
+            }
+            
+            // Padrão: Especialidade - Localização - Número
+            $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
+            
+            // Formatar participantes
+            $participantsList = array_filter(array_map('trim', explode("\n", $participants)));
+            $formattedParticipants = [];
+            foreach ($participantsList as $phone) {
+                $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+                if (!empty($cleanPhone)) {
+                    $formattedParticipants[] = $cleanPhone . '@s.whatsapp.net';
                 }
             }
             
-            // Criar grupo via API Evolution
-            $url = $baseUrl . '/group/create/' . urlencode($instanceName);
-            $payload = json_encode([
-                'subject' => $groupName,
-                'participants' => $participantsList
-            ]);
-            
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'apikey: ' . $apiKey,
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($httpCode === 200 || $httpCode === 201) {
-                $success = 'Grupo criado com sucesso!';
-            } else {
-                $error = 'Erro ao criar grupo. HTTP Code: ' . $httpCode;
+            if (!empty($formattedParticipants)) {
+                $url = $baseUrl . '/group/create/' . urlencode($instanceName);
+                $payload = json_encode([
+                    'subject' => $groupName,
+                    'participants' => $formattedParticipants
+                ]);
+                
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    'apikey: ' . $apiKey,
+                    'Content-Type: application/json'
+                ]);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                
+                if ($httpCode === 200 || $httpCode === 201) {
+                    $success = 'Grupo criado com sucesso: ' . $groupName;
+                } else {
+                    $error = 'Erro ao criar grupo. HTTP Code: ' . $httpCode;
+                }
             }
         }
     }
-}
 
 // Carregar chats salvos do banco de dados
 $chats = [];
@@ -290,9 +297,113 @@ $messages = [];
 $selectedChatData = [];
 $debugLogs = [];
 
+// SEMPRE buscar grupos da Evolution API e sincronizar com banco
+$groups = [];
+if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+    try {
+        // Criar tabelas de grupos se não existirem
+        db()->exec("
+            CREATE TABLE IF NOT EXISTS chat_groups (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                group_jid VARCHAR(100) NOT NULL UNIQUE,
+                group_name VARCHAR(255) NOT NULL,
+                group_description TEXT DEFAULT NULL,
+                group_picture_url TEXT DEFAULT NULL,
+                specialty VARCHAR(100) DEFAULT NULL,
+                region VARCHAR(100) DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE INDEX idx_group_jid (group_jid),
+                INDEX idx_specialty (specialty),
+                INDEX idx_region (region)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+        
+        // SEMPRE buscar grupos da API (sincronização automática)
+        $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName);
+        $ch = curl_init($groupsUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        
+        $groupsResponse = curl_exec($ch);
+        $groupsHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($groupsHttpCode === 200 && $groupsResponse) {
+            $groupsData = json_decode($groupsResponse, true);
+            
+            // Salvar/atualizar TODOS os grupos no banco
+            if (is_array($groupsData)) {
+                foreach ($groupsData as $group) {
+                    $groupJid = $group['id'] ?? '';
+                    $groupName = $group['subject'] ?? 'Grupo sem nome';
+                    $groupPic = $group['picture'] ?? null;
+                    
+                    if (!empty($groupJid)) {
+                        $stmt = db()->prepare("
+                            INSERT INTO chat_groups (group_jid, group_name, group_picture_url)
+                            VALUES (?, ?, ?)
+                            ON DUPLICATE KEY UPDATE 
+                                group_name = VALUES(group_name),
+                                group_picture_url = VALUES(group_picture_url),
+                                updated_at = CURRENT_TIMESTAMP
+                        ");
+                        $stmt->execute([$groupJid, $groupName, $groupPic]);
+                    }
+                }
+                error_log("Sincronizados " . count($groupsData) . " grupos da Evolution API");
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar grupos: " . $e->getMessage());
+    }
+}
+
+// Buscar grupos do banco com filtros
+$specialtyFilter = isset($_GET['specialty']) ? trim($_GET['specialty']) : '';
+$regionFilter = isset($_GET['region']) ? trim($_GET['region']) : '';
+
+try {
+    $tableCheck = db()->query("SHOW TABLES LIKE 'chat_groups'")->fetch();
+    if ($tableCheck) {
+        $whereClauses = [];
+        $params = [];
+        
+        if (!empty($specialtyFilter)) {
+            $whereClauses[] = "specialty = ?";
+            $params[] = $specialtyFilter;
+        }
+        
+        if (!empty($regionFilter)) {
+            $whereClauses[] = "region = ?";
+            $params[] = $regionFilter;
+        }
+        
+        $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
+        
+        $stmt = db()->prepare("
+            SELECT 
+                group_jid as id,
+                group_name as name,
+                group_picture_url as profilePictureUrl,
+                specialty,
+                region
+            FROM chat_groups
+            $whereSQL
+            ORDER BY group_name ASC
+        ");
+        $stmt->execute($params);
+        $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {
+    error_log("Erro ao carregar grupos do banco: " . $e->getMessage());
+}
+
 // Buscar chats ativos da tabela chat_contacts
 try {
-    // Garantir que tabela existe
     $tableCheck = db()->query("SHOW TABLES LIKE 'chat_contacts'")->fetch();
     if ($tableCheck) {
         // Verificar se coluna profile_picture_url existe, se não, adicionar
@@ -646,8 +757,14 @@ echo '</div>';
 echo '<div style="flex:1;overflow-y:auto;padding:20px">';
 echo '<form method="post" action="/chat_web.php">';
 echo '<input type="hidden" name="action" value="create_group">';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Nome do Grupo:</label>';
-echo '<input type="text" name="group_name" placeholder="Ex: Equipe Médica" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<p style="font-size:13px;color:#667781;margin:0 0 16px;padding:12px;background:#e7f8f4;border-radius:8px">';
+echo '<strong>Padrão de nomenclatura:</strong> Especialidade - Localização - Número<br>';
+echo 'Exemplo: Fisioterapia - SP - 1';
+echo '</p>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade:</label>';
+echo '<input type="text" name="specialty" placeholder="Ex: Fisioterapia" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Localização (Estado/Cidade):</label>';
+echo '<input type="text" name="location" placeholder="Ex: SP ou São Paulo" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Participantes (um número por linha):</label>';
 echo '<textarea name="participants" rows="6" placeholder="5511999999999&#10;5511888888888&#10;..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:8px"></textarea>';
 echo '<p style="font-size:12px;color:#667781;margin:0 0 16px">Digite um número por linha no formato: código do país + DDD + número</p>';
@@ -804,11 +921,6 @@ if (!empty($debugLogs)) {
     echo '<h3 style="margin:0 0 10px;color:#856404">🔍 Debug de Ordenação</h3>';
     foreach ($debugLogs as $log) {
         echo '<div style="padding:2px 0;color:#856404">' . h($log) . '</div>';
-    }
-    echo '</div>';
-}
-
-// Botões de ação acima do chat
 echo '<div style="padding:16px 20px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;gap:12px;align-items:center">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
 echo '<button onclick="openNewChatModal()" style="padding:10px 20px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
