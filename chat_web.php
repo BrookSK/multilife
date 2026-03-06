@@ -410,7 +410,7 @@ echo '<div class="whatsapp-sidebar">';
 echo '<div class="whatsapp-header">';
 echo '<div class="whatsapp-chat-avatar">' . strtoupper(substr(auth_user()['name'] ?? 'U', 0, 1)) . '</div>';
 echo '<div style="display:flex;gap:4px">';
-echo '<button class="whatsapp-action-btn" onclick="if(confirm(\'Sincronizar todas as conversas e grupos do WhatsApp?\')){window.location.href=\'/chat_sync_whatsapp.php\';}" title="Sincronizar WhatsApp">';
+echo '<button class="whatsapp-action-btn" onclick="if(confirm(&quot;Sincronizar todas as conversas e grupos do WhatsApp?&quot;)){window.location.href=&quot;/chat_sync_whatsapp.php&quot;;}" title="Sincronizar WhatsApp">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.2"/></svg>';
 echo '</button>';
 echo '<button class="whatsapp-action-btn" onclick="window.location.href=\'/evolution_qrcode.php\'" title="Conectar via QR Code">';
