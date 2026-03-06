@@ -81,12 +81,16 @@ function ensureChatTables(): void {
 function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp): void {
     ensureChatTables();
     
+    error_log("[SAVE_MSG] Salvando mensagem - remoteJid: '$remoteJid' | fromMe: $fromMe | text: '" . substr($text, 0, 30) . "'");
+    
     $stmt = db()->prepare("INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp) VALUES (?, ?, ?, ?)");
     $stmt->execute([$remoteJid, $text, $fromMe, $timestamp]);
 
     // Atualizar contato
     $isGroup = strpos($remoteJid, '@g.us') !== false ? 1 : 0;
     $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $remoteJid);
+
+    error_log("[SAVE_CONTACT] Salvando/atualizando contato - remoteJid: '$remoteJid' | contactName: '$contactName' | isGroup: $isGroup");
 
     $stmtContact = db()->prepare("
         INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
@@ -96,6 +100,8 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
             updated_at = CURRENT_TIMESTAMP
     ");
     $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
+    
+    error_log("[SAVE_CONTACT] Contato salvo com sucesso - remoteJid: '$remoteJid'");
 }
 
 // Tipos de mensagem que são sistema/protocolo e devem ser ignorados
@@ -170,6 +176,7 @@ if ($event === 'messages.upsert') {
         $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
         error_log("[WEBHOOK] msg jid:'$remoteJid' fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
+        error_log("[WEBHOOK] DIAGNOSTIC - remoteJid recebido: '$remoteJid' | length: " . strlen($remoteJid) . " | contains @: " . (strpos($remoteJid, '@') !== false ? 'yes' : 'no'));
 
         // Ignorar: status@broadcast, JIDs de sistema, tipos de protocolo, textos de sistema
         $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
