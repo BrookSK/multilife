@@ -16,20 +16,52 @@ $instanceName = admin_setting_get('evolution.instance');
 $success = '';
 $error = '';
 
+// Função para formatar telefone no padrão Evolution API
+function format_phone_evolution($phone) {
+    if (empty($phone)) return '';
+    
+    // Remover todos os caracteres não numéricos
+    $cleaned = preg_replace('/[^0-9]/', '', $phone);
+    
+    // Se começar com 0, remover
+    if (substr($cleaned, 0, 1) === '0') {
+        $cleaned = substr($cleaned, 1);
+    }
+    
+    // Se não tiver código do país (55 para Brasil), adicionar
+    if (strlen($cleaned) === 10 || strlen($cleaned) === 11) {
+        $cleaned = '55' . $cleaned;
+    }
+    
+    return $cleaned;
+}
+
 // PROCESSAR ENVIO DE MENSAGEM
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'send_message') {
+        // Buscar número de qualquer um dos 3 campos possíveis
         $phoneNumber = trim($_POST['phone_number'] ?? '');
+        if (empty($phoneNumber)) {
+            $phoneNumber = trim($_POST['contact_phone_professional'] ?? '');
+        }
+        if (empty($phoneNumber)) {
+            $phoneNumber = trim($_POST['contact_phone_patient'] ?? '');
+        }
+        if (empty($phoneNumber)) {
+            $phoneNumber = trim($_POST['contact_phone_manual'] ?? '');
+        }
+        
         $message = trim($_POST['message'] ?? '');
         
         if (empty($phoneNumber) || empty($message)) {
             $error = 'Número e mensagem são obrigatórios';
         } else {
-            // Formatar número para WhatsApp (adicionar @s.whatsapp.net se necessário)
+            // Formatar número automaticamente para padrão Evolution API
+            $phoneNumber = format_phone_evolution($phoneNumber);
+            
+            // Adicionar @s.whatsapp.net se necessário
             $remoteJid = $phoneNumber;
             if (strpos($remoteJid, '@') === false) {
-                // Remover caracteres especiais
-                $remoteJid = preg_replace('/[^0-9]/', '', $remoteJid);
                 $remoteJid .= '@s.whatsapp.net';
             }
             
@@ -75,7 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 foreach ($lines as $line) {
                     $phone = trim($line);
                     if (!empty($phone)) {
-                        $phone = preg_replace('/[^0-9]/', '', $phone);
+                        // Formatar automaticamente cada número
+                        $phone = format_phone_evolution($phone);
                         if (!empty($phone)) {
                             $participantsList[] = $phone . '@s.whatsapp.net';
                         }
@@ -734,7 +767,7 @@ echo '</div>'; // Fecha whatsapp-container
 // JavaScript para funcionalidades
 echo '<script>';
 
-// Validação do formulário antes de enviar (usar DOMContentLoaded para garantir que elementos existam)
+// Validação do formulário antes de enviar
 echo 'document.addEventListener("DOMContentLoaded", function() {';
 echo '  const form = document.getElementById("newChatForm");';
 echo '  if (form) {';
@@ -747,12 +780,6 @@ echo '        e.preventDefault();';
 echo '        alert("Por favor, selecione um contato ou digite um número manualmente.");';
 echo '        return false;';
 echo '      }';
-echo '      const phoneValue = profPhone || patPhone || manualPhone;';
-echo '      const hiddenInput = document.createElement("input");';
-echo '      hiddenInput.type = "hidden";';
-echo '      hiddenInput.name = "phone_number";';
-echo '      hiddenInput.value = phoneValue;';
-echo '      this.appendChild(hiddenInput);';
 echo '    });';
 echo '  }';
 echo '});';
