@@ -108,16 +108,12 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
 // NÃO USA BANCO DE DADOS LOCAL - TODAS AS MENSAGENS VÊM DA API EM TEMPO REAL
 if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        // Preparar payload da requisição
+        // Preparar payload da requisição - simplificado para testar
         $requestPayload = [
             'where' => [
                 'key' => [
                     'remoteJid' => $selectedChat
                 ]
-            ],
-            'limit' => 10,
-            'sort' => [
-                'messageTimestamp' => -1
             ]
         ];
         
@@ -154,6 +150,7 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         if ($curlError) {
             error_log("cURL Error: " . $curlError);
         }
+        error_log("Resposta completa da API: " . substr($response, 0, 500));
         
         if ($httpCode === 200) {
             $data = json_decode($response, true);

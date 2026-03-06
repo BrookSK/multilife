@@ -32,8 +32,7 @@ try {
             'key' => [
                 'remoteJid' => $chatId
             ]
-        ],
-        'limit' => 50
+        ]
     ]);
     
     $ch = curl_init($baseUrl . '/message/findMessages/' . urlencode($instanceName));
