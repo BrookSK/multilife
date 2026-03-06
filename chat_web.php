@@ -104,9 +104,13 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     }
 }
 
-// Buscar mensagens do chat selecionado
+// Buscar mensagens do chat selecionado DIRETAMENTE DA API EVOLUTION
+// NÃO USA BANCO DE DADOS LOCAL - TODAS AS MENSAGENS VÊM DA API EM TEMPO REAL
 if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
+        // Log para debug - confirmar que está buscando da API
+        error_log("CHAT_WEB: Buscando mensagens da API Evolution para chat: " . $selectedChat);
+        
         // Buscar apenas 10 mensagens mais recentes da conversa específica
         $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -136,10 +140,14 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         
+        // Log da resposta da API
+        error_log("CHAT_WEB: Resposta da API - HTTP " . $httpCode . " - Chat: " . $selectedChat);
+        
         if ($httpCode === 200) {
             $data = json_decode($response, true);
             if (isset($data) && is_array($data)) {
                 $messages = $data;
+                error_log("CHAT_WEB: " . count($messages) . " mensagens recebidas da API para chat " . $selectedChat);
                 // Ordenar mensagens por timestamp
                 usort($messages, function($a, $b) {
                     $timeA = $a['messageTimestamp'] ?? 0;
@@ -194,6 +202,23 @@ if (!empty($selectedChat) && !empty($baseUrl) && !empty($apiKey) && !empty($inst
 }
 
 view_header('Chat ao Vivo');
+
+// Meta tags para prevenir cache
+echo '<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">';
+echo '<meta http-equiv="Pragma" content="no-cache">';
+echo '<meta http-equiv="Expires" content="0">';
+
+// JavaScript para forçar reload sem cache quando parâmetro refresh está presente
+echo '<script>';
+echo 'if(window.location.search.includes("refresh=1")){';
+echo '  if(!sessionStorage.getItem("chatRefreshed")){';
+echo '    sessionStorage.setItem("chatRefreshed","1");';
+echo '    window.location.href=window.location.pathname+window.location.search.replace(/[?&]refresh=1/,"").replace(/[?&]t=[0-9]+/,"");';
+echo '  }else{';
+echo '    sessionStorage.removeItem("chatRefreshed");';
+echo '  }';
+echo '}';
+echo '</script>';
 
 // CSS customizado para WhatsApp Web
 echo '<style>';
@@ -362,6 +387,8 @@ if (empty($selectedChat)) {
     // Cabeçalho do chat
     echo '<div class="whatsapp-chat-header">';
     echo '<div class="whatsapp-chat-header-info">';
+    // Indicador de fonte de dados
+    echo '<div style="position:absolute;top:4px;right:4px;font-size:9px;color:#00a884;background:#e7f8f4;padding:2px 6px;border-radius:4px;font-weight:600">EVOLUTION API</div>';
     $initials = strtoupper(substr($chatName, 0, 2));
     if (!empty($profilePic)) {
         echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
@@ -434,6 +461,12 @@ echo '</div>'; // Fecha whatsapp-container
 
 // JavaScript para funcionalidades
 echo '<script>';
+echo 'if(sessionStorage.getItem("forceReload")==="1"){';
+echo '  sessionStorage.removeItem("forceReload");';
+echo '  if(!window.location.search.includes("refresh=1")){';
+echo '    window.location.href=window.location.pathname+"?refresh=1&t="+Date.now();';
+echo '  }';
+echo '}';
 echo 'function toggleActionsMenu(e){';
 echo '  e.stopPropagation();';
 echo '  const menu=document.getElementById("actionsMenu");';
@@ -448,6 +481,7 @@ echo '  alert("Busca no chat em desenvolvimento");';
 echo '}';
 echo 'function syncWhatsApp(){';
 echo '  if(confirm("Sincronizar todas as conversas e grupos do WhatsApp?")){';
+echo '    sessionStorage.setItem("forceReload","1");';
 echo '    window.location.href="/chat_sync_whatsapp.php";';
 echo '  }';
 echo '}';
@@ -464,11 +498,14 @@ echo 'if(messagesContainer){';
 echo '  setInterval(function(){';
 echo '    const chatId="' . addslashes($selectedChat) . '";';
 echo '    if(!chatId)return;';
-echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId))';
+echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&t="+Date.now(),{';
+echo '      cache:"no-cache",';
+echo '      headers:{"Cache-Control":"no-cache","Pragma":"no-cache"}';
+echo '    })';
 echo '      .then(r=>r.json())';
 echo '      .then(data=>{';
 echo '        if(data.messages && data.messages.length > lastMessageCount){';
-echo '          window.location.reload();';
+echo '          location.reload(true);';
 echo '        }';
 echo '      })';
 echo '      .catch(e=>console.error("Erro ao buscar mensagens:",e));';
