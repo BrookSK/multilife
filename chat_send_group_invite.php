@@ -20,8 +20,40 @@ if (empty($chatId) || empty($groupJid)) {
 }
 
 try {
+    // Verificar configurações antes de criar a API
+    error_log("[GROUP_INVITE] Iniciando verificacao de configs");
+    
+    $baseUrl = admin_setting_get('evolution.base_url');
+    $apiKey = admin_setting_get('evolution.api_key');
+    $instance = admin_setting_get('evolution.instance');
+    
+    error_log("[GROUP_INVITE] baseUrl='" . var_export($baseUrl, true) . "'");
+    error_log("[GROUP_INVITE] apiKey='" . (empty($apiKey) ? 'VAZIO' : substr($apiKey, 0, 10) . '...') . "'");
+    error_log("[GROUP_INVITE] instance='" . var_export($instance, true) . "'");
+    
     // Usar EvolutionApiV1 (mesma classe que funciona no envio de mensagens)
-    $api = new EvolutionApiV1();
+    error_log("[GROUP_INVITE] Tentando criar EvolutionApiV1");
+    try {
+        $api = new EvolutionApiV1();
+        error_log("[GROUP_INVITE] EvolutionApiV1 criada com sucesso");
+    } catch (RuntimeException $e) {
+        error_log("[GROUP_INVITE] ERRO ao criar EvolutionApiV1: " . $e->getMessage());
+        error_log("[GROUP_INVITE] Stack trace: " . $e->getTraceAsString());
+        echo json_encode([
+            'success' => false, 
+            'error' => $e->getMessage(),
+            'debug' => [
+                'base_url' => $baseUrl ?: 'NULL/VAZIO',
+                'api_key' => !empty($apiKey) ? 'OK (' . strlen($apiKey) . ' chars)' : 'NULL/VAZIO',
+                'instance' => $instance ?: 'NULL/VAZIO'
+            ]
+        ]);
+        exit;
+    } catch (Exception $e) {
+        error_log("[GROUP_INVITE] ERRO GENERICO: " . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'Erro inesperado: ' . $e->getMessage()]);
+        exit;
+    }
     
     // Extrair número do telefone do chatId
     $participantPhone = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $chatId);
