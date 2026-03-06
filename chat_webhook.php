@@ -86,7 +86,7 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
 
     // Atualizar contato
     $isGroup = strpos($remoteJid, '@g.us') !== false ? 1 : 0;
-    $contactName = str_replace(['@s.whatsapp.net', '@g.us'], '', $remoteJid);
+    $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $remoteJid);
 
     $stmtContact = db()->prepare("
         INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
