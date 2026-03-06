@@ -283,7 +283,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 curl_close($ch);
                 
                 if ($httpCode === 200 || $httpCode === 201) {
-                    $success = 'Grupo criado com sucesso: ' . $groupName;
+                    $responseData = json_decode($response, true);
+                    $groupJid = $responseData['id'] ?? '';
+                    
+                    // Salvar grupo no banco de dados
+                    if (!empty($groupJid)) {
+                        try {
+                            $stmt = db()->prepare("
+                                INSERT INTO chat_groups (group_jid, group_name, specialty, region, created_at)
+                                VALUES (?, ?, ?, ?, NOW())
+                            ");
+                            $stmt->execute([$groupJid, $groupName, $specialty, $location]);
+                            
+                            audit_log('group_created', 'Grupo criado: ' . $groupName . ' (JID: ' . $groupJid . ')');
+                            $success = 'Grupo criado com sucesso: ' . $groupName;
+                        } catch (Exception $e) {
+                            error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
+                            $success = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
+                        }
+                    } else {
+                        $success = 'Grupo criado com sucesso: ' . $groupName;
+                    }
                 } else {
                     $error = 'Erro ao criar grupo. HTTP Code: ' . $httpCode;
                 }
@@ -780,24 +800,52 @@ echo '</div>';
 
 // Modal: Criar Grupo
 echo '<div id="createGroupModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center">';
-echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:500px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">';
+echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:600px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">';
 echo '<div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">';
-echo '<h2 style="margin:0;font-size:20px;color:#111b21">Criar Grupo</h2>';
+echo '<h2 style="margin:0;font-size:20px;color:#111b21">Criar Grupo WhatsApp</h2>';
 echo '<button onclick="closeCreateGroupModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>';
 echo '</div>';
 echo '<div style="flex:1;overflow-y:auto;padding:20px">';
-echo '<form method="post" action="/chat_web.php">';
+echo '<form method="post" action="/chat_web.php" id="createGroupForm">';
 echo '<input type="hidden" name="action" value="create_group">';
 echo '<p style="font-size:13px;color:#667781;margin:0 0 16px;padding:12px;background:#e7f8f4;border-radius:8px">';
-echo '<strong>Padrão de nomenclatura:</strong> Especialidade - Localização - Número<br>';
+echo '<strong>Padrão:</strong> Especialidade - UF/Cidade - Número<br>';
 echo 'Exemplo: Fisioterapia - SP - 1';
 echo '</p>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade:</label>';
-echo '<input type="text" name="specialty" placeholder="Ex: Fisioterapia" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Localização (Estado/Cidade):</label>';
-echo '<input type="text" name="location" placeholder="Ex: SP ou São Paulo" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Participantes (um número por linha):</label>';
-echo '<textarea name="participants" rows="6" placeholder="5511999999999&#10;5511888888888&#10;..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:8px"></textarea>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
+echo '<select name="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">Selecione...</option>';
+try {
+    $specialtiesStmt = db()->query("SELECT DISTINCT name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+    $specialtiesList = $specialtiesStmt->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($specialtiesList as $specName) {
+        echo '<option value="' . h($specName) . '">' . h($specName) . '</option>';
+    }
+} catch (Exception $e) {
+    error_log("Erro ao buscar especialidades: " . $e->getMessage());
+}
+echo '</select>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">UF *</label>';
+echo '<select name="state" id="modalGroupState" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">Selecione...</option>';
+echo '<option value="SP">SP - São Paulo</option>';
+echo '<option value="RJ">RJ - Rio de Janeiro</option>';
+echo '<option value="MG">MG - Minas Gerais</option>';
+echo '<option value="RS">RS - Rio Grande do Sul</option>';
+echo '<option value="PR">PR - Paraná</option>';
+echo '<option value="SC">SC - Santa Catarina</option>';
+echo '<option value="BA">BA - Bahia</option>';
+echo '<option value="PE">PE - Pernambuco</option>';
+echo '<option value="CE">CE - Ceará</option>';
+echo '<option value="DF">DF - Distrito Federal</option>';
+echo '</select>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Cidade (opcional)</label>';
+echo '<select name="city" id="modalGroupCity" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">Selecione o estado primeiro...</option>';
+echo '</select>';
+echo '<input type="hidden" name="location" id="modalLocation">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Participantes (um número por linha)</label>';
+echo '<textarea name="participants" rows="5" placeholder="5511999999999&#10;5511888888888&#10;..." style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:8px"></textarea>';
 echo '<p style="font-size:12px;color:#667781;margin:0 0 16px">Digite um número por linha no formato: código do país + DDD + número</p>';
 echo '<div style="display:flex;gap:12px">';
 echo '<button type="button" onclick="closeCreateGroupModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>';
@@ -835,6 +883,49 @@ echo '  document.getElementById("createGroupModal").style.display = "flex";';
 echo '}';
 echo 'function closeCreateGroupModal() {';
 echo '  document.getElementById("createGroupModal").style.display = "none";';
+echo '}';
+echo '// Carregar cidades do IBGE no modal de criar grupo';
+echo 'const modalStateSelect = document.getElementById("modalGroupState");';
+echo 'const modalCitySelect = document.getElementById("modalGroupCity");';
+echo 'const modalLocationInput = document.getElementById("modalLocation");';
+echo 'if(modalStateSelect && modalCitySelect) {';
+echo '  modalStateSelect.addEventListener("change", async function() {';
+echo '    const uf = this.value;';
+echo '    modalCitySelect.innerHTML = "<option value=\"\">Carregando...</option>";';
+echo '    modalCitySelect.disabled = true;';
+echo '    if(!uf) {';
+echo '      modalCitySelect.innerHTML = "<option value=\"\">Selecione o estado primeiro...</option>";';
+echo '      modalCitySelect.disabled = false;';
+echo '      modalLocationInput.value = "";';
+echo '      return;';
+echo '    }';
+echo '    modalLocationInput.value = uf;';
+echo '    try {';
+echo '      const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);';
+echo '      const cidades = await response.json();';
+echo '      modalCitySelect.innerHTML = "<option value=\"\">Selecione...</option>";';
+echo '      cidades.forEach(cidade => {';
+echo '        const opt = document.createElement("option");';
+echo '        opt.value = cidade.nome;';
+echo '        opt.textContent = cidade.nome;';
+echo '        modalCitySelect.appendChild(opt);';
+echo '      });';
+echo '      modalCitySelect.disabled = false;';
+echo '    } catch(err) {';
+echo '      console.error("Erro ao buscar cidades:", err);';
+echo '      modalCitySelect.innerHTML = "<option value=\"\">Erro ao carregar</option>";';
+echo '      modalCitySelect.disabled = false;';
+echo '    }';
+echo '  });';
+echo '  modalCitySelect.addEventListener("change", function() {';
+echo '    const uf = modalStateSelect.value;';
+echo '    const city = this.value;';
+echo '    if(city) {';
+echo '      modalLocationInput.value = city + " - " + uf;';
+echo '    } else {';
+echo '      modalLocationInput.value = uf;';
+echo '    }';
+echo '  });';
 echo '}';
 echo 'function switchTab(tab) {';
 echo '  document.getElementById("tabProfessionals").style.borderBottomColor = "transparent";';

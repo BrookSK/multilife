@@ -349,6 +349,13 @@ try {
                                                 data-bs-target="#participantsModal<?= md5($group['group_jid']) ?>">
                                             <i class="fas fa-users"></i> Gerenciar Participantes
                                         </button>
+                                        <?php if (rbac_has_permission('admin.settings.manage')): ?>
+                                        <button type="button" 
+                                                class="btn btn-outline-danger btn-sm" 
+                                                onclick="if(confirm('Deseja realmente excluir este grupo do sistema? Esta ação não pode ser desfeita.')) { window.location.href='/chat_groups_delete.php?id=<?= urlencode($group['group_jid']) ?>'; }">
+                                            <i class="fas fa-trash"></i> Excluir
+                                        </button>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
