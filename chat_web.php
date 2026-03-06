@@ -663,22 +663,18 @@ $professionals = [];
 $patients = [];
 
 try {
-    // Verificar se tabela professionals existe antes de buscar
-    $profTableExists = db()->query("SHOW TABLES LIKE 'professionals'")->fetch();
-    if ($profTableExists) {
-        // Detectar coluna correta de nome na tabela professionals
-        $profCols = db()->query("SHOW COLUMNS FROM professionals LIKE 'full_name'")->fetch();
-        $profNameCol = $profCols ? 'full_name' : 'name';
-        $stmt = db()->prepare("
-            SELECT id, $profNameCol as name, phone_primary as phone
-            FROM professionals
-            WHERE phone_primary IS NOT NULL
-            AND phone_primary != ''
-            ORDER BY $profNameCol ASC
-        ");
-        $stmt->execute();
-        $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
+    // Buscar profissionais da tabela users com role='profissional'
+    $stmt = db()->prepare("
+        SELECT id, name, phone
+        FROM users
+        WHERE role = 'profissional'
+        AND phone IS NOT NULL
+        AND phone != ''
+        AND status = 'active'
+        ORDER BY name ASC
+    ");
+    $stmt->execute();
+    $professionals = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Verificar se tabela patients existe antes de buscar
     $patTableExists = db()->query("SHOW TABLES LIKE 'patients'")->fetch();
