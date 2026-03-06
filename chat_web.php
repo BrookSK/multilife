@@ -403,32 +403,62 @@ try {
     error_log("Erro ao carregar grupos do banco: " . $e->getMessage());
 }
 
-// Buscar chats ativos da tabela chat_contacts
+// Buscar chats ativos da tabela chat_contacts com filtros de status
 try {
     $tableCheck = db()->query("SHOW TABLES LIKE 'chat_contacts'")->fetch();
     if ($tableCheck) {
-        // Verificar se coluna profile_picture_url existe, se não, adicionar
+        // Verificar e adicionar colunas necessárias
         try {
             $columns = db()->query("SHOW COLUMNS FROM chat_contacts LIKE 'profile_picture_url'")->fetch();
             if (!$columns) {
                 db()->exec("ALTER TABLE chat_contacts ADD COLUMN profile_picture_url TEXT DEFAULT NULL AFTER contact_name");
-                error_log("Coluna profile_picture_url adicionada à tabela chat_contacts");
+            }
+            $statusCol = db()->query("SHOW COLUMNS FROM chat_contacts LIKE 'status'")->fetch();
+            if (!$statusCol) {
+                db()->exec("ALTER TABLE chat_contacts ADD COLUMN status VARCHAR(20) DEFAULT 'aguardando' AFTER profile_picture_url");
             }
         } catch (Exception $e) {
-            error_log("Erro ao verificar/adicionar coluna: " . $e->getMessage());
+            error_log("Erro ao verificar/adicionar colunas: " . $e->getMessage());
         }
         
-        $stmt = db()->query("
+        // Construir query com filtros
+        $whereClauses = [];
+        $params = [];
+        
+        if ($chatType === 'atendendo') {
+            $whereClauses[] = "status = 'atendendo'";
+        } elseif ($chatType === 'aguardando') {
+            $whereClauses[] = "status = 'aguardando'";
+        } elseif ($chatType === 'resolvidos') {
+            $whereClauses[] = "status = 'resolvido'";
+        } elseif ($chatType === 'grupos') {
+            $whereClauses[] = "is_group = 1";
+        } elseif ($chatType === 'organizacao') {
+            $whereClauses[] = "contact_name LIKE '%Organização%' OR contact_name LIKE '%Admin%'";
+        }
+        
+        if (!empty($searchQuery)) {
+            $whereClauses[] = "(contact_name LIKE ? OR remote_jid LIKE ?)";
+            $params[] = '%' . $searchQuery . '%';
+            $params[] = '%' . $searchQuery . '%';
+        }
+        
+        $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
+        
+        $stmt = db()->prepare("
             SELECT 
                 remote_jid as id,
                 contact_name as name,
                 profile_picture_url as profilePictureUrl,
                 is_group,
+                status,
                 last_message_timestamp as lastMsgTimestamp
             FROM chat_contacts
+            $whereSQL
             ORDER BY last_message_timestamp DESC
             LIMIT 50
         ");
+        $stmt->execute($params);
         $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 } catch (Exception $e) {
@@ -862,15 +892,15 @@ echo '  }';
 echo '}';
 echo '</script>';
 
-// CSS customizado para WhatsApp Web
+// CSS customizado para WhatsApp Web com 3 colunas
 echo '<style>';
 echo '.whatsapp-container{display:flex;height:calc(100vh - 64px);background:#f0f2f5;overflow:hidden}';
-echo '.whatsapp-sidebar{width:420px;background:#fff;border-right:1px solid #d1d7db;display:flex;flex-direction:column}';
-echo '.whatsapp-header{padding:16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
+echo '.whatsapp-sidebar{width:380px;background:#fff;border-right:1px solid #d1d7db;display:flex;flex-direction:column}';
+echo '.whatsapp-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-search{padding:8px 16px;background:#fff}';
 echo '.whatsapp-search input{width:100%;padding:8px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px}';
-echo '.whatsapp-tabs{display:flex;gap:4px;padding:0 16px;background:#fff;border-bottom:1px solid #d1d7db}';
-echo '.whatsapp-tab{padding:12px 16px;font-size:14px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s}';
+echo '.whatsapp-tabs{display:flex;gap:0;padding:0;background:#fff;border-bottom:1px solid #d1d7db;overflow-x:auto}';
+echo '.whatsapp-tab{padding:10px 12px;font-size:13px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;flex-shrink:0}';
 echo '.whatsapp-tab:hover{background:#f5f6f6}';
 echo '.whatsapp-tab.active{color:#00a884;border-bottom-color:#00a884}';
 echo '.whatsapp-chats{flex:1;overflow-y:auto;background:#fff}';
@@ -914,6 +944,21 @@ echo '.whatsapp-dropdown-item:hover{background:#f5f6f6}';
 echo '.whatsapp-dropdown-item:first-child{border-radius:8px 8px 0 0}';
 echo '.whatsapp-dropdown-item:last-child{border-radius:0 0 8px 8px}';
 echo '.whatsapp-group-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#e9edef;border-radius:12px;font-size:12px;color:#54656f;margin-left:8px}';
+echo '.whatsapp-info-panel{width:340px;background:#fff;border-left:1px solid #d1d7db;display:flex;flex-direction:column;overflow-y:auto}';
+echo '.whatsapp-info-header{padding:16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;font-weight:600;font-size:16px;color:#111b21;display:flex;align-items:center;justify-content:space-between}';
+echo '.whatsapp-info-section{padding:16px;border-bottom:1px solid #f0f2f5}';
+echo '.whatsapp-info-label{font-size:12px;color:#667781;margin-bottom:4px;font-weight:500}';
+echo '.whatsapp-info-value{font-size:14px;color:#111b21;margin-bottom:12px}';
+echo '.whatsapp-info-avatar{width:120px;height:120px;border-radius:50%;background:#dfe5e7;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:600;color:#54656f;margin:0 auto 16px}';
+echo '.whatsapp-status-badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}';
+echo '.whatsapp-status-badge.atendendo{background:#dcf8c6;color:#0a8754}';
+echo '.whatsapp-status-badge.aguardando{background:#fff3cd;color:#856404}';
+echo '.whatsapp-status-badge.resolvido{background:#d1d7db;color:#54656f}';
+echo '.whatsapp-sync-btn{padding:8px 16px;background:#00a884;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .2s}';
+echo '.whatsapp-sync-btn:hover{background:#06cf9c}';
+echo '.whatsapp-sync-btn:disabled{background:#d1d7db;cursor:not-allowed}';
+echo '@keyframes rotate{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
+echo '.rotating{animation:rotate 1s linear infinite}';
 echo '</style>';
 
 // Exibir logs de debug no topo da página
@@ -926,20 +971,28 @@ if (!empty($debugLogs)) {
     echo '</div>';
 }
 
-echo '<div style="padding:16px 20px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;gap:12px;align-items:center">';
+echo '<div style="padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
-echo '<button onclick="openNewChatModal()" style="padding:10px 20px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
+echo '<button onclick="syncEvolution()" id="syncBtn" class="whatsapp-sync-btn">';
+echo '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="syncIcon"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>';
+echo 'Sincronizar';
+echo '</button>';
+echo '<button onclick="openNewChatModal()" style="padding:10px 18px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
 echo 'Nova Conversa';
 echo '</button>';
-echo '<button onclick="openCreateGroupModal()" style="padding:10px 20px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
+echo '<button onclick="openCreateGroupModal()" style="padding:10px 18px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
 echo 'Criar Grupo';
 echo '</button>';
-echo '<button onclick="window.location.href=\'/evolution_qrcode.php\'" style="padding:10px 20px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .2s">';
+echo '<a href="/chat_groups.php" style="padding:10px 18px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;transition:all .2s">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/></svg>';
+echo 'Gerenciar Grupos';
+echo '</a>';
+echo '<a href="/evolution_qrcode.php" style="padding:10px 18px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;transition:all .2s">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
 echo 'QR Code';
-echo '</button>';
+echo '</a>';
 echo '</div>';
 
 echo '<div class="whatsapp-container">';
@@ -959,8 +1012,28 @@ echo '<form method="get" action="/chat_web.php">';
 if (!empty($selectedChat)) {
     echo '<input type="hidden" name="chat" value="' . h($selectedChat) . '">';
 }
-echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar ou começar uma nova conversa">';
+if (!empty($chatType)) {
+    echo '<input type="hidden" name="type" value="' . h($chatType) . '">';
+}
+echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
 echo '</form>';
+echo '</div>';
+
+// Abas de navegação
+echo '<div class="whatsapp-tabs">';
+$tabs = [
+    'atendendo' => 'Atendendo',
+    'aguardando' => 'Aguardando',
+    'resolvidos' => 'Resolvidos',
+    'grupos' => 'Grupos',
+    'organizacao' => 'Chat Organização'
+];
+foreach ($tabs as $tabKey => $tabLabel) {
+    $activeClass = ($chatType === $tabKey) ? 'active' : '';
+    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . '\'">';
+    echo h($tabLabel);
+    echo '</div>';
+}
 echo '</div>';
 
 // Abas removidas temporariamente para simplificar
@@ -1117,6 +1190,86 @@ if (empty($selectedChat)) {
 
 echo '</div>';
 
+// Painel lateral direito - Informações de captação
+if (!empty($selectedChat)) {
+    echo '<div class="whatsapp-info-panel">';
+    
+    // Header do painel
+    echo '<div class="whatsapp-info-header">';
+    echo 'Informações';
+    echo '<button onclick="closeInfoPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#54656f">&times;</button>';
+    echo '</div>';
+    
+    // Avatar/Foto
+    $contactName = '';
+    $contactPhone = '';
+    $contactStatus = 'aguardando';
+    foreach ($chats as $chat) {
+        if ($chat['id'] === $selectedChat) {
+            $contactName = $chat['name'] ?? '';
+            $contactStatus = $chat['status'] ?? 'aguardando';
+            $profilePic = $chat['profilePictureUrl'] ?? '';
+            break;
+        }
+    }
+    
+    echo '<div class="whatsapp-info-section" style="text-align:center">';
+    if (!empty($profilePic)) {
+        echo '<div class="whatsapp-info-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
+    } else {
+        $initials = strtoupper(substr($contactName ?: 'C', 0, 2));
+        echo '<div class="whatsapp-info-avatar">' . h($initials) . '</div>';
+    }
+    echo '<h3 style="margin:8px 0;font-size:18px;color:#111b21">' . h($contactName ?: 'Contato') . '</h3>';
+    echo '<p style="margin:0;font-size:13px;color:#667781">' . h($selectedChat) . '</p>';
+    echo '</div>';
+    
+    // Status do atendimento
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Status do Atendimento</div>';
+    $statusClass = $contactStatus === 'atendendo' ? 'atendendo' : ($contactStatus === 'resolvido' ? 'resolvido' : 'aguardando');
+    $statusLabel = $contactStatus === 'atendendo' ? 'Atendendo' : ($contactStatus === 'resolvido' ? 'Resolvido' : 'Aguardando');
+    echo '<span class="whatsapp-status-badge ' . $statusClass . '">' . h($statusLabel) . '</span>';
+    echo '<select onchange="updateStatus(this.value)" style="width:100%;margin-top:8px;padding:8px;border:1px solid #d1d7db;border-radius:6px">';
+    echo '<option value="aguardando" ' . ($contactStatus === 'aguardando' ? 'selected' : '') . '>Aguardando</option>';
+    echo '<option value="atendendo" ' . ($contactStatus === 'atendendo' ? 'selected' : '') . '>Atendendo</option>';
+    echo '<option value="resolvido" ' . ($contactStatus === 'resolvido' ? 'selected' : '') . '>Resolvido</option>';
+    echo '</select>';
+    echo '</div>';
+    
+    // Informações de captação
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Tipo de Captação</div>';
+    echo '<select id="captureType" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;margin-bottom:12px">';
+    echo '<option value="">Selecione...</option>';
+    echo '<option value="paciente">Paciente</option>';
+    echo '<option value="profissional">Profissional</option>';
+    echo '<option value="empresa">Empresa</option>';
+    echo '<option value="parceiro">Parceiro</option>';
+    echo '</select>';
+    
+    echo '<div class="whatsapp-info-label">Observações</div>';
+    echo '<textarea id="captureNotes" rows="4" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px;resize:vertical" placeholder="Anotações sobre a captação..."></textarea>';
+    
+    echo '<button onclick="saveCaptureInfo()" style="width:100%;margin-top:12px;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo 'Salvar Informações';
+    echo '</button>';
+    echo '</div>';
+    
+    // Ações rápidas
+    echo '<div class="whatsapp-info-section">';
+    echo '<div class="whatsapp-info-label">Ações Rápidas</div>';
+    echo '<button onclick="dispararFluxo()" style="width:100%;margin-bottom:8px;padding:10px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo 'Disparar Fluxo';
+    echo '</button>';
+    echo '<button onclick="dispararRemarketing()" style="width:100%;padding:10px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:6px;font-weight:600;cursor:pointer">';
+    echo 'Disparar Remarketing';
+    echo '</button>';
+    echo '</div>';
+    
+    echo '</div>';
+}
+
 echo '</div>'; // Fecha whatsapp-container
 
 // JavaScript para funcionalidades
@@ -1182,6 +1335,73 @@ echo '  }';
 echo '}';
 echo 'console.log("");';
 echo 'console.log("--- MENSAGENS DO CHAT SELECIONADO ---");';
+
+// Função de sincronização com Evolution
+echo 'function syncEvolution() {';
+echo '  const btn = document.getElementById("syncBtn");';
+echo '  const icon = document.getElementById("syncIcon");';
+echo '  btn.disabled = true;';
+echo '  icon.classList.add("rotating");';
+echo '  fetch("/chat_sync_evolution.php", {method: "POST"})';
+echo '    .then(r => r.json())';
+echo '    .then(data => {';
+echo '      if(data.success) {';
+echo '        alert("Sincronização concluída! " + (data.count || 0) + " grupos sincronizados.");';
+echo '        window.location.reload();';
+echo '      } else {';
+echo '        alert("Erro na sincronização: " + (data.error || "Erro desconhecido"));';
+echo '      }';
+echo '    })';
+echo '    .catch(e => {';
+echo '      alert("Erro ao sincronizar: " + e.message);';
+echo '    })';
+echo '    .finally(() => {';
+echo '      btn.disabled = false;';
+echo '      icon.classList.remove("rotating");';
+echo '    });';
+echo '}';
+
+// Função para atualizar status
+echo 'function updateStatus(status) {';
+echo '  const chatId = "' . addslashes($selectedChat) . '";';
+echo '  fetch("/chat_update_status.php", {';
+echo '    method: "POST",';
+echo '    headers: {"Content-Type": "application/json"},';
+echo '    body: JSON.stringify({chat_id: chatId, status: status})';
+echo '  })';
+echo '  .then(r => r.json())';
+echo '  .then(data => {';
+echo '    if(data.success) {';
+echo '      window.location.reload();';
+echo '    } else {';
+echo '      alert("Erro ao atualizar status");';
+echo '    }';
+echo '  });';
+echo '}';
+
+// Função para salvar informações de captação
+echo 'function saveCaptureInfo() {';
+echo '  const chatId = "' . addslashes($selectedChat) . '";';
+echo '  const type = document.getElementById("captureType").value;';
+echo '  const notes = document.getElementById("captureNotes").value;';
+echo '  fetch("/chat_save_capture.php", {';
+echo '    method: "POST",';
+echo '    headers: {"Content-Type": "application/json"},';
+echo '    body: JSON.stringify({chat_id: chatId, capture_type: type, capture_notes: notes})';
+echo '  })';
+echo '  .then(r => r.json())';
+echo '  .then(data => {';
+echo '    if(data.success) {';
+echo '      alert("Informações salvas com sucesso!");';
+echo '    } else {';
+echo '      alert("Erro ao salvar informações");';
+echo '    }';
+echo '  });';
+echo '}';
+
+echo 'function dispararFluxo() { alert("Funcionalidade em desenvolvimento"); }';
+echo 'function dispararRemarketing() { alert("Funcionalidade em desenvolvimento"); }';
+echo 'function closeInfoPanel() { window.location.href = "/chat_web.php"; }';
 echo 'const mensagensRaw = [];'; // Temporariamente desabilitado: json_encode($messages)
 echo 'const mensagens = Array.isArray(mensagensRaw) ? mensagensRaw : (mensagensRaw ? Object.values(mensagensRaw) : []);';
 echo 'console.log("Tipo de mensagens:", typeof mensagens, "- É array?", Array.isArray(mensagens));';
