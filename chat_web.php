@@ -82,11 +82,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
-            // Enviar via EvolutionApiV1 (mesmo método dos cron jobs — formato V1 garantido)
-            error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid'");
+            // WORKAROUND: Delay entre mensagens para o mesmo destinatário (reduz "Aguardando mensagem")
+            $lastSendFile = sys_get_temp_dir() . '/evolution_last_send_' . md5($remoteJid);
+            if (file_exists($lastSendFile)) {
+                $lastSend = (int)file_get_contents($lastSendFile);
+                $elapsed = time() - $lastSend;
+                if ($elapsed < 2) {
+                    $waitTime = 2 - $elapsed;
+                    error_log("[$debugId] DELAY {$waitTime}s para evitar sobrecarga");
+                    sleep($waitTime);
+                }
+            }
+            file_put_contents($lastSendFile, (string)time());
+
+            // Enviar via EvolutionApiV1 com options.delay (dá tempo para sessão Signal)
+            error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid' com delay");
             try {
                 $api = new EvolutionApiV1();
-                $res = $api->sendText($remoteJid, $message);
+                // options.delay ajuda a estabelecer sessão antes de enviar
+                $res = $api->sendText($remoteJid, $message, ['delay' => 1200]);
             } catch (Exception $apiEx) {
                 $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
