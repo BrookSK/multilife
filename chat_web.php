@@ -392,6 +392,23 @@ if (!empty($debugLogs)) {
     echo '</div>';
 }
 
+// Botões de ação acima do chat
+echo '<div style="padding:16px 20px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;gap:12px;align-items:center">';
+echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
+echo '<button onclick="openNewChatModal()" style="padding:10px 20px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+echo 'Nova Conversa';
+echo '</button>';
+echo '<button onclick="openCreateGroupModal()" style="padding:10px 20px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
+echo 'Criar Grupo';
+echo '</button>';
+echo '<button onclick="window.location.href=\'/evolution_qrcode.php\'" style="padding:10px 20px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .2s">';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
+echo 'QR Code';
+echo '</button>';
+echo '</div>';
+
 echo '<div class="whatsapp-container">';
 
 // Sidebar esquerda - Lista de conversas
@@ -400,17 +417,7 @@ echo '<div class="whatsapp-sidebar">';
 // Header com avatar do usuário
 echo '<div class="whatsapp-header">';
 echo '<div class="whatsapp-chat-avatar">' . strtoupper(substr(auth_user()['name'] ?? 'U', 0, 1)) . '</div>';
-echo '<div style="display:flex;gap:4px">';
-echo '<button class="whatsapp-action-btn" onclick="openNewChatModal()" title="Nova Conversa">';
-echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
-echo '</button>';
-echo '<button class="whatsapp-action-btn" onclick="openCreateGroupModal()" title="Criar Grupo">';
-echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
-echo '</button>';
-echo '<button class="whatsapp-action-btn" onclick="window.location.href=\'/evolution_qrcode.php\'" title="Conectar via QR Code">';
-echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
-echo '</button>';
-echo '</div>';
+echo '<div style="font-size:14px;color:#111b21;font-weight:500">' . h(auth_user()['name'] ?? 'Usuário') . '</div>';
 echo '</div>';
 
 // Busca
