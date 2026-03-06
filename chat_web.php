@@ -257,12 +257,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Padrão: Especialidade - Localização - Número
             $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
             
-            // Criar grupo vazio - participantes serão adicionados via convite no chat
-            // Tentar criar sem participantes ou com array vazio
+            // Criar grupo com o número do WhatsApp conectado como participante inicial
+            // Usar o número que aparece nos logs do webhook: 5517991253062
+            $connectedPhone = '5517991253062@s.whatsapp.net';
+            
             $url = $baseUrl . '/group/create/' . urlencode($instanceName);
             $payload = json_encode([
                 'subject' => $groupName,
-                'participants' => []
+                'participants' => [$connectedPhone]
             ]);
             
             error_log("Criando grupo: $groupName");
