@@ -106,6 +106,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("Resposta: " . $response);
             
             if ($httpCode === 200 || $httpCode === 201) {
+                // Salvar mensagem enviada no banco de dados
+                try {
+                    $stmt = db()->prepare("
+                        INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
+                        VALUES (?, ?, 1, ?)
+                    ");
+                    $stmt->execute([$remoteJid, $message, time()]);
+                } catch (Exception $e) {
+                    error_log("Erro ao salvar mensagem no banco: " . $e->getMessage());
+                }
+                
                 // Redirecionar para o chat criado para permitir continuidade
                 header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1');
                 exit();
@@ -174,6 +185,28 @@ $chats = [];
 $messages = [];
 $selectedChatData = [];
 $debugLogs = [];
+
+// Carregar mensagens do banco de dados para o chat selecionado
+if (!empty($selectedChat)) {
+    try {
+        $stmt = db()->prepare("
+            SELECT message_text as text, from_me as fromMe, message_timestamp as timestamp
+            FROM chat_messages
+            WHERE remote_jid = ?
+            ORDER BY message_timestamp ASC
+        ");
+        $stmt->execute([$selectedChat]);
+        $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Converter fromMe para boolean
+        foreach ($messages as &$msg) {
+            $msg['fromMe'] = (bool)$msg['fromMe'];
+        }
+        unset($msg);
+    } catch (Exception $e) {
+        error_log("Erro ao carregar mensagens do banco: " . $e->getMessage());
+    }
+}
 
 // Se um chat foi selecionado, criar dados locais para ele
 if (!empty($selectedChat)) {
@@ -792,32 +825,22 @@ if (empty($selectedChat)) {
     
     // Área de mensagens
     echo '<div class="whatsapp-messages" id="messagesContainer">';
-    if ($isGroup) {
-        // Mensagem informativa para grupos
-        echo '<div style="text-align:center;padding:40px;color:#667781;background:#f0f2f5;margin:20px;border-radius:8px">';
-        echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;opacity:0.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
-        echo '<h3 style="margin:0 0 8px;color:#111b21">Grupo: ' . h($chatName) . '</h3>';
-        echo '<p style="margin:0;font-size:14px">Histórico de mensagens não disponível para grupos.</p>';
-        echo '<p style="margin:8px 0 0;font-size:13px;opacity:0.7">Apenas conversas privadas carregam mensagens.</p>';
-        echo '</div>';
-    } else {
-        // Mensagem explicativa sobre API Evolution
-        echo '<div style="text-align:center;padding:40px;color:#667781;background:#fff3cd;margin:20px;border-radius:8px;border:1px solid #ffc107">';
-        echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ffc107" stroke-width="1.5" style="margin:0 auto 16px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-        echo '<h3 style="margin:0 0 8px;color:#856404">Mensagens Temporariamente Indisponíveis</h3>';
-        echo '<p style="margin:0;font-size:14px;color:#856404">A API Evolution está retornando dados desatualizados.</p>';
-        echo '<p style="margin:8px 0 0;font-size:13px;color:#856404;opacity:0.8">As mensagens serão carregadas assim que a API sincronizar corretamente.</p>';
-        echo '<p style="margin:12px 0 0;font-size:13px;color:#856404"><strong>Conversa:</strong> ' . h($chatName) . '</p>';
+    
+    // Se não houver mensagens, mostrar mensagem informativa
+    if (empty($messages)) {
+        echo '<div style="text-align:center;padding:40px;color:#667781">';
+        echo '<p style="font-size:14px">Nenhuma mensagem ainda.</p>';
+        echo '<p style="font-size:13px;opacity:0.7;margin-top:8px">Envie uma mensagem para iniciar a conversa.</p>';
         echo '</div>';
     }
     
-    // Código antigo de renderização de mensagens (desabilitado)
-    if (false) {
+    // Renderizar mensagens da sessão
+    if (!empty($messages)) {
         foreach ($messages as $msg) {
-            $isFromMe = isset($msg['key']['fromMe']) && $msg['key']['fromMe'] === true;
+            $isFromMe = $msg['fromMe'] ?? false;
             $messageClass = $isFromMe ? 'out' : 'in';
-            $messageText = $msg['message']['conversation'] ?? $msg['message']['extendedTextMessage']['text'] ?? '';
-            $timestamp = isset($msg['messageTimestamp']) ? date('H:i', $msg['messageTimestamp']) : '';
+            $messageText = $msg['text'] ?? '';
+            $timestamp = isset($msg['timestamp']) ? date('H:i', $msg['timestamp']) : '';
             
             echo '<div class="whatsapp-message ' . $messageClass . '">';
             echo '<div class="whatsapp-message-bubble">';
