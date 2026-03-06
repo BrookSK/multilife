@@ -237,6 +237,11 @@ if (!empty($selectedChat)) {
             ");
         }
         
+        // Debug: ver todos os remote_jid no banco
+        $allChats = db()->query("SELECT DISTINCT remote_jid FROM chat_messages")->fetchAll(PDO::FETCH_COLUMN);
+        error_log("Remote JIDs no banco: " . json_encode($allChats));
+        error_log("Selected chat buscando: " . $selectedChat);
+        
         $stmt = db()->prepare("
             SELECT message_text as text, from_me as fromMe, message_timestamp as timestamp
             FROM chat_messages
@@ -245,6 +250,8 @@ if (!empty($selectedChat)) {
         ");
         $stmt->execute([$selectedChat]);
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        error_log("Mensagens encontradas: " . count($messages));
         
         // Converter fromMe para boolean
         foreach ($messages as &$msg) {
@@ -859,6 +866,12 @@ if (empty($selectedChat)) {
     // Área de mensagens
     echo '<div class="whatsapp-messages" id="messagesContainer">';
     
+    // Debug visual
+    echo '<div style="padding:8px;background:#fff3cd;border-bottom:1px solid #ffc107;font-size:11px">';
+    echo 'DEBUG: Buscando mensagens para: ' . h($selectedChat) . '<br>';
+    echo 'Total encontrado: ' . count($messages) . ' mensagem(ns)';
+    echo '</div>';
+    
     // Se não houver mensagens, mostrar mensagem informativa
     if (empty($messages)) {
         echo '<div style="text-align:center;padding:40px;color:#667781">';
@@ -867,7 +880,7 @@ if (empty($selectedChat)) {
         echo '</div>';
     }
     
-    // Renderizar mensagens da sessão
+    // Renderizar mensagens
     if (!empty($messages)) {
         foreach ($messages as $msg) {
             $isFromMe = $msg['fromMe'] ?? false;
@@ -884,6 +897,16 @@ if (empty($selectedChat)) {
         }
     }
     echo '</div>';
+    
+    // Auto-refresh para mostrar novas mensagens recebidas
+    if (!empty($selectedChat)) {
+        echo '<script>';
+        echo 'setInterval(function() {';
+        echo '  // Recarregar página silenciosamente para mostrar novas mensagens';
+        echo '  window.location.reload();';
+        echo '}, 10000);'; // A cada 10 segundos
+        echo '</script>';
+    }
     
     // Formulário de envio
     echo '<div class="whatsapp-input-area">';
