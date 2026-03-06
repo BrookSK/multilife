@@ -36,16 +36,18 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
         
-        // Buscar grupos da API
-        $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName);
+        // Buscar grupos da API (getParticipants=false evita 404 em algumas versões)
+        $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
         $ch = curl_init($groupsUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
         
         $groupsResponse = curl_exec($ch);
         $groupsHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $groupsCurlError = curl_error($ch);
         curl_close($ch);
         
         if ($groupsHttpCode === 200 && $groupsResponse) {

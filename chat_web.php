@@ -119,14 +119,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $curlMsgError = curl_error($ch);
             curl_close($ch);
             
-            error_log("=== RESP MENSAGEM === HTTP: $httpCode | Response: $response | cURL: $curlMsgError");
-            
-            // Se SessionError, tentar com formato alternativo (sem @g.us explícito)
-            if ($httpCode !== 200 && $httpCode !== 201 && strpos($response, 'SessionError') !== false) {
+            // Retry automático: tenta formato alternativo para 400 ou SessionError
+            $needsRetry = ($httpCode !== 200 && $httpCode !== 201) &&
+                          ($httpCode === 400 || strpos($response, 'SessionError') !== false || strpos($response, 'Connection Closed') !== false);
+
+            if ($needsRetry) {
+                // Formato alternativo: campo "text" direto (sem wrapper textMessage)
                 $altPayload = json_encode([
-                    'number' => $remoteJid,
-                    'options' => ['delay' => 1200, 'presence' => 'composing'],
-                    'textMessage' => ['text' => $message]
+                    'number'  => $remoteJid,
+                    'text'    => $message,
+                    'options' => ['delay' => 1000, 'presence' => 'composing'],
                 ]);
                 $ch2 = curl_init($url);
                 curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
@@ -139,7 +141,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $altResponse = curl_exec($ch2);
                 $altHttpCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
                 curl_close($ch2);
-                error_log("=== RETRY ALTERNATIVO === HTTP: $altHttpCode | Response: $altResponse");
                 if ($altHttpCode === 200 || $altHttpCode === 201) {
                     $response = $altResponse;
                     $httpCode = $altHttpCode;
@@ -441,11 +442,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $debugConsole[] = 'console.error("❌ ERRO: API NÃO RETORNOU JID | Response: ' . addslashes(substr($response, 0, 200)) . '")';
                 }
             } else {
-                error_log("Erro ao criar grupo - HTTP Code: $httpCode - Response: $response - cURL Error: $curlError");
-                if ($httpCode === 0) {
-                    $error = '❌ Falha de conexão com a Evolution API. Verifique se a URL está correta e o servidor está acessível.';
+                $rawErrData = json_decode($response, true);
+                $rawMsgs = $rawErrData['response']['message'] ?? [];
+                if (is_array($rawMsgs)) $rawMsgs = implode('; ', $rawMsgs);
+                $isConnClosed = strpos($response . $curlError, 'Connection Closed') !== false
+                              || strpos($response . $curlError, 'connection') !== false;
+                if ($httpCode === 0 || $curlError) {
+                    $error = '❌ Sem resposta da Evolution API. Verifique se o servidor ' . $baseUrl . ' está acessível.';
+                } elseif ($isConnClosed) {
+                    $error = '❌ A conexão WhatsApp caiu (Connection Closed). Acesse o painel da Evolution API → instância multilife → Reconnect / QR Code para reconectar, depois tente novamente.';
                 } else {
-                    $error = '❌ Erro ao criar grupo. HTTP Code: ' . $httpCode . '. Detalhes: ' . ($response ?: $curlError);
+                    $error = '❌ Erro ao criar grupo. HTTP ' . $httpCode . ': ' . substr((string)$rawMsgs ?: $response, 0, 300);
                 }
                 $debugConsole[] = 'console.error("❌ ERRO HTTP ' . $httpCode . ' | ' . addslashes(substr($response, 0, 300)) . '")';
             }
@@ -1677,17 +1684,17 @@ echo '  fetch("/chat_sync_evolution.php")';
 echo '    .then(r => r.json())';
 echo '    .then(data => {';
 echo '      if(data.success) {';
-echo '        alert("✅ Sincronização concluída!\\n\\n" + data.count + " grupos sincronizados.");';
+echo '        alert("✅ Sincronização concluída! " + data.count + " grupos sincronizados.");';
 echo '        window.location.reload();';
 echo '      } else {';
-echo '        let errorMsg = "❌ Erro na sincronização:\\n\\n" + data.error;';
-echo '        if(data.curl_error) {';
-echo '          errorMsg += "\\n\\nDetalhes: " + data.curl_error;';
+echo '        const errCode = data.http_code || 0;';
+echo '        let errorMsg;';
+echo '        if(errCode===404||String(data.error).includes("404")) {';
+echo '          errorMsg = "❌ WhatsApp desconectado (instância offline).\\n\\nAção necessária:\\n1. Acesse: http://31.97.83.150:8080\\n2. Vá em instância \'multilife\'\\n3. Clique em Reconnect ou escaneie o QR Code\\n4. Depois clique em Sincronizar novamente.";';
+echo '        } else {';
+echo '          errorMsg = "❌ Erro na sincronização:\\n" + data.error;';
+echo '          if(data.curl_error) errorMsg += "\\nDetalhes: " + data.curl_error;';
 echo '        }';
-echo '        if(data.details) {';
-echo '          errorMsg += "\\n\\n" + data.details;';
-echo '        }';
-echo '        errorMsg += "\\n\\n💡 Verifique:\\n- URL da Evolution API está correta\\n- Servidor Evolution está online\\n- Firewall não está bloqueando";';
 echo '        alert(errorMsg);';
 echo '      }';
 echo '    })';

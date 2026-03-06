@@ -51,12 +51,14 @@ try {
     }
     
     if ($httpCode !== 200) {
-        error_log("Erro ao buscar grupos - HTTP Code: $httpCode - Response: $response - cURL Error: $curlError");
+        $errMsg = ($httpCode === 404)
+            ? 'Instância offline ou desconectada do WhatsApp (404). Reconecte em: ' . $baseUrl
+            : 'Erro ao buscar grupos. HTTP Code: ' . $httpCode;
         echo json_encode([
-            'success' => false, 
-            'error' => 'Erro ao buscar grupos. HTTP Code: ' . $httpCode,
-            'response' => $response,
-            'curl_error' => $curlError
+            'success'    => false,
+            'error'      => $errMsg,
+            'http_code'  => $httpCode,
+            'curl_error' => $curlError,
         ]);
         exit;
     }
