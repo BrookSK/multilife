@@ -27,15 +27,26 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 $messages = [];
 
 try {
-    $ch = curl_init($baseUrl . '/chat/fetchMessages/' . urlencode($instanceName) . '/' . urlencode($chatId) . '?limit=50');
+    $payload = json_encode([
+        'where' => [
+            'key' => [
+                'remoteJid' => $chatId
+            ]
+        ],
+        'limit' => 50
+    ]);
+    
+    $ch = curl_init($baseUrl . '/message/findMessages/' . urlencode($instanceName));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'apikey: ' . $apiKey,
+        'Content-Type: application/json',
         'Cache-Control: no-cache'
     ]);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_HTTPGET, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
