@@ -178,6 +178,25 @@ $debugLogs = [];
 // Carregar mensagens do banco de dados para o chat selecionado
 if (!empty($selectedChat)) {
     try {
+        // Verificar se tabela existe, se não, criar
+        $tableCheck = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
+        if (!$tableCheck) {
+            // Criar tabela automaticamente
+            db()->exec("
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    remote_jid VARCHAR(100) NOT NULL,
+                    message_text TEXT NOT NULL,
+                    from_me TINYINT(1) NOT NULL DEFAULT 0,
+                    message_timestamp INT UNSIGNED NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    INDEX idx_remote_jid (remote_jid),
+                    INDEX idx_timestamp (message_timestamp)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+        }
+        
         $stmt = db()->prepare("
             SELECT message_text as text, from_me as fromMe, message_timestamp as timestamp
             FROM chat_messages
@@ -719,6 +738,26 @@ if (empty($chats)) {
         $chatId = $chat['id'] ?? '';
         $chatName = $chat['name'] ?? $chatId;
         $isGroup = strpos($chatId, '@g.us') !== false;
+        
+        // Filtrar por tipo de aba (mas sempre mostrar o chat selecionado)
+        $showChat = false;
+        if ($chatType === 'all') {
+            $showChat = true;
+        } elseif ($chatType === 'groups' && $isGroup) {
+            $showChat = true;
+        } elseif ($chatType === 'private' && !$isGroup) {
+            $showChat = true;
+        }
+        
+        // Sempre mostrar o chat selecionado, independente do filtro
+        if ($selectedChat === $chatId) {
+            $showChat = true;
+        }
+        
+        if (!$showChat) {
+            continue;
+        }
+        
         $isActive = $selectedChat === $chatId ? ' active' : '';
         $lastMsg = ''; // API não retorna preview da mensagem
         $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
