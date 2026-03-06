@@ -142,6 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                         id INT UNSIGNED NOT NULL AUTO_INCREMENT,
                                         remote_jid VARCHAR(100) NOT NULL UNIQUE,
                                         contact_name VARCHAR(255) DEFAULT NULL,
+                                        profile_picture_url TEXT DEFAULT NULL,
                                         is_group TINYINT(1) NOT NULL DEFAULT 0,
                                         last_message_timestamp INT UNSIGNED DEFAULT NULL,
                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -164,6 +165,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                         updated_at = CURRENT_TIMESTAMP
                                 ");
                                 $stmtContact->execute([$remoteJid, $contactName, $isGroup, $timestamp]);
+                                
+                                // Buscar perfil do contato da Evolution API
+                                try {
+                                    $profileUrl = $baseUrl . '/chat/fetchProfile/' . urlencode($instanceName);
+                                    $profilePayload = json_encode(['number' => $remoteJid]);
+                                    
+                                    $ch = curl_init($profileUrl);
+                                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                                    curl_setopt($ch, CURLOPT_POST, true);
+                                    curl_setopt($ch, CURLOPT_POSTFIELDS, $profilePayload);
+                                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                                        'apikey: ' . $apiKey,
+                                        'Content-Type: application/json'
+                                    ]);
+                                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                                    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+                                    
+                                    $profileResponse = curl_exec($ch);
+                                    $profileHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                                    curl_close($ch);
+                                    
+                                    if ($profileHttpCode === 200 && $profileResponse) {
+                                        $profileData = json_decode($profileResponse, true);
+                                        $profileName = $profileData['name'] ?? $profileData['pushName'] ?? null;
+                                        $profilePic = $profileData['profilePictureUrl'] ?? null;
+                                        
+                                        // Atualizar contato com nome e foto
+                                        if ($profileName || $profilePic) {
+                                            $updateStmt = db()->prepare("
+                                                UPDATE chat_contacts 
+                                                SET contact_name = COALESCE(?, contact_name),
+                                                    profile_picture_url = ?
+                                                WHERE remote_jid = ?
+                                            ");
+                                            $updateStmt->execute([$profileName, $profilePic, $remoteJid]);
+                                        }
+                                    }
+                                } catch (Exception $e) {
+                                    error_log("Erro ao buscar perfil: " . $e->getMessage());
+                                }
                             } catch (Exception $e) {
                                 error_log("Erro ao salvar contato: " . $e->getMessage());
                             }
@@ -258,6 +299,7 @@ try {
             SELECT 
                 remote_jid as id,
                 contact_name as name,
+                profile_picture_url as profilePictureUrl,
                 is_group,
                 last_message_timestamp as lastMsgTimestamp
             FROM chat_contacts
@@ -265,12 +307,6 @@ try {
             LIMIT 50
         ");
         $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Adicionar profilePictureUrl vazio para cada chat
-        foreach ($chats as &$chat) {
-            $chat['profilePictureUrl'] = null;
-        }
-        unset($chat);
     }
 } catch (Exception $e) {
     error_log("Erro ao carregar chats: " . $e->getMessage());
