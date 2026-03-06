@@ -188,18 +188,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                     
                                     if ($profileHttpCode === 200 && $profileResponse) {
                                         $profileData = json_decode($profileResponse, true);
-                                        $profileName = $profileData['name'] ?? $profileData['pushName'] ?? null;
-                                        $profilePic = $profileData['profilePictureUrl'] ?? null;
+                                        // API retorna 'picture' ao invés de 'profilePictureUrl'
+                                        $profilePic = $profileData['picture'] ?? null;
                                         
-                                        // Atualizar contato com nome e foto
-                                        if ($profileName || $profilePic) {
+                                        // Atualizar contato com foto (API não retorna nome)
+                                        if ($profilePic) {
                                             $updateStmt = db()->prepare("
                                                 UPDATE chat_contacts 
-                                                SET contact_name = COALESCE(?, contact_name),
-                                                    profile_picture_url = ?
+                                                SET profile_picture_url = ?
                                                 WHERE remote_jid = ?
                                             ");
-                                            $updateStmt->execute([$profileName, $profilePic, $remoteJid]);
+                                            $updateStmt->execute([$profilePic, $remoteJid]);
+                                            error_log("Foto de perfil atualizada: " . $profilePic);
                                         }
                                     }
                                 } catch (Exception $e) {

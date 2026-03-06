@@ -131,18 +131,17 @@ if (isset($data['event']) && $data['event'] === 'messages.upsert') {
                             
                             if ($profileHttpCode === 200 && $profileResponse) {
                                 $profileData = json_decode($profileResponse, true);
-                                $profileName = $profileData['name'] ?? $profileData['pushName'] ?? null;
-                                $profilePic = $profileData['profilePictureUrl'] ?? null;
+                                // API retorna 'picture' ao invés de 'profilePictureUrl'
+                                $profilePic = $profileData['picture'] ?? null;
                                 
-                                if ($profileName || $profilePic) {
+                                if ($profilePic) {
                                     $updateStmt = db()->prepare("
                                         UPDATE chat_contacts 
-                                        SET contact_name = COALESCE(?, contact_name),
-                                            profile_picture_url = ?
+                                        SET profile_picture_url = ?
                                         WHERE remote_jid = ?
                                     ");
-                                    $updateStmt->execute([$profileName, $profilePic, $remoteJid]);
-                                    error_log("Perfil atualizado: nome=$profileName");
+                                    $updateStmt->execute([$profilePic, $remoteJid]);
+                                    error_log("Foto de perfil atualizada no webhook: " . $profilePic);
                                 }
                             }
                         } catch (Exception $e) {
