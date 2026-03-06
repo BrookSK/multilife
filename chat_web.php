@@ -1673,6 +1673,11 @@ if (!empty($selectedChat)) {
                 FROM demands d
                 WHERE d.assumed_by_user_id = :user_id
                 AND d.status IN ('tratamento_manual', 'em_captacao', 'admitido')
+                AND NOT EXISTS (
+                    SELECT 1 FROM patient_assignments pa 
+                    WHERE pa.demand_id = d.id 
+                    AND pa.status = 'confirmed'
+                )
                 ORDER BY d.created_at DESC
                 LIMIT 50
             ");

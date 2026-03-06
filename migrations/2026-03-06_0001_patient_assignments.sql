@@ -18,12 +18,14 @@ CREATE TABLE IF NOT EXISTS patient_assignments (
     notes TEXT NULL,
     
     -- Status da atribuição
-    status ENUM('pending','confirmed','cancelled') NOT NULL DEFAULT 'pending',
+    status ENUM('pending','confirmed','approved','cancelled') NOT NULL DEFAULT 'pending',
     
     -- Timestamps
+    confirmed_at DATETIME NULL,
+    approved_at DATETIME NULL,
+    approved_by_user_id INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    confirmed_at DATETIME NULL,
     
     PRIMARY KEY (id),
     KEY idx_patient_assignments_demand (demand_id),
@@ -75,8 +77,3 @@ Atenciosamente,
 Equipe MultiLife',
 'Mensagem padrão enviada ao profissional quando um paciente é atribuído')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
-
--- Adicionar coluna para vincular chat_contacts com demands
-ALTER TABLE chat_contacts 
-ADD COLUMN demand_id BIGINT UNSIGNED NULL AFTER is_group,
-ADD KEY idx_chat_contacts_demand (demand_id);

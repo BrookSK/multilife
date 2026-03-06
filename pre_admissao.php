@@ -20,15 +20,16 @@ if (!in_array($status, $allowedStatuses, true)) {
 $sql = 'SELECT pa.id, pa.demand_id, pa.created_at, pa.status,
                d.title, d.location_city, d.location_state, d.origin_email, d.description,
                pa.specialty, pa.service_type, pa.session_quantity, pa.session_frequency, pa.payment_value,
-               patient.name AS patient_name, patient.phone AS patient_phone,
-               prof.name AS professional_name, prof.phone AS professional_phone,
+               p.full_name AS patient_name, p.phone_primary AS patient_phone,
+               u.name AS professional_name, u.phone AS professional_phone,
                assigned_by.name AS assigned_by_name
         FROM patient_assignments pa
         INNER JOIN demands d ON d.id = pa.demand_id
-        INNER JOIN users patient ON patient.id = pa.patient_id
-        LEFT JOIN users prof ON prof.id = pa.professional_user_id
+        INNER JOIN patients p ON p.id = pa.patient_id
+        LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN users assigned_by ON assigned_by.id = pa.assigned_by_user_id
-        WHERE pa.status = \'confirmed\'';
+        WHERE pa.status = \'confirmed\'
+        AND pa.approved_at IS NULL';
 
 $where = [];
 $params = [];
@@ -39,7 +40,7 @@ if ($status !== '' && $status !== 'confirmed') {
 }
 
 if ($q !== '') {
-    $where[] = '(d.title LIKE :q OR pa.specialty LIKE :q OR d.location_city LIKE :q OR patient.name LIKE :q OR prof.name LIKE :q)';
+    $where[] = '(d.title LIKE :q OR pa.specialty LIKE :q OR d.location_city LIKE :q OR p.full_name LIKE :q OR u.name LIKE :q)';
     $params['q'] = '%' . $q . '%';
 }
 
@@ -370,6 +371,13 @@ if ($selected) {
     echo '</div>';
 
     echo '<div style="height:14px"></div>';
+    
+    // Botão de aprovar atendimento
+    echo '<form method="post" action="/pre_admissao_approve.php" style="margin-top:20px">';
+    echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
+    echo '<input type="hidden" name="demand_id" value="' . $demandId . '">';
+    echo '<button class="btn btnPrimary" type="submit" style="width:100%">✅ Aprovar Atendimento</button>';
+    echo '</form>';
 }
 
 echo '</div>';

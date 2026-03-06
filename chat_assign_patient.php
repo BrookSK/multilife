@@ -146,6 +146,26 @@ try {
         
         if (!isset($result['status']) || (int)$result['status'] < 200 || (int)$result['status'] >= 300) {
             error_log("Erro ao enviar mensagem de atribuição: " . json_encode($result));
+        } else {
+            // Salvar mensagem enviada no banco de dados local
+            try {
+                $timestamp = time();
+                $saveMessageStmt = $db->prepare("
+                    INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, created_at)
+                    VALUES (?, ?, 1, ?, NOW())
+                ");
+                $saveMessageStmt->execute([$professionalJid, $message, $timestamp]);
+                
+                // Atualizar last_message_timestamp do contato
+                $updateContactStmt = $db->prepare("
+                    UPDATE chat_contacts 
+                    SET last_message_timestamp = ?, updated_at = NOW()
+                    WHERE remote_jid = ?
+                ");
+                $updateContactStmt->execute([$timestamp, $professionalJid]);
+            } catch (Exception $e) {
+                error_log("Erro ao salvar mensagem no banco local: " . $e->getMessage());
+            }
         }
     } catch (Exception $e) {
         error_log("Erro ao enviar mensagem via Evolution API: " . $e->getMessage());
