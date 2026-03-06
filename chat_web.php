@@ -390,6 +390,7 @@ echo '<div class="whatsapp-sidebar">';
 // Header com avatar do usuário
 echo '<div class="whatsapp-header">';
 echo '<div class="whatsapp-chat-avatar">' . strtoupper(substr(auth_user()['name'] ?? 'U', 0, 1)) . '</div>';
+echo '<button onclick="alert(\'Teste de clique funcionando!\')" style="padding:8px 16px;background:#00a884;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:8px">TESTE</button>';
 echo '<div style="position:relative;z-index:100">';
 echo '<button class="whatsapp-action-btn" onclick="toggleActionsMenu(event)" style="cursor:pointer;z-index:101">';
 echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
