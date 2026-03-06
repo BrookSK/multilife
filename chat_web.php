@@ -5,6 +5,34 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
+
+// BLOQUEIO TEMPORÁRIO - Chat em manutenção
+http_response_code(503);
+header('Content-Type: text/html; charset=utf-8');
+echo '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Chat em Manutenção</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+        .box { background: white; padding: 40px; border-radius: 10px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #e74c3c; }
+        p { color: #555; line-height: 1.6; }
+        .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>⚠️ Chat em Manutenção</h1>
+        <p>O módulo de chat está temporariamente desabilitado devido a problemas de performance com a API Evolution.</p>
+        <p>Estamos trabalhando para resolver o problema.</p>
+        <p><strong>Previsão:</strong> Aguarde alguns minutos e tente novamente.</p>
+        <a href="/" class="btn">← Voltar para o Sistema</a>
+    </div>
+</body>
+</html>';
+exit();
 // Qualquer usuário logado pode acessar o chat
 // rbac_require_permission('chat.manage');
 
