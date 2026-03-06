@@ -27,24 +27,20 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 $messages = [];
 
 try {
-    // A API Evolution IGNORA o filtro remoteJid, então buscamos mais mensagens
-    // e filtramos no PHP depois
-    $payload = json_encode([
-        'limit' => 100
-    ]);
+    // Tentar endpoint /chat/fetchMessages com GET
+    $urlWithParams = $baseUrl . '/chat/fetchMessages/' . urlencode($instanceName) 
+        . '?remoteJid=' . urlencode($chatId) 
+        . '&limit=10';
     
-    $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
+    $ch = curl_init($urlWithParams);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'apikey: ' . $apiKey,
-        'Content-Type: application/json',
         'Cache-Control: no-cache'
     ]);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Timeout de 10 segundos
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5); // Timeout de conexão de 5 segundos
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -64,18 +60,18 @@ try {
     if ($httpCode === 200) {
         $data = json_decode($response, true);
         if (isset($data) && is_array($data)) {
-            // FILTRO: A API Evolution ignora o filtro remoteJid, então filtramos no PHP
-            $messages = array_filter($data, function($msg) use ($chatId) {
-                $msgRemoteJid = $msg['key']['remoteJid'] ?? '';
-                return $msgRemoteJid === $chatId;
-            });
+            $messages = $data;
             
-            // Reindexar array após filtro
-            $messages = array_values($messages);
-            
-            // Limitar a 10 mensagens após filtrar
-            if (count($messages) > 10) {
-                $messages = array_slice($messages, 0, 10);
+            // Verificar se retornou mensagens do chat correto
+            if (!empty($messages)) {
+                $firstMsgJid = $messages[0]['key']['remoteJid'] ?? '';
+                if ($firstMsgJid !== $chatId) {
+                    // Filtro PHP como fallback
+                    $messages = array_filter($messages, function($msg) use ($chatId) {
+                        return ($msg['key']['remoteJid'] ?? '') === $chatId;
+                    });
+                    $messages = array_values($messages);
+                }
             }
         }
     }

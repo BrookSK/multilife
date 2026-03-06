@@ -171,26 +171,27 @@ if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceNam
         // Log detalhado da requisição
         $debugLogs[] = "=== CHAT_WEB DEBUG ===";
         $debugLogs[] = "Chat selecionado: " . $selectedChat;
-        $debugLogs[] = "URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName);
-        $debugLogs[] = "Payload: " . $requestJson;
+        
+        // TENTAR ENDPOINT ALTERNATIVO: /chat/fetchMessages com parâmetros GET
+        $urlWithParams = $baseUrl . '/chat/fetchMessages/' . urlencode($instanceName) 
+            . '?remoteJid=' . urlencode($selectedChat) 
+            . '&limit=10';
+        
+        $debugLogs[] = "URL: " . $urlWithParams;
         error_log("=== CHAT_WEB DEBUG ===");
         error_log("Chat selecionado: " . $selectedChat);
-        error_log("URL: " . $baseUrl . '/chat/findMessages/' . urlencode($instanceName));
-        error_log("Payload: " . $requestJson);
+        error_log("URL: " . $urlWithParams);
         
-        // Usar endpoint correto /chat/findMessages com POST
-        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
+        // Usar endpoint /chat/fetchMessages com GET
+        $ch = curl_init($urlWithParams);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'apikey: ' . $apiKey,
-            'Content-Type: application/json',
             'Cache-Control: no-cache, no-store, must-revalidate',
             'Pragma: no-cache'
         ]);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $requestJson);
         curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
         
         $response = curl_exec($ch);
@@ -214,34 +215,29 @@ if ($isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceNam
             $data = json_decode($response, true);
             if (isset($data) && is_array($data)) {
                 $messages = $data;
-                error_log("Total mensagens recebidas: " . count($messages));
+                error_log("Total mensagens recebidas do endpoint fetchMessages: " . count($messages));
                 
-                // Log dos remoteJid de cada mensagem para verificar se estão corretos
-                foreach ($messages as $idx => $msg) {
+                // Log das primeiras mensagens para verificar
+                foreach (array_slice($messages, 0, 5) as $idx => $msg) {
                     $msgRemoteJid = $msg['key']['remoteJid'] ?? 'N/A';
                     $msgText = substr($msg['message']['conversation'] ?? $msg['message']['extendedTextMessage']['text'] ?? '', 0, 50);
                     error_log("Mensagem #" . $idx . " - remoteJid: " . $msgRemoteJid . " - Texto: " . $msgText);
                 }
-                error_log("=== FIM DEBUG ===");
-                // FILTRO EXTRA: Garantir que apenas mensagens do chat correto sejam exibidas
-                $messages = array_filter($messages, function($msg) use ($selectedChat) {
-                    $msgRemoteJid = $msg['key']['remoteJid'] ?? '';
-                    $isCorrectChat = ($msgRemoteJid === $selectedChat);
-                    if (!$isCorrectChat) {
-                        error_log("AVISO: Mensagem de chat diferente filtrada! Esperado: " . $selectedChat . " | Recebido: " . $msgRemoteJid);
+                
+                // Verificar se endpoint retornou mensagens corretas
+                if (!empty($messages)) {
+                    $firstMsgJid = $messages[0]['key']['remoteJid'] ?? '';
+                    if ($firstMsgJid !== $selectedChat) {
+                        error_log("AVISO: Endpoint fetchMessages também retornou chat errado! Esperado: {$selectedChat}, Recebido: {$firstMsgJid}");
+                        error_log("Aplicando filtro PHP como fallback...");
+                        
+                        // Filtro PHP como fallback
+                        $messages = array_filter($messages, function($msg) use ($selectedChat) {
+                            return ($msg['key']['remoteJid'] ?? '') === $selectedChat;
+                        });
+                        $messages = array_values($messages);
+                        error_log("Após filtro PHP: " . count($messages) . " mensagens");
                     }
-                    return $isCorrectChat;
-                });
-                
-                // Reindexar array após filtro
-                $messages = array_values($messages);
-                
-                error_log("Após filtro PHP: " . count($messages) . " mensagens do chat correto");
-                
-                // Limitar a 10 mensagens após filtrar
-                if (count($messages) > 10) {
-                    error_log("Limitando de " . count($messages) . " para 10 mensagens");
-                    $messages = array_slice($messages, 0, 10);
                 }
                 
                 // Ordenar mensagens por timestamp (mais recentes no topo)
