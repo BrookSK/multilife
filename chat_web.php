@@ -79,13 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ]
             ]);
             
-            // Log de debug
-            error_log("=== ENVIO DE MENSAGEM ===");
-            error_log("URL: " . $url);
-            error_log("Número formatado: " . $phoneNumber);
-            error_log("RemoteJid: " . $remoteJid);
-            error_log("Payload: " . $payload);
-            
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -100,10 +93,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            
-            // Log da resposta
-            error_log("HTTP Code: " . $httpCode);
-            error_log("Resposta: " . $response);
             
             if ($httpCode === 200 || $httpCode === 201) {
                 // Salvar mensagem enviada no banco de dados
@@ -236,9 +225,6 @@ if (!empty($selectedChat)) {
     // Adicionar à lista de chats para aparecer na sidebar
     $chats[] = $selectedChatData;
     
-    // Debug
-    error_log("Chat criado localmente: " . json_encode($selectedChatData));
-    error_log("Total de chats na lista: " . count($chats));
 }
 
 // Verificar se há mensagem de sucesso
@@ -720,13 +706,6 @@ echo '</div>';
 
 // Lista de conversas (máximo 10 conversas: grupos + privadas)
 echo '<div class="whatsapp-chats" id="chatsList">';
-
-// Debug: mostrar quantos chats existem
-if (!empty($selectedChat)) {
-    echo '<div style="padding:8px 16px;background:#e7f8f4;border-bottom:1px solid #00a884;font-size:11px;color:#00a884">';
-    echo 'DEBUG: ' . count($chats) . ' chat(s) na lista | Chat selecionado: ' . h($selectedChat);
-    echo '</div>';
-}
 
 if (empty($chats)) {
     echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
