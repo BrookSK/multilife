@@ -291,19 +291,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             } else {
                 $responseData = json_decode($response, true);
-                $errorMsg = $responseData['message'] ?? ($responseData['response']['message'][0] ?? $response);
-                
+
+                // Extrair mensagem de erro como string segura (API pode retornar array)
+                $rawMsg = $responseData['message'] ?? $responseData['response']['message'] ?? $response;
+                if (is_array($rawMsg)) {
+                    $rawMsg = implode('; ', array_map('strval', $rawMsg));
+                }
+                $errorMsg = (string)$rawMsg;
+
                 // Mensagem amigável para erros comuns
+                $isGroup = strpos($remoteJid, '@g.us') !== false;
                 if (strpos($response, 'SessionError') !== false || strpos($response, 'No sessions') !== false) {
-                    $error = '❌ WhatsApp desconectado. Reconecte o WhatsApp na configuração da Evolution API e tente novamente.';
+                    if ($isGroup) {
+                        $error = '❌ Grupo sem participantes. Adicione participantes em /chat_groups.php → Gerenciar Participantes.';
+                    } else {
+                        $error = '❌ WhatsApp desconectado. Reconecte em Configurações → Evolution API.';
+                    }
                 } elseif (strpos($response, 'Connection Closed') !== false) {
-                    $error = '❌ Conexão com WhatsApp fechada. Aguarde reconexão automática e tente novamente.';
+                    $error = '❌ Conexão com WhatsApp fechada. Aguarde e tente novamente.';
                 } else {
-                    $error = 'Erro ao enviar mensagem. HTTP Code: ' . $httpCode . ' - ' . $errorMsg;
+                    $error = 'Erro ' . $httpCode . ': ' . substr($errorMsg, 0, 200);
                 }
                 if ($isAjax) {
                     header('Content-Type: application/json');
-                    echo json_encode(['success' => false, 'error' => $error]);
+                    echo json_encode(['success' => false, 'error' => (string)$error]);
                     exit();
                 }
             }
