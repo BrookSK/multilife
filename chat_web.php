@@ -69,7 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $url = $baseUrl . '/message/sendText/' . urlencode($instanceName);
             $payload = json_encode([
                 'number' => $remoteJid,
-                'text' => $message
+                'textMessage' => [
+                    'text' => $message
+                ]
             ]);
             
             // Log de debug
