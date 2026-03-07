@@ -1855,6 +1855,10 @@ echo '</div>'; // Fecha whatsapp-container
 
 // JavaScript para funcionalidades
 echo '<script>';
+echo 'console.log("[DEBUG] ========================================");';
+echo 'console.log("[DEBUG] VERSÃO DO ARQUIVO: 2026-03-07 13:08:00");';
+echo 'console.log("[DEBUG] LINHAS DO ARQUIVO: 2379");';
+echo 'console.log("[DEBUG] ========================================");';
 echo 'console.log("[DEBUG] Início do bloco JavaScript principal");';
 echo 'console.log("[DEBUG] Timestamp:", Date.now());';
 
