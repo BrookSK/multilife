@@ -142,7 +142,7 @@ echo '</div>';
 echo '</section>';
 
 // Layout de 2 colunas: Lista de nomes | Documentos
-echo '<section class="card col4">';
+echo '<div class="col4" style="padding:16px;background:white;border-radius:8px">';
 echo '<div style="margin-bottom:12px">';
 echo '<form method="get" action="/documents_list.php">';
 echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
@@ -173,7 +173,7 @@ if (count($entities) === 0) {
     echo '</ul>';
 }
 echo '</div>';
-echo '</section>';
+echo '</div>';
 
 echo '<section class="card col8">';
 if ($selectedEntityId === 0) {
