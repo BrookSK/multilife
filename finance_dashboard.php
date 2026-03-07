@@ -287,7 +287,7 @@ echo '</form>';
 echo '</section>';
 
 // Cards principais - Grid responsivo que ocupa tela inteira
-echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px">';
+echo '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:16px;margin-bottom:16px">';
 
 echo '<section class="card">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Número de Atendimentos</div>';
