@@ -145,48 +145,70 @@ echo '</section>';
 echo '<section class="card col12" style="margin-top:16px">';
 echo '<form method="get" action="/documents_list.php" style="margin-bottom:0">';
 echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
+if ($selectedEntityId > 0) {
+    echo '<input type="hidden" name="entity_id" value="' . $selectedEntityId . '">';
+}
 echo '<input type="text" name="q" value="' . h($searchQuery) . '" placeholder="Buscar por nome..." style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:6px">';
 echo '</form>';
 echo '</section>';
 
-// Tabela completa horizontal (formato planilha)
 echo '<section class="card col12" style="margin-top:16px">';
 
-if (count($entities) === 0) {
-    echo '<div style="padding:40px;text-align:center;color:#667781">';
-    echo $searchQuery !== '' ? 'Nenhum resultado para "' . h($searchQuery) . '"' : 'Nenhum registro com documentos';
-    echo '</div>';
-} else {
-    echo '<div style="overflow:auto">';
-    echo '<table>';
-    echo '<thead><tr>';
-    echo '<th style="width:200px">' . ($tab === 'patients' ? 'Paciente' : ($tab === 'professionals' ? 'Profissional' : 'Funcionário')) . '</th>';
-    echo '<th>Título</th><th>Categoria</th><th>Versão</th><th>Tamanho</th><th>Enviado por</th><th>Data</th><th style="text-align:right">Ações</th>';
-    echo '</tr></thead><tbody>';
-    
-    foreach ($entities as $entity) {
-        // Buscar documentos desta entidade
-        $entityDocsStmt = db()->prepare("
-            SELECT d.id, d.title, d.category, d.status, d.created_at,
-                   (SELECT MAX(v.version_no) FROM document_versions v WHERE v.document_id = d.id) as last_version,
-                   (SELECT v.stored_path FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_path,
-                   (SELECT v.file_size FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_size,
-                   (SELECT u.name FROM document_versions v LEFT JOIN users u ON u.id = v.uploaded_by_user_id WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as uploaded_by_name
-            FROM documents d
-            WHERE d.entity_type = ? AND d.entity_id = ? AND d.status = 'active'
-            ORDER BY d.created_at DESC
-        ");
-        $entityDocsStmt->execute([$entityType, (int)$entity['id']]);
-        $entityDocs = $entityDocsStmt->fetchAll(PDO::FETCH_ASSOC);
+// Se nenhum paciente selecionado, mostra lista de nomes
+if ($selectedEntityId === 0) {
+    if (count($entities) === 0) {
+        echo '<div style="padding:40px;text-align:center;color:#667781">';
+        echo $searchQuery !== '' ? 'Nenhum resultado para "' . h($searchQuery) . '"' : 'Nenhum registro com documentos';
+        echo '</div>';
+    } else {
+        echo '<div style="overflow:auto">';
+        echo '<table>';
+        echo '<thead><tr>';
+        echo '<th>' . ($tab === 'patients' ? 'Paciente' : ($tab === 'professionals' ? 'Profissional' : 'Funcionário')) . '</th>';
+        echo '<th>Documentos</th>';
+        echo '<th style="text-align:right">Ações</th>';
+        echo '</tr></thead><tbody>';
         
-        foreach ($entityDocs as $doc) {
+        foreach ($entities as $entity) {
+            echo '<tr>';
+            echo '<td style="font-weight:600">' . h($entity['name']) . '</td>';
+            echo '<td>' . (int)$entity['document_count'] . ' documento(s)</td>';
+            echo '<td style="text-align:right">';
+            echo '<a class="btn btnPrimary" href="/documents_list.php?tab=' . h($tab) . '&entity_id=' . (int)$entity['id'] . ($searchQuery !== '' ? '&q=' . urlencode($searchQuery) : '') . '">Ver documentos</a>';
+            echo '</td>';
+            echo '</tr>';
+        }
+        
+        echo '</tbody></table>';
+        echo '</div>';
+    }
+} else {
+    // Paciente selecionado, mostra documentos
+    echo '<div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">';
+    echo '<div>';
+    echo '<a href="/documents_list.php?tab=' . h($tab) . ($searchQuery !== '' ? '&q=' . urlencode($searchQuery) : '') . '" class="btn" style="margin-right:12px">← Voltar</a>';
+    echo '<span style="font-size:18px;font-weight:700">' . h($selectedEntityName) . '</span>';
+    echo '<span style="font-size:14px;color:#667781;margin-left:12px">' . count($documents) . ' documento(s)</span>';
+    echo '</div>';
+    echo '<a class="btn btnPrimary" href="/documents_upload.php?entity_type=' . h($entityType) . '&entity_id=' . $selectedEntityId . '"><svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>Upload</a>';
+    echo '</div>';
+    
+    if (count($documents) === 0) {
+        echo '<div style="padding:40px;text-align:center;color:#667781">Nenhum documento encontrado</div>';
+    } else {
+        echo '<div style="overflow:auto">';
+        echo '<table>';
+        echo '<thead><tr>';
+        echo '<th>Título</th><th>Categoria</th><th>Versão</th><th>Tamanho</th><th>Enviado por</th><th>Data</th><th style="text-align:right">Ações</th>';
+        echo '</tr></thead><tbody>';
+        
+        foreach ($documents as $doc) {
             $fileSize = (int)($doc['file_size'] ?? 0);
             $fileSizeFormatted = $fileSize > 1048576 ? number_format($fileSize / 1048576, 2) . ' MB' : ($fileSize > 0 ? number_format($fileSize / 1024, 2) . ' KB' : '-');
             $version = $doc['last_version'] ? 'v' . $doc['last_version'] : '-';
             
             echo '<tr>';
-            echo '<td style="font-weight:600">' . h($entity['name']) . '</td>';
-            echo '<td>' . h($doc['title'] ?? 'Sem título') . '</td>';
+            echo '<td style="font-weight:600">' . h($doc['title'] ?? 'Sem título') . '</td>';
             echo '<td>' . h($doc['category'] ?? '-') . '</td>';
             echo '<td>' . h($version) . '</td>';
             echo '<td>' . $fileSizeFormatted . '</td>';
@@ -200,10 +222,10 @@ if (count($entities) === 0) {
             echo '</td>';
             echo '</tr>';
         }
+        
+        echo '</tbody></table>';
+        echo '</div>';
     }
-    
-    echo '</tbody></table>';
-    echo '</div>';
 }
 
 echo '</section>';
