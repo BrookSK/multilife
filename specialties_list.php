@@ -42,7 +42,7 @@ foreach ($rows as $r) {
     echo '<td style="font-weight:700">' . h((string)$r['name']) . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right">';
-    echo '<a class="btn btnPrimary" href="/specialty_services_v2.php?id=' . (int)$r['id'] . '" title="Gerenciar tipos de serviço e valores">⚙️ Serviços</a> ';
+    echo '<a class="btn btnPrimary" href="/specialty_services_final.php?id=' . (int)$r['id'] . '" title="Gerenciar serviços da especialidade">⚙️ Serviços</a> ';
     echo '<a class="btn" href="/specialties_edit.php?id=' . (int)$r['id'] . '">Editar</a> ';
     echo '<form method="post" action="/specialties_delete_post.php" style="display:inline">';
     echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';

@@ -34,6 +34,6 @@ try {
     throw $e;
 }
 
-flash_set('success', 'Especialidade criada com sucesso! Configure os tipos de serviço agora.');
-header('Location: /specialty_services_v2.php?id=' . $id);
+flash_set('success', 'Especialidade criada com sucesso! Configure os serviços agora.');
+header('Location: /specialty_services_final.php?id=' . $id);
 exit;

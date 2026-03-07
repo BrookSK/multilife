@@ -16,7 +16,7 @@ $name = trim($_POST['name'] ?? '');
 $description = trim($_POST['description'] ?? '');
 $display_order = isset($_POST['display_order']) ? (int)$_POST['display_order'] : 0;
 
-$redirect_url = $specialty_id > 0 ? "/specialty_services_v2.php?id={$specialty_id}" : "/specialties_list.php";
+$redirect_url = $specialty_id > 0 ? "/specialty_services_v3.php?id={$specialty_id}" : "/service_types_list.php";
 
 if (empty($name)) {
     header("Location: {$redirect_url}&error=" . urlencode('Nome do serviço é obrigatório'));
