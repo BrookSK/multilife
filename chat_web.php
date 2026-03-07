@@ -1854,9 +1854,12 @@ echo '</div>'; // Fecha whatsapp-container
 
 // JavaScript para funcionalidades
 echo '<script>';
+echo 'console.log("[DEBUG] Início do bloco JavaScript principal");';
+echo 'console.log("[DEBUG] Timestamp:", Date.now());';
 
 // Validação do formulário antes de enviar
 echo 'document.addEventListener("DOMContentLoaded", function() {';
+echo '  console.log("[DEBUG] DOMContentLoaded disparado");';
 echo '  const form = document.getElementById("newChatForm");';
 echo '  if (form) {';
 echo '    form.addEventListener("submit", function(e) {';
@@ -1873,6 +1876,7 @@ echo '  }';
 echo '});';
 
 echo 'console.log("Chat carregado:", "' . addslashes($selectedChat) . '");';
+echo 'console.log("[DEBUG] Funções básicas carregadas");';
 
 // Ocultar mensagem de sucesso após 3 segundos
 echo 'const successMsg = document.getElementById("successMessage");';
@@ -1963,7 +1967,9 @@ echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "")
 echo '  window.location.href = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
 echo '}';
 
+echo 'console.log("[DEBUG] Definindo openAssignmentModal");';
 echo 'async function openAssignmentModal() {';
+echo '  console.log("[DEBUG] openAssignmentModal chamada");';
 echo '  const demandSelect = document.getElementById("demandSelect");';
 echo '  if(!demandSelect || !demandSelect.value) {';
 echo '    alert("Por favor, selecione um card de captação primeiro.");';
@@ -2062,7 +2068,9 @@ echo '    alert("Erro ao processar atribuição: " + err.message);';
 echo '  });';
 echo '});';
 
+echo 'console.log("[DEBUG] Definindo loadGroupsByFilter");';
 echo 'function loadGroupsByFilter() {';
+echo '  console.log("[DEBUG] loadGroupsByFilter chamada");';
 echo '  const specialty = document.getElementById("groupSpecialty").value;';
 echo '  const region = document.getElementById("groupRegion").value;';
 echo '  const select = document.getElementById("selectedGroup");';
@@ -2093,7 +2101,9 @@ echo '      console.error("Erro:", e);';
 echo '    });';
 echo '}';
 
+echo 'console.log("[DEBUG] Definindo sendGroupInvite");';
 echo 'function sendGroupInvite() {';
+echo '  console.log("[DEBUG] sendGroupInvite chamada");';
 echo '  const chatId = "' . addslashes($selectedChat) . '";';
 echo '  const groupJid = document.getElementById("selectedGroup").value;';
 echo '  const welcomeMessage = document.getElementById("welcomeMessage").value;';
@@ -2357,6 +2367,11 @@ echo '    }, 500);';
 echo '  }';
 echo '});';
 
+echo 'console.log("[DEBUG] Fim do bloco JavaScript principal");';
+echo 'console.log("[DEBUG] Todas as funções foram definidas:");';
+echo 'console.log("[DEBUG] - openAssignmentModal:", typeof openAssignmentModal);';
+echo 'console.log("[DEBUG] - loadGroupsByFilter:", typeof loadGroupsByFilter);';
+echo 'console.log("[DEBUG] - sendGroupInvite:", typeof sendGroupInvite);';
 echo '</script>';
 
 view_footer();
