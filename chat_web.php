@@ -2010,7 +2010,7 @@ echo 'addDebugLog("Funções básicas carregadas");';
 // Ocultar mensagem de sucesso após 3 segundos
 echo 'const successMsg = document.getElementById("successMessage");';
 echo 'if (successMsg) {';
-echo '  setTimeout(() => { successMsg.style.display = "none"; }, 3000);';
+echo '  setTimeout(function() { successMsg.style.display = "none"; }, 3000);';
 echo '}';
 
 // Função de sincronização com Evolution
