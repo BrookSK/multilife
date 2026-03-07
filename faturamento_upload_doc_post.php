@@ -140,14 +140,14 @@ try {
     // Preparar statements para documents e document_versions
     $docStmt = db()->prepare("
         INSERT INTO documents (
-            entity_type, entity_id, category, title, status, created_at
-        ) VALUES (?, ?, ?, ?, 'active', NOW())
+            entity_type, entity_id, category, title, status
+        ) VALUES (?, ?, ?, ?, 'active')
     ");
     
     $versionStmt = db()->prepare("
         INSERT INTO document_versions (
-            document_id, version_no, stored_path, file_size, uploaded_by_user_id, created_at
-        ) VALUES (?, 1, ?, ?, ?, NOW())
+            document_id, version_no, stored_path, file_size, uploaded_by_user_id
+        ) VALUES (?, 1, ?, ?, ?)
     ");
     
     foreach ($allUploaded as $file) {
