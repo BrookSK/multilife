@@ -41,6 +41,7 @@ foreach ($rows as $r) {
     echo '<td>R$ ' . number_format((float)($r['minimum_value'] ?? 0), 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right">';
+    echo '<a class="btn btnPrimary" href="/specialty_services.php?id=' . (int)$r['id'] . '" title="Gerenciar tipos de serviço e valores">⚙️ Serviços</a> ';
     echo '<a class="btn" href="/specialties_edit.php?id=' . (int)$r['id'] . '">Editar</a> ';
     echo '<form method="post" action="/specialties_delete_post.php" style="display:inline">';
     echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
