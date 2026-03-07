@@ -89,6 +89,14 @@ try {
         throw $e;
     }
     
+    // IMPORTANTE: Pegar lastInsertId IMEDIATAMENTE após o INSERT
+    $invoiceId = (int)db()->lastInsertId();
+    error_log("Invoice ID criado: " . $invoiceId);
+    
+    if ($invoiceId === 0) {
+        throw new Exception("Falha ao obter ID da fatura criada");
+    }
+    
     // Atualizar status do assignment
     error_log("Atualizando status do assignment");
     $updateStmt = db()->prepare("
@@ -103,9 +111,6 @@ try {
         error_log("ERRO ao atualizar status: " . $e->getMessage());
         throw $e;
     }
-    
-    $invoiceId = (int)db()->lastInsertId();
-    error_log("Invoice ID criado: " . $invoiceId);
     
     // Criar lançamento de receita (income) no financeiro
     $incomeStmt = db()->prepare("
