@@ -1853,18 +1853,44 @@ if (!empty($selectedChat)) {
 
 echo '</div>'; // Fecha whatsapp-container
 
+// DIV DE DEBUG VISÍVEL NA PÁGINA
+echo '<div id="debugPanel" style="position:fixed;bottom:0;left:0;right:0;max-height:300px;overflow-y:auto;background:#1e1e1e;color:#00ff00;font-family:monospace;font-size:11px;padding:10px;z-index:99998;border-top:3px solid #00ff00;display:block">';
+echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid #00ff00">';
+echo '<strong style="color:#00ff00">🔍 DEBUG PANEL - CHAT WEB</strong>';
+echo '<button onclick="document.getElementById(\'debugPanel\').style.display=\'none\'" style="background:#ff0000;color:#fff;border:none;padding:5px 10px;cursor:pointer;border-radius:3px">Fechar</button>';
+echo '</div>';
+echo '<div id="debugLogs" style="white-space:pre-wrap;word-wrap:break-word"></div>';
+echo '</div>';
+
 // JavaScript para funcionalidades
 echo '<script>';
-echo 'console.log("[DEBUG] ========================================");';
-echo 'console.log("[DEBUG] VERSÃO DO ARQUIVO: 2026-03-07 13:08:00");';
-echo 'console.log("[DEBUG] LINHAS DO ARQUIVO: 2379");';
-echo 'console.log("[DEBUG] ========================================");';
-echo 'console.log("[DEBUG] Início do bloco JavaScript principal");';
-echo 'console.log("[DEBUG] Timestamp:", Date.now());';
+echo 'const debugPanel = document.getElementById("debugLogs");';
+echo 'function addDebugLog(msg, type = "info") {';
+echo '  const timestamp = new Date().toLocaleTimeString();';
+echo '  const colors = {info: "#00ff00", error: "#ff0000", warn: "#ffff00", success: "#00ffff"};';
+echo '  const color = colors[type] || colors.info;';
+echo '  const line = document.createElement("div");';
+echo '  line.style.color = color;';
+echo '  line.style.marginBottom = "3px";';
+echo '  line.textContent = `[${timestamp}] ${msg}`;';
+echo '  debugPanel.appendChild(line);';
+echo '  debugPanel.scrollTop = debugPanel.scrollHeight;';
+echo '  console.log(msg);';
+echo '}';
+echo 'window.onerror = function(msg, url, line, col, error) {';
+echo '  addDebugLog("❌ ERRO JS: " + msg + " (linha " + line + ")", "error");';
+echo '  return false;';
+echo '};';
+echo 'addDebugLog("========================================", "success");';
+echo 'addDebugLog("VERSÃO DO ARQUIVO: 2026-03-07 13:11:00", "success");';
+echo 'addDebugLog("LINHAS DO ARQUIVO: 2383", "success");';
+echo 'addDebugLog("========================================", "success");';
+echo 'addDebugLog("Início do bloco JavaScript principal");';
+echo 'addDebugLog("Timestamp: " + Date.now());';
 
 // Validação do formulário antes de enviar
 echo 'document.addEventListener("DOMContentLoaded", function() {';
-echo '  console.log("[DEBUG] DOMContentLoaded disparado");';
+echo '  addDebugLog("DOMContentLoaded disparado");';
 echo '  const form = document.getElementById("newChatForm");';
 echo '  if (form) {';
 echo '    form.addEventListener("submit", function(e) {';
@@ -1880,8 +1906,8 @@ echo '    });';
 echo '  }';
 echo '});';
 
-echo 'console.log("Chat carregado:", "' . addslashes($selectedChat) . '");';
-echo 'console.log("[DEBUG] Funções básicas carregadas");';
+echo 'addDebugLog("Chat carregado: ' . addslashes($selectedChat) . '");';
+echo 'addDebugLog("Funções básicas carregadas");';
 
 // Ocultar mensagem de sucesso após 3 segundos
 echo 'const successMsg = document.getElementById("successMessage");';
@@ -1972,9 +1998,9 @@ echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "")
 echo '  window.location.href = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
 echo '}';
 
-echo 'console.log("[DEBUG] Definindo openAssignmentModal");';
+echo 'addDebugLog("Definindo openAssignmentModal");';
 echo 'async function openAssignmentModal() {';
-echo '  console.log("[DEBUG] openAssignmentModal chamada");';
+echo '  addDebugLog("openAssignmentModal chamada");';
 echo '  const demandSelect = document.getElementById("demandSelect");';
 echo '  if(!demandSelect || !demandSelect.value) {';
 echo '    alert("Por favor, selecione um card de captação primeiro.");';
@@ -2073,9 +2099,9 @@ echo '    alert("Erro ao processar atribuição: " + err.message);';
 echo '  });';
 echo '});';
 
-echo 'console.log("[DEBUG] Definindo loadGroupsByFilter");';
+echo 'addDebugLog("Definindo loadGroupsByFilter");';
 echo 'function loadGroupsByFilter() {';
-echo '  console.log("[DEBUG] loadGroupsByFilter chamada");';
+echo '  addDebugLog("loadGroupsByFilter chamada");';
 echo '  const specialty = document.getElementById("groupSpecialty").value;';
 echo '  const region = document.getElementById("groupRegion").value;';
 echo '  const select = document.getElementById("selectedGroup");';
@@ -2106,9 +2132,9 @@ echo '      console.error("Erro:", e);';
 echo '    });';
 echo '}';
 
-echo 'console.log("[DEBUG] Definindo sendGroupInvite");';
+echo 'addDebugLog("Definindo sendGroupInvite");';
 echo 'function sendGroupInvite() {';
-echo '  console.log("[DEBUG] sendGroupInvite chamada");';
+echo '  addDebugLog("sendGroupInvite chamada");';
 echo '  const chatId = "' . addslashes($selectedChat) . '";';
 echo '  const groupJid = document.getElementById("selectedGroup").value;';
 echo '  const welcomeMessage = document.getElementById("welcomeMessage").value;';
@@ -2372,11 +2398,11 @@ echo '    }, 500);';
 echo '  }';
 echo '});';
 
-echo 'console.log("[DEBUG] Fim do bloco JavaScript principal");';
-echo 'console.log("[DEBUG] Todas as funções foram definidas:");';
-echo 'console.log("[DEBUG] - openAssignmentModal:", typeof openAssignmentModal);';
-echo 'console.log("[DEBUG] - loadGroupsByFilter:", typeof loadGroupsByFilter);';
-echo 'console.log("[DEBUG] - sendGroupInvite:", typeof sendGroupInvite);';
+echo 'addDebugLog("Fim do bloco JavaScript principal", "success");';
+echo 'addDebugLog("Todas as funções foram definidas:", "success");';
+echo 'addDebugLog("- openAssignmentModal: " + typeof openAssignmentModal, "success");';
+echo 'addDebugLog("- loadGroupsByFilter: " + typeof loadGroupsByFilter, "success");';
+echo 'addDebugLog("- sendGroupInvite: " + typeof sendGroupInvite, "success");';
 echo '</script>';
 
 view_footer();
