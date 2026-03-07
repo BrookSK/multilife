@@ -93,8 +93,7 @@ try {
             description,
             entry_date,
             status,
-            created_by_user_id,
-            created_at
+            created_by_user_id
         ) VALUES (
             'income',
             'Atendimento Profissional',
@@ -106,8 +105,7 @@ try {
             ?,
             CURDATE(),
             'pending',
-            ?,
-            NOW()
+            ?
         )
     ");
     $incomeDescription = "Receita de atendimento - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
@@ -138,8 +136,7 @@ try {
             description,
             entry_date,
             status,
-            created_by_user_id,
-            created_at
+            created_by_user_id
         ) VALUES (
             'expense',
             'Pagamento Profissional',
@@ -151,8 +148,7 @@ try {
             ?,
             CURDATE(),
             'pending',
-            ?,
-            NOW()
+            ?
         )
     ");
     $expenseDescription = "Pagamento ao profissional - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
