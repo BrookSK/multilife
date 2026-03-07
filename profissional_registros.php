@@ -14,7 +14,7 @@ $patientsStmt = db()->prepare("
         p.id,
         p.full_name,
         p.cpf,
-        p.phone,
+        p.phone_primary,
         pa.specialty,
         pa.service_type,
         pa.session_quantity,
@@ -141,7 +141,7 @@ if (count($patients) === 0) {
         echo '<tr>';
         echo '<td style="font-weight:600">' . h($patient['full_name']) . '</td>';
         echo '<td>' . h($patient['cpf'] ?? '-') . '</td>';
-        echo '<td>' . h($patient['phone'] ?? '-') . '</td>';
+        echo '<td>' . h($patient['phone_primary'] ?? '-') . '</td>';
         echo '<td>' . h($patient['specialty'] ?? '-') . '</td>';
         echo '<td>' . (int)$patient['session_quantity'] . '</td>';
         echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusLabel . '</span></td>';

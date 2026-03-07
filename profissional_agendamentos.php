@@ -22,21 +22,21 @@ if ($currentYear < 2020 || $currentYear > 2030) {
 $appointmentsStmt = db()->prepare("
     SELECT 
         a.id,
-        a.appointment_date,
-        a.appointment_time,
+        DATE(a.first_at) as appointment_date,
+        TIME(a.first_at) as appointment_time,
         a.status,
-        a.notes,
+        a.recurrence_rule as notes,
         p.full_name as patient_name,
-        p.phone as patient_phone,
+        p.phone_primary as patient_phone,
         pa.specialty,
         pa.service_type
     FROM appointments a
     INNER JOIN patients p ON p.id = a.patient_id
     LEFT JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.professional_user_id = ?
     WHERE a.professional_user_id = ?
-    AND YEAR(a.appointment_date) = ?
-    AND MONTH(a.appointment_date) = ?
-    ORDER BY a.appointment_date ASC, a.appointment_time ASC
+    AND YEAR(a.first_at) = ?
+    AND MONTH(a.first_at) = ?
+    ORDER BY a.first_at ASC
 ");
 $appointmentsStmt->execute([$userId, $userId, $currentYear, $currentMonth]);
 $appointments = $appointmentsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -93,9 +93,9 @@ echo '<section class="card col12">';
 echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">';
 
 $totalAppointments = count($appointments);
-$confirmedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'confirmed'));
-$pendingCount = count(array_filter($appointments, fn($a) => $a['status'] === 'pending'));
-$completedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'completed'));
+$confirmedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'agendado'));
+$pendingCount = count(array_filter($appointments, fn($a) => $a['status'] === 'pendente_formulario'));
+$completedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'realizado'));
 
 echo '<div style="padding:20px;background:#f0f9ff;border-radius:8px;border-left:4px solid #0284c7">';
 echo '<div style="font-size:14px;color:#0369a1;font-weight:600;margin-bottom:8px">Total de Agendamentos</div>';
@@ -181,16 +181,20 @@ if (count($appointments) === 0) {
     
     foreach ($appointments as $apt) {
         $statusColors = [
-            'pending' => '#f59e0b',
-            'confirmed' => '#10b981',
-            'completed' => '#667781',
-            'cancelled' => '#dc2626'
+            'agendado' => '#10b981',
+            'pendente_formulario' => '#f59e0b',
+            'realizado' => '#667781',
+            'atrasado' => '#dc2626',
+            'cancelado' => '#dc2626',
+            'revisao_admin' => '#0284c7'
         ];
         $statusLabels = [
-            'pending' => 'Pendente',
-            'confirmed' => 'Confirmado',
-            'completed' => 'Concluído',
-            'cancelled' => 'Cancelado'
+            'agendado' => 'Agendado',
+            'pendente_formulario' => 'Pendente Formulário',
+            'realizado' => 'Realizado',
+            'atrasado' => 'Atrasado',
+            'cancelado' => 'Cancelado',
+            'revisao_admin' => 'Em Revisão'
         ];
         $statusColor = $statusColors[$apt['status']] ?? '#667781';
         $statusLabel = $statusLabels[$apt['status']] ?? $apt['status'];
