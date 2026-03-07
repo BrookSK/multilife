@@ -1127,11 +1127,9 @@ echo '</div>';
 
 // Exibir mensagens de sucesso/erro
 if (!empty($success)) {
-    echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
+    echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001" id="successMessage">';
     echo '<strong>✓ Sucesso:</strong> ' . h($success);
     echo '</div>';
-    // Não redirecionar - manter o chat aberto
-    echo '<script>setTimeout(() => { document.querySelector(".fixed").style.display = "none"; }, 3000);</script>';
 }
 if (!empty($error)) {
     echo '<div style="position:fixed;top:20px;right:20px;background:#f8d7da;color:#721c24;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001">';
@@ -1875,6 +1873,12 @@ echo '  }';
 echo '});';
 
 echo 'console.log("Chat carregado:", "' . addslashes($selectedChat) . '");';
+
+// Ocultar mensagem de sucesso após 3 segundos
+echo 'const successMsg = document.getElementById("successMessage");';
+echo 'if (successMsg) {';
+echo '  setTimeout(() => { successMsg.style.display = "none"; }, 3000);';
+echo '}';
 
 // Função de sincronização com Evolution
 echo 'function syncEvolution() {';
