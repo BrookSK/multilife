@@ -65,8 +65,13 @@ try {
     $recordNotes .= "Quantidade de Sessões: " . $assignment['session_quantity'] . "x\n";
     $recordNotes .= "Frequência: " . $assignment['session_frequency'] . "\n";
     $recordNotes .= "Valor por Sessão: R$ " . number_format((float)$assignment['payment_value'], 2, ',', '.') . "\n";
+    if (!empty($assignment['notes'])) {
+        $recordNotes .= "\nObservações: " . $assignment['notes'] . "\n";
+    }
     $recordNotes .= "\nAprovado por: " . $approvedByName . "\n";
     $recordNotes .= "Data de Aprovação: " . date('d/m/Y H:i:s');
+    
+    error_log("DEBUG APROVAÇÃO: Registrando no prontuário - patient_id: {$assignment['patient_id']}, professional_user_id: {$assignment['professional_user_id']}, sessions: {$assignment['session_quantity']}");
     
     $prontuarioStmt = $db->prepare("
         INSERT INTO patient_prontuario_entries 
@@ -79,6 +84,8 @@ try {
         $assignment['session_quantity'],
         $recordNotes
     ]);
+    
+    error_log("DEBUG APROVAÇÃO: Prontuário registrado com sucesso! ID: " . $db->lastInsertId());
     
     // Log de auditoria
     audit_log('update', 'patient_assignments', (string)$assignmentId, 

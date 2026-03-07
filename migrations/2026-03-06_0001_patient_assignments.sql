@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS patient_assignments (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     demand_id BIGINT UNSIGNED NOT NULL,
-    patient_id INT UNSIGNED NOT NULL,
+    patient_id BIGINT UNSIGNED NOT NULL,
     professional_remote_jid VARCHAR(100) NOT NULL,
     professional_user_id INT UNSIGNED NULL,
     assigned_by_user_id INT UNSIGNED NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS patient_assignments (
     KEY idx_patient_assignments_created (created_at),
     
     CONSTRAINT fk_patient_assignments_demand FOREIGN KEY (demand_id) REFERENCES demands(id) ON DELETE CASCADE,
-    CONSTRAINT fk_patient_assignments_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_patient_assignments_patient FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
     CONSTRAINT fk_patient_assignments_professional_user FOREIGN KEY (professional_user_id) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_patient_assignments_assigned_by FOREIGN KEY (assigned_by_user_id) REFERENCES users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

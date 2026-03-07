@@ -172,26 +172,26 @@ try {
     }
     
     // Registrar no prontuário do paciente (usando tabela existente)
-    try {
-        $recordNotes = "📋 ATENDIMENTO ATRIBUÍDO\n\n";
-        $recordNotes .= "Profissional: {$professionalName}\n";
-        $recordNotes .= "Especialidade: {$specialty}\n";
-        $recordNotes .= "Serviço: {$serviceType}\n";
-        $recordNotes .= "Sessões: {$sessionQuantity}x ({$sessionFrequency})\n";
-        $recordNotes .= "Valor: R$ " . number_format($paymentValue, 2, ',', '.');
-        if ($notes) {
-            $recordNotes .= "\n\nObservações: {$notes}";
-        }
-        
-        $prontuarioStmt = $db->prepare("
-            INSERT INTO patient_prontuario_entries 
-            (patient_id, professional_user_id, origin, occurred_at, sessions_count, notes)
-            VALUES (?, ?, 'atribuicao_captacao', NOW(), ?, ?)
-        ");
-        $prontuarioStmt->execute([$patientId, $professionalUserId, $sessionQuantity, $recordNotes]);
-    } catch (Exception $e) {
-        error_log("Erro ao registrar no prontuário do paciente: " . $e->getMessage());
+    $recordNotes = "📋 ATENDIMENTO ATRIBUÍDO\n\n";
+    $recordNotes .= "Profissional: {$professionalName}\n";
+    $recordNotes .= "Especialidade: {$specialty}\n";
+    $recordNotes .= "Serviço: {$serviceType}\n";
+    $recordNotes .= "Sessões: {$sessionQuantity}x ({$sessionFrequency})\n";
+    $recordNotes .= "Valor: R$ " . number_format($paymentValue, 2, ',', '.');
+    if ($notes) {
+        $recordNotes .= "\n\nObservações: {$notes}";
     }
+    
+    error_log("DEBUG: Registrando no prontuário - patient_id: {$patientId}, professional_user_id: {$professionalUserId}, sessions: {$sessionQuantity}");
+    
+    $prontuarioStmt = $db->prepare("
+        INSERT INTO patient_prontuario_entries 
+        (patient_id, professional_user_id, origin, occurred_at, sessions_count, notes)
+        VALUES (?, ?, 'atribuicao_captacao', NOW(), ?, ?)
+    ");
+    $prontuarioStmt->execute([$patientId, $professionalUserId, $sessionQuantity, $recordNotes]);
+    
+    error_log("DEBUG: Prontuário registrado com sucesso! ID: " . $db->lastInsertId());
     
     echo json_encode([
         'success' => true,
