@@ -26,7 +26,7 @@ $stmt = db()->prepare("
         p.full_name as patient_name,
         u.name as professional_name,
         d.title as document_title,
-        d.file_path,
+        (SELECT v.stored_path FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_path,
         d.category
     FROM billing_document_requirements bdr
     INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id

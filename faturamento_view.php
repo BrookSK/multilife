@@ -44,7 +44,7 @@ $docsStmt = db()->prepare("
     SELECT 
         bdr.*,
         d.title as document_title,
-        d.file_path,
+        (SELECT v.stored_path FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_path,
         reviewer.name as reviewer_name
     FROM billing_document_requirements bdr
     LEFT JOIN documents d ON d.id = bdr.document_id
