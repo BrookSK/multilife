@@ -873,6 +873,12 @@ if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($in
 
 view_header('Chat ao Vivo');
 
+// FAIXA DE VERIFICAÇÃO DE UPLOAD - REMOVER APÓS CONFIRMAR
+echo '<div style="position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:12px;text-align:center;z-index:99999;font-weight:bold;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,0.3)">';
+echo '✅ ARQUIVO ATUALIZADO - Versão: ' . date('Y-m-d H:i:s') . ' - Upload funcionando corretamente!';
+echo '</div>';
+echo '<div style="height:48px"></div>'; // Espaçamento para não sobrepor conteúdo
+
 // Emitir logs de debug no console do navegador (gerados antes do HTML)
 if (!empty($debugConsole)) {
     echo '<script>';
