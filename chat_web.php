@@ -1782,8 +1782,8 @@ echo '<script src="/chat_web_functions.js"></script>';
 
 // JavaScript inline apenas para configuração específica da página
 echo '<script>';
-echo 'window.chatId = "' . addslashes($selectedChat) . '";';
-echo 'window.chatName = "' . addslashes($chatName) . '";';
+echo 'window.chatId = ' . json_encode($selectedChat) . ';';
+echo 'window.chatName = ' . json_encode($chatName) . ';';
 $lastTs = 0;
 if (!empty($messages)) {
     foreach ($messages as $m) {
