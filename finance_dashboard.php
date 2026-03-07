@@ -55,6 +55,7 @@ $whereClause = implode(' AND ', $baseWhere);
 
 $db = db();
 
+// Receitas de contas a receber (sistema antigo)
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(ar.amount), 0) AS total
      FROM finance_accounts_receivable ar
@@ -63,8 +64,20 @@ $stmt = $db->prepare(
      WHERE ar.status IN ('recebido') AND $whereClause"
 );
 $stmt->execute($params);
-$faturamentoTotal = (float)$stmt->fetchColumn();
+$receitasContasReceber = (float)$stmt->fetchColumn();
 
+// Receitas de lançamentos financeiros (sistema de faturamento)
+$stmt = $db->prepare(
+    "SELECT COALESCE(SUM(fe.amount), 0) AS total
+     FROM financial_entries fe
+     WHERE fe.entry_type = 'income' AND fe.status IN ('pending', 'paid')"
+);
+$stmt->execute();
+$receitasFaturamento = (float)$stmt->fetchColumn();
+
+$faturamentoTotal = $receitasContasReceber + $receitasFaturamento;
+
+// Despesas de contas a pagar (sistema antigo)
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(ap.amount), 0) AS total
      FROM finance_accounts_payable ap
@@ -73,10 +86,21 @@ $stmt = $db->prepare(
      WHERE ap.status IN ('pago') AND $whereClause"
 );
 $stmt->execute($params);
-$custoAtendimentos = (float)$stmt->fetchColumn();
+$despesasContasPagar = (float)$stmt->fetchColumn();
+
+// Despesas de lançamentos financeiros (sistema de faturamento)
+$stmt = $db->prepare(
+    "SELECT COALESCE(SUM(fe.amount), 0) AS total
+     FROM financial_entries fe
+     WHERE fe.entry_type = 'expense' AND fe.status IN ('pending', 'paid')"
+);
+$stmt->execute();
+$despesasFaturamento = (float)$stmt->fetchColumn();
+
+$custoAtendimentos = $despesasContasPagar + $despesasFaturamento;
 
 $margemOperacional = $faturamentoTotal - $custoAtendimentos;
-$lucroLiquido = $margemOperacional; // Simplificado - pode incluir outras despesas operacionais
+$lucroLiquido = $margemOperacional;
 
 // Número de atendimentos
 $stmt = $db->prepare(

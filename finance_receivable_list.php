@@ -15,10 +15,12 @@ if (!in_array($status, $allowed, true)) {
     $status = '';
 }
 
+// Contas a receber antigas (appointments)
 $sql = 'SELECT ar.id, ar.amount, ar.due_at, ar.status, ar.received_at,
                a.id AS appointment_id, a.first_at,
                p.full_name AS patient_name,
-               u.name AS professional_name
+               u.name AS professional_name,
+               "appointment" as source
         FROM finance_accounts_receivable ar
         INNER JOIN appointments a ON a.id = ar.appointment_id
         INNER JOIN patients p ON p.id = ar.patient_id
@@ -41,6 +43,44 @@ $sql .= ' ORDER BY ar.id DESC';
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
+
+// Receitas de lançamentos financeiros (faturamento)
+$sqlFaturamento = 'SELECT fe.id, fe.amount, fe.entry_date as due_at, fe.status, 
+                          fe.paid_date as received_at,
+                          fe.assignment_id as appointment_id, fe.created_at as first_at,
+                          p.full_name AS patient_name,
+                          u.name AS professional_name,
+                          "faturamento" as source,
+                          fe.description
+                   FROM financial_entries fe
+                   LEFT JOIN patients p ON p.id = fe.patient_id
+                   LEFT JOIN users u ON u.id = fe.professional_user_id
+                   WHERE fe.entry_type = "income"';
+
+$paramsFat = [];
+
+if ($status !== '') {
+    // Mapear status: pending/paid para pendente/recebido
+    $statusMap = ['pendente' => 'pending', 'recebido' => 'paid'];
+    if (isset($statusMap[$status])) {
+        $sqlFaturamento .= ' AND fe.status = :status';
+        $paramsFat['status'] = $statusMap[$status];
+    }
+}
+
+if ($q !== '') {
+    $sqlFaturamento .= ' AND (p.full_name LIKE :q OR u.name LIKE :q OR fe.description LIKE :q)';
+    $paramsFat['q'] = '%' . $q . '%';
+}
+
+$sqlFaturamento .= ' ORDER BY fe.id DESC';
+
+$stmtFat = db()->prepare($sqlFaturamento);
+$stmtFat->execute($paramsFat);
+$rowsFaturamento = $stmtFat->fetchAll();
+
+// Combinar ambos os arrays
+$rows = array_merge($rows, $rowsFaturamento);
 
 view_header('Financeiro - Contas a Receber');
 

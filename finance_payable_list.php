@@ -15,9 +15,11 @@ if (!in_array($status, $allowed, true)) {
     $status = '';
 }
 
+// Contas a pagar antigas (appointments)
 $sql = 'SELECT ap.id, ap.amount, ap.due_at, ap.status, ap.paid_at,
                a.id AS appointment_id, a.first_at,
-               u.name AS professional_name
+               u.name AS professional_name,
+               "appointment" as source
         FROM finance_accounts_payable ap
         INNER JOIN appointments a ON a.id = ap.appointment_id
         INNER JOIN users u ON u.id = ap.professional_user_id
@@ -43,6 +45,42 @@ if (count($where) > 0) {
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
+
+// Despesas de lançamentos financeiros (faturamento)
+$sqlFaturamento = 'SELECT fe.id, fe.amount, fe.entry_date as due_at, fe.status, 
+                          fe.paid_date as paid_at,
+                          fe.assignment_id as appointment_id, fe.created_at as first_at,
+                          u.name AS professional_name,
+                          "faturamento" as source,
+                          fe.description
+                   FROM financial_entries fe
+                   LEFT JOIN users u ON u.id = fe.professional_user_id
+                   WHERE fe.entry_type = "expense"';
+
+$paramsFat = [];
+
+if ($status !== '') {
+    // Mapear status: pending/paid para pendente/pago
+    $statusMap = ['pendente' => 'pending', 'pago' => 'paid'];
+    if (isset($statusMap[$status])) {
+        $sqlFaturamento .= ' AND fe.status = :status';
+        $paramsFat['status'] = $statusMap[$status];
+    }
+}
+
+if ($q !== '') {
+    $sqlFaturamento .= ' AND (u.name LIKE :q OR fe.description LIKE :q)';
+    $paramsFat['q'] = '%' . $q . '%';
+}
+
+$sqlFaturamento .= ' ORDER BY fe.id DESC';
+
+$stmtFat = db()->prepare($sqlFaturamento);
+$stmtFat->execute($paramsFat);
+$rowsFaturamento = $stmtFat->fetchAll();
+
+// Combinar ambos os arrays
+$rows = array_merge($rows, $rowsFaturamento);
 
 view_header('Financeiro - Contas a Pagar');
 
