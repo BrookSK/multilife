@@ -44,6 +44,7 @@ function view_header(string $title): void
             ['title' => 'Documentos', 'path' => '/documents_list.php'],
             ['title' => 'Faturamento', 'path' => '/faturamento_list.php'],
             ['title' => 'Financeiro', 'path' => '/finance_dashboard.php'],
+            ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php'],
             ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
             ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
             ['title' => 'RH', 'path' => '/hr_employees_list.php'],
