@@ -287,7 +287,12 @@ echo '</form>';
 echo '</section>';
 
 // Cards principais - Grid responsivo que ocupa tela inteira
-echo '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:16px;margin-bottom:16px">';
+echo '<style>
+@media (min-width: 1400px) { .finance-cards-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (min-width: 1024px) and (max-width: 1399px) { .finance-cards-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 1023px) { .finance-cards-grid { grid-template-columns: repeat(2, 1fr); } }
+</style>';
+echo '<div class="finance-cards-grid" style="display:grid;gap:16px;margin-bottom:16px">';
 
 echo '<section class="card">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Número de Atendimentos</div>';
