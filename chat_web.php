@@ -2227,6 +2227,8 @@ echo '  if(menu)menu.classList.remove("show");';
 echo '});';
 echo 'const messagesContainer=document.getElementById("messagesContainer");';
 echo 'const chatId="' . addslashes($selectedChat) . '";';
+echo 'addDebugLog("messagesContainer: " + (messagesContainer ? "encontrado" : "null"));';
+echo 'addDebugLog("chatId: " + chatId);';
 
 // Calcular o último timestamp das mensagens já carregadas na página
 // A query usa aliases: text, fromMe, timestamp
@@ -2273,6 +2275,7 @@ echo 'scrollToBottom();';
 
 // Polling a cada 3 segundos - busca apenas msgs novas (since=lastTimestamp)
 echo 'if(messagesContainer && chatId){';
+echo '  addDebugLog("Iniciando polling de mensagens");';
 echo '  setInterval(function(){';
 echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&since="+lastTimestamp)';
 echo '      .then(function(r){return r.json();})';
@@ -2301,14 +2304,18 @@ echo '        scrollToBottom();';
 echo '      })';
 echo '      .catch(function(){});';
 echo '  },3000);';
+echo '} else {';
+echo '  addDebugLog("Polling não iniciado - messagesContainer ou chatId ausente", "warn");';
 echo '}';
 
 // Envio de mensagem via AJAX
 echo 'const sendForm=document.getElementById("sendMessageForm");';
 echo 'const textarea=document.querySelector(".whatsapp-input");';
+echo 'addDebugLog("sendForm: " + (sendForm ? "encontrado" : "null"));';
+echo 'addDebugLog("textarea: " + (textarea ? "encontrado" : "null"));';
 // URL fixa para o envio - evita que input[name=action] sobreescreva sendForm.action
-echo 'const sendUrl="/chat_web.php?chat="+encodeURIComponent(chatId);';
-echo 'if(sendForm&&textarea){';
+echo 'const sendUrl=chatId ? "/chat_web.php?chat="+encodeURIComponent(chatId) : "";';
+echo 'if(sendForm&&textarea&&chatId){';
 // Auto-resize do textarea
 echo '  textarea.addEventListener("input",function(){';
 echo '    this.style.height="auto";';
@@ -2376,6 +2383,8 @@ echo '      e.preventDefault();';
 echo '      sendForm.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));';
 echo '    }';
 echo '  });';
+echo '} else {';
+echo '  addDebugLog("Formulário de envio não configurado - sendForm, textarea ou chatId ausente", "warn");';
 echo '}';
 
 // Detectar se deve abrir modal de atribuição automaticamente (após cadastro de paciente)
