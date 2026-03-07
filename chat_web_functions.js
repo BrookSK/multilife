@@ -20,7 +20,10 @@ window.onerror = function(msg, url, line, col, error) {
 
 // Funções de modal
 function openNewChatModal() {
-  document.getElementById("newChatModal").style.display = "flex";
+  const modal = document.getElementById("newChatModal");
+  if (modal) {
+    modal.style.display = "flex";
+  }
 }
 
 function closeNewChatModal() {
@@ -294,5 +297,66 @@ function switchTab(tab) {
     document.getElementById("contentManual").style.display = "block";
   }
 }
+
+// Listener do formulário de atribuição de paciente
+document.addEventListener("DOMContentLoaded", function() {
+  const assignmentForm = document.getElementById("assignmentForm");
+  if (assignmentForm) {
+    assignmentForm.addEventListener("submit", function(e) {
+      e.preventDefault();
+      
+      const demandSelect = document.getElementById("demandSelect");
+      const patientId = document.getElementById("patientId").value;
+      const specialty = document.getElementById("specialty").value;
+      const serviceType = document.getElementById("serviceType").value;
+      const sessionQuantity = document.getElementById("sessionQuantity").value;
+      const sessionFrequency = document.getElementById("sessionFrequency").value;
+      const paymentValue = document.getElementById("paymentValue").value;
+      const notes = document.getElementById("assignmentNotes").value;
+      
+      if (!demandSelect || !demandSelect.value) {
+        alert("Por favor, selecione um card de captação primeiro.");
+        return;
+      }
+      
+      const demandId = demandSelect.value;
+      const professionalJid = window.chatId || "";
+      
+      if (!patientId || patientId === "new") {
+        alert("Por favor, selecione um paciente válido.");
+        return;
+      }
+      
+      fetch("/chat_assign_patient.php", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          demand_id: demandId,
+          patient_id: patientId,
+          professional_jid: professionalJid,
+          specialty: specialty,
+          service_type: serviceType,
+          session_quantity: sessionQuantity,
+          session_frequency: sessionFrequency,
+          payment_value: paymentValue,
+          notes: notes
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if(data.success) {
+          alert("Paciente atribuído com sucesso! Mensagem enviada ao profissional.");
+          closeAssignmentModal();
+          location.reload();
+        } else {
+          alert("Erro: " + (data.error || "Erro ao atribuir paciente"));
+        }
+      })
+      .catch(err => {
+        alert("Erro ao processar atribuição: " + err.message);
+      });
+    });
+  }
+});
 
 console.log("✅ Chat Web Functions carregadas com sucesso");
