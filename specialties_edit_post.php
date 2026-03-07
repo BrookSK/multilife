@@ -10,6 +10,7 @@ rbac_require_permission('admin.settings.manage');
 $id = (int)($_POST['id'] ?? 0);
 $name = trim((string)($_POST['name'] ?? ''));
 $minimumValue = (float)($_POST['minimum_value'] ?? 0);
+$internalCost = (float)($_POST['internal_cost'] ?? 0);
 $status = (string)($_POST['status'] ?? 'active');
 
 $stmt = db()->prepare('SELECT * FROM specialties WHERE id = :id');
@@ -35,15 +36,16 @@ if (!in_array($status, ['active', 'inactive'], true)) {
 $db = db();
 $db->beginTransaction();
 try {
-    $stmt = $db->prepare('UPDATE specialties SET name = :name, minimum_value = :min_val, status = :status WHERE id = :id');
+    $stmt = $db->prepare('UPDATE specialties SET name = :name, minimum_value = :min_val, internal_cost = :int_cost, status = :status WHERE id = :id');
     $stmt->execute([
         'name' => $name,
         'min_val' => $minimumValue,
+        'int_cost' => $internalCost,
         'status' => $status,
         'id' => $id,
     ]);
 
-    audit_log('update', 'specialties', (string)$id, $old, ['name' => $name, 'minimum_value' => $minimumValue, 'status' => $status]);
+    audit_log('update', 'specialties', (string)$id, $old, ['name' => $name, 'minimum_value' => $minimumValue, 'internal_cost' => $internalCost, 'status' => $status]);
 
     $db->commit();
 } catch (Throwable $e) {

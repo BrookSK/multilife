@@ -43,6 +43,8 @@ echo '<label>Nome da Especialidade<input name="name" required maxlength="120" va
 
 echo '<label>Valor Mínimo por Sessão (R$)<input type="number" step="0.01" min="0" name="minimum_value" required value="' . h(number_format((float)$s['minimum_value'], 2, '.', '')) . '"></label>';
 
+echo '<label>Valor de Custo Interno (R$)<input type="number" step="0.01" min="0" name="internal_cost" required value="' . h(number_format((float)($s['internal_cost'] ?? 0), 2, '.', '')) . '"></label>';
+
 echo '<label>Status<select name="status">';
 $statuses = ['active' => 'Ativa', 'inactive' => 'Inativa'];
 foreach ($statuses as $k => $label) {
