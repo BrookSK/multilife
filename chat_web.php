@@ -1853,50 +1853,11 @@ if (!empty($selectedChat)) {
 
 echo '</div>'; // Fecha whatsapp-container
 
-// DIV DE DEBUG VISÍVEL NA PÁGINA
-echo '<div id="debugPanel" style="position:fixed;bottom:0;left:0;right:0;max-height:300px;overflow-y:auto;background:#1e1e1e;color:#00ff00;font-family:monospace;font-size:11px;padding:10px;z-index:99998;border-top:3px solid #00ff00;display:block">';
-echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid #00ff00">';
-echo '<strong style="color:#00ff00">🔍 DEBUG PANEL - CHAT WEB</strong>';
-echo '<button onclick="document.getElementById(\'debugPanel\').style.display=\'none\'" style="background:#ff0000;color:#fff;border:none;padding:5px 10px;cursor:pointer;border-radius:3px">Fechar</button>';
-echo '</div>';
-echo '<div id="debugLogs" style="white-space:pre-wrap;word-wrap:break-word"></div>';
-echo '</div>';
-
 // JavaScript para funcionalidades
 echo '<script>';
-echo 'const debugPanel = document.getElementById("debugLogs");';
-echo 'function addDebugLog(msg, type) {';
-echo '  if(!type) type = "info";';
-echo '  const timestamp = new Date().toLocaleTimeString();';
-echo '  const colors = {info: "#00ff00", error: "#ff0000", warn: "#ffff00", success: "#00ffff"};';
-echo '  const color = colors[type] || colors.info;';
-echo '  const line = document.createElement("div");';
-echo '  line.style.color = color;';
-echo '  line.style.marginBottom = "3px";';
-echo '  line.style.whiteSpace = "pre-wrap";';
-echo '  line.textContent = "[" + timestamp + "] " + msg;';
-echo '  debugPanel.appendChild(line);';
-echo '  debugPanel.scrollTop = debugPanel.scrollHeight;';
-echo '  console.log(msg);';
-echo '}';
-echo 'window.onerror = function(msg, url, line, col, error) {';
-echo '  addDebugLog("========================================", "error");';
-echo '  addDebugLog("ERRO: " + msg, "error");';
-echo '  addDebugLog("Linha: " + line + " | Coluna: " + col, "error");';
-echo '  if(error && error.stack) addDebugLog("Stack: " + error.stack, "error");';
-echo '  addDebugLog("========================================", "error");';
-echo '  return false;';
-echo '};';
-echo 'addDebugLog("========================================", "success");';
-echo 'addDebugLog("VERSÃO DO ARQUIVO: 2026-03-07 13:11:00", "success");';
-echo 'addDebugLog("LINHAS DO ARQUIVO: 2383", "success");';
-echo 'addDebugLog("========================================", "success");';
-echo 'addDebugLog("Início do bloco JavaScript principal");';
-echo 'addDebugLog("Timestamp: " + Date.now());';
 
 // Validação do formulário antes de enviar
 echo 'document.addEventListener("DOMContentLoaded", function() {';
-echo '  addDebugLog("DOMContentLoaded disparado");';
 echo '  const form = document.getElementById("newChatForm");';
 echo '  if (form) {';
 echo '    form.addEventListener("submit", function(e) {';
@@ -1911,15 +1872,6 @@ echo '      }';
 echo '    });';
 echo '  }';
 echo '});';
-
-echo 'addDebugLog("Chat carregado: ' . addslashes($selectedChat) . '");';
-echo 'addDebugLog("Funções básicas carregadas");';
-
-// Ocultar mensagem de sucesso após 3 segundos
-echo 'const successMsg = document.getElementById("successMessage");';
-echo 'if (successMsg) {';
-echo '  setTimeout(function() { successMsg.style.display = "none"; }, 3000);';
-echo '}';
 
 // Função de sincronização com Evolution
 echo 'function syncEvolution() {';
@@ -2004,9 +1956,7 @@ echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "")
 echo '  window.location.href = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
 echo '}';
 
-echo 'addDebugLog("Definindo openAssignmentModal");';
 echo 'async function openAssignmentModal() {';
-echo '  addDebugLog("openAssignmentModal chamada");';
 echo '  const demandSelect = document.getElementById("demandSelect");';
 echo '  if(!demandSelect || !demandSelect.value) {';
 echo '    alert("Por favor, selecione um card de captação primeiro.");';
@@ -2107,9 +2057,7 @@ echo '    alert("Erro ao processar atribuição: " + err.message);';
 echo '  });';
 echo '});';
 
-echo 'addDebugLog("Definindo loadGroupsByFilter");';
 echo 'function loadGroupsByFilter() {';
-echo '  addDebugLog("loadGroupsByFilter chamada");';
 echo '  const specialty = document.getElementById("groupSpecialty").value;';
 echo '  const region = document.getElementById("groupRegion").value;';
 echo '  const select = document.getElementById("selectedGroup");';
@@ -2140,9 +2088,7 @@ echo '      console.error("Erro:", e);';
 echo '    });';
 echo '}';
 
-echo 'addDebugLog("Definindo sendGroupInvite");';
 echo 'function sendGroupInvite() {';
-echo '  addDebugLog("sendGroupInvite chamada");';
 echo '  const chatId = "' . addslashes($selectedChat) . '";';
 echo '  const groupJid = document.getElementById("selectedGroup").value;';
 echo '  const welcomeMessage = document.getElementById("welcomeMessage").value;';
@@ -2232,8 +2178,6 @@ echo '  if(menu)menu.classList.remove("show");';
 echo '});';
 echo 'const messagesContainer=document.getElementById("messagesContainer");';
 echo 'const chatId="' . addslashes($selectedChat) . '";';
-echo 'addDebugLog("messagesContainer: " + (messagesContainer ? "encontrado" : "null"));';
-echo 'addDebugLog("chatId: " + chatId);';
 
 // Calcular o último timestamp das mensagens já carregadas na página
 // A query usa aliases: text, fromMe, timestamp
@@ -2280,7 +2224,6 @@ echo 'scrollToBottom();';
 
 // Polling a cada 3 segundos - busca apenas msgs novas (since=lastTimestamp)
 echo 'if(messagesContainer && chatId){';
-echo '  addDebugLog("Iniciando polling de mensagens");';
 echo '  setInterval(function(){';
 echo '    fetch("/chat_get_messages.php?chat_id="+encodeURIComponent(chatId)+"&since="+lastTimestamp)';
 echo '      .then(function(r){return r.json();})';
@@ -2309,15 +2252,11 @@ echo '        scrollToBottom();';
 echo '      })';
 echo '      .catch(function(){});';
 echo '  },3000);';
-echo '} else {';
-echo '  addDebugLog("Polling não iniciado - messagesContainer ou chatId ausente", "warn");';
 echo '}';
 
 // Envio de mensagem via AJAX
 echo 'const sendForm=document.getElementById("sendMessageForm");';
 echo 'const textarea=document.querySelector(".whatsapp-input");';
-echo 'addDebugLog("sendForm: " + (sendForm ? "encontrado" : "null"));';
-echo 'addDebugLog("textarea: " + (textarea ? "encontrado" : "null"));';
 // URL fixa para o envio - evita que input[name=action] sobreescreva sendForm.action
 echo 'const sendUrl=chatId ? "/chat_web.php?chat="+encodeURIComponent(chatId) : "";';
 echo 'if(sendForm&&textarea&&chatId){';
@@ -2388,8 +2327,6 @@ echo '      e.preventDefault();';
 echo '      sendForm.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));';
 echo '    }';
 echo '  });';
-echo '} else {';
-echo '  addDebugLog("Formulário de envio não configurado - sendForm, textarea ou chatId ausente", "warn");';
 echo '}';
 
 // Detectar se deve abrir modal de atribuição automaticamente (após cadastro de paciente)
@@ -2415,11 +2352,6 @@ echo '    }, 500);';
 echo '  }';
 echo '});';
 
-echo 'addDebugLog("Fim do bloco JavaScript principal", "success");';
-echo 'addDebugLog("Todas as funções foram definidas:", "success");';
-echo 'addDebugLog("- openAssignmentModal: " + typeof openAssignmentModal, "success");';
-echo 'addDebugLog("- loadGroupsByFilter: " + typeof loadGroupsByFilter, "success");';
-echo 'addDebugLog("- sendGroupInvite: " + typeof sendGroupInvite, "success");';
 echo '</script>';
 
 view_footer();
