@@ -14,7 +14,18 @@ function view_header(string $title): void
     $flashSuccess = flash_get('success');
 
     // Menu específico para profissionais
-    $isProfessional = $user && isset($user['role']) && $user['role'] === 'profissional';
+    $isProfessional = false;
+    if ($user) {
+        $roleStmt = db()->prepare("
+            SELECT r.slug 
+            FROM user_roles ur 
+            INNER JOIN roles r ON r.id = ur.role_id 
+            WHERE ur.user_id = ?
+        ");
+        $roleStmt->execute([$user['id']]);
+        $userRoles = $roleStmt->fetchAll(PDO::FETCH_COLUMN);
+        $isProfessional = in_array('profissional', $userRoles, true);
+    }
     
     if ($isProfessional) {
         $menuItems = [
