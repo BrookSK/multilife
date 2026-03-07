@@ -235,6 +235,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
                 echo '<span style="margin-left:10px;font-size:12px;color:' . $statusColor . '">' . $statusText . '</span>';
                 echo '</div>';
                 echo '<div style="display:flex;gap:8px">';
+                echo '<a href="/specialty_services_v2.php?id=' . (int)$spec['id'] . '" class="btn btnPrimary" style="font-size:12px;padding:6px 10px">⚙️ Serviços</a>';
                 echo '<a href="/specialties_edit.php?id=' . (int)$spec['id'] . '" class="btn" style="font-size:12px;padding:6px 10px">Editar</a>';
                 echo '</div>';
                 echo '</div>';

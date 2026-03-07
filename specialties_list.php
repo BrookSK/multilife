@@ -7,8 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
 
-$stmt = db()->query('SELECT * FROM specialties ORDER BY name ASC');
-$rows = $stmt->fetchAll();
+// Forçar atualização sem cache
+$stmt = db()->prepare('SELECT * FROM specialties ORDER BY name ASC');
+$stmt->execute();
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 view_header('Especialidades');
 

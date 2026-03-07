@@ -44,67 +44,9 @@ CREATE TABLE specialty_service_values (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT = 'Valores individuais por especialidade e tipo de serviço';
 
--- PASSO 4: Inserir VALORES para cada ESPECIALIDADE + SERVIÇO
-
--- Fisioterapia (specialty_id = 1)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(1, 1, 80.00, 'active'),   -- Online
-(1, 2, 120.00, 'active'),  -- Presencial
-(1, 3, 100.00, 'active');  -- Híbrido
-
--- Fonoaudiologia (specialty_id = 2)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(2, 1, 75.00, 'active'),   -- Online
-(2, 2, 110.00, 'active'),  -- Presencial
-(2, 3, 92.50, 'active');   -- Híbrido
-
--- Terapia Ocupacional (specialty_id = 3)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(3, 1, 75.00, 'active'),   -- Online
-(3, 2, 110.00, 'active'),  -- Presencial
-(3, 3, 92.50, 'active');   -- Híbrido
-
--- Psicologia (specialty_id = 4)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(4, 1, 90.00, 'active'),   -- Online
-(4, 2, 130.00, 'active'),  -- Presencial
-(4, 3, 110.00, 'active');  -- Híbrido
-
--- Nutrição (specialty_id = 5)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(5, 1, 70.00, 'active'),   -- Online
-(5, 2, 100.00, 'active'),  -- Presencial
-(5, 3, 85.00, 'active');   -- Híbrido
-
--- Enfermagem (specialty_id = 6)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(6, 1, 60.00, 'active'),   -- Online
-(6, 2, 90.00, 'active'),   -- Presencial
-(6, 3, 75.00, 'active');   -- Híbrido
-
--- Pedagogia (specialty_id = 7)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(7, 1, 65.00, 'active'),   -- Online
-(7, 2, 95.00, 'active'),   -- Presencial
-(7, 3, 80.00, 'active');   -- Híbrido
-
--- Psicopedagogia (specialty_id = 8)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(8, 1, 70.00, 'active'),   -- Online
-(8, 2, 105.00, 'active'),  -- Presencial
-(8, 3, 87.50, 'active');   -- Híbrido
-
--- Musicoterapia (specialty_id = 9)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(9, 1, 65.00, 'active'),   -- Online
-(9, 2, 95.00, 'active'),   -- Presencial
-(9, 3, 80.00, 'active');   -- Híbrido
-
--- Educação Física (specialty_id = 10)
-INSERT INTO specialty_service_values (specialty_id, service_type_id, base_value, status) VALUES
-(10, 1, 60.00, 'active'),  -- Online
-(10, 2, 90.00, 'active'),  -- Presencial
-(10, 3, 75.00, 'active');  -- Híbrido
+-- PASSO 4: NÃO inserir valores automaticamente
+-- Os valores devem ser configurados manualmente pelo usuário em /specialty_services_v2.php
+-- Cada especialidade terá seus próprios valores individuais configurados pelo admin
 
 -- PASSO 5: Adicionar colunas nas tabelas relacionadas (verificando se já existem)
 -- Agora as tabelas referenciam o SERVIÇO GENÉRICO (service_type_id)
