@@ -2,9 +2,15 @@
 
 declare(strict_types=1);
 
+error_log(">>> ARQUIVO faturamento_approve_post.php ACESSADO <<<");
+error_log("REQUEST_METHOD: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNDEFINED'));
+error_log("POST data: " . print_r($_POST, true));
+
 require_once __DIR__ . '/app/bootstrap.php';
 
+error_log("Bootstrap carregado");
 auth_require_login();
+error_log("Auth verificado");
 // rbac_require_permission('billing.manage'); // TODO: Configurar permissão no sistema
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
