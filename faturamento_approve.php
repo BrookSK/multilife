@@ -49,7 +49,17 @@ if ((int)$docsCheck['pending_count'] > 0) {
     exit;
 }
 
-$totalValue = (float)$assignment['payment_value'] * (int)$assignment['session_quantity'];
+// Calcular valores usando novos campos ou fallback para payment_value
+$agreedValue = isset($assignment['agreed_value']) && $assignment['agreed_value'] > 0 
+    ? (float)$assignment['agreed_value'] 
+    : (float)$assignment['payment_value'];
+$authorizedValue = isset($assignment['authorized_value']) && $assignment['authorized_value'] > 0 
+    ? (float)$assignment['authorized_value'] 
+    : (float)$assignment['payment_value'];
+
+$totalCost = $agreedValue * (int)$assignment['session_quantity'];
+$totalRevenue = $authorizedValue * (int)$assignment['session_quantity'];
+$totalProfit = $totalRevenue - $totalCost;
 
 view_header('Aprovar Financeiro');
 
@@ -72,8 +82,11 @@ echo '<tr><td style="font-weight:600;padding:8px 0">Profissional:</td><td>' . h(
 echo '<tr><td style="font-weight:600;padding:8px 0">Especialidade:</td><td>' . h($assignment['specialty'] ?? '-') . '</td></tr>';
 echo '<tr><td style="font-weight:600;padding:8px 0">Tipo de Serviço:</td><td>' . h($assignment['service_type'] ?? '-') . '</td></tr>';
 echo '<tr><td style="font-weight:600;padding:8px 0">Sessões:</td><td>' . (int)$assignment['session_quantity'] . '</td></tr>';
-echo '<tr><td style="font-weight:600;padding:8px 0">Valor/Sessão:</td><td>R$ ' . number_format((float)$assignment['payment_value'], 2, ',', '.') . '</td></tr>';
-echo '<tr><td style="font-weight:600;padding:8px 0;border-top:2px solid #e5e7eb">Valor Total:</td><td style="font-size:18px;font-weight:700;color:#00a884;border-top:2px solid #e5e7eb">R$ ' . number_format($totalValue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Valor Acordado/Sessão:</td><td>R$ ' . number_format($agreedValue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Valor Autorizado/Sessão:</td><td>R$ ' . number_format($authorizedValue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0;border-top:2px solid #e5e7eb">Custo Total:</td><td style="font-size:16px;font-weight:700;color:#dc2626">R$ ' . number_format($totalCost, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Receita Total:</td><td style="font-size:16px;font-weight:700;color:#00a884">R$ ' . number_format($totalRevenue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0;border-top:2px solid #e5e7eb">Lucro Real:</td><td style="font-size:18px;font-weight:700;color:' . ($totalProfit >= 0 ? '#00a884' : '#dc2626') . ';border-top:2px solid #e5e7eb">R$ ' . number_format($totalProfit, 2, ',', '.') . '</td></tr>';
 echo '</table>';
 echo '</section>';
 

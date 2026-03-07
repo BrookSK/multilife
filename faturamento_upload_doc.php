@@ -22,7 +22,9 @@ $stmt = db()->prepare("
         pa.specialty,
         pa.service_type,
         pa.session_quantity,
-        pa.payment_value,
+        COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
+        pa.agreed_value,
+        pa.authorized_value,
         p.full_name as patient_name
     FROM billing_document_requirements bdr
     INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id

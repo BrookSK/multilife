@@ -12,9 +12,9 @@ $userId = auth_user_id();
 $statsStmt = db()->prepare("
     SELECT 
         COUNT(DISTINCT pa.id) as total_atendimentos,
-        SUM(pa.payment_value * pa.session_quantity) as total_servicos,
-        SUM(CASE WHEN pa.status IN ('admitted', 'awaiting_financial_approval', 'approved') THEN pa.payment_value * pa.session_quantity ELSE 0 END) as total_pendente,
-        SUM(CASE WHEN pa.status = 'completed' THEN pa.payment_value * pa.session_quantity ELSE 0 END) as total_pago
+        SUM(COALESCE(pa.agreed_value, pa.payment_value) * pa.session_quantity) as total_servicos,
+        SUM(CASE WHEN pa.status IN ('admitted', 'awaiting_financial_approval', 'approved') THEN COALESCE(pa.agreed_value, pa.payment_value) * pa.session_quantity ELSE 0 END) as total_pendente,
+        SUM(CASE WHEN pa.status = 'completed' THEN COALESCE(pa.agreed_value, pa.payment_value) * pa.session_quantity ELSE 0 END) as total_pago
     FROM patient_assignments pa
     WHERE pa.professional_user_id = ?
 ");
@@ -29,7 +29,9 @@ $paymentsStmt = db()->prepare("
         pa.specialty,
         pa.service_type,
         pa.session_quantity,
-        pa.payment_value,
+        COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
+        pa.agreed_value,
+        pa.authorized_value,
         pa.completed_at,
         p.full_name as patient_name,
         bi.final_value,
@@ -54,7 +56,9 @@ $pendingStmt = db()->prepare("
         pa.specialty,
         pa.service_type,
         pa.session_quantity,
-        pa.payment_value,
+        COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
+        pa.agreed_value,
+        pa.authorized_value,
         pa.status,
         pa.created_at,
         p.full_name as patient_name,

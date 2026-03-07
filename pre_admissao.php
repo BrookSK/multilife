@@ -19,7 +19,9 @@ if (!in_array($status, $allowedStatuses, true)) {
 // Buscar apenas atribuições confirmadas (atendimentos que completaram cadastro de paciente, profissional e serviço)
 $sql = 'SELECT pa.id, pa.demand_id, pa.created_at, pa.status,
                d.title, d.location_city, d.location_state, d.origin_email, d.description,
-               pa.specialty, pa.service_type, pa.session_quantity, pa.session_frequency, pa.payment_value,
+               pa.specialty, pa.service_type, pa.session_quantity, pa.session_frequency, 
+               COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
+               pa.agreed_value, pa.authorized_value,
                p.full_name AS patient_name, p.phone_primary AS patient_phone,
                u.name AS professional_name, u.phone AS professional_phone,
                assigned_by.name AS assigned_by_name

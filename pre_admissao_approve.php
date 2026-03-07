@@ -24,7 +24,9 @@ try {
     // Verificar se atribuição existe e está confirmada
     $assignmentStmt = $db->prepare("
         SELECT pa.id, pa.patient_id, pa.professional_user_id, pa.specialty, pa.service_type, 
-               pa.session_quantity, pa.session_frequency, pa.payment_value,
+               pa.session_quantity, pa.session_frequency, 
+               COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
+               pa.agreed_value, pa.authorized_value,
                p.full_name as patient_name, u.name as professional_name
         FROM patient_assignments pa
         INNER JOIN patients p ON p.id = pa.patient_id

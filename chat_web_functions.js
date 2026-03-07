@@ -100,6 +100,79 @@ function handlePatientSelection() {
   }
 }
 
+// Carregar serviços da especialidade selecionada
+async function loadSpecialtyServices() {
+  const specialtySelect = document.getElementById("specialty");
+  const serviceSelect = document.getElementById("serviceType");
+  const serviceMinValue = document.getElementById("serviceMinValue");
+  
+  if (!specialtySelect || !serviceSelect) return;
+  
+  const specialtyId = specialtySelect.value;
+  
+  // Limpar select de serviços
+  serviceSelect.innerHTML = '<option value="">Carregando...</option>';
+  serviceMinValue.value = "0";
+  
+  if (!specialtyId) {
+    serviceSelect.innerHTML = '<option value="">Selecione primeiro a especialidade...</option>';
+    return;
+  }
+  
+  try {
+    const response = await fetch("/api/get_specialty_services.php?specialty_id=" + specialtyId);
+    const data = await response.json();
+    
+    if (data.error) {
+      serviceSelect.innerHTML = '<option value="">Erro ao carregar serviços</option>';
+      return;
+    }
+    
+    if (!data.services || data.services.length === 0) {
+      serviceSelect.innerHTML = '<option value="">Nenhum serviço cadastrado para esta especialidade</option>';
+      return;
+    }
+    
+    serviceSelect.innerHTML = '<option value="">Selecione o tipo de serviço...</option>';
+    data.services.forEach(function(service) {
+      const option = document.createElement("option");
+      option.value = service.id;
+      option.textContent = service.service_name + (service.description ? " - " + service.description : "");
+      option.setAttribute("data-min-value", service.base_value);
+      serviceSelect.appendChild(option);
+    });
+    
+  } catch (err) {
+    console.error("Erro ao carregar serviços:", err);
+    serviceSelect.innerHTML = '<option value="">Erro ao carregar serviços</option>';
+  }
+}
+
+// Atualizar valor mínimo quando serviço é selecionado
+function updateMinimumValue() {
+  const serviceSelect = document.getElementById("serviceType");
+  const serviceMinValue = document.getElementById("serviceMinValue");
+  const agreedValueInput = document.getElementById("agreedValue");
+  const authorizedValueInput = document.getElementById("authorizedValue");
+  
+  if (!serviceSelect || !serviceMinValue) return;
+  
+  const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
+  const minValue = parseFloat(selectedOption.getAttribute("data-min-value") || "0");
+  
+  serviceMinValue.value = minValue.toString();
+  
+  // Atualizar atributo min dos inputs
+  if (agreedValueInput) {
+    agreedValueInput.setAttribute("min", minValue.toString());
+    agreedValueInput.setAttribute("placeholder", "Mínimo: R$ " + minValue.toFixed(2));
+  }
+  if (authorizedValueInput) {
+    authorizedValueInput.setAttribute("min", minValue.toString());
+    authorizedValueInput.setAttribute("placeholder", "Mínimo: R$ " + minValue.toFixed(2));
+  }
+}
+
 // Função de filtro de grupos
 function loadGroupsByFilter() {
   const specialty = document.getElementById("groupSpecialty").value;
@@ -307,11 +380,15 @@ document.addEventListener("DOMContentLoaded", function() {
       
       const demandSelect = document.getElementById("demandSelect");
       const patientId = document.getElementById("patientId").value;
-      const specialty = document.getElementById("specialty").value;
+      const specialtySelect = document.getElementById("specialty");
+      const specialtyId = specialtySelect.value;
+      const specialtyName = specialtySelect.options[specialtySelect.selectedIndex].getAttribute("data-name") || "";
       const serviceType = document.getElementById("serviceType").value;
       const sessionQuantity = document.getElementById("sessionQuantity").value;
       const sessionFrequency = document.getElementById("sessionFrequency").value;
-      const paymentValue = document.getElementById("paymentValue").value;
+      const agreedValue = parseFloat(document.getElementById("agreedValue").value);
+      const authorizedValue = parseFloat(document.getElementById("authorizedValue").value);
+      const serviceMinValue = parseFloat(document.getElementById("serviceMinValue").value || "0");
       const notes = document.getElementById("assignmentNotes").value;
       
       if (!demandSelect || !demandSelect.value) {
@@ -327,6 +404,23 @@ document.addEventListener("DOMContentLoaded", function() {
         return;
       }
       
+      // Validar valores mínimos
+      if (agreedValue < serviceMinValue) {
+        alert("O Valor Acordado (R$ " + agreedValue.toFixed(2) + ") não pode ser menor que o valor mínimo do serviço (R$ " + serviceMinValue.toFixed(2) + ")");
+        return;
+      }
+      
+      if (authorizedValue < serviceMinValue) {
+        alert("O Valor Autorizado (R$ " + authorizedValue.toFixed(2) + ") não pode ser menor que o valor mínimo do serviço (R$ " + serviceMinValue.toFixed(2) + ")");
+        return;
+      }
+      
+      if (authorizedValue < agreedValue) {
+        if (!confirm("O Valor Autorizado (R$ " + authorizedValue.toFixed(2) + ") é menor que o Valor Acordado (R$ " + agreedValue.toFixed(2) + "). Isso resultará em prejuízo. Deseja continuar?")) {
+          return;
+        }
+      }
+      
       fetch("/chat_assign_patient.php", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -334,11 +428,13 @@ document.addEventListener("DOMContentLoaded", function() {
           demand_id: demandId,
           patient_id: patientId,
           professional_jid: professionalJid,
-          specialty: specialty,
-          service_type: serviceType,
+          specialty_id: specialtyId,
+          specialty: specialtyName,
+          service_type_id: serviceType,
           session_quantity: sessionQuantity,
           session_frequency: sessionFrequency,
-          payment_value: paymentValue,
+          agreed_value: agreedValue,
+          authorized_value: authorizedValue,
           notes: notes
         })
       })

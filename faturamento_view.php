@@ -80,7 +80,17 @@ $invoiceStmt = db()->prepare("
 $invoiceStmt->execute([$assignmentId]);
 $invoice = $invoiceStmt->fetch(PDO::FETCH_ASSOC);
 
-$totalValue = (float)$assignment['payment_value'] * (int)$assignment['session_quantity'];
+// Calcular valores usando novos campos ou fallback para payment_value
+$agreedValue = isset($assignment['agreed_value']) && $assignment['agreed_value'] > 0 
+    ? (float)$assignment['agreed_value'] 
+    : (float)$assignment['payment_value'];
+$authorizedValue = isset($assignment['authorized_value']) && $assignment['authorized_value'] > 0 
+    ? (float)$assignment['authorized_value'] 
+    : (float)$assignment['payment_value'];
+
+$totalCost = $agreedValue * (int)$assignment['session_quantity'];
+$totalRevenue = $authorizedValue * (int)$assignment['session_quantity'];
+$totalProfit = $totalRevenue - $totalCost;
 
 view_header('Detalhes do Faturamento');
 
@@ -143,11 +153,14 @@ echo '</section>';
 
 // Valores
 echo '<section class="card col6">';
-echo '<h3>Valores</h3>';
+echo '<h3>Valores Financeiros</h3>';
 echo '<table style="width:100%">';
-echo '<tr><td style="font-weight:600;padding:8px 0">Valor por Sessão:</td><td>R$ ' . number_format((float)$assignment['payment_value'], 2, ',', '.') . '</td></tr>';
 echo '<tr><td style="font-weight:600;padding:8px 0">Total de Sessões:</td><td>' . (int)$assignment['session_quantity'] . '</td></tr>';
-echo '<tr><td style="font-weight:600;padding:8px 0;border-top:2px solid #e5e7eb">Valor Total:</td><td style="font-size:18px;font-weight:700;color:#00a884;border-top:2px solid #e5e7eb">R$ ' . number_format($totalValue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Valor Acordado/Sessão:</td><td>R$ ' . number_format($agreedValue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Valor Autorizado/Sessão:</td><td>R$ ' . number_format($authorizedValue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0;border-top:2px solid #e5e7eb">Custo Total (Profissional):</td><td style="font-size:16px;font-weight:700;color:#dc2626;border-top:2px solid #e5e7eb">R$ ' . number_format($totalCost, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Receita Total (Cliente):</td><td style="font-size:16px;font-weight:700;color:#00a884">R$ ' . number_format($totalRevenue, 2, ',', '.') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0;border-top:2px solid #e5e7eb">Lucro Real:</td><td style="font-size:18px;font-weight:700;color:' . ($totalProfit >= 0 ? '#00a884' : '#dc2626') . ';border-top:2px solid #e5e7eb">R$ ' . number_format($totalProfit, 2, ',', '.') . '</td></tr>';
 
 if ($invoice) {
     if ($invoice['adjusted_value'] !== null) {

@@ -1080,15 +1080,18 @@ try {
 echo '</select>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
-echo '<select id="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<select id="specialty" onchange="loadSpecialtyServices()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
 echo '<option value="">Selecione...</option>';
 foreach ($specialties as $spec) {
-    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+    echo '<option value="' . (int)$spec['id'] . '" data-name="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
 }
 echo '</select>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Tipo de Serviço *</label>';
-echo '<input type="text" id="serviceType" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="Ex: Atendimento Domiciliar">';
+echo '<select id="serviceType" onchange="updateMinimumValue()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">Selecione primeiro a especialidade...</option>';
+echo '</select>';
+echo '<input type="hidden" id="serviceMinValue" value="0">';
 
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
 echo '<div>';
@@ -1109,9 +1112,19 @@ echo '</select>';
 echo '</div>';
 echo '</div>';
 
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor por Sessão (R$) *</label>';
-echo '<input type="number" id="paymentValue" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="0.00">';
-echo '<p style="font-size:12px;color:#667781;margin:-8px 0 16px">Valor mínimo será validado conforme configuração do serviço</p>';
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Acordado (R$) *</label>';
+echo '<input type="number" id="agreedValue" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="0.00">';
+echo '<p style="font-size:11px;color:#667781;margin:4px 0 0">Custo do profissional</p>';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Autorizado (R$) *</label>';
+echo '<input type="number" id="authorizedValue" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="0.00">';
+echo '<p style="font-size:11px;color:#667781;margin:4px 0 0">Valor cobrado do cliente</p>';
+echo '</div>';
+echo '</div>';
+echo '<p style="font-size:12px;color:#667781;margin:-8px 0 16px">Valores mínimos serão validados conforme configuração do serviço. Lucro = Autorizado - Acordado</p>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Observações</label>';
 echo '<textarea id="assignmentNotes" rows="3" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical;margin-bottom:16px" placeholder="Informações adicionais sobre o atendimento..."></textarea>';

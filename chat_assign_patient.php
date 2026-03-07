@@ -18,11 +18,13 @@ $input = json_decode(file_get_contents('php://input'), true);
 $demandId = isset($input['demand_id']) ? (int)$input['demand_id'] : 0;
 $patientId = isset($input['patient_id']) ? (int)$input['patient_id'] : 0;
 $professionalJid = $input['professional_jid'] ?? '';
+$specialtyId = isset($input['specialty_id']) ? (int)$input['specialty_id'] : 0;
 $specialty = $input['specialty'] ?? '';
-$serviceType = $input['service_type'] ?? '';
+$serviceTypeId = isset($input['service_type_id']) ? (int)$input['service_type_id'] : 0;
 $sessionQuantity = isset($input['session_quantity']) ? (int)$input['session_quantity'] : 1;
 $sessionFrequency = $input['session_frequency'] ?? '';
-$paymentValue = isset($input['payment_value']) ? (float)$input['payment_value'] : 0.0;
+$agreedValue = isset($input['agreed_value']) ? (float)$input['agreed_value'] : 0.0;
+$authorizedValue = isset($input['authorized_value']) ? (float)$input['authorized_value'] : 0.0;
 $notes = $input['notes'] ?? '';
 
 // Validações
@@ -41,14 +43,40 @@ if (empty($professionalJid)) {
     exit;
 }
 
-if (empty($specialty) || empty($serviceType) || empty($sessionFrequency)) {
+if (empty($specialty) || $serviceTypeId <= 0 || empty($sessionFrequency)) {
     echo json_encode(['success' => false, 'error' => 'Preencha todos os campos obrigatórios']);
     exit;
 }
 
-if ($paymentValue <= 0) {
-    echo json_encode(['success' => false, 'error' => 'Valor de pagamento inválido']);
+if ($agreedValue <= 0 || $authorizedValue <= 0) {
+    echo json_encode(['success' => false, 'error' => 'Valores acordado e autorizado são obrigatórios']);
     exit;
+}
+
+// Validar valor mínimo do serviço
+if ($serviceTypeId > 0) {
+    $serviceStmt = $db->prepare("SELECT service_name, base_value FROM specialty_services WHERE id = ?");
+    $serviceStmt->execute([$serviceTypeId]);
+    $service = $serviceStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($service) {
+        $serviceTypeName = $service['service_name'];
+        $minValue = (float)$service['base_value'];
+        
+        if ($agreedValue < $minValue) {
+            echo json_encode(['success' => false, 'error' => 'Valor Acordado (R$ ' . number_format($agreedValue, 2, ',', '.') . ') não pode ser menor que o valor mínimo do serviço (R$ ' . number_format($minValue, 2, ',', '.') . ')']);
+            exit;
+        }
+        
+        if ($authorizedValue < $minValue) {
+            echo json_encode(['success' => false, 'error' => 'Valor Autorizado (R$ ' . number_format($authorizedValue, 2, ',', '.') . ') não pode ser menor que o valor mínimo do serviço (R$ ' . number_format($minValue, 2, ',', '.') . ')']);
+            exit;
+        }
+    } else {
+        $serviceTypeName = 'Serviço não encontrado';
+    }
+} else {
+    $serviceTypeName = '';
 }
 
 try {
@@ -101,9 +129,9 @@ try {
     $insertStmt = $db->prepare("
         INSERT INTO patient_assignments (
             demand_id, patient_id, professional_remote_jid, professional_user_id,
-            assigned_by_user_id, specialty, service_type, session_quantity,
-            session_frequency, payment_value, notes, status, confirmed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())
+            assigned_by_user_id, specialty, specialty_service_id, session_quantity,
+            session_frequency, agreed_value, authorized_value, notes, status, confirmed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())
     ");
     
     $insertStmt->execute([
@@ -113,10 +141,11 @@ try {
         $professionalUserId,
         auth_user_id(),
         $specialty,
-        $serviceType,
+        $serviceTypeId,
         $sessionQuantity,
         $sessionFrequency,
-        $paymentValue,
+        $agreedValue,
+        $authorizedValue,
         $notes
     ]);
     
@@ -128,13 +157,13 @@ try {
     $messageTemplate = $settingStmt->fetchColumn();
     
     if (!$messageTemplate) {
-        $messageTemplate = "Olá! 👋\n\nTemos uma ótima notícia! Um novo paciente foi atribuído para você.\n\n📋 *Informações do Atendimento:*\n• Paciente: {patient_name}\n• Especialidade: {specialty}\n• Serviço: {service_type}\n• Quantidade de sessões: {session_quantity}\n• Frequência: {session_frequency}\n• Valor por sessão: R$ {payment_value}\n\nPor favor, entre em contato com o paciente o mais breve possível para agendar a primeira sessão.\n\nEm caso de dúvidas, estamos à disposição!\n\nAtenciosamente,\nEquipe MultiLife";
+        $messageTemplate = "Olá! 👋\n\nTemos uma ótima notícia! Um novo paciente foi atribuído para você.\n\n📋 *Informações do Atendimento:*\n• Paciente: {patient_name}\n• Especialidade: {specialty}\n• Serviço: {service_type}\n• Quantidade de sessões: {session_quantity}\n• Frequência: {session_frequency}\n• Valor acordado: R$ {agreed_value}\n• Valor autorizado: R$ {authorized_value}\n\nPor favor, entre em contato com o paciente o mais breve possível para agendar a primeira sessão.\n\nEm caso de dúvidas, estamos à disposição!\n\nAtenciosamente,\nEquipe MultiLife";
     }
     
     // Substituir variáveis na mensagem
     $message = str_replace(
-        ['{patient_name}', '{specialty}', '{service_type}', '{session_quantity}', '{session_frequency}', '{payment_value}'],
-        [$patientName, $specialty, $serviceType, $sessionQuantity, $sessionFrequency, number_format($paymentValue, 2, ',', '.')],
+        ['{patient_name}', '{specialty}', '{service_type}', '{session_quantity}', '{session_frequency}', '{agreed_value}', '{authorized_value}'],
+        [$patientName, $specialty, $serviceTypeName, $sessionQuantity, $sessionFrequency, number_format($agreedValue, 2, ',', '.'), number_format($authorizedValue, 2, ',', '.')],
         $messageTemplate
     );
     
@@ -172,12 +201,15 @@ try {
     }
     
     // Registrar no prontuário do paciente (usando tabela existente)
+    $lucro = $authorizedValue - $agreedValue;
     $recordNotes = "📋 ATENDIMENTO ATRIBUÍDO\n\n";
     $recordNotes .= "Profissional: {$professionalName}\n";
     $recordNotes .= "Especialidade: {$specialty}\n";
-    $recordNotes .= "Serviço: {$serviceType}\n";
+    $recordNotes .= "Serviço: {$serviceTypeName}\n";
     $recordNotes .= "Sessões: {$sessionQuantity}x ({$sessionFrequency})\n";
-    $recordNotes .= "Valor: R$ " . number_format($paymentValue, 2, ',', '.');
+    $recordNotes .= "Valor Acordado: R$ " . number_format($agreedValue, 2, ',', '.') . "\n";
+    $recordNotes .= "Valor Autorizado: R$ " . number_format($authorizedValue, 2, ',', '.') . "\n";
+    $recordNotes .= "Lucro Real: R$ " . number_format($lucro, 2, ',', '.');
     if ($notes) {
         $recordNotes .= "\n\nObservações: {$notes}";
     }
