@@ -113,7 +113,11 @@ echo '<a class="btn" href="/faturamento_export.php?id=' . $assignmentId . '" tar
 
 // Botões de ação baseados no status
 if ($assignment['status'] === 'awaiting_financial_approval') {
-    echo '<a class="btn btnPrimary" href="/faturamento_approve.php?id=' . $assignmentId . '">Aprovar Financeiro</a>';
+    echo '<form method="post" action="/faturamento_approve_post.php" style="display:inline" onsubmit="return confirm(\'Tem certeza que deseja aprovar financeiramente este atendimento? Isso criará os lançamentos no financeiro.\')">';
+    echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
+    echo '<input type="hidden" name="notes" value="Aprovado via página de detalhes">';
+    echo '<button type="submit" class="btn btnPrimary">Aprovar Financeiro</button>';
+    echo '</form>';
 } elseif ($assignment['status'] === 'approved') {
     echo '<a class="btn btnPrimary" href="/faturamento_complete.php?id=' . $assignmentId . '">Finalizar Atendimento</a>';
 }
