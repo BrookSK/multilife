@@ -8,6 +8,10 @@ auth_require_login();
 // Qualquer usuário logado pode acessar o chat
 // rbac_require_permission('chat.manage');
 
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 // Definir variáveis GET no início
 $selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
 $chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all';
@@ -1075,7 +1079,12 @@ try {
 echo '</select>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
-echo '<input type="text" id="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="Ex: Fisioterapia">';
+echo '<select id="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select>';
 
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Tipo de Serviço *</label>';
 echo '<input type="text" id="serviceType" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px" placeholder="Ex: Atendimento Domiciliar">';
@@ -1666,6 +1675,20 @@ if (!empty($selectedChat)) {
         echo '<div class="whatsapp-info-section">';
         echo '<div class="whatsapp-info-label">Atribuir Paciente</div>';
         
+        // Buscar user_id do profissional baseado no telefone do WhatsApp
+        $professionalUserId = null;
+        $phoneNumber = str_replace('@s.whatsapp.net', '', $selectedChat);
+        $phoneNumber = preg_replace('/[^0-9]/', '', $phoneNumber);
+        
+        if (!empty($phoneNumber)) {
+            $userStmt = db()->prepare("SELECT id FROM users WHERE phone LIKE :phone LIMIT 1");
+            $userStmt->execute(['phone' => '%' . $phoneNumber . '%']);
+            $userRow = $userStmt->fetch();
+            if ($userRow) {
+                $professionalUserId = (int)$userRow['id'];
+            }
+        }
+        
         // Buscar demands assumidas pelo usuário logado que estão disponíveis
         try {
             $demandsStmt = db()->prepare("
@@ -1696,7 +1719,7 @@ if (!empty($selectedChat)) {
                     $label = '#' . $demand['id'] . ' - ' . $demand['title'];
                     if ($specialty) $label .= ' (' . $specialty . ')';
                     if ($location) $label .= ' - ' . $location;
-                    echo '<option value="' . (int)$demand['id'] . '">' . h($label) . '</option>';
+                    echo '<option value="' . (int)$demand['id'] . '" data-user-id="' . ($professionalUserId ?? '') . '">' . h($label) . '</option>';
                 }
                 echo '</select>';
                 
@@ -1936,7 +1959,7 @@ echo '  const phone = chatId.replace("@s.whatsapp.net", "").replace("@g.us", "")
 echo '  window.location.href = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&from_chat=1";';
 echo '}';
 
-echo 'function openAssignmentModal() {';
+echo 'async function openAssignmentModal() {';
 echo '  const demandSelect = document.getElementById("demandSelect");';
 echo '  if(!demandSelect || !demandSelect.value) {';
 echo '    alert("Por favor, selecione um card de captação primeiro.");';
@@ -1945,9 +1968,30 @@ echo '  }';
 echo '  const selectedOption = demandSelect.options[demandSelect.selectedIndex];';
 echo '  const demandId = demandSelect.value;';
 echo '  const demandText = selectedOption.text;';
+echo '  const professionalUserId = selectedOption.getAttribute("data-user-id");';
+echo '  ';
 echo '  document.getElementById("professionalName").textContent = "' . addslashes($chatName ?? $selectedChat) . '";';
 echo '  document.getElementById("demandInfo").textContent = demandText;';
 echo '  document.getElementById("assignmentModal").style.display = "flex";';
+echo '  ';
+echo '  // Buscar e preencher especialidade do profissional automaticamente';
+echo '  if (professionalUserId) {';
+echo '    try {';
+echo '      const response = await fetch("/api/get_user_specialty.php?user_id=" + professionalUserId);';
+echo '      const data = await response.json();';
+echo '      if (data.specialty) {';
+echo '        const specialtySelect = document.getElementById("specialty");';
+echo '        for (let i = 0; i < specialtySelect.options.length; i++) {';
+echo '          if (specialtySelect.options[i].value === data.specialty) {';
+echo '            specialtySelect.selectedIndex = i;';
+echo '            break;';
+echo '          }';
+echo '        }';
+echo '      }';
+echo '    } catch (err) {';
+echo '      console.error("Erro ao buscar especialidade:", err);';
+echo '    }';
+echo '  }';
 echo '}';
 
 echo 'function closeAssignmentModal() {';
