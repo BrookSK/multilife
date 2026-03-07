@@ -142,7 +142,10 @@ echo '</div>';
 echo '</section>';
 
 // Layout de 2 colunas: Lista de nomes | Documentos
-echo '<div class="col4" style="padding:16px;background:white;border-radius:8px">';
+echo '<div style="display:flex;gap:16px;margin-top:16px">';
+
+// Coluna esquerda: Lista de nomes
+echo '<div style="flex:0 0 300px;background:white;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">';
 echo '<div style="margin-bottom:12px">';
 echo '<form method="get" action="/documents_list.php">';
 echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
@@ -175,7 +178,8 @@ if (count($entities) === 0) {
 echo '</div>';
 echo '</div>';
 
-echo '<section class="card col8">';
+// Coluna direita: Documentos
+echo '<div style="flex:1;background:white;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">';
 if ($selectedEntityId === 0) {
     echo '<div class="pill" style="padding:40px;text-align:center;color:#667781">';
     echo '<svg style="width:48px;height:48px;margin:0 auto 16px;opacity:0.3" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
@@ -226,7 +230,8 @@ if ($selectedEntityId === 0) {
     }
 }
 
-echo '</section>';
+echo '</div>';
+echo '</div>';
 
 echo '</div>';
 
