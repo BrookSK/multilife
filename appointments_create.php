@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 $patients = db()->query('SELECT id, full_name FROM patients WHERE deleted_at IS NULL ORDER BY full_name ASC')->fetchAll();
 $professionals = db()->query(
     "SELECT u.id, u.name, u.email FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE u.status = 'active' AND r.slug = 'profissional' ORDER BY u.name ASC"
@@ -50,7 +54,12 @@ echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>Especialidade<input name="specialty" required maxlength="120" placeholder="Ex: Fisioterapia"></label>';
+echo '<label>Especialidade<select name="specialty" required>';
+echo '<option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';

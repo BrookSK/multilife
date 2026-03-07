@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('demands.manage');
 
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 $stmt = db()->prepare('SELECT * FROM demands WHERE id = :id');
@@ -41,7 +45,13 @@ echo '<label>Título<input name="title" required maxlength="200" value="' . h((s
 echo '<div class="grid">';
 echo '<div class="col6"><label>Cidade<input name="location_city" maxlength="120" value="' . h((string)($d['location_city'] ?? '')) . '" placeholder="Ex: São Paulo"></label></div>';
 echo '<div class="col6"><label>UF<input name="location_state" maxlength="2" value="' . h((string)($d['location_state'] ?? '')) . '" placeholder="SP" style="text-transform:uppercase"></label></div>';
-echo '<div class="col6"><label>Especialidade<input name="specialty" maxlength="120" value="' . h((string)($d['specialty'] ?? '')) . '" placeholder="Ex: Fisioterapia"></label></div>';
+echo '<div class="col6"><label>Especialidade<select name="specialty">';
+echo '<option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    $selected = ((string)($d['specialty'] ?? '') === (string)$spec['name']) ? ' selected' : '';
+    echo '<option value="' . h((string)$spec['name']) . '"' . $selected . '>' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label></div>';
 echo '<div class="col6"><label>Origem (e-mail)<input type="email" name="origin_email" maxlength="190" value="' . h((string)($d['origin_email'] ?? '')) . '" placeholder="origem@empresa.com"></label></div>';
 echo '</div>';
 

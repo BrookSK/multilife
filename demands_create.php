@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('demands.manage');
 
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 view_header('Novo card');
 
 echo '<div class="card">';
@@ -29,7 +33,12 @@ echo '<label>Título<input name="title" required maxlength="200" placeholder="No
 echo '<div class="grid">';
 echo '<div class="col6"><label>Cidade<input name="location_city" maxlength="120" placeholder="Ex: São Paulo"></label></div>';
 echo '<div class="col6"><label>UF<input name="location_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
-echo '<div class="col6"><label>Especialidade<input name="specialty" maxlength="120" placeholder="Ex: Fisioterapia"></label></div>';
+echo '<div class="col6"><label>Especialidade<select name="specialty">';
+echo '<option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label></div>';
 echo '<div class="col6"><label>Origem (e-mail)<input type="email" name="origin_email" maxlength="190" placeholder="origem@empresa.com"></label></div>';
 echo '</div>';
 

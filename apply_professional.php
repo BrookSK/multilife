@@ -180,13 +180,19 @@ echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:6px">Informações técnicas</div>';
 
-echo '<label>Experiência em home care<textarea name="home_care_experience" rows="3"></textarea></label>';
-
 echo '<div class="grid">';
-echo '<div class="col12"><label>Tempo de atuação<input name="years_of_experience" maxlength="40" placeholder="Ex: 5 anos"></label></div>';
+echo '<div class="col6"><label>Especialidade principal<select name="specialty" required>';
+echo '<option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label></div>';
+echo '<div class="col6"><label>Tempo de atuação<input name="years_of_experience" maxlength="40" placeholder="Ex: 5 anos"></label></div>';
 echo '</div>';
 
-echo '<label>Especializações<textarea name="specializations" rows="3" placeholder="Digite suas especializações separadas por vírgula. Ex: Fisioterapia, Enfermagem, Nutrição"></textarea></label>';
+echo '<label>Experiência em home care<textarea name="home_care_experience" rows="3"></textarea></label>';
+
+echo '<label>Especializações adicionais<textarea name="specializations" rows="3" placeholder="Digite outras especializações separadas por vírgula (opcional)"></textarea></label>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:24px">';
 if ($isPublic) {

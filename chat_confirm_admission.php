@@ -5,6 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
+
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
 rbac_require_permission('appointments.manage');
 
 $chatId = isset($_GET['chat_id']) ? (int)$_GET['chat_id'] : 0;
@@ -107,7 +111,12 @@ echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>Especialidade<input name="specialty" required maxlength="120" placeholder="Ex: Fisioterapia"></label>';
+echo '<label>Especialidade<select name="specialty" required>';
+echo '<option value="">Selecione...</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';

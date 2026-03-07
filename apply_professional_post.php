@@ -62,16 +62,18 @@ $stmt = db()->prepare(
         address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
         rg, council_abbr, council_number, council_state,
         bank_name, bank_agency, bank_account, bank_account_type, bank_account_holder, bank_account_holder_cpf, pix_key, pix_holder,
-        home_care_experience, years_of_experience, specializations
+        home_care_experience, years_of_experience, specialty, specializations
      ) VALUES (
         \'pending\', :full_name, :email, :phone,
         :cities_of_operation, :marital_status, :sex, :religion, :birthplace, :nationality, :education_level,
         :address_street, :address_number, :address_complement, :address_neighborhood, :address_city, :address_state, :address_zip,
         :rg, :council_abbr, :council_number, :council_state,
         :bank_name, :bank_agency, :bank_account, :bank_account_type, :bank_account_holder, :bank_account_holder_cpf, :pix_key, :pix_holder,
-        :home_care_experience, :years_of_experience, :specializations
+        :home_care_experience, :years_of_experience, :specialty, :specializations
      )'
 );
+
+$specialty = trim((string)($_POST['specialty'] ?? ''));
 
 $fields = [
     'full_name','email','phone','cities_of_operation','marital_status','sex','religion','birthplace','nationality','education_level',
@@ -86,6 +88,7 @@ $params = [
     'email' => $email,
     'phone' => $phone,
     'cities_of_operation' => $citiesOfOperation !== '' ? $citiesOfOperation : null,
+    'specialty' => $specialty !== '' ? $specialty : null,
     'specializations' => $specializations !== '' ? $specializations : null,
     'address_state' => $state1 !== '' ? $state1 : null,
     'council_state' => $state2 !== '' ? $state2 : null,
