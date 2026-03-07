@@ -18,9 +18,13 @@ $base_value = isset($_POST['base_value']) ? (float)$_POST['base_value'] : 0.00;
 $display_order = isset($_POST['display_order']) ? (int)$_POST['display_order'] : 0;
 $status = $_POST['status'] ?? 'active';
 
+// Debug
+error_log("Creating service - Specialty ID: {$specialty_id}, Name: {$service_name}, Value: {$base_value}, Status: {$status}");
+
 $redirect_url = "/specialty_services_final.php?id={$specialty_id}";
 
 if (!$specialty_id || empty($service_name)) {
+    error_log("Validation failed - Specialty ID: {$specialty_id}, Name: '{$service_name}'");
     header("Location: {$redirect_url}&error=" . urlencode('Dados inválidos'));
     exit;
 }
@@ -35,7 +39,10 @@ try {
         (specialty_id, service_name, description, base_value, display_order, status)
         VALUES (?, ?, ?, ?, ?, ?)
     ");
-    $stmt->execute([$specialty_id, $service_name, $description, $base_value, $display_order, $status]);
+    $result = $stmt->execute([$specialty_id, $service_name, $description, $base_value, $display_order, $status]);
+    
+    $insertedId = db()->lastInsertId();
+    error_log("Service created successfully - ID: {$insertedId}");
 
     header("Location: {$redirect_url}&success=" . urlencode('Serviço criado com sucesso!'));
     exit;

@@ -32,6 +32,13 @@ $servicesStmt = db()->prepare("
 $servicesStmt->execute([$specialty_id]);
 $services = $servicesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Debug: verificar se há serviços
+error_log("Specialty ID: " . $specialty_id);
+error_log("Services found: " . count($services));
+if (count($services) > 0) {
+    error_log("First service: " . json_encode($services[0]));
+}
+
 $success = $_GET['success'] ?? '';
 $error = $_GET['error'] ?? '';
 
@@ -136,21 +143,21 @@ view_header('Gerenciar Serviços - ' . h($specialty['name']));
                                 <tbody>
                                     <?php foreach ($services as $service): ?>
                                         <tr>
-                                            <td><strong><?= h($service['service_name']) ?></strong></td>
-                                            <td><small class="text-muted"><?= h($service['description']) ?></small></td>
-                                            <td>R$ <?= number_format($service['base_value'], 2, ',', '.') ?></td>
+                                            <td><strong><?= h($service['service_name'] ?? '') ?></strong></td>
+                                            <td><small class="text-muted"><?= h($service['description'] ?? '') ?></small></td>
+                                            <td>R$ <?= number_format((float)($service['base_value'] ?? 0), 2, ',', '.') ?></td>
                                             <td>
-                                                <?php if ($service['status'] === 'active'): ?>
+                                                <?php if (($service['status'] ?? 'active') === 'active'): ?>
                                                     <span class="badge bg-success">Ativo</span>
                                                 <?php else: ?>
                                                     <span class="badge bg-secondary">Inativo</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <button class="btn btn-sm btn-primary" onclick="openEditModal(<?= $service['id'] ?>, '<?= addslashes($service['service_name']) ?>', '<?= addslashes($service['description']) ?>', <?= $service['base_value'] ?>, '<?= $service['status'] ?>', <?= $service['display_order'] ?>)">
+                                                <button class="btn btn-sm btn-primary" onclick="openEditModal(<?= (int)$service['id'] ?>, '<?= addslashes($service['service_name'] ?? '') ?>', '<?= addslashes($service['description'] ?? '') ?>', <?= (float)($service['base_value'] ?? 0) ?>, '<?= $service['status'] ?? 'active' ?>', <?= (int)($service['display_order'] ?? 0) ?>)">
                                                     ✏️ Editar
                                                 </button>
-                                                <a href="/specialty_service_delete_final.php?id=<?= $service['id'] ?>&specialty_id=<?= $specialty_id ?>" 
+                                                <a href="/specialty_service_delete_final.php?id=<?= (int)$service['id'] ?>&specialty_id=<?= $specialty_id ?>" 
                                                    class="btn btn-sm btn-outline-danger"
                                                    onclick="return confirm('Excluir este serviço?')">
                                                     🗑️
