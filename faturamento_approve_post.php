@@ -39,11 +39,18 @@ if (!$assignment) {
 }
 
 try {
+    error_log("=== INICIO APROVACAO FINANCEIRA ===");
+    error_log("Assignment ID: " . $assignmentId);
+    error_log("User ID: " . $userId);
+    
     db()->beginTransaction();
+    error_log("Transaction iniciada");
     
     $totalValue = (float)$assignment['payment_value'] * (int)$assignment['session_quantity'];
+    error_log("Valor total calculado: " . $totalValue);
     
     // Criar fatura
+    error_log("Preparando INSERT billing_invoices");
     $invoiceStmt = db()->prepare("
         INSERT INTO billing_invoices (
             assignment_id,
@@ -59,26 +66,40 @@ try {
             created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?, NOW(), NOW())
     ");
-    $invoiceStmt->execute([
-        $assignmentId,
-        $assignment['patient_id'],
-        $assignment['professional_user_id'],
-        $assignment['session_quantity'],
-        $assignment['payment_value'],
-        $totalValue,
-        $totalValue,
-        $userId
-    ]);
+    try {
+        $invoiceStmt->execute([
+            $assignmentId,
+            $assignment['patient_id'],
+            $assignment['professional_user_id'],
+            $assignment['session_quantity'],
+            $assignment['payment_value'],
+            $totalValue,
+            $totalValue,
+            $userId
+        ]);
+        error_log("Fatura criada com sucesso");
+    } catch (PDOException $e) {
+        error_log("ERRO ao criar fatura: " . $e->getMessage());
+        throw $e;
+    }
     
     // Atualizar status do assignment
+    error_log("Atualizando status do assignment");
     $updateStmt = db()->prepare("
         UPDATE patient_assignments
         SET status = 'approved', updated_at = NOW()
         WHERE id = ?
     ");
-    $updateStmt->execute([$assignmentId]);
+    try {
+        $updateStmt->execute([$assignmentId]);
+        error_log("Status atualizado para 'approved'");
+    } catch (PDOException $e) {
+        error_log("ERRO ao atualizar status: " . $e->getMessage());
+        throw $e;
+    }
     
     $invoiceId = (int)db()->lastInsertId();
+    error_log("Invoice ID criado: " . $invoiceId);
     
     // Criar lançamento de receita (income) no financeiro
     $incomeStmt = db()->prepare("
@@ -109,15 +130,22 @@ try {
         )
     ");
     $incomeDescription = "Receita de atendimento - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
-    $incomeStmt->execute([
-        $invoiceId,
-        $assignmentId,
-        $assignment['patient_id'],
-        $assignment['professional_user_id'],
-        $totalValue,
-        $incomeDescription,
-        $userId
-    ]);
+    error_log("Criando lançamento de receita (income)");
+    try {
+        $incomeStmt->execute([
+            $invoiceId,
+            $assignmentId,
+            $assignment['patient_id'],
+            $assignment['professional_user_id'],
+            $totalValue,
+            $incomeDescription,
+            $userId
+        ]);
+        error_log("Receita criada: R$ " . $totalValue);
+    } catch (PDOException $e) {
+        error_log("ERRO ao criar receita: " . $e->getMessage());
+        throw $e;
+    }
     
     // Criar lançamento de custo (expense) - pagamento ao profissional
     // Assumindo que o profissional recebe 70% do valor (ajustar conforme necessário)
@@ -152,15 +180,22 @@ try {
         )
     ");
     $expenseDescription = "Pagamento ao profissional - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
-    $expenseStmt->execute([
-        $invoiceId,
-        $assignmentId,
-        $assignment['patient_id'],
-        $assignment['professional_user_id'],
-        $professionalCost,
-        $expenseDescription,
-        $userId
-    ]);
+    error_log("Criando lançamento de despesa (expense)");
+    try {
+        $expenseStmt->execute([
+            $invoiceId,
+            $assignmentId,
+            $assignment['patient_id'],
+            $assignment['professional_user_id'],
+            $professionalCost,
+            $expenseDescription,
+            $userId
+        ]);
+        error_log("Despesa criada: R$ " . $professionalCost);
+    } catch (PDOException $e) {
+        error_log("ERRO ao criar despesa: " . $e->getMessage());
+        throw $e;
+    }
     
     // Registrar no prontuário
     $prontuarioStmt = db()->prepare("
@@ -177,18 +212,34 @@ try {
     if ($notes !== '') {
         $prontuarioNotes .= "Observações: " . $notes;
     }
-    $prontuarioStmt->execute([$assignment['patient_id'], $userId, $prontuarioNotes]);
+    error_log("Registrando no prontuário");
+    try {
+        $prontuarioStmt->execute([$assignment['patient_id'], $userId, $prontuarioNotes]);
+        error_log("Prontuário atualizado");
+    } catch (PDOException $e) {
+        error_log("ERRO ao registrar prontuário: " . $e->getMessage());
+        throw $e;
+    }
     
+    error_log("Fazendo commit da transaction");
     db()->commit();
+    error_log("=== APROVACAO CONCLUIDA COM SUCESSO ===");
     
     $_SESSION['success'] = 'Atendimento aprovado financeiramente! Agora pode ser finalizado.';
     header('Location: /faturamento_view.php?id=' . $assignmentId);
     exit;
     
 } catch (Exception $e) {
-    db()->rollBack();
-    error_log('Erro ao aprovar financeiro: ' . $e->getMessage());
-    $_SESSION['error'] = 'Erro ao processar aprovação. Tente novamente.';
+    if (db()->inTransaction()) {
+        db()->rollBack();
+        error_log("Transaction revertida (rollback)");
+    }
+    error_log('=== ERRO AO APROVAR FINANCEIRO ===');
+    error_log('Tipo de erro: ' . get_class($e));
+    error_log('Mensagem: ' . $e->getMessage());
+    error_log('Arquivo: ' . $e->getFile() . ':' . $e->getLine());
+    error_log('Stack trace: ' . $e->getTraceAsString());
+    $_SESSION['error'] = 'Erro ao processar aprovação: ' . $e->getMessage();
     header('Location: /faturamento_approve.php?id=' . $assignmentId);
     exit;
 }
