@@ -7,6 +7,10 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('users.manage');
 
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 view_header('Novo usuário');
 
 echo '<div class="card">';
@@ -26,6 +30,12 @@ echo '<form method="post" action="/users_create_post.php" style="display:grid;ga
 echo '<label>Nome<input name="name" required placeholder="Nome"></label>';
 echo '<label>E-mail<input type="email" name="email" required placeholder="email@empresa.com"></label>';
 echo '<label>Telefone (para WhatsApp/Evolution)<input name="phone" maxlength="30" placeholder="5511999999999"></label>';
+echo '<label>Especialidade (para profissionais)<select name="specialty">';
+echo '<option value="">Nenhuma / Não é profissional</option>';
+foreach ($specialties as $spec) {
+    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label>';
 echo '<label>Senha<input type="password" name="password" required minlength="8" placeholder="Mínimo 8 caracteres"></label>';
 echo '<label>Status<select name="status">';
 echo '<option value="active">active</option>';

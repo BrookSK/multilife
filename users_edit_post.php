@@ -11,6 +11,7 @@ $id = (int)($_POST['id'] ?? 0);
 $name = trim((string)($_POST['name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
 $phoneRaw = trim((string)($_POST['phone'] ?? ''));
+$specialty = trim((string)($_POST['specialty'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
 
@@ -25,7 +26,7 @@ if ($phoneRaw !== '') {
     $phone = $digits;
 }
 
-$stmt = db()->prepare('SELECT id, name, email, phone, status FROM users WHERE id = :id');
+$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status FROM users WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $old = $stmt->fetch();
 
@@ -75,14 +76,14 @@ db()->beginTransaction();
 try {
     if ($password !== '') {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, status = :status, password_hash = :hash WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status, 'hash' => $hash, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, password_hash = :hash WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'hash' => $hash, 'id' => $id]);
     } else {
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, status = :status WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'id' => $id]);
     }
 
-    $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status];
+    $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status];
 
     audit_log('update', 'users', (string)$id, $old, $new);
 

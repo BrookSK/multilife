@@ -98,4 +98,35 @@ echo '</form>';
 
 echo '</div>';
 
+echo '<script>';
+echo 'document.addEventListener("DOMContentLoaded", function() {';
+echo '  const professionalSelect = document.querySelector("select[name=\'professional_user_id\']");';
+echo '  const specialtySelect = document.querySelector("select[name=\'specialty\']");';
+echo '  ';
+echo '  if (professionalSelect && specialtySelect) {';
+echo '    professionalSelect.addEventListener("change", async function() {';
+echo '      const userId = this.value;';
+echo '      if (!userId) return;';
+echo '      ';
+echo '      try {';
+echo '        const response = await fetch("/api/get_user_specialty.php?user_id=" + userId);';
+echo '        const data = await response.json();';
+echo '        ';
+echo '        if (data.specialty) {';
+echo '          // Selecionar a especialidade no dropdown';
+echo '          for (let i = 0; i < specialtySelect.options.length; i++) {';
+echo '            if (specialtySelect.options[i].value === data.specialty) {';
+echo '              specialtySelect.selectedIndex = i;';
+echo '              break;';
+echo '            }';
+echo '          }';
+echo '        }';
+echo '      } catch (err) {';
+echo '        console.error("Erro ao buscar especialidade:", err);';
+echo '      }';
+echo '    });';
+echo '  }';
+echo '});';
+echo '</script>';
+
 view_footer();

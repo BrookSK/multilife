@@ -10,6 +10,7 @@ rbac_require_permission('users.manage');
 $name = trim((string)($_POST['name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
 $phoneRaw = trim((string)($_POST['phone'] ?? ''));
+$specialty = trim((string)($_POST['specialty'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
 
@@ -61,17 +62,18 @@ if ($stmt->fetch()) {
 }
 
 $hash = password_hash($password, PASSWORD_BCRYPT);
-$stmt = db()->prepare('INSERT INTO users (name, email, phone, password_hash, status) VALUES (:name, :email, :phone, :hash, :status)');
+$stmt = db()->prepare('INSERT INTO users (name, email, phone, specialty, password_hash, status) VALUES (:name, :email, :phone, :specialty, :hash, :status)');
 $stmt->execute([
     'name' => $name,
     'email' => $email,
     'phone' => $phone,
+    'specialty' => $specialty !== '' ? $specialty : null,
     'hash' => $hash,
     'status' => $status,
 ]);
 
 $id = (string)db()->lastInsertId();
-audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'status' => $status]);
+audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status]);
 
 page_history_log(
     '/users_list.php',

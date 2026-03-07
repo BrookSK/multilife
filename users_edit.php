@@ -7,9 +7,13 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('users.manage');
 
+// Buscar especialidades
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+$specialties = $specialtiesStmt->fetchAll();
+
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-$stmt = db()->prepare('SELECT id, name, email, phone, status FROM users WHERE id = :id');
+$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status FROM users WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $user = $stmt->fetch();
 
@@ -40,6 +44,13 @@ echo '<input type="hidden" name="id" value="' . (int)$user['id'] . '">';
 echo '<label>Nome<input name="name" required value="' . h((string)$user['name']) . '" placeholder="Nome"></label>';
 echo '<label>E-mail<input type="email" name="email" required value="' . h((string)$user['email']) . '" placeholder="email@empresa.com"></label>';
 echo '<label>Telefone (para WhatsApp/Evolution)<input name="phone" maxlength="30" value="' . h((string)($user['phone'] ?? '')) . '" placeholder="5511999999999"></label>';
+echo '<label>Especialidade (para profissionais)<select name="specialty">';
+echo '<option value="">Nenhuma / Não é profissional</option>';
+foreach ($specialties as $spec) {
+    $selected = ((string)($user['specialty'] ?? '') === (string)$spec['name']) ? ' selected' : '';
+    echo '<option value="' . h((string)$spec['name']) . '"' . $selected . '>' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label>';
 echo '<label>Nova senha (opcional)<input type="password" name="password" minlength="8" placeholder="Deixe em branco para manter"></label>';
 echo '<label>Status<select name="status">';
 $st = (string)$user['status'];
