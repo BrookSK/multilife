@@ -1722,7 +1722,7 @@ if (!empty($selectedChat)) {
                 }
                 echo '</select>';
                 
-                echo '<button onclick="openAssignmentModal()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+                echo '<button onclick="if(typeof openAssignmentModal===\'function\')openAssignmentModal();else alert(\'Erro: Função não disponível\')" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
                 echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>';
                 echo 'Confirmar Atribuição';
                 echo '</button>';
@@ -1855,6 +1855,22 @@ echo '</div>'; // Fecha whatsapp-container
 
 // JavaScript para funcionalidades
 echo '<script>';
+echo 'window.onerror = function(msg, url, line, col, error) {';
+echo '  var errorData = {';
+echo '    message: msg,';
+echo '    url: url,';
+echo '    line: line,';
+echo '    col: col,';
+echo '    stack: error ? error.stack : null';
+echo '  };';
+echo '  fetch("/chat_log_error.php", {';
+echo '    method: "POST",';
+echo '    headers: {"Content-Type": "application/json"},';
+echo '    body: JSON.stringify(errorData)';
+echo '  }).catch(function(){});';
+echo '  console.error("JS Error:", msg, "at", line + ":" + col);';
+echo '  return false;';
+echo '};';
 
 // Validação do formulário antes de enviar
 echo 'document.addEventListener("DOMContentLoaded", function() {';
