@@ -2352,6 +2352,7 @@ echo '      }';
 echo '    }, 500);';
 echo '  }';
 echo '});';
+echo '</script>';
 
 echo '</script>';
 
