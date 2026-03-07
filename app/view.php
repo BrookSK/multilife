@@ -13,25 +13,36 @@ function view_header(string $title): void
     $flashError = flash_get('error');
     $flashSuccess = flash_get('success');
 
-    $menuItems = [
-        ['title' => 'Dashboard', 'path' => '/dashboard.php'],
-        ['title' => 'Captação', 'path' => '/demands_list.php'],
-        ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php'],
-        ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php'],
-        ['title' => 'Pacientes', 'path' => '/patients_list.php'],
-        ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional'],
-        ['title' => 'Documentos', 'path' => '/documents_list.php'],
-        ['title' => 'Faturamento', 'path' => '/faturamento_list.php'],
-        ['title' => 'Financeiro', 'path' => '/finance_dashboard.php'],
-        ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
-        ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
-        ['title' => 'RH', 'path' => '/hr_employees_list.php'],
-        ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
-        ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
-        ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
-        ['title' => 'Permissões', 'path' => '/permissions_list.php'],
-        ['title' => 'Configurações', 'path' => '/admin_settings.php'],
-    ];
+    // Menu específico para profissionais
+    $isProfessional = $user && isset($user['role']) && $user['role'] === 'profissional';
+    
+    if ($isProfessional) {
+        $menuItems = [
+            ['title' => 'Meus Registros', 'path' => '/profissional_registros.php'],
+            ['title' => 'Agendamentos', 'path' => '/profissional_agendamentos.php'],
+            ['title' => 'Recebimentos', 'path' => '/profissional_recebimentos.php'],
+        ];
+    } else {
+        $menuItems = [
+            ['title' => 'Dashboard', 'path' => '/dashboard.php'],
+            ['title' => 'Captação', 'path' => '/demands_list.php'],
+            ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php'],
+            ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php'],
+            ['title' => 'Pacientes', 'path' => '/patients_list.php'],
+            ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional'],
+            ['title' => 'Documentos', 'path' => '/documents_list.php'],
+            ['title' => 'Faturamento', 'path' => '/faturamento_list.php'],
+            ['title' => 'Financeiro', 'path' => '/finance_dashboard.php'],
+            ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
+            ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
+            ['title' => 'RH', 'path' => '/hr_employees_list.php'],
+            ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
+            ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
+            ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
+            ['title' => 'Permissões', 'path' => '/permissions_list.php'],
+            ['title' => 'Configurações', 'path' => '/admin_settings.php'],
+        ];
+    }
 
     echo '<!doctype html>';
     echo '<html lang="pt-BR">';
@@ -322,6 +333,21 @@ function view_header(string $title): void
         echo '</aside>';
 
         echo '<div class="mainCol" id="mainCol">';
+        
+        // Alerta quando admin está logado como outro usuário
+        if (isset($_SESSION['original_admin_id'])) {
+            echo '<div style="background:#667eea;color:white;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #5a67d8">';
+            echo '<div style="display:flex;align-items:center;gap:12px">';
+            echo '<svg style="width:20px;height:20px" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+            echo '<div>';
+            echo '<div style="font-weight:700">Modo Administrador</div>';
+            echo '<div style="font-size:13px;opacity:0.9">Você está logado como: ' . h((string)$user['name']) . ' (Admin original: ' . h($_SESSION['original_admin_name'] ?? 'Admin') . ')</div>';
+            echo '</div>';
+            echo '</div>';
+            echo '<a href="/logout_as_user.php" class="btn" style="background:white;color:#667eea;font-weight:700">Voltar para Admin</a>';
+            echo '</div>';
+        }
+        
         echo '<header class="topbar">';
         echo '<div class="topbarTitle">' . h($title) . '</div>';
         echo '<div class="topbarActions">';

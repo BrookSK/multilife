@@ -80,6 +80,13 @@ foreach ($rows as $r) {
     echo '<td style="text-align:right">';
     echo '<a class="btn" href="/users_edit.php?id=' . (int)$r['id'] . '">Editar</a> ';
     echo '<a class="btn" href="/users_roles_edit.php?id=' . (int)$r['id'] . '">Perfis</a> ';
+    
+    // Botão Login as User (apenas para admins)
+    $currentUserId = auth_user_id();
+    if ((int)$r['id'] !== $currentUserId) {
+        echo '<a class="btn" href="/login_as_user.php?user_id=' . (int)$r['id'] . '" style="background:#667eea;color:white" onclick="return confirm(\'Fazer login como ' . h((string)$r['name']) . '?\')">Login as User</a> ';
+    }
+    
     echo '<form method="post" action="/users_delete_post.php" style="display:inline">';
     echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
     echo '<button class="btn" type="submit" onclick="return confirm(\'Excluir este usuário?\')">Excluir</button>';
