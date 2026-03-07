@@ -85,6 +85,18 @@ async function openAssignmentModal() {
   }
 }
 
+function handlePatientSelection() {
+  const patientSelect = document.getElementById("patientId");
+  if (patientSelect && patientSelect.value === "new") {
+    if (confirm("Você será redirecionado para o formulário de cadastro de paciente. Deseja continuar?")) {
+      const chatId = window.chatId || "";
+      window.location.href = "/patients_create.php?from_chat=1&from_assignment_modal=1&chat_id=" + encodeURIComponent(chatId);
+    } else {
+      patientSelect.value = "";
+    }
+  }
+}
+
 // Função de filtro de grupos
 function loadGroupsByFilter() {
   const specialty = document.getElementById("groupSpecialty").value;
