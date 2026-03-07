@@ -106,7 +106,8 @@ function view_header(string $title): void
     echo '.sidebar.isCollapsed .collapseChevron{transform:rotate(180deg)}';
     echo '.mainCol{flex:1 1 auto;margin-left:260px;transition:margin-left .3s ease}';
     echo '.mainCol.isCollapsed{margin-left:72px}';
-    echo '.topbar{position:sticky;top:0;z-index:30;height:64px;background:hsl(var(--card));border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between;padding:0 24px}';
+    echo '.verificationBanner{position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:10px;text-align:center;z-index:99999;font-weight:bold;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.3)}';
+    echo '.topbar{position:sticky;top:40px;z-index:30;height:64px;background:hsl(var(--card));border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;justify-content:space-between;padding:0 24px}';
     echo '.topbarTitle{font-size:16px;font-weight:800;color:hsl(var(--foreground))}';
     echo '.topbarActions{display:flex;align-items:center;gap:14px}';
     echo '.notifBell{position:relative;padding:8px;border-radius:8px;transition:background .15s ease}';
@@ -259,6 +260,11 @@ function view_header(string $title): void
     echo '</style>';
     echo '</head>';
     echo '<body>';
+    
+    // FAIXA DE VERIFICAÇÃO DE UPLOAD - REMOVER APÓS CONFIRMAR
+    echo '<div class="verificationBanner">';
+    echo '✅ ARQUIVO ATUALIZADO - Versão: ' . date('Y-m-d H:i:s') . ' - Upload funcionando corretamente!';
+    echo '</div>';
 
     if ($user !== null) {
         $initials = '';
