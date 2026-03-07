@@ -456,19 +456,49 @@ if ($canManage) {
 }
 echo '</div>';
 echo '</div>';
+echo '<style>';
+echo '.prontuario-notes{max-width:400px;white-space:pre-wrap;word-wrap:break-word;line-height:1.5}';
+echo '.prontuario-notes-preview{cursor:pointer;color:#00a884;text-decoration:underline}';
+echo '.prontuario-modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5)}';
+echo '.prontuario-modal-content{background:white;margin:5% auto;padding:20px;border-radius:8px;max-width:600px;max-height:80vh;overflow-y:auto}';
+echo '.prontuario-close{float:right;font-size:28px;font-weight:bold;cursor:pointer;color:#666}';
+echo '.prontuario-close:hover{color:#000}';
+echo '</style>';
+
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>Data</th><th>Origem</th><th>Profissional</th><th>Sessões</th><th>Observações</th>';
-echo '<th style="text-align:right">Ações</th>';
+echo '<th style="width:140px">Data</th><th style="width:180px">Origem</th><th style="width:150px">Profissional</th><th style="width:80px;text-align:center">Sessões</th><th>Observações</th>';
+echo '<th style="text-align:right;width:180px">Ações</th>';
 echo '</tr></thead><tbody>';
+
+$modalId = 0;
 foreach ($entries as $e) {
+    $modalId++;
+    $fullNotes = (string)($e['notes'] ?? '');
+    $shortNotes = mb_strlen($fullNotes) > 100 ? mb_substr($fullNotes, 0, 100) . '...' : $fullNotes;
+    $hasMore = mb_strlen($fullNotes) > 100;
+    
     echo '<tr>';
-    echo '<td>' . h((string)$e['occurred_at']) . '</td>';
+    echo '<td style="white-space:nowrap">' . date('d/m/Y H:i', strtotime((string)$e['occurred_at'])) . '</td>';
     echo '<td>' . h((string)$e['origin']) . '</td>';
     echo '<td>' . h((string)($e['professional_name'] ?? '-')) . '</td>';
-    echo '<td>' . h((string)($e['sessions_count'] ?? '')) . '</td>';
-    echo '<td>' . h(mb_strimwidth((string)($e['notes'] ?? ''), 0, 140, '...')) . '</td>';
+    echo '<td style="text-align:center">' . h((string)($e['sessions_count'] ?? '-')) . '</td>';
+    echo '<td class="prontuario-notes">';
+    echo '<div style="white-space:pre-wrap">' . h($shortNotes) . '</div>';
+    if ($hasMore) {
+        echo '<span class="prontuario-notes-preview" onclick="openProntuarioModal(' . $modalId . ')">Ver completo</span>';
+        
+        // Modal para texto completo
+        echo '<div id="prontuarioModal' . $modalId . '" class="prontuario-modal">';
+        echo '<div class="prontuario-modal-content">';
+        echo '<span class="prontuario-close" onclick="closeProntuarioModal(' . $modalId . ')">&times;</span>';
+        echo '<h3 style="margin-top:0">Observações Completas</h3>';
+        echo '<div style="white-space:pre-wrap;line-height:1.6">' . h($fullNotes) . '</div>';
+        echo '</div>';
+        echo '</div>';
+    }
+    echo '</td>';
     echo '<td style="text-align:right">';
     if ($canManage && isset($e['id'])) {
         echo '<a class="btn" href="/patient_prontuario_edit.php?id=' . (int)$e['id'] . '">Editar</a> ';
@@ -485,6 +515,12 @@ foreach ($entries as $e) {
 if (count($entries) === 0) {
     echo '<tr><td colspan="6" class="pill" style="display:table-cell;padding:12px">Sem registros.</td></tr>';
 }
+
+echo '<script>';
+echo 'function openProntuarioModal(id){document.getElementById("prontuarioModal"+id).style.display="block";}';
+echo 'function closeProntuarioModal(id){document.getElementById("prontuarioModal"+id).style.display="none";}';
+echo 'window.onclick=function(e){if(e.target.className==="prontuario-modal"){e.target.style.display="none";}}';
+echo '</script>';
 
 echo '</tbody></table>';
 echo '</div>';
