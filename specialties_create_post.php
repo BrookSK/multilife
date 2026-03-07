@@ -8,8 +8,6 @@ auth_require_login();
 rbac_require_permission('admin.settings.manage');
 
 $name = trim((string)($_POST['name'] ?? ''));
-$minimumValue = (float)($_POST['minimum_value'] ?? 0);
-$status = (string)($_POST['status'] ?? 'active');
 
 if ($name === '') {
     flash_set('error', 'Nome é obrigatório.');
@@ -17,23 +15,18 @@ if ($name === '') {
     exit;
 }
 
-if (!in_array($status, ['active', 'inactive'], true)) {
-    $status = 'active';
-}
-
 $db = db();
 $db->beginTransaction();
 try {
-    $stmt = $db->prepare('INSERT INTO specialties (name, minimum_value, status) VALUES (:name, :min_val, :status)');
+    $stmt = $db->prepare('INSERT INTO specialties (name, status) VALUES (:name, :status)');
     $stmt->execute([
         'name' => $name,
-        'min_val' => $minimumValue,
-        'status' => $status,
+        'status' => 'active',
     ]);
 
     $id = (int)$db->lastInsertId();
 
-    audit_log('create', 'specialties', (string)$id, null, ['name' => $name, 'minimum_value' => $minimumValue, 'status' => $status]);
+    audit_log('create', 'specialties', (string)$id, null, ['name' => $name, 'status' => 'active']);
 
     $db->commit();
 } catch (Throwable $e) {
@@ -41,6 +34,6 @@ try {
     throw $e;
 }
 
-flash_set('success', 'Especialidade criada com sucesso.');
-header('Location: /specialties_list.php');
+flash_set('success', 'Especialidade criada com sucesso! Configure os tipos de serviço agora.');
+header('Location: /specialty_services_v2.php?id=' . $id);
 exit;

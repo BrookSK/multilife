@@ -215,6 +215,7 @@ view_header('Gerenciar Serviços - ' . h($specialty['name']));
             <span class="close" onclick="closeNewServiceModal()">&times;</span>
         </div>
         <form method="POST" action="/service_type_create.php">
+            <input type="hidden" name="specialty_id" value="<?= $specialty_id ?>">
             <div class="mb-3">
                 <label class="form-label">Nome do Serviço *</label>
                 <input type="text" name="name" class="form-control" required placeholder="Ex: Atendimento Domiciliar">

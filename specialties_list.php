@@ -31,14 +31,13 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Nome</th><th>Valor Mínimo (R$)</th><th>Status</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Nome</th><th>Status</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 
 foreach ($rows as $r) {
     echo '<tr>';
     echo '<td>' . (int)$r['id'] . '</td>';
     echo '<td style="font-weight:700">' . h((string)$r['name']) . '</td>';
-    echo '<td>R$ ' . number_format((float)($r['minimum_value'] ?? 0), 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right">';
     echo '<a class="btn btnPrimary" href="/specialty_services_v2.php?id=' . (int)$r['id'] . '" title="Gerenciar tipos de serviço e valores">⚙️ Serviços</a> ';
@@ -52,7 +51,7 @@ foreach ($rows as $r) {
 }
 
 if (count($rows) === 0) {
-    echo '<tr><td colspan="5" class="pill" style="display:table-cell;padding:12px">Nenhuma especialidade cadastrada.</td></tr>';
+    echo '<tr><td colspan="4" class="pill" style="display:table-cell;padding:12px">Nenhuma especialidade cadastrada.</td></tr>';
 }
 
 echo '</tbody></table>';
