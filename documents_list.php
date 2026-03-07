@@ -152,20 +152,25 @@ echo '</div>';
 
 echo '<div style="max-height:600px;overflow-y:auto">';
 if (count($entities) === 0) {
-    echo '<div class="pill" style="padding:12px;text-align:center;color:#667781">';
+    echo '<div style="padding:12px;text-align:center;color:#667781">';
     echo $searchQuery !== '' ? 'Nenhum resultado para "' . h($searchQuery) . '"' : 'Nenhum registro com documentos';
     echo '</div>';
 } else {
+    echo '<ul style="list-style:none;margin:0;padding:0">';
     foreach ($entities as $entity) {
         $isSelected = $selectedEntityId === (int)$entity['id'];
-        $bgColor = $isSelected ? '#e7f8f4' : 'white';
-        $borderLeft = $isSelected ? '4px solid #00a884' : '4px solid transparent';
+        $bgColor = $isSelected ? '#f0f9ff' : 'transparent';
+        $fontWeight = $isSelected ? '700' : '400';
+        $color = $isSelected ? '#00a884' : '#111b21';
         
-        echo '<a href="/documents_list.php?tab=' . h($tab) . '&entity_id=' . (int)$entity['id'] . ($searchQuery !== '' ? '&q=' . urlencode($searchQuery) : '') . '" style="display:block;padding:12px;margin-bottom:4px;background:' . $bgColor . ';border-left:' . $borderLeft . ';text-decoration:none;color:#111b21;transition:all 0.2s">';
-        echo '<div style="font-weight:600;font-size:14px">' . h($entity['name']) . '</div>';
-        echo '<div style="font-size:12px;color:#667781;margin-top:4px">' . (int)$entity['document_count'] . ' documento(s)</div>';
+        echo '<li style="margin:0;padding:0">';
+        echo '<a href="/documents_list.php?tab=' . h($tab) . '&entity_id=' . (int)$entity['id'] . ($searchQuery !== '' ? '&q=' . urlencode($searchQuery) : '') . '" style="display:block;padding:10px 12px;text-decoration:none;color:' . $color . ';font-weight:' . $fontWeight . ';background:' . $bgColor . ';border-radius:4px;transition:all 0.15s">';
+        echo h($entity['name']);
+        echo '<span style="font-size:12px;color:#667781;margin-left:8px">(' . (int)$entity['document_count'] . ')</span>';
         echo '</a>';
+        echo '</li>';
     }
+    echo '</ul>';
 }
 echo '</div>';
 echo '</section>';
