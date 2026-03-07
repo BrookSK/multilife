@@ -15,7 +15,7 @@ if ($userId === 0) {
     exit;
 }
 
-$stmt = db()->prepare('SELECT specialty FROM users WHERE id = :id');
+$stmt = db()->prepare('SELECT u.specialty, s.id as specialty_id FROM users u LEFT JOIN specialties s ON s.name = u.specialty WHERE u.id = :id');
 $stmt->execute(['id' => $userId]);
 $user = $stmt->fetch();
 
@@ -25,5 +25,6 @@ if (!$user) {
 }
 
 echo json_encode([
-    'specialty' => (string)($user['specialty'] ?? '')
+    'specialty_id' => $user['specialty_id'] ? (int)$user['specialty_id'] : null,
+    'specialty_name' => (string)($user['specialty'] ?? '')
 ]);

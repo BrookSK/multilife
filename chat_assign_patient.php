@@ -53,6 +53,8 @@ if ($agreedValue <= 0 || $authorizedValue <= 0) {
     exit;
 }
 
+$db = db();
+
 // Validar valor mínimo do serviço
 if ($serviceTypeId > 0) {
     $serviceStmt = $db->prepare("SELECT service_name, base_value FROM specialty_services WHERE id = ?");
@@ -80,8 +82,6 @@ if ($serviceTypeId > 0) {
 }
 
 try {
-    $db = db();
-    
     // Verificar se demand existe e pertence ao usuário logado
     $demandStmt = $db->prepare("SELECT id, title, specialty, location_city, location_state FROM demands WHERE id = ? AND assumed_by_user_id = ?");
     $demandStmt->execute([$demandId, auth_user_id()]);

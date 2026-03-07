@@ -73,14 +73,11 @@ async function openAssignmentModal() {
     try {
       const response = await fetch("/api/get_user_specialty.php?user_id=" + professionalUserId);
       const data = await response.json();
-      if (data.specialty) {
+      if (data.specialty_id) {
         const specialtySelect = document.getElementById("specialty");
-        for (let i = 0; i < specialtySelect.options.length; i++) {
-          if (specialtySelect.options[i].value === data.specialty) {
-            specialtySelect.selectedIndex = i;
-            break;
-          }
-        }
+        specialtySelect.value = data.specialty_id;
+        // Carregar serviços da especialidade automaticamente
+        loadSpecialtyServices();
       }
     } catch (err) {
       console.error("Erro ao buscar especialidade:", err);
