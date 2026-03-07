@@ -16,6 +16,7 @@ $specialties = $specialtiesStmt->fetchAll();
 $selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
 $chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$chatName = ''; // Inicializar para evitar erro no JavaScript
 
 // Buscar configurações da Evolution API
 $baseUrl = admin_setting_get('evolution.base_url');
