@@ -43,17 +43,26 @@ if (!$assignment) {
 $docsStmt = db()->prepare("
     SELECT 
         bdr.*,
-        d.title as document_title,
-        (SELECT v.stored_path FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_path,
         reviewer.name as reviewer_name
     FROM billing_document_requirements bdr
-    LEFT JOIN documents d ON d.id = bdr.document_id
     LEFT JOIN users reviewer ON reviewer.id = bdr.reviewed_by_user_id
     WHERE bdr.assignment_id = ?
     ORDER BY bdr.session_number ASC
 ");
 $docsStmt->execute([$assignmentId]);
 $documentRequirements = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Buscar arquivos de cada requisito
+foreach ($documentRequirements as &$req) {
+    $filesStmt = db()->prepare("
+        SELECT * FROM billing_document_files
+        WHERE requirement_id = ?
+        ORDER BY document_type, created_at ASC
+    ");
+    $filesStmt->execute([$req['id']]);
+    $req['files'] = $filesStmt->fetchAll(PDO::FETCH_ASSOC);
+}
+unset($req);
 
 // Buscar fatura se existir
 $invoiceStmt = db()->prepare("
@@ -75,6 +84,19 @@ $totalValue = (float)$assignment['payment_value'] * (int)$assignment['session_qu
 
 view_header('Detalhes do Faturamento');
 
+// Contar total de arquivos
+$totalProdFiles = 0;
+$totalFatFiles = 0;
+foreach ($documentRequirements as $req) {
+    foreach ($req['files'] as $file) {
+        if ($file['document_type'] === 'produtividade') {
+            $totalProdFiles++;
+        } else {
+            $totalFatFiles++;
+        }
+    }
+}
+
 echo '<div class="grid">';
 
 echo '<section class="card col12">';
@@ -85,6 +107,9 @@ echo '<div style="font-size:22px;font-weight:900">Atendimento #' . (int)$assignm
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">' . h($assignment['patient_name']) . ' - ' . h($assignment['professional_name']) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+
+// Botão Exportar Documento Consolidado
+echo '<a class="btn" href="/faturamento_export.php?id=' . $assignmentId . '" target="_blank" style="background:#667eea;color:white">📄 Exportar Documento</a>';
 
 // Botões de ação baseados no status
 if ($assignment['status'] === 'awaiting_financial_approval') {
@@ -141,6 +166,59 @@ echo '</section>';
 // Documentos de Comprovação
 echo '<section class="card col12">';
 echo '<h3>Documentos de Comprovação</h3>';
+
+// Galeria de Imagens
+if ($totalProdFiles > 0 || $totalFatFiles > 0) {
+    echo '<div style="margin-bottom:24px">';
+    
+    // Fichas de Produtividade
+    if ($totalProdFiles > 0) {
+        echo '<div style="margin-bottom:20px">';
+        echo '<h4 style="color:#065f46;margin-bottom:12px">📋 Fichas de Produtividade (' . $totalProdFiles . ')</h4>';
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
+        
+        foreach ($documentRequirements as $req) {
+            foreach ($req['files'] as $file) {
+                if ($file['document_type'] === 'produtividade') {
+                    echo '<div style="position:relative;border:2px solid #10b981;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
+                    echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    echo '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:4px 8px;font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">';
+                    echo 'Sessão ' . (int)$req['session_number'];
+                    echo '</div>';
+                    echo '</div>';
+                }
+            }
+        }
+        
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    // Fichas de Faturamento
+    if ($totalFatFiles > 0) {
+        echo '<div style="margin-bottom:20px">';
+        echo '<h4 style="color:#0c4a6e;margin-bottom:12px">💰 Fichas de Faturamento (' . $totalFatFiles . ')</h4>';
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
+        
+        foreach ($documentRequirements as $req) {
+            foreach ($req['files'] as $file) {
+                if ($file['document_type'] === 'faturamento') {
+                    echo '<div style="position:relative;border:2px solid #0284c7;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
+                    echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    echo '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:4px 8px;font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">';
+                    echo 'Sessão ' . (int)$req['session_number'];
+                    echo '</div>';
+                    echo '</div>';
+                }
+            }
+        }
+        
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    echo '</div>';
+}
 
 if (count($documentRequirements) === 0) {
     echo '<div style="padding:20px;text-align:center;color:#667781">Nenhum documento pendente</div>';

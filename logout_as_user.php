@@ -16,8 +16,8 @@ if (!isset($_SESSION['original_admin_id'])) {
 $originalAdminId = (int)$_SESSION['original_admin_id'];
 $originalAdminName = $_SESSION['original_admin_name'] ?? 'Admin';
 
-// Restaurar sessão do admin original
-$_SESSION['user_id'] = $originalAdminId;
+// Restaurar sessão do admin original (usar auth_user_id, não user_id)
+$_SESSION['auth_user_id'] = $originalAdminId;
 
 // Limpar informações de login temporário
 unset($_SESSION['original_admin_id']);

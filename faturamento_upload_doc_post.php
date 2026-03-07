@@ -7,19 +7,17 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: /faturamento_profissional.php');
+    header('Location: /profissional_registros.php');
     exit;
 }
 
 $requirementId = isset($_POST['requirement_id']) ? (int)$_POST['requirement_id'] : 0;
-$title = isset($_POST['title']) ? trim((string)$_POST['title']) : '';
-$category = isset($_POST['category']) ? trim((string)$_POST['category']) : '';
 $sessionDate = isset($_POST['session_date']) ? trim((string)$_POST['session_date']) : '';
 $notes = isset($_POST['notes']) ? trim((string)$_POST['notes']) : '';
 $userId = auth_user_id();
 
-if ($requirementId === 0 || $title === '' || $category === '' || $sessionDate === '') {
-    $_SESSION['error'] = 'Todos os campos obrigatórios devem ser preenchidos';
+if ($requirementId === 0 || $sessionDate === '') {
+    $_SESSION['error'] = 'Data da sessão é obrigatória';
     header('Location: /faturamento_upload_doc.php?requirement_id=' . $requirementId);
     exit;
 }
@@ -40,28 +38,19 @@ if (!$requirement) {
     exit;
 }
 
-// Processar upload do arquivo
-if (!isset($_FILES['document']) || $_FILES['document']['error'] !== UPLOAD_ERR_OK) {
-    $_SESSION['error'] = 'Erro ao fazer upload do arquivo';
+// Validar arquivos
+$prodFiles = isset($_FILES['produtividade']) ? $_FILES['produtividade'] : null;
+$fatFiles = isset($_FILES['faturamento']) ? $_FILES['faturamento'] : null;
+
+if ((!$prodFiles || empty($prodFiles['name'][0])) && (!$fatFiles || empty($fatFiles['name'][0]))) {
+    $_SESSION['error'] = 'Envie pelo menos um arquivo de Produtividade ou Faturamento';
     header('Location: /faturamento_upload_doc.php?requirement_id=' . $requirementId);
     exit;
 }
 
-$file = $_FILES['document'];
-$allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+$allowedTypes = ['image/jpeg', 'image/png'];
 $maxSize = 10 * 1024 * 1024; // 10MB
-
-if (!in_array($file['type'], $allowedTypes)) {
-    $_SESSION['error'] = 'Tipo de arquivo não permitido. Use PDF, JPG ou PNG';
-    header('Location: /faturamento_upload_doc.php?requirement_id=' . $requirementId);
-    exit;
-}
-
-if ($file['size'] > $maxSize) {
-    $_SESSION['error'] = 'Arquivo muito grande. Tamanho máximo: 10MB';
-    header('Location: /faturamento_upload_doc.php?requirement_id=' . $requirementId);
-    exit;
-}
+$maxFiles = 20;
 
 // Criar diretório de uploads se não existir
 $uploadDir = __DIR__ . '/uploads/billing_documents';
@@ -69,54 +58,160 @@ if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }
 
-// Gerar nome único para o arquivo
-$extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-$fileName = 'billing_' . $requirementId . '_' . time() . '_' . uniqid() . '.' . $extension;
-$filePath = $uploadDir . '/' . $fileName;
-$storedPath = '/uploads/billing_documents/' . $fileName;
+$uploadedFiles = [];
 
-if (!move_uploaded_file($file['tmp_name'], $filePath)) {
-    $_SESSION['error'] = 'Erro ao salvar arquivo';
-    header('Location: /faturamento_upload_doc.php?requirement_id=' . $requirementId);
-    exit;
+// Função para processar array de arquivos
+function processFileArray($files, $docType, $requirementId, $userId, $allowedTypes, $maxSize, $maxFiles, $uploadDir) {
+    $uploaded = [];
+    
+    if (!$files || empty($files['name'][0])) {
+        return $uploaded;
+    }
+    
+    $fileCount = count($files['name']);
+    
+    if ($fileCount > $maxFiles) {
+        throw new Exception("Máximo de {$maxFiles} arquivos por tipo");
+    }
+    
+    for ($i = 0; $i < $fileCount; $i++) {
+        if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+            continue;
+        }
+        
+        $fileType = $files['type'][$i];
+        $fileSize = $files['size'][$i];
+        $fileName = $files['name'][$i];
+        $fileTmp = $files['tmp_name'][$i];
+        
+        if (!in_array($fileType, $allowedTypes)) {
+            throw new Exception("Arquivo {$fileName}: apenas JPEG e PNG são permitidos");
+        }
+        
+        if ($fileSize > $maxSize) {
+            throw new Exception("Arquivo {$fileName} muito grande. Máximo: 10MB");
+        }
+        
+        $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+        $newFileName = $docType . '_' . $requirementId . '_' . time() . '_' . uniqid() . '.' . $extension;
+        $filePath = $uploadDir . '/' . $newFileName;
+        $storedPath = '/uploads/billing_documents/' . $newFileName;
+        
+        if (!move_uploaded_file($fileTmp, $filePath)) {
+            throw new Exception("Erro ao salvar arquivo {$fileName}");
+        }
+        
+        $uploaded[] = [
+            'type' => $docType,
+            'path' => $storedPath,
+            'size' => $fileSize,
+            'mime' => $fileType,
+            'original' => $fileName
+        ];
+    }
+    
+    return $uploaded;
 }
 
 try {
+    // Processar arquivos de produtividade
+    $prodUploaded = processFileArray($prodFiles, 'produtividade', $requirementId, $userId, $allowedTypes, $maxSize, $maxFiles, $uploadDir);
+    
+    // Processar arquivos de faturamento
+    $fatUploaded = processFileArray($fatFiles, 'faturamento', $requirementId, $userId, $allowedTypes, $maxSize, $maxFiles, $uploadDir);
+    
+    $allUploaded = array_merge($prodUploaded, $fatUploaded);
+    
+    if (empty($allUploaded)) {
+        throw new Exception('Nenhum arquivo foi enviado com sucesso');
+    }
+    
     db()->beginTransaction();
     
-    // Inserir documento na tabela documents
-    $docStmt = db()->prepare("
-        INSERT INTO documents (
-            entity_type, entity_id, category, title, status, file_path, created_at
+    // Inserir arquivos na tabela billing_document_files E na tabela documents
+    $fileStmt = db()->prepare("
+        INSERT INTO billing_document_files (
+            requirement_id, document_type, file_path, file_size, mime_type, original_filename, uploaded_by_user_id, created_at
         ) VALUES (
-            'professional', ?, ?, ?, 'active', ?, NOW()
+            ?, ?, ?, ?, ?, ?, ?, NOW()
         )
     ");
-    $docStmt->execute([$userId, $category, $title, $storedPath]);
-    $documentId = (int)db()->lastInsertId();
     
-    // Inserir versão do documento
+    // Preparar statements para documents e document_versions
+    $docStmt = db()->prepare("
+        INSERT INTO documents (
+            entity_type, entity_id, category, title, status, created_at
+        ) VALUES (?, ?, ?, ?, 'active', NOW())
+    ");
+    
     $versionStmt = db()->prepare("
         INSERT INTO document_versions (
             document_id, version_no, stored_path, file_size, uploaded_by_user_id, created_at
-        ) VALUES (
-            ?, 1, ?, ?, ?, NOW()
-        )
+        ) VALUES (?, 1, ?, ?, ?, NOW())
     ");
-    $versionStmt->execute([$documentId, $storedPath, $file['size'], $userId]);
+    
+    foreach ($allUploaded as $file) {
+        // Salvar em billing_document_files
+        $fileStmt->execute([
+            $requirementId,
+            $file['type'],
+            $file['path'],
+            $file['size'],
+            $file['mime'],
+            $file['original'],
+            $userId
+        ]);
+        
+        // Criar título descritivo
+        $docType = $file['type'] === 'produtividade' ? 'Ficha de Produtividade' : 'Ficha de Faturamento';
+        $docTitle = $docType . ' - Sessão ' . (int)$requirement['session_number'] . ' - ' . date('d/m/Y', strtotime($sessionDate));
+        
+        // Criar documento para o PACIENTE
+        $docStmt->execute([
+            'patient',
+            $requirement['patient_id'],
+            $docType,
+            $docTitle
+        ]);
+        $patientDocId = (int)db()->lastInsertId();
+        
+        // Criar versão do documento do paciente
+        $versionStmt->execute([
+            $patientDocId,
+            $file['path'],
+            $file['size'],
+            $userId
+        ]);
+        
+        // Criar documento para o PROFISSIONAL
+        $docStmt->execute([
+            'professional',
+            $userId,
+            $docType,
+            $docTitle
+        ]);
+        $professionalDocId = (int)db()->lastInsertId();
+        
+        // Criar versão do documento do profissional
+        $versionStmt->execute([
+            $professionalDocId,
+            $file['path'],
+            $file['size'],
+            $userId
+        ]);
+    }
     
     // Atualizar requisito de documento
     $updateStmt = db()->prepare("
         UPDATE billing_document_requirements
         SET 
-            document_id = ?,
             session_date = ?,
             status = 'uploaded',
             uploaded_at = NOW(),
             updated_at = NOW()
         WHERE id = ?
     ");
-    $updateStmt->execute([$documentId, $sessionDate, $requirementId]);
+    $updateStmt->execute([$sessionDate, $requirementId]);
     
     // Verificar se todos os documentos foram enviados
     $checkStmt = db()->prepare("
@@ -143,10 +238,11 @@ try {
         (patient_id, professional_user_id, origin, occurred_at, notes)
         VALUES (?, ?, 'faturamento_upload', NOW(), ?)
     ");
-    $prontuarioNotes = "Documento de comprovação enviado:\n";
+    $prontuarioNotes = "Documentos de comprovação enviados:\n";
     $prontuarioNotes .= "Sessão: " . (int)$requirement['session_number'] . "\n";
     $prontuarioNotes .= "Data: " . $sessionDate . "\n";
-    $prontuarioNotes .= "Título: " . $title . "\n";
+    $prontuarioNotes .= "Produtividade: " . count($prodUploaded) . " arquivo(s)\n";
+    $prontuarioNotes .= "Faturamento: " . count($fatUploaded) . " arquivo(s)\n";
     if ($notes !== '') {
         $prontuarioNotes .= "Observações: " . $notes;
     }
@@ -154,20 +250,28 @@ try {
     
     db()->commit();
     
-    $_SESSION['success'] = 'Documento enviado com sucesso! Aguarde a revisão do financeiro.';
-    header('Location: /faturamento_profissional.php');
+    $totalFiles = count($allUploaded);
+    $_SESSION['success'] = "{$totalFiles} arquivo(s) enviado(s) com sucesso! Aguarde a revisão do financeiro.";
+    header('Location: /profissional_registros.php');
     exit;
     
 } catch (Exception $e) {
-    db()->rollBack();
-    
-    // Remover arquivo se houver erro
-    if (file_exists($filePath)) {
-        unlink($filePath);
+    if (db()->inTransaction()) {
+        db()->rollBack();
     }
     
-    error_log('Erro ao processar upload de documento de faturamento: ' . $e->getMessage());
-    $_SESSION['error'] = 'Erro ao processar documento. Tente novamente.';
+    // Remover arquivos enviados se houver erro
+    if (isset($allUploaded)) {
+        foreach ($allUploaded as $file) {
+            $fullPath = __DIR__ . $file['path'];
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+        }
+    }
+    
+    error_log('Erro ao processar upload de documentos de faturamento: ' . $e->getMessage());
+    $_SESSION['error'] = $e->getMessage();
     header('Location: /faturamento_upload_doc.php?requirement_id=' . $requirementId);
     exit;
 }

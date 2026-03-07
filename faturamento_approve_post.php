@@ -78,6 +78,94 @@ try {
     ");
     $updateStmt->execute([$assignmentId]);
     
+    $invoiceId = (int)db()->lastInsertId();
+    
+    // Criar lançamento de receita (income) no financeiro
+    $incomeStmt = db()->prepare("
+        INSERT INTO financial_entries (
+            entry_type,
+            category,
+            invoice_id,
+            assignment_id,
+            patient_id,
+            professional_user_id,
+            amount,
+            description,
+            entry_date,
+            status,
+            created_by_user_id,
+            created_at
+        ) VALUES (
+            'income',
+            'Atendimento Profissional',
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            CURDATE(),
+            'pending',
+            ?,
+            NOW()
+        )
+    ");
+    $incomeDescription = "Receita de atendimento - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
+    $incomeStmt->execute([
+        $invoiceId,
+        $assignmentId,
+        $assignment['patient_id'],
+        $assignment['professional_user_id'],
+        $totalValue,
+        $incomeDescription,
+        $userId
+    ]);
+    
+    // Criar lançamento de custo (expense) - pagamento ao profissional
+    // Assumindo que o profissional recebe 70% do valor (ajustar conforme necessário)
+    $professionalPercentage = 0.70;
+    $professionalCost = $totalValue * $professionalPercentage;
+    
+    $expenseStmt = db()->prepare("
+        INSERT INTO financial_entries (
+            entry_type,
+            category,
+            invoice_id,
+            assignment_id,
+            patient_id,
+            professional_user_id,
+            amount,
+            description,
+            entry_date,
+            status,
+            created_by_user_id,
+            created_at
+        ) VALUES (
+            'expense',
+            'Pagamento Profissional',
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            CURDATE(),
+            'pending',
+            ?,
+            NOW()
+        )
+    ");
+    $expenseDescription = "Pagamento ao profissional - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
+    $expenseStmt->execute([
+        $invoiceId,
+        $assignmentId,
+        $assignment['patient_id'],
+        $assignment['professional_user_id'],
+        $professionalCost,
+        $expenseDescription,
+        $userId
+    ]);
+    
     // Registrar no prontuário
     $prontuarioStmt = db()->prepare("
         INSERT INTO patient_prontuario_entries 
@@ -87,6 +175,9 @@ try {
     $prontuarioNotes = "Atendimento aprovado financeiramente:\n";
     $prontuarioNotes .= "Valor total: R$ " . number_format($totalValue, 2, ',', '.') . "\n";
     $prontuarioNotes .= "Sessões: " . (int)$assignment['session_quantity'] . "\n";
+    $prontuarioNotes .= "Receita registrada: R$ " . number_format($totalValue, 2, ',', '.') . "\n";
+    $prontuarioNotes .= "Custo profissional: R$ " . number_format($professionalCost, 2, ',', '.') . "\n";
+    $prontuarioNotes .= "Lucro líquido: R$ " . number_format($totalValue - $professionalCost, 2, ',', '.') . "\n";
     if ($notes !== '') {
         $prontuarioNotes .= "Observações: " . $notes;
     }

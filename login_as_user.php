@@ -44,8 +44,8 @@ if ($targetUser['status'] !== 'active') {
 $_SESSION['original_admin_id'] = $currentUserId;
 $_SESSION['original_admin_name'] = auth_user()['name'] ?? 'Admin';
 
-// Fazer login como o usuário alvo
-$_SESSION['user_id'] = $targetUserId;
+// Fazer login como o usuário alvo (usar auth_user_id, não user_id)
+$_SESSION['auth_user_id'] = $targetUserId;
 
 // Log de auditoria
 audit_log('login_as_user', 'users', (string)$targetUserId, 
