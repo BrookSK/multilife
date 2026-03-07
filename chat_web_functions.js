@@ -221,4 +221,66 @@ function dispararRemarketing() {
   alert("Funcionalidade em desenvolvimento");
 }
 
+function filterProfessionals() {
+  const search = document.getElementById("professionalSearch").value.toLowerCase();
+  const select = document.getElementById("professionalSelect");
+  const options = select.options;
+  for (let i = 0; i < options.length; i++) {
+    const option = options[i];
+    if (i === 0) continue;
+    const name = option.getAttribute("data-name") || "";
+    const phone = option.getAttribute("data-phone") || "";
+    if (name.includes(search) || phone.includes(search)) {
+      option.style.display = "";
+    } else {
+      option.style.display = "none";
+    }
+  }
+}
+
+function filterPatients() {
+  const search = document.getElementById("patientSearch").value.toLowerCase();
+  const select = document.getElementById("patientSelect");
+  const options = select.options;
+  for (let i = 0; i < options.length; i++) {
+    const option = options[i];
+    if (i === 0) continue;
+    const name = option.getAttribute("data-name") || "";
+    const phone = option.getAttribute("data-phone") || "";
+    if (name.includes(search) || phone.includes(search)) {
+      option.style.display = "";
+    } else {
+      option.style.display = "none";
+    }
+  }
+}
+
+function switchTab(tab) {
+  document.getElementById("tabProfessionals").style.borderBottomColor = "transparent";
+  document.getElementById("tabProfessionals").style.color = "#54656f";
+  document.getElementById("tabPatients").style.borderBottomColor = "transparent";
+  document.getElementById("tabPatients").style.color = "#54656f";
+  document.getElementById("tabManual").style.borderBottomColor = "transparent";
+  document.getElementById("tabManual").style.color = "#54656f";
+  document.getElementById("contentProfessionals").style.display = "none";
+  document.getElementById("contentPatients").style.display = "none";
+  document.getElementById("contentManual").style.display = "none";
+  document.getElementById("professionalSelect").value = "";
+  document.getElementById("patientSelect").value = "";
+  document.getElementById("manualPhone").value = "";
+  if (tab === "professionals") {
+    document.getElementById("tabProfessionals").style.borderBottomColor = "#00a884";
+    document.getElementById("tabProfessionals").style.color = "#00a884";
+    document.getElementById("contentProfessionals").style.display = "block";
+  } else if (tab === "patients") {
+    document.getElementById("tabPatients").style.borderBottomColor = "#00a884";
+    document.getElementById("tabPatients").style.color = "#00a884";
+    document.getElementById("contentPatients").style.display = "block";
+  } else if (tab === "manual") {
+    document.getElementById("tabManual").style.borderBottomColor = "#00a884";
+    document.getElementById("tabManual").style.color = "#00a884";
+    document.getElementById("contentManual").style.display = "block";
+  }
+}
+
 console.log("✅ Chat Web Functions carregadas com sucesso");
