@@ -38,10 +38,10 @@ try {
         throw new Exception('Atribuição não encontrada ou já processada.');
     }
     
-    // Atualizar status da atribuição para 'approved'
+    // Atualizar status da atribuição para 'admitted' (aguardando documentos)
     $updateAssignmentStmt = $db->prepare("
         UPDATE patient_assignments 
-        SET status = 'approved', approved_at = NOW(), approved_by_user_id = ?
+        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW()
         WHERE id = ?
     ");
     $updateAssignmentStmt->execute([auth_user_id(), $assignmentId]);
@@ -53,6 +53,29 @@ try {
         WHERE id = ?
     ");
     $updateDemandStmt->execute([$demandId]);
+    
+    // Criar pendências de documentos para cada sessão
+    $createRequirementsStmt = $db->prepare("
+        INSERT INTO billing_document_requirements (
+            assignment_id,
+            patient_id,
+            professional_user_id,
+            session_number,
+            status,
+            created_at
+        ) VALUES (?, ?, ?, ?, 'pending', NOW())
+    ");
+    
+    for ($i = 1; $i <= (int)$assignment['session_quantity']; $i++) {
+        $createRequirementsStmt->execute([
+            $assignmentId,
+            $assignment['patient_id'],
+            $assignment['professional_user_id'],
+            $i
+        ]);
+    }
+    
+    error_log("DEBUG APROVAÇÃO: Criadas " . $assignment['session_quantity'] . " pendências de documentos");
     
     // Registrar no prontuário do paciente (usando tabela existente)
     $currentUser = auth_user();

@@ -21,6 +21,7 @@ function view_header(string $title): void
         ['title' => 'Pacientes', 'path' => '/patients_list.php'],
         ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional'],
         ['title' => 'Documentos', 'path' => '/documents_list.php'],
+        ['title' => 'Faturamento', 'path' => '/faturamento_list.php'],
         ['title' => 'Financeiro', 'path' => '/finance_dashboard.php'],
         ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
         ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
