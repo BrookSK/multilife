@@ -8,7 +8,7 @@ auth_require_login();
 rbac_require_permission('documents.manage');
 
 $tab = isset($_GET['tab']) ? (string)$_GET['tab'] : 'patients';
-$selectedEntityId = isset($_GET['entity_id']) ? (int)$_GET['entity_id'] : 0;
+$searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
 $allowedTabs = ['patients', 'professionals', 'employees'];
 if (!in_array($tab, $allowedTabs, true)) {
@@ -19,52 +19,67 @@ if (!in_array($tab, $allowedTabs, true)) {
 $entityTypeMap = [
     'patients' => 'patient',
     'professionals' => 'professional',
-    'employees' => 'company' // Usando 'company' pois é o que existe na tabela
+    'employees' => 'company'
 ];
 $entityType = $entityTypeMap[$tab];
 
-// Buscar entidades (pacientes/profissionais) que têm documentos
-$entitiesStmt = null;
-$entities = [];
+// Buscar documentos com informações da entidade
+$documents = [];
 
 if ($tab === 'patients') {
-    $entitiesStmt = db()->prepare("
-        SELECT p.id, p.full_name as name,
-               (SELECT COUNT(*) FROM documents d WHERE d.entity_type = 'patient' AND d.entity_id = p.id AND d.status = 'active') as document_count
-        FROM patients p
-        WHERE p.deleted_at IS NULL
-        HAVING document_count > 0
-        ORDER BY p.full_name ASC
-    ");
-    $entitiesStmt->execute();
-} else {
-    $entitiesStmt = db()->prepare("
-        SELECT u.id, u.name,
-               (SELECT COUNT(*) FROM documents d WHERE d.entity_type = ? AND d.entity_id = u.id AND d.status = 'active') as document_count
-        FROM users u
-        HAVING document_count > 0
-        ORDER BY u.name ASC
-    ");
-    $entitiesStmt->execute([$entityType]);
-}
-
-$entities = $entitiesStmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Buscar documentos da entidade selecionada
-$documents = [];
-if ($selectedEntityId > 0) {
-    $docsStmt = db()->prepare("
-        SELECT d.id, d.title, d.category, d.status, d.created_at,
+    $sql = "
+        SELECT d.id, d.title, d.category, d.status, d.created_at, d.entity_id,
+               p.full_name as entity_name,
                (SELECT MAX(v.version_no) FROM document_versions v WHERE v.document_id = d.id) as last_version,
                (SELECT v.stored_path FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_path,
                (SELECT v.file_size FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_size,
                (SELECT u.name FROM document_versions v LEFT JOIN users u ON u.id = v.uploaded_by_user_id WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as uploaded_by_name
         FROM documents d
-        WHERE d.entity_type = ? AND d.entity_id = ? AND d.status = 'active'
-        ORDER BY d.created_at DESC
-    ");
-    $docsStmt->execute([$entityType, $selectedEntityId]);
-    $documents = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+        LEFT JOIN patients p ON p.id = d.entity_id
+        WHERE d.entity_type = 'patient' AND d.status = 'active' AND p.deleted_at IS NULL
+    ";
+    
+    if ($searchQuery !== '') {
+        $sql .= " AND (p.full_name LIKE ? OR d.title LIKE ? OR d.category LIKE ?)";
+    }
+    
+    $sql .= " ORDER BY p.full_name ASC, d.created_at DESC";
+    
+    $stmt = db()->prepare($sql);
+    if ($searchQuery !== '') {
+        $searchParam = '%' . $searchQuery . '%';
+        $stmt->execute([$searchParam, $searchParam, $searchParam]);
+    } else {
+        $stmt->execute();
+    }
+    $documents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $sql = "
+        SELECT d.id, d.title, d.category, d.status, d.created_at, d.entity_id,
+               u.name as entity_name,
+               (SELECT MAX(v.version_no) FROM document_versions v WHERE v.document_id = d.id) as last_version,
+               (SELECT v.stored_path FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_path,
+               (SELECT v.file_size FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as file_size,
+               (SELECT u2.name FROM document_versions v LEFT JOIN users u2 ON u2.id = v.uploaded_by_user_id WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) as uploaded_by_name
+        FROM documents d
+        LEFT JOIN users u ON u.id = d.entity_id
+        WHERE d.entity_type = ? AND d.status = 'active'
+    ";
+    
+    if ($searchQuery !== '') {
+        $sql .= " AND (u.name LIKE ? OR d.title LIKE ? OR d.category LIKE ?)";
+    }
+    
+    $sql .= " ORDER BY u.name ASC, d.created_at DESC";
+    
+    $stmt = db()->prepare($sql);
+    if ($searchQuery !== '') {
+        $searchParam = '%' . $searchQuery . '%';
+        $stmt->execute([$entityType, $searchParam, $searchParam, $searchParam]);
+    } else {
+        $stmt->execute([$entityType]);
+    }
+    $documents = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 view_header('Gestão Documental');
@@ -78,9 +93,6 @@ echo '<div style="font-size:22px;font-weight:900"><svg style="width:24px;height:
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Documentos consolidados por paciente, profissional ou funcionário</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-if ($selectedEntityId > 0) {
-    echo '<a class="btn btnPrimary" href="/documents_upload.php?entity_type=' . h($entityType) . '&entity_id=' . $selectedEntityId . '"><svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>Upload Documento</a>';
-}
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
@@ -106,49 +118,28 @@ echo '</div>';
 
 echo '</section>';
 
-// Grid com 2 colunas: Lista de entidades | Documentos da entidade
-echo '<section class="card col4">';
-$iconMap = [
-    'patients' => '<svg style="width:20px;height:20px;margin-right:8px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>',
-    'professionals' => '<svg style="width:20px;height:20px;margin-right:8px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>',
-    'employees' => '<svg style="width:20px;height:20px;margin-right:8px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4zm10 16H4V8h16v12z"/></svg>'
-];
-echo '<div style="font-size:16px;font-weight:700;margin-bottom:12px">' . $iconMap[$tab] . ($tab === 'patients' ? 'Pacientes' : ($tab === 'professionals' ? 'Profissionais' : 'Funcionários')) . '</div>';
-echo '<div style="max-height:600px;overflow-y:auto">';
-
-if (count($entities) === 0) {
-    echo '<div class="pill" style="padding:12px;text-align:center;color:#667781">Nenhum registro com documentos</div>';
-} else {
-    foreach ($entities as $entity) {
-        $isSelected = $selectedEntityId === (int)$entity['id'];
-        $bgColor = $isSelected ? '#e7f8f4' : '#f8f9fa';
-        $borderColor = $isSelected ? '#00a884' : '#e5e7eb';
-        
-        echo '<a href="/documents_list.php?tab=' . $tab . '&entity_id=' . (int)$entity['id'] . '" style="display:block;padding:12px;margin-bottom:8px;background:' . $bgColor . ';border:2px solid ' . $borderColor . ';border-radius:8px;text-decoration:none;color:#111b21">';
-        echo '<div style="font-weight:600;font-size:14px">' . h($entity['name']) . '</div>';
-        echo '<div style="font-size:12px;color:#667781;margin-top:4px">' . (int)$entity['document_count'] . ' documento(s)</div>';
-        echo '</a>';
-    }
+// Filtro de pesquisa e tabela de documentos
+echo '<section class="card col12">';
+echo '<form method="get" action="/documents_list.php" style="margin-bottom:16px">';
+echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
+echo '<div style="display:flex;gap:10px;align-items:center">';
+echo '<input type="text" name="q" value="' . h($searchQuery) . '" placeholder="Buscar por nome, título ou categoria..." style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:6px">';
+echo '<button type="submit" class="btn btnPrimary"><svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>Buscar</button>';
+if ($searchQuery !== '') {
+    echo '<a href="/documents_list.php?tab=' . h($tab) . '" class="btn">Limpar</a>';
 }
-
 echo '</div>';
-echo '</section>';
+echo '</form>';
 
-echo '<section class="card col8">';
-echo '<div style="font-size:16px;font-weight:700;margin-bottom:12px"><svg style="width:20px;height:20px;margin-right:8px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>Documentos</div>';
-
-if ($selectedEntityId === 0) {
+if (count($documents) === 0) {
     echo '<div class="pill" style="padding:20px;text-align:center;color:#667781">';
-    echo '← Selecione um registro para ver os documentos';
-    echo '</div>';
-} elseif (count($documents) === 0) {
-    echo '<div class="pill" style="padding:20px;text-align:center;color:#667781">';
-    echo 'Nenhum documento encontrado';
+    echo $searchQuery !== '' ? 'Nenhum documento encontrado para "' . h($searchQuery) . '"' : 'Nenhum documento encontrado';
     echo '</div>';
 } else {
     echo '<div style="overflow:auto">';
     echo '<table>';
     echo '<thead><tr>';
+    echo '<th>' . ($tab === 'patients' ? 'Paciente' : ($tab === 'professionals' ? 'Profissional' : 'Funcionário')) . '</th>';
     echo '<th>Título</th><th>Categoria</th><th>Versão</th><th>Tamanho</th><th>Enviado por</th><th>Data</th><th style="text-align:right">Ações</th>';
     echo '</tr></thead><tbody>';
     
@@ -158,7 +149,8 @@ if ($selectedEntityId === 0) {
         $version = $doc['last_version'] ? 'v' . $doc['last_version'] : '-';
         
         echo '<tr>';
-        echo '<td style="font-weight:600">' . h($doc['title'] ?? 'Sem título') . '</td>';
+        echo '<td style="font-weight:600">' . h($doc['entity_name'] ?? '-') . '</td>';
+        echo '<td>' . h($doc['title'] ?? 'Sem título') . '</td>';
         echo '<td>' . h($doc['category'] ?? '-') . '</td>';
         echo '<td>' . h($version) . '</td>';
         echo '<td>' . $fileSizeFormatted . '</td>';
