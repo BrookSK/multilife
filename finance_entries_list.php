@@ -10,6 +10,8 @@ rbac_require_permission('finance.manage');
 $entryType = isset($_GET['type']) ? (string)$_GET['type'] : 'all';
 $status = isset($_GET['status']) ? (string)$_GET['status'] : 'all';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$periodMonth = isset($_GET['month']) ? trim((string)$_GET['month']) : '';
+$periodYear = isset($_GET['year']) ? trim((string)$_GET['year']) : date('Y');
 
 $db = db();
 
@@ -104,7 +106,16 @@ if ($searchQuery !== '') {
     $params['search'] = '%' . $searchQuery . '%';
 }
 
-$sql .= " ORDER BY created_at DESC LIMIT 200";
+// Filtro por período
+if ($periodMonth !== '' && $periodYear !== '') {
+    $sql .= " AND DATE_FORMAT(entry_date, '%Y-%m') = :period";
+    $params['period'] = $periodYear . '-' . str_pad($periodMonth, 2, '0', STR_PAD_LEFT);
+} elseif ($periodYear !== '') {
+    $sql .= " AND YEAR(entry_date) = :year";
+    $params['year'] = $periodYear;
+}
+
+$sql .= " ORDER BY entry_date DESC, created_at DESC LIMIT 500";
 
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
@@ -131,7 +142,14 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Lançamentos Financeiros</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Receitas e despesas do sistema de faturamento</div>';
+if ($periodMonth !== '' && $periodYear !== '') {
+    $monthName = date('F', mktime(0, 0, 0, (int)$periodMonth, 1));
+    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Período: ' . $monthName . '/' . $periodYear . '</div>';
+} elseif ($periodYear !== '') {
+    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Período: Ano ' . $periodYear . '</div>';
+} else {
+    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Receitas e despesas do sistema de faturamento</div>';
+}
 echo '</div>';
 echo '</div>';
 echo '</section>';
@@ -172,6 +190,28 @@ echo '<option value="all"' . ($status === 'all' ? ' selected' : '') . '>Todos</o
 echo '<option value="pending"' . ($status === 'pending' ? ' selected' : '') . '>Pendente</option>';
 echo '<option value="paid"' . ($status === 'paid' ? ' selected' : '') . '>Pago</option>';
 echo '<option value="cancelled"' . ($status === 'cancelled' ? ' selected' : '') . '>Cancelado</option>';
+echo '</select>';
+echo '</div>';
+
+echo '<div>';
+echo '<label style="display:block;font-weight:600;margin-bottom:4px">Ano</label>';
+echo '<select name="year" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px">';
+for ($y = date('Y') + 1; $y >= 2024; $y--) {
+    $sel = ($periodYear === (string)$y) ? ' selected' : '';
+    echo '<option value="' . $y . '"' . $sel . '>' . $y . '</option>';
+}
+echo '</select>';
+echo '</div>';
+
+echo '<div>';
+echo '<label style="display:block;font-weight:600;margin-bottom:4px">Mês</label>';
+echo '<select name="month" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px">';
+echo '<option value="">Todos os meses</option>';
+for ($m = 1; $m <= 12; $m++) {
+    $sel = ($periodMonth === (string)$m) ? ' selected' : '';
+    $monthName = date('F', mktime(0, 0, 0, $m, 1));
+    echo '<option value="' . $m . '"' . $sel . '>' . $monthName . '</option>';
+}
 echo '</select>';
 echo '</div>';
 
