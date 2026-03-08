@@ -576,7 +576,9 @@ try {
                     cc.profile_picture_url as profilePictureUrl,
                     cc.is_group,
                     cc.status,
-                    cc.last_message_timestamp as lastMsgTimestamp
+                    cc.last_message_timestamp as lastMsgTimestamp,
+                    cc.last_message_text as lastMsgText,
+                    cc.last_message_type as lastMsgType
                 FROM chat_contacts cc
                 LEFT JOIN users u ON (
                     REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '') = u.phone
@@ -628,7 +630,16 @@ if (!empty($selectedChat)) {
         }
         
         $stmt = db()->prepare("
-            SELECT message_text as text, from_me as fromMe, message_timestamp as timestamp
+            SELECT 
+                message_text as text, 
+                from_me as fromMe, 
+                message_timestamp as timestamp,
+                message_type as type,
+                media_url as mediaUrl,
+                media_mime_type as mediaMimeType,
+                media_filename as mediaFilename,
+                audio_transcription as audioTranscription,
+                thumbnail_url as thumbnailUrl
             FROM chat_messages
             WHERE remote_jid = ?
             ORDER BY message_timestamp ASC
@@ -1441,7 +1452,20 @@ if ($chatType === 'grupos') {
             $chatName = $chat['name'] ?? $chatId;
             $isGroup = strpos($chatId, '@g.us') !== false;
             $isActive = $selectedChat === $chatId ? ' active' : '';
-            $lastMsg = ''; 
+            $lastMsg = $chat['lastMsgText'] ?? '';
+            $lastMsgType = $chat['lastMsgType'] ?? 'text';
+            
+            // Formatar preview baseado no tipo de mensagem
+            if ($lastMsgType === 'audio') {
+                $lastMsg = '🎤 Áudio';
+            } elseif ($lastMsgType === 'image') {
+                $lastMsg = '📷 Imagem';
+            } elseif ($lastMsgType === 'video') {
+                $lastMsg = '🎥 Vídeo';
+            } elseif ($lastMsgType === 'document') {
+                $lastMsg = '📄 Documento';
+            }
+            
             $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
             
             $initials = strtoupper(substr($chatName, 0, 2));
@@ -1551,11 +1575,58 @@ if (empty($selectedChat)) {
             $isFromMe = $msg['fromMe'] ?? false;
             $messageClass = $isFromMe ? 'out' : 'in';
             $messageText = $msg['text'] ?? '';
+            $messageType = $msg['type'] ?? 'text';
+            $mediaUrl = $msg['mediaUrl'] ?? '';
             $timestamp = isset($msg['timestamp']) ? date('H:i', $msg['timestamp']) : '';
             
             echo '<div class="whatsapp-message ' . $messageClass . '">';
             echo '<div class="whatsapp-message-bubble">';
-            echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+            
+            // Renderizar baseado no tipo de mensagem
+            if ($messageType === 'audio' && !empty($mediaUrl)) {
+                echo '<div style="margin-bottom:8px">';
+                echo '<audio controls style="max-width:100%;height:40px">';
+                echo '<source src="' . h($mediaUrl) . '" type="' . h($msg['mediaMimeType'] ?? 'audio/mpeg') . '">';
+                echo 'Seu navegador não suporta áudio.';
+                echo '</audio>';
+                echo '</div>';
+                if (!empty($msg['audioTranscription'])) {
+                    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));font-style:italic;margin-top:4px">';
+                    echo h($msg['audioTranscription']);
+                    echo '</div>';
+                }
+            } elseif ($messageType === 'image' && !empty($mediaUrl)) {
+                echo '<div style="margin-bottom:8px">';
+                echo '<img src="' . h($mediaUrl) . '" alt="Imagem" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)">';
+                echo '</div>';
+                if (!empty($messageText) && $messageText !== '[Imagem]') {
+                    echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                }
+            } elseif ($messageType === 'video' && !empty($mediaUrl)) {
+                echo '<div style="margin-bottom:8px">';
+                echo '<video controls style="max-width:100%;border-radius:8px">';
+                echo '<source src="' . h($mediaUrl) . '" type="' . h($msg['mediaMimeType'] ?? 'video/mp4') . '">';
+                echo 'Seu navegador não suporta vídeo.';
+                echo '</video>';
+                echo '</div>';
+                if (!empty($messageText) && $messageText !== '[Vídeo]') {
+                    echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                }
+            } elseif ($messageType === 'document' && !empty($mediaUrl)) {
+                echo '<div style="display:flex;align-items:center;gap:12px;padding:8px;background:hsl(var(--muted));border-radius:8px">';
+                echo '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
+                echo '<div style="flex:1">';
+                echo '<div style="font-weight:600">' . h($msg['mediaFilename'] ?? 'Documento') . '</div>';
+                if (!empty($msg['media_size'])) {
+                    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground))">' . number_format($msg['media_size'] / 1024, 1) . ' KB</div>';
+                }
+                echo '</div>';
+                echo '<a href="' . h($mediaUrl) . '" download class="btn" style="padding:8px 12px;font-size:12px">Download</a>';
+                echo '</div>';
+            } else {
+                echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+            }
+            
             echo '<div class="whatsapp-message-time">' . h($timestamp) . '</div>';
             echo '</div>';
             echo '</div>';
@@ -1577,6 +1648,36 @@ if (empty($selectedChat)) {
     echo '<form method="post" action="/chat_web.php?chat=' . urlencode($selectedChat) . '" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
     echo '<input type="hidden" name="action" value="send_message">';
     echo '<input type="hidden" name="phone_number" value="' . h($selectedChat) . '">';
+    
+    // Botões de anexo de mídia
+    echo '<div style="display:flex;gap:4px;align-items:center">';
+    
+    // Botão de áudio
+    echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" onchange="handleMediaUpload(this, \'audio\')">';
+    echo '<button type="button" onclick="document.getElementById(\'audioInput\').click()" class="whatsapp-action-btn" title="Enviar áudio">';
+    echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+    echo '</button>';
+    
+    // Botão de imagem
+    echo '<input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleMediaUpload(this, \'image\')">';
+    echo '<button type="button" onclick="document.getElementById(\'imageInput\').click()" class="whatsapp-action-btn" title="Enviar imagem">';
+    echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+    echo '</button>';
+    
+    // Botão de vídeo
+    echo '<input type="file" id="videoInput" accept="video/*" style="display:none" onchange="handleMediaUpload(this, \'video\')">';
+    echo '<button type="button" onclick="document.getElementById(\'videoInput\').click()" class="whatsapp-action-btn" title="Enviar vídeo">';
+    echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+    echo '</button>';
+    
+    // Botão de documento
+    echo '<input type="file" id="documentInput" accept=".pdf" style="display:none" onchange="handleMediaUpload(this, \'document\')">';
+    echo '<button type="button" onclick="document.getElementById(\'documentInput\').click()" class="whatsapp-action-btn" title="Enviar documento PDF">';
+    echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
+    echo '</button>';
+    
+    echo '</div>';
+    
     echo '<textarea class="whatsapp-input" name="message" placeholder="Digite uma mensagem" rows="1" required></textarea>';
     echo '<button type="submit" class="whatsapp-send-btn">';
     echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';

@@ -454,4 +454,196 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 });
 
+// Função para upload de mídia
+async function handleMediaUpload(input, mediaType) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  // Validar tamanho
+  const maxSize = mediaType === 'video' ? 25 * 1024 * 1024 : 10 * 1024 * 1024;
+  if (file.size > maxSize) {
+    alert('Arquivo muito grande. Máximo: ' + (maxSize / 1024 / 1024) + 'MB');
+    input.value = '';
+    return;
+  }
+  
+  // Validar tipo
+  const validTypes = {
+    'audio': ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/webm'],
+    'image': ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
+    'video': ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'],
+    'document': ['application/pdf']
+  };
+  
+  if (!validTypes[mediaType].includes(file.type)) {
+    alert('Tipo de arquivo não permitido para ' + mediaType);
+    input.value = '';
+    return;
+  }
+  
+  // Mostrar loading
+  const messagesContainer = document.getElementById('messagesContainer');
+  const loadingDiv = document.createElement('div');
+  loadingDiv.id = 'uploadLoading';
+  loadingDiv.style.cssText = 'text-align:center;padding:20px;color:#667781';
+  loadingDiv.innerHTML = '<div style="display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #00a884;border-radius:50%;animation:spin 1s linear infinite"></div><p style="margin-top:12px">Enviando ' + mediaType + '...</p>';
+  messagesContainer.appendChild(loadingDiv);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  
+  // Criar FormData
+  const formData = new FormData();
+  formData.append('media', file);
+  formData.append('remote_jid', window.chatId);
+  formData.append('media_type', mediaType);
+  
+  // Adicionar legenda se for imagem ou vídeo
+  if (mediaType === 'image' || mediaType === 'video') {
+    const caption = prompt('Digite uma legenda (opcional):');
+    if (caption) {
+      formData.append('caption', caption);
+    }
+  }
+  
+  try {
+    const response = await fetch('/chat_send_media.php', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      // Recarregar página para mostrar nova mensagem
+      window.location.reload();
+    } else {
+      alert('Erro ao enviar mídia: ' + (data.error || 'Erro desconhecido'));
+      loadingDiv.remove();
+    }
+  } catch (error) {
+    alert('Erro ao enviar mídia: ' + error.message);
+    loadingDiv.remove();
+  }
+  
+  // Limpar input
+  input.value = '';
+}
+
+// Função para gravar áudio
+let mediaRecorder = null;
+let audioChunks = [];
+
+function startAudioRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Seu navegador não suporta gravação de áudio');
+    return;
+  }
+  
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      
+      mediaRecorder.addEventListener('dataavailable', event => {
+        audioChunks.push(event.data);
+      });
+      
+      mediaRecorder.addEventListener('stop', () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
+        
+        // Criar input temporário e fazer upload
+        const tempInput = document.createElement('input');
+        tempInput.type = 'file';
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(audioFile);
+        tempInput.files = dataTransfer.files;
+        
+        handleMediaUpload(tempInput, 'audio');
+        
+        // Parar stream
+        stream.getTracks().forEach(track => track.stop());
+      });
+      
+      mediaRecorder.start();
+      
+      // Mostrar indicador de gravação
+      const recordingIndicator = document.createElement('div');
+      recordingIndicator.id = 'recordingIndicator';
+      recordingIndicator.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#dc2626;color:white;padding:12px 20px;border-radius:24px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000;display:flex;align-items:center;gap:8px';
+      recordingIndicator.innerHTML = '<div style="width:12px;height:12px;background:white;border-radius:50%;animation:pulse 1s infinite"></div>Gravando...';
+      document.body.appendChild(recordingIndicator);
+      
+      // Parar após 60 segundos
+      setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          stopAudioRecording();
+        }
+      }, 60000);
+    })
+    .catch(error => {
+      alert('Erro ao acessar microfone: ' + error.message);
+    });
+}
+
+function stopAudioRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    const indicator = document.getElementById('recordingIndicator');
+    if (indicator) indicator.remove();
+  }
+}
+
+// Atualizar conversas automaticamente (polling a cada 10 segundos)
+let lastUpdateTimestamp = Date.now();
+
+function checkForNewMessages() {
+  if (!window.chatId) return;
+  
+  fetch('/chat_check_updates.php?chat_id=' + encodeURIComponent(window.chatId) + '&last_timestamp=' + window.lastTimestamp)
+    .then(r => r.json())
+    .then(data => {
+      if (data.has_new_messages) {
+        // Recarregar página silenciosamente
+        window.location.reload();
+      }
+    })
+    .catch(err => {
+      console.error('Erro ao verificar atualizações:', err);
+    });
+}
+
+// Iniciar polling se houver chat selecionado
+if (window.chatId) {
+  setInterval(checkForNewMessages, 10000);
+}
+
+// Auto-scroll para última mensagem
+document.addEventListener('DOMContentLoaded', function() {
+  const messagesContainer = document.getElementById('messagesContainer');
+  if (messagesContainer) {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+  
+  // Carregar grupos filtrados ao abrir painel
+  const groupSpecialty = document.getElementById('groupSpecialty');
+  const groupRegion = document.getElementById('groupRegion');
+  if (groupSpecialty && groupRegion) {
+    loadGroupsByFilter();
+  }
+});
+
+// Adicionar CSS para animações
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+`;
+document.head.appendChild(style);
+
 console.log("✅ Chat Web Functions carregadas com sucesso");
