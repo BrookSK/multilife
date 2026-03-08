@@ -149,7 +149,7 @@ $sections = [
     ],
     'ZapSign' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
-        'keys' => ['zapsign.base_url', 'zapsign.api_token']
+        'keys' => ['_zapsign_manage_']
     ],
     'WhatsApp' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
@@ -395,6 +395,45 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo '</div>';
             echo '</div>';
         }
+        
+        echo '</div>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'ZapSign') {
+        // Aba especial de ZapSign com gerenciamento completo
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Configurações ZapSign</div>';
+        
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo '<strong>📝 ZapSign - Assinatura Digital de Contratos</strong><br>';
+        echo 'Configure a integração com ZapSign para enviar contratos de funcionários para assinatura digital.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Token da API ZapSign<br>';
+        echo '• Modo Sandbox para testes<br>';
+        echo '• Webhook para notificações automáticas<br>';
+        echo '• Gestão de templates de contratos (CLT, PJ, Estágio, etc)<br>';
+        echo '• Upload de PDFs personalizados<br>';
+        echo '• Envio automático de contratos para funcionários<br>';
+        echo '• Rastreamento de status (Pendente, Assinado, Expirado)<br>';
+        echo '• Download de PDFs assinados';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">';
+        echo '<a class="btn btnPrimary" href="/zapsign_config.php" style="font-size:16px;padding:12px 24px">⚙️ Configurar ZapSign</a>';
+        echo '</div>';
+        
+        echo '<div style="padding:12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px;margin-top:16px">';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
+        echo '<strong>Como usar:</strong><br>';
+        echo '1. Clique em "Configurar ZapSign" acima<br>';
+        echo '2. Cole o Token da API do ZapSign<br>';
+        echo '3. Crie templates de contratos para cada tipo de vínculo<br>';
+        echo '4. No perfil do funcionário, clique em "Gerar Contrato"<br>';
+        echo '5. Selecione o template e envie para assinatura<br>';
+        echo '6. Acompanhe o status e baixe o PDF assinado';
+        echo '</div>';
+        echo '</div>';
         
         echo '</div>';
         echo '</div>';

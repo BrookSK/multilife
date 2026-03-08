@@ -27,6 +27,19 @@ function auth_require_login(): void
         header('Location: /login.php');
         exit;
     }
+    
+    // Verificar se o usuário está suspenso
+    $userId = auth_user_id();
+    $stmt = db()->prepare('SELECT is_suspended FROM users WHERE id = :id');
+    $stmt->execute(['id' => $userId]);
+    $user = $stmt->fetch();
+    
+    if ($user && $user['is_suspended']) {
+        auth_logout();
+        flash_set('error', 'Sua conta foi suspensa. Entre em contato com o administrador.');
+        header('Location: /login.php');
+        exit;
+    }
 }
 
 function auth_user(): ?array

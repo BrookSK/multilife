@@ -15,7 +15,7 @@ if ($email === '' || $password === '') {
     exit;
 }
 
-$stmt = db()->prepare('SELECT id, password_hash, status FROM users WHERE email = :email LIMIT 1');
+$stmt = db()->prepare('SELECT id, password_hash, status, is_suspended FROM users WHERE email = :email LIMIT 1');
 $stmt->execute(['email' => $email]);
 $user = $stmt->fetch();
 
@@ -87,6 +87,12 @@ if (!$user) {
 
 if ((string)$user['status'] !== 'active') {
     header('Location: /login.php?error=' . urlencode('Usuário inativo.') . '&email=' . urlencode($email));
+    exit;
+}
+
+// Verificar se o usuário está suspenso
+if (!empty($user['is_suspended'])) {
+    header('Location: /login.php?error=' . urlencode('Sua conta foi suspensa. Entre em contato com o administrador.') . '&email=' . urlencode($email));
     exit;
 }
 
