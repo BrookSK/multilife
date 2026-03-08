@@ -31,7 +31,8 @@ $sql = 'SELECT pa.id,
                "patient_assignment" as source,
                pa.specialty,
                pa.service_type,
-               p.full_name as patient_name
+               p.full_name as patient_name,
+               "Fluxo Operacional" as cost_center
         FROM patient_assignments pa
         LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN patients p ON p.id = pa.patient_id
@@ -74,7 +75,8 @@ $sqlFaturamento = 'SELECT fe.id, fe.amount,
                           fe.description,
                           fe.category as specialty,
                           fe.payment_type as service_type,
-                          COALESCE(fe.supplier_name, "-") as patient_name
+                          COALESCE(fe.supplier_name, "-") as patient_name,
+                          COALESCE(fe.cost_center, "-") as cost_center
                    FROM financial_entries fe
                    LEFT JOIN users u ON u.id = fe.professional_user_id
                    WHERE fe.entry_type = "expense" AND fe.is_active = 1';
@@ -145,7 +147,7 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Profissional</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Ligação</th><th>Centro de Custo</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';
@@ -153,10 +155,18 @@ foreach ($rows as $r) {
     $appointmentDisplay = ((int)$r['appointment_id'] > 0) ? '#' . (int)$r['appointment_id'] : '-';
     echo '<td>' . $appointmentDisplay . '</td>';
     echo '<td>' . date('d/m/Y', strtotime((string)$r['first_at'])) . '</td>';
-    echo '<td style="font-weight:700">' . h((string)$r['professional_name']) . '</td>';
+    
+    // Formatar Ligação: "Profissional - nome" quando for profissional
+    $ligacao = '-';
+    if (!empty($r['professional_name']) && $r['professional_name'] !== '-') {
+        $ligacao = 'Profissional - ' . h((string)$r['professional_name']);
+    }
+    echo '<td>' . $ligacao . '</td>';
+    
+    echo '<td>' . h((string)($r['cost_center'] ?? '-')) . '</td>';
     echo '<td style="font-weight:600;color:#dc2626">R$ ' . number_format((float)$r['amount'], 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
-    echo '<td style="text-align:right">';
+    echo '<td style="text-align:right"';
 
     echo '<form method="post" action="/finance_payable_mark_paid_post.php" style="display:inline">';
     echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
@@ -168,7 +178,7 @@ foreach ($rows as $r) {
     echo '</tr>';
 }
 if (count($rows) === 0) {
-    echo '<tr><td colspan="7" class="pill" style="display:table-cell;padding:12px">Sem registros.</td></tr>';
+    echo '<tr><td colspan="8" class="pill" style="display:table-cell;padding:12px">Sem registros.</td></tr>';
 }
 
 echo '</tbody></table>';
