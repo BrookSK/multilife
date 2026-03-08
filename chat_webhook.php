@@ -134,10 +134,15 @@ function downloadMedia(string $externalUrl, string $filename, string $mimeType):
         }
         
         // Salvar arquivo
-        file_put_contents($localPath, $content);
+        $saved = file_put_contents($localPath, $content);
+        
+        if ($saved === false) {
+            error_log("[DOWNLOAD_MEDIA] ERRO: Falha ao salvar arquivo no disco");
+            return null;
+        }
         
         $localUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
-        error_log("[DOWNLOAD_MEDIA] Arquivo salvo em: $localUrl");
+        error_log("[DOWNLOAD_MEDIA] Arquivo salvo com sucesso - Path: $localPath | URL: $localUrl | Bytes: $saved");
         
         return $localUrl;
     } catch (Exception $e) {
@@ -160,15 +165,26 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $audioTranscription = $mediaData['transcription'] ?? null;
     $thumbnailUrl = $mediaData['thumbnail'] ?? null;
     
-    // Se é mídia externa, fazer download para o servidor
-    if ($messageType !== 'text' && !empty($mediaUrl) && (strpos($mediaUrl, 'http://') === 0 || strpos($mediaUrl, 'https://') === 0)) {
-        error_log("[SAVE_MSG] Mídia externa detectada, fazendo download...");
-        $localUrl = downloadMedia($mediaUrl, $mediaFilename ?? 'media', $mediaMimeType ?? 'application/octet-stream');
-        if ($localUrl !== null) {
-            $mediaUrl = $localUrl;
-            error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
-        } else {
-            error_log("[SAVE_MSG] AVISO: Falha ao baixar mídia, usando URL externa");
+    // Se é mídia externa ou URL sem barra inicial, processar
+    if ($messageType !== 'text' && !empty($mediaUrl)) {
+        $isExternalUrl = (strpos($mediaUrl, 'http://') === 0 || strpos($mediaUrl, 'https://') === 0);
+        $isRelativeUrl = (strpos($mediaUrl, '/') !== 0 && !$isExternalUrl);
+        
+        if ($isRelativeUrl) {
+            // URL relativa da Evolution API (ex: uploads/chat_media/...)
+            // Adicionar barra inicial para tornar absoluta
+            error_log("[SAVE_MSG] URL relativa detectada, adicionando barra inicial: $mediaUrl");
+            $mediaUrl = '/' . $mediaUrl;
+        } elseif ($isExternalUrl) {
+            // URL externa completa, fazer download
+            error_log("[SAVE_MSG] Mídia externa detectada, fazendo download...");
+            $localUrl = downloadMedia($mediaUrl, $mediaFilename ?? 'media', $mediaMimeType ?? 'application/octet-stream');
+            if ($localUrl !== null) {
+                $mediaUrl = $localUrl;
+                error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
+            } else {
+                error_log("[SAVE_MSG] AVISO: Falha ao baixar mídia, usando URL externa");
+            }
         }
     }
     
@@ -311,9 +327,11 @@ if ($event === 'messages.upsert') {
         if (isset($msgPayload['audioMessage'])) {
             $audio = $msgPayload['audioMessage'];
             $messageType = 'audio';
+            $rawUrl = $audio['url'] ?? null;
+            error_log("[WEBHOOK] AUDIO RAW URL: " . ($rawUrl ?? 'NULL'));
             $mediaData = [
                 'type' => 'audio',
-                'url' => $audio['url'] ?? null,
+                'url' => $rawUrl,
                 'mime_type' => $audio['mimetype'] ?? 'audio/ogg',
                 'filename' => $audio['fileName'] ?? 'audio.ogg',
                 'size' => $audio['fileLength'] ?? null,
@@ -324,9 +342,11 @@ if ($event === 'messages.upsert') {
         elseif (isset($msgPayload['imageMessage'])) {
             $image = $msgPayload['imageMessage'];
             $messageType = 'image';
+            $rawUrl = $image['url'] ?? null;
+            error_log("[WEBHOOK] IMAGE RAW URL: " . ($rawUrl ?? 'NULL'));
             $mediaData = [
                 'type' => 'image',
-                'url' => $image['url'] ?? null,
+                'url' => $rawUrl,
                 'mime_type' => $image['mimetype'] ?? 'image/jpeg',
                 'filename' => $image['fileName'] ?? 'image.jpg',
                 'size' => $image['fileLength'] ?? null,
@@ -338,9 +358,11 @@ if ($event === 'messages.upsert') {
         elseif (isset($msgPayload['videoMessage'])) {
             $video = $msgPayload['videoMessage'];
             $messageType = 'video';
+            $rawUrl = $video['url'] ?? null;
+            error_log("[WEBHOOK] VIDEO RAW URL: " . ($rawUrl ?? 'NULL'));
             $mediaData = [
                 'type' => 'video',
-                'url' => $video['url'] ?? null,
+                'url' => $rawUrl,
                 'mime_type' => $video['mimetype'] ?? 'video/mp4',
                 'filename' => $video['fileName'] ?? 'video.mp4',
                 'size' => $video['fileLength'] ?? null,
@@ -352,9 +374,11 @@ if ($event === 'messages.upsert') {
         elseif (isset($msgPayload['documentMessage'])) {
             $doc = $msgPayload['documentMessage'];
             $messageType = 'document';
+            $rawUrl = $doc['url'] ?? null;
+            error_log("[WEBHOOK] DOCUMENT RAW URL: " . ($rawUrl ?? 'NULL'));
             $mediaData = [
                 'type' => 'document',
-                'url' => $doc['url'] ?? null,
+                'url' => $rawUrl,
                 'mime_type' => $doc['mimetype'] ?? 'application/pdf',
                 'filename' => $doc['fileName'] ?? 'document.pdf',
                 'size' => $doc['fileLength'] ?? null,
@@ -362,7 +386,7 @@ if ($event === 'messages.upsert') {
             $messageText = $doc['caption'] ?? '[Documento]';
         }
 
-        error_log("[WEBHOOK] Tipo de mensagem detectado: '$messageType' | URL: " . ($mediaData['url'] ?? 'N/A'));
+        error_log("[WEBHOOK] Tipo de mensagem detectado: '$messageType' | URL extraída: " . ($mediaData['url'] ?? 'N/A'));
 
         // CORREÇÃO: Se senderPn existe, usar ele em vez de remoteJid
         // Isso acontece quando remoteJid é um canal (@lid) mas senderPn tem o número real
