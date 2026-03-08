@@ -588,15 +588,14 @@ try {
                 )
                 LEFT JOIN chat_messages cm ON cm.remote_jid = cc.remote_jid
                 $whereSQL
-                GROUP BY cc.remote_jid, cc.contact_name, cc.profile_picture_url, cc.is_group, cc.status, 
-                         cc.last_message_timestamp, cc.last_message_text, cc.last_message_type, u.name
+                GROUP BY cc.remote_jid
                 ORDER BY cc.last_message_timestamp DESC
                 LIMIT 50
             ");
             $stmt->execute($params);
             $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Log para diagnóstico de duplicação
+            // Log para diagnóstico de duplicação e unreadCount
             error_log("[CHAT_LIST] Total de chats carregados: " . count($chats));
             if (count($chats) > 0) {
                 $jids = array_column($chats, 'id');
@@ -604,6 +603,8 @@ try {
                 if (!empty($duplicates)) {
                     error_log("[CHAT_LIST] DUPLICATAS ENCONTRADAS: " . json_encode($duplicates));
                 }
+                // Log do primeiro chat para debug
+                error_log("[CHAT_LIST] Primeiro chat - ID: " . ($chats[0]['id'] ?? 'N/A') . " | unreadCount: " . ($chats[0]['unreadCount'] ?? 'N/A'));
             }
         }
     }
@@ -1501,7 +1502,7 @@ if ($chatType === 'grupos') {
             echo '<div class="whatsapp-chat-meta">';
             echo h($lastTime);
             if ($unreadCount > 0) {
-                echo '<div class="whatsapp-unread-badge">' . h($unreadCount) . '</div>';
+                echo '<div class="whatsapp-unread-badge">' . h((string)$unreadCount) . '</div>';
             }
             echo '</div>';
             echo '</a>';
