@@ -11,10 +11,63 @@ $entryType = isset($_GET['type']) ? (string)$_GET['type'] : 'all';
 $status = isset($_GET['status']) ? (string)$_GET['status'] : 'all';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
-// Buscar lançamentos financeiros
-$sql = "
+$db = db();
+
+// RECEITAS de atendimentos (patient_assignments)
+$sqlReceitas = "
     SELECT 
-        fe.*,
+        pa.id,
+        'income' as entry_type,
+        pa.specialty as category,
+        COALESCE(pa.agreed_value, pa.payment_value, 0) as amount,
+        CONCAT('Atendimento - ', pa.specialty) as description,
+        pa.created_at as entry_date,
+        pa.created_at,
+        CASE WHEN pa.status = 'paid' THEN 'paid' ELSE 'pending' END as status,
+        p.full_name as patient_name,
+        u.name as professional_name,
+        'Sistema' as created_by_name,
+        NULL as installment_info,
+        'atendimento' as source
+    FROM patient_assignments pa
+    LEFT JOIN patients p ON p.id = pa.patient_id
+    LEFT JOIN users u ON u.id = pa.professional_user_id
+    WHERE COALESCE(pa.agreed_value, pa.payment_value, 0) > 0
+";
+
+// DESPESAS de atendimentos (repasses para profissionais)
+$sqlDespesas = "
+    SELECT 
+        pa.id + 1000000 as id,
+        'expense' as entry_type,
+        CONCAT('Repasse - ', pa.specialty) as category,
+        COALESCE(pa.authorized_value, pa.payment_value, 0) as amount,
+        CONCAT('Repasse profissional - ', pa.specialty) as description,
+        pa.created_at as entry_date,
+        pa.created_at,
+        CASE WHEN pa.status = 'paid' THEN 'paid' ELSE 'pending' END as status,
+        p.full_name as patient_name,
+        u.name as professional_name,
+        'Sistema' as created_by_name,
+        NULL as installment_info,
+        'repasse' as source
+    FROM patient_assignments pa
+    LEFT JOIN patients p ON p.id = pa.patient_id
+    LEFT JOIN users u ON u.id = pa.professional_user_id
+    WHERE COALESCE(pa.authorized_value, pa.payment_value, 0) > 0
+";
+
+// LANÇAMENTOS MANUAIS
+$sqlManuais = "
+    SELECT 
+        fe.id + 2000000 as id,
+        fe.entry_type,
+        fe.category,
+        fe.amount,
+        fe.description,
+        fe.entry_date,
+        fe.created_at,
+        fe.status,
         p.full_name as patient_name,
         u.name as professional_name,
         creator.name as created_by_name,
@@ -22,7 +75,8 @@ $sql = "
             WHEN fe.payment_type = 'installment' AND fe.total_installments > 0 
             THEN CONCAT(fe.installment_number, '/', fe.total_installments)
             ELSE NULL
-        END as installment_info
+        END as installment_info,
+        'manual' as source
     FROM financial_entries fe
     LEFT JOIN patients p ON p.id = fe.patient_id
     LEFT JOIN users u ON u.id = fe.professional_user_id
@@ -30,26 +84,29 @@ $sql = "
     WHERE fe.is_active = 1
 ";
 
+// Combinar tudo com UNION ALL
+$sql = "SELECT * FROM (($sqlReceitas) UNION ALL ($sqlDespesas) UNION ALL ($sqlManuais)) AS all_entries WHERE 1=1";
+
 $params = [];
 
 if ($entryType !== 'all') {
-    $sql .= " AND fe.entry_type = :entry_type";
+    $sql .= " AND entry_type = :entry_type";
     $params['entry_type'] = $entryType;
 }
 
 if ($status !== 'all') {
-    $sql .= " AND fe.status = :status";
+    $sql .= " AND status = :status";
     $params['status'] = $status;
 }
 
 if ($searchQuery !== '') {
-    $sql .= " AND (p.full_name LIKE :search OR u.name LIKE :search OR fe.description LIKE :search)";
+    $sql .= " AND (patient_name LIKE :search OR professional_name LIKE :search OR description LIKE :search OR category LIKE :search)";
     $params['search'] = '%' . $searchQuery . '%';
 }
 
-$sql .= " ORDER BY fe.created_at DESC LIMIT 100";
+$sql .= " ORDER BY created_at DESC LIMIT 200";
 
-$stmt = db()->prepare($sql);
+$stmt = $db->prepare($sql);
 $stmt->execute($params);
 $entries = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
