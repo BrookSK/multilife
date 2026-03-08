@@ -16,10 +16,8 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
 $assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : '';
-
-// Pré-selecionar últimos 30 dias se não houver filtro
-$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : date('Y-m-d', strtotime('-30 days'));
-$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : date('Y-m-d');
+$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
+$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
 $allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 if (!in_array($status, $allowedStatuses, true)) {
@@ -58,25 +56,14 @@ if ($assumedBy !== '' && ctype_digit($assumedBy)) {
     $params['assumed_by'] = (int)$assumedBy;
 }
 
+// Filtro de datas (apenas quando especificado pelo usuário)
 if ($dateFrom !== '') {
-    // Para concluído e cancelado, filtrar por updated_at (data de conclusão/cancelamento)
-    // Para outros status, filtrar por created_at (data de criação)
-    if ($status === 'concluido' || $status === 'cancelado') {
-        $where[] = 'DATE(d.updated_at) >= :date_from';
-    } else {
-        $where[] = 'DATE(d.created_at) >= :date_from';
-    }
+    $where[] = 'DATE(d.created_at) >= :date_from';
     $params['date_from'] = $dateFrom;
 }
 
 if ($dateTo !== '') {
-    // Para concluído e cancelado, filtrar por updated_at (data de conclusão/cancelamento)
-    // Para outros status, filtrar por created_at (data de criação)
-    if ($status === 'concluido' || $status === 'cancelado') {
-        $where[] = 'DATE(d.updated_at) <= :date_to';
-    } else {
-        $where[] = 'DATE(d.created_at) <= :date_to';
-    }
+    $where[] = 'DATE(d.created_at) <= :date_to';
     $params['date_to'] = $dateTo;
 }
 
