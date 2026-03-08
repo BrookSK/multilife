@@ -24,7 +24,7 @@ $costCenters = $db->query(
 
 // Buscar pacientes
 $patients = $db->query(
-    "SELECT id, name FROM patients WHERE deleted_at IS NULL ORDER BY name LIMIT 100"
+    "SELECT id, full_name as name FROM patients WHERE deleted_at IS NULL ORDER BY full_name LIMIT 100"
 )->fetchAll();
 
 // Buscar profissionais
