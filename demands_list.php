@@ -59,12 +59,24 @@ if ($assumedBy !== '' && ctype_digit($assumedBy)) {
 }
 
 if ($dateFrom !== '') {
-    $where[] = 'DATE(d.created_at) >= :date_from';
+    // Para concluído e cancelado, filtrar por updated_at (data de conclusão/cancelamento)
+    // Para outros status, filtrar por created_at (data de criação)
+    if ($status === 'concluido' || $status === 'cancelado') {
+        $where[] = 'DATE(d.updated_at) >= :date_from';
+    } else {
+        $where[] = 'DATE(d.created_at) >= :date_from';
+    }
     $params['date_from'] = $dateFrom;
 }
 
 if ($dateTo !== '') {
-    $where[] = 'DATE(d.created_at) <= :date_to';
+    // Para concluído e cancelado, filtrar por updated_at (data de conclusão/cancelamento)
+    // Para outros status, filtrar por created_at (data de criação)
+    if ($status === 'concluido' || $status === 'cancelado') {
+        $where[] = 'DATE(d.updated_at) <= :date_to';
+    } else {
+        $where[] = 'DATE(d.created_at) <= :date_to';
+    }
     $params['date_to'] = $dateTo;
 }
 
