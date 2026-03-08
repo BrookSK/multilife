@@ -20,7 +20,7 @@ $payablesOverdue = db()->query("
         due_date,
         DATEDIFF(CURDATE(), due_date) as days_overdue
     FROM financial_entries 
-    WHERE type = 'expense' 
+    WHERE entry_type = 'expense' 
     AND status = 'pending' 
     AND due_date < CURDATE()
     ORDER BY due_date ASC
@@ -36,7 +36,7 @@ $receivablesOverdue = db()->query("
         due_date,
         DATEDIFF(CURDATE(), due_date) as days_overdue
     FROM financial_entries 
-    WHERE type = 'income' 
+    WHERE entry_type = 'income' 
     AND status = 'pending' 
     AND due_date < CURDATE()
     ORDER BY due_date ASC
@@ -89,6 +89,27 @@ $appointmentsStuck = db()->query("
     WHERE a.status IN ('captacao', 'aguardando_email', 'tratamento_manual')
     AND TIMESTAMPDIFF(HOUR, a.updated_at, NOW()) > 24
     ORDER BY a.updated_at ASC
+    LIMIT 50
+")->fetchAll();
+
+// 5. Cards de Pré-admissão Aguardando Aprovação
+$preAdmissionPending = db()->query("
+    SELECT 
+        pa.id,
+        pa.demand_id,
+        pa.created_at,
+        d.title as demand_title,
+        p.full_name as patient_name,
+        u.name as professional_name,
+        pa.specialty,
+        DATEDIFF(CURDATE(), pa.created_at) as days_pending
+    FROM patient_assignments pa
+    INNER JOIN demands d ON d.id = pa.demand_id
+    INNER JOIN patients p ON p.id = pa.patient_id
+    LEFT JOIN users u ON u.id = pa.professional_user_id
+    WHERE pa.status = 'confirmed'
+    AND pa.approved_at IS NULL
+    ORDER BY pa.created_at ASC
     LIMIT 50
 ")->fetchAll();
 
@@ -215,7 +236,7 @@ if (count($documentsOverdue) > 0) {
 echo '</div>';
 
 // Atendimentos Parados >24h
-echo '<div>';
+echo '<div style="margin-bottom:24px">';
 echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#3b82f6">🚨 Atendimentos Parados há Mais de 24h (' . count($appointmentsStuck) . ')</h3>';
 
 if (count($appointmentsStuck) > 0) {
@@ -251,6 +272,38 @@ if (count($appointmentsStuck) > 0) {
     echo '</div>';
 } else {
     echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhum atendimento parado há mais de 24h</div>';
+}
+echo '</div>';
+
+// Cards de Pré-admissão Aguardando Aprovação
+echo '<div>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#10b981">📋 Pré-admissão Aguardando Aprovação (' . count($preAdmissionPending) . ')</h3>';
+
+if (count($preAdmissionPending) > 0) {
+    echo '<div style="display:flex;flex-direction:column;gap:8px">';
+    foreach ($preAdmissionPending as $item) {
+        $daysPending = (int)$item['days_pending'];
+        $urgencyColor = $daysPending > 3 ? '#dc2626' : ($daysPending > 1 ? '#f59e0b' : '#10b981');
+        
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:hsl(var(--muted));border-radius:8px;border-left:4px solid ' . $urgencyColor . '">';
+        echo '<div style="flex:1">';
+        echo '<div style="font-weight:600">' . h((string)$item['demand_title']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">';
+        echo 'Paciente: <span style="font-weight:600">' . h((string)$item['patient_name']) . '</span> • ';
+        echo 'Profissional: <span style="font-weight:600">' . h((string)($item['professional_name'] ?? 'Não atribuído')) . '</span> • ';
+        echo 'Especialidade: ' . h((string)$item['specialty']) . ' • ';
+        echo 'Aguardando há: <span style="color:' . $urgencyColor . ';font-weight:600">' . $daysPending . ' dia' . ($daysPending !== 1 ? 's' : '') . '</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:8px">';
+        echo '<a class="btn" href="/pre_admissao.php?id=' . (int)$item['id'] . '" style="font-size:12px;padding:6px 12px;background:#10b981;color:#fff">Aprovar</a>';
+        echo '<a class="btn" href="/demands_view.php?id=' . (int)$item['demand_id'] . '" style="font-size:12px;padding:6px 12px">Ver Card</a>';
+        echo '</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+} else {
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhum atendimento aguardando aprovação</div>';
 }
 echo '</div>';
 
