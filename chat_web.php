@@ -1116,12 +1116,12 @@ echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bot
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Acordado (R$) *</label>';
 echo '<input type="number" id="agreedValue" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="0.00">';
-echo '<p style="font-size:11px;color:#667781;margin:4px 0 0">Custo do profissional</p>';
+echo '<p style="font-size:11px;color:#10b981;margin:4px 0 0;font-weight:600">💰 RECEITA - Valor que o cliente paga</p>';
 echo '</div>';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Autorizado (R$) *</label>';
 echo '<input type="number" id="authorizedValue" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="0.00">';
-echo '<p style="font-size:11px;color:#667781;margin:4px 0 0">Valor cobrado do cliente</p>';
+echo '<p style="font-size:11px;color:#dc2626;margin:4px 0 0;font-weight:600">💸 DESPESA - Repasse para o profissional</p>';
 echo '</div>';
 echo '</div>';
 echo '<p style="font-size:12px;color:#667781;margin:-8px 0 16px">Valores mínimos serão validados conforme configuração do serviço. Lucro = Autorizado - Acordado</p>';

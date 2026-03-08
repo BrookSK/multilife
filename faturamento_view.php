@@ -88,9 +88,9 @@ $authorizedValue = isset($assignment['authorized_value']) && $assignment['author
     ? (float)$assignment['authorized_value'] 
     : (float)$assignment['payment_value'];
 
-$totalCost = $agreedValue * (int)$assignment['session_quantity'];
-$totalRevenue = $authorizedValue * (int)$assignment['session_quantity'];
-$totalProfit = $totalRevenue - $totalCost;
+$totalRevenue = $agreedValue * (int)$assignment['session_quantity'];      // RECEITA: cliente paga
+$totalCost = $authorizedValue * (int)$assignment['session_quantity'];   // CUSTO: profissional recebe
+$totalProfit = $totalRevenue - $totalCost;                               // LUCRO: receita - custo
 
 view_header('Detalhes do Faturamento');
 

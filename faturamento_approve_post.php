@@ -52,8 +52,17 @@ try {
     db()->beginTransaction();
     error_log("Transaction iniciada");
     
-    $totalValue = (float)$assignment['payment_value'] * (int)$assignment['session_quantity'];
-    error_log("Valor total calculado: " . $totalValue);
+    // Calcular valores corretos
+    $agreedValue = (float)($assignment['agreed_value'] ?? $assignment['payment_value'] ?? 0);
+    $authorizedValue = (float)($assignment['authorized_value'] ?? $assignment['payment_value'] ?? 0);
+    $sessionQty = (int)$assignment['session_quantity'];
+    
+    $totalRevenue = $agreedValue * $sessionQty;  // RECEITA: cliente paga
+    $totalCost = $authorizedValue * $sessionQty; // DESPESA: profissional recebe
+    
+    error_log("Receita total: R$ " . $totalRevenue);
+    error_log("Custo total: R$ " . $totalCost);
+    error_log("Lucro: R$ " . ($totalRevenue - $totalCost));
     
     // Criar fatura
     error_log("Preparando INSERT billing_invoices");
@@ -77,10 +86,10 @@ try {
             $assignmentId,
             $assignment['patient_id'],
             $assignment['professional_user_id'],
-            $assignment['session_quantity'],
-            $assignment['payment_value'],
-            $totalValue,
-            $totalValue,
+            $sessionQty,
+            $agreedValue,
+            $totalRevenue,
+            $totalRevenue,
             $userId
         ]);
         error_log("Fatura criada com sucesso");
@@ -148,20 +157,17 @@ try {
             $assignmentId,
             $assignment['patient_id'],
             $assignment['professional_user_id'],
-            $totalValue,
+            $totalRevenue,
             $incomeDescription,
             $userId
         ]);
-        error_log("Receita criada: R$ " . $totalValue);
+        error_log("Receita criada: R$ " . $totalRevenue);
     } catch (PDOException $e) {
         error_log("ERRO ao criar receita: " . $e->getMessage());
         throw $e;
     }
     
     // Criar lançamento de custo (expense) - pagamento ao profissional
-    // Assumindo que o profissional recebe 70% do valor (ajustar conforme necessário)
-    $professionalPercentage = 0.70;
-    $professionalCost = $totalValue * $professionalPercentage;
     
     $expenseStmt = db()->prepare("
         INSERT INTO financial_entries (
@@ -198,11 +204,11 @@ try {
             $assignmentId,
             $assignment['patient_id'],
             $assignment['professional_user_id'],
-            $professionalCost,
+            $totalCost,
             $expenseDescription,
             $userId
         ]);
-        error_log("Despesa criada: R$ " . $professionalCost);
+        error_log("Despesa criada: R$ " . $totalCost);
     } catch (PDOException $e) {
         error_log("ERRO ao criar despesa: " . $e->getMessage());
         throw $e;
