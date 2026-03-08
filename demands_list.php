@@ -16,6 +16,8 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
 $assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : '';
+$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
+$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
 $allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 if (!in_array($status, $allowedStatuses, true)) {
@@ -32,10 +34,6 @@ $params = [];
 if ($status !== '') {
     $where[] = 'd.status = :status';
     $params['status'] = $status;
-} else {
-    // Por padrão, não mostrar demandas canceladas
-    $where[] = 'd.status != :excluded_status';
-    $params['excluded_status'] = 'cancelado';
 }
 
 if ($q !== '') {
@@ -56,6 +54,16 @@ if ($city !== '') {
 if ($assumedBy !== '' && ctype_digit($assumedBy)) {
     $where[] = 'd.assumed_by_user_id = :assumed_by';
     $params['assumed_by'] = (int)$assumedBy;
+}
+
+if ($dateFrom !== '') {
+    $where[] = 'DATE(d.created_at) >= :date_from';
+    $params['date_from'] = $dateFrom;
+}
+
+if ($dateTo !== '') {
+    $where[] = 'DATE(d.created_at) <= :date_to';
+    $params['date_to'] = $dateTo;
 }
 
 if (count($where) > 0) {
@@ -158,6 +166,8 @@ foreach ($captadores as $cap) {
 }
 echo '</select>';
 
+echo '<input type="date" name="date_from" placeholder="Data inicial" value="' . h($dateFrom) . '" title="Data inicial">';
+echo '<input type="date" name="date_to" placeholder="Data final" value="' . h($dateTo) . '" title="Data final">';
 echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (título, origem)" style="grid-column:span 2">';
 echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
 echo '</form>';
@@ -174,6 +184,18 @@ foreach ($columns as $col) {
     
     // Coluna "Concluídos": apenas últimos 7 dias, máximo 10 cards
     if ($colId === 'concluido') {
+        $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $filtered = [];
+        foreach ($items as $item) {
+            if ($item['created_at'] >= $sevenDaysAgo) {
+                $filtered[] = $item;
+            }
+        }
+        $items = array_slice($filtered, 0, 10);
+    }
+    
+    // Coluna "Cancelado": apenas últimos 7 dias, máximo 10 cards
+    if ($colId === 'cancelado') {
         $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
         $filtered = [];
         foreach ($items as $item) {
