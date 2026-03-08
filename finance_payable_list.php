@@ -203,13 +203,19 @@ foreach ($rows as $r) {
     echo '<td>' . $costCenterDisplay . '</td>';
     echo '<td style="font-weight:600;color:#dc2626">R$ ' . number_format((float)$r['amount'], 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
-    echo '<td style="text-align:right"';
+    echo '<td style="text-align:right">';
 
-    echo '<form method="post" action="/finance_payable_mark_paid_post.php" style="display:inline">';
-    echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
-    $disabled = ((string)$r['status'] === 'pago') ? ' disabled' : '';
-    echo '<button class="btn" type="submit" style="height:34px"' . $disabled . '>Marcar como pago</button>';
-    echo '</form>';
+    // Só permitir marcar como pago lançamentos financeiros manuais
+    if ((string)$r['source'] === 'financial_entry') {
+        echo '<form method="post" action="/finance_payable_mark_paid_post.php" style="display:inline">';
+        echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
+        $disabled = ((string)$r['status'] === 'pago') ? ' disabled' : '';
+        echo '<button class="btn" type="submit" style="height:34px"' . $disabled . '>Marcar como pago</button>';
+        echo '</form>';
+    } else {
+        // Para patient_assignments, não tem ação aqui
+        echo '<span style="font-size:13px;color:hsl(var(--muted-foreground))">-</span>';
+    }
 
     echo '</td>';
     echo '</tr>';
