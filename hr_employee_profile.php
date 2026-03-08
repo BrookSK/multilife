@@ -33,7 +33,8 @@ if (!$isNew) {
     }
     
     // Verificar se o usuário atual é admin
-    $isAdmin = rbac_has_permission('admin.settings.manage');
+    $currentUserId = auth_user_id();
+    $isAdmin = $currentUserId ? rbac_user_can($currentUserId, 'admin.settings.manage') : false;
 }
 
 $validTabs = ['cadastro', 'contrato', 'folha', 'beneficios', 'dependentes', 'documentos', 'historico'];
