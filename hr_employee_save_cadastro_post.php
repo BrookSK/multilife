@@ -25,6 +25,23 @@ $birthState = trim((string)($_POST['birth_state'] ?? ''));
 $motherName = trim((string)($_POST['mother_name'] ?? ''));
 $fatherName = trim((string)($_POST['father_name'] ?? ''));
 
+// Dados Profissionais - buscar da role selecionada
+$roleId = (int)($_POST['role_id'] ?? 0);
+
+// Buscar nome da role para usar como position
+$position = '';
+$department = '';
+if ($roleId > 0) {
+    $roleStmt = db()->prepare('SELECT name FROM roles WHERE id = :id');
+    $roleStmt->execute(['id' => $roleId]);
+    $roleData = $roleStmt->fetch();
+    if ($roleData) {
+        $position = (string)$roleData['name']; // Ex: "Administrador", "Financeiro"
+        // Departamento será o mesmo que a função por padrão
+        $department = (string)$roleData['name'];
+    }
+}
+
 // Documentação Trabalhista
 $ctpsNumber = trim((string)($_POST['ctps_number'] ?? ''));
 $ctpsSeries = trim((string)($_POST['ctps_series'] ?? ''));
@@ -78,6 +95,12 @@ if ($fullName === '') {
     exit;
 }
 
+if ($roleId === 0) {
+    flash_set('error', 'Selecione a função no sistema.');
+    header('Location: /hr_employee_profile.php?id=' . urlencode($employeeId) . '&tab=cadastro');
+    exit;
+}
+
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     flash_set('error', 'E-mail inválido.');
     header('Location: /hr_employee_profile.php?id=' . urlencode($employeeId) . '&tab=cadastro');
@@ -118,7 +141,7 @@ if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
 if ($isNew) {
     // Criar novo funcionário
     $sql = 'INSERT INTO hr_employees (
-        full_name, photo_url, cpf, rg, rg_issuer, rg_issue_date, birth_date, gender, marital_status,
+        full_name, photo_url, position, department, role_id, cpf, rg, rg_issuer, rg_issue_date, birth_date, gender, marital_status,
         nationality, birth_city, birth_state, mother_name, father_name,
         ctps_number, ctps_series, ctps_state, ctps_issue_date, pis_pasep, voter_title, voter_zone, voter_section, military_certificate,
         phone, phone_secondary, email, emergency_contact_name, emergency_contact_phone,
@@ -128,7 +151,7 @@ if ($isNew) {
         blood_type, allergies, medical_restrictions,
         status
     ) VALUES (
-        :full_name, :photo_url, :cpf, :rg, :rg_issuer, :rg_issue_date, :birth_date, :gender, :marital_status,
+        :full_name, :photo_url, :position, :department, :role_id, :cpf, :rg, :rg_issuer, :rg_issue_date, :birth_date, :gender, :marital_status,
         :nationality, :birth_city, :birth_state, :mother_name, :father_name,
         :ctps_number, :ctps_series, :ctps_state, :ctps_issue_date, :pis_pasep, :voter_title, :voter_zone, :voter_section, :military_certificate,
         :phone, :phone_secondary, :email, :emergency_contact_name, :emergency_contact_phone,
@@ -143,6 +166,9 @@ if ($isNew) {
     $stmt->execute([
         'full_name' => $fullName,
         'photo_url' => $photoUrl,
+        'position' => $position,
+        'department' => $department !== '' ? $department : null,
+        'role_id' => $roleId,
         'cpf' => $cpf !== '' ? $cpf : null,
         'rg' => $rg !== '' ? $rg : null,
         'rg_issuer' => $rgIssuer !== '' ? $rgIssuer : null,
@@ -195,7 +221,49 @@ if ($isNew) {
     
     audit_log('create', 'hr_employees', (string)$newId, null, ['full_name' => $fullName]);
     
-    flash_set('success', 'Funcionário cadastrado com sucesso!');
+    // Criar usuário automaticamente se tiver e-mail
+    if ($email !== '') {
+        // Verificar se já existe usuário com este e-mail
+        $checkStmt = db()->prepare('SELECT id FROM users WHERE email = :email');
+        $checkStmt->execute(['email' => $email]);
+        $existingUser = $checkStmt->fetch();
+        
+        if (!$existingUser) {
+            // Criar usuário com senha padrão
+            $defaultPassword = 'padrao123456';
+            $userStmt = db()->prepare('INSERT INTO users (name, email, password, status) VALUES (:name, :email, :password, "active")');
+            $userStmt->execute([
+                'name' => $fullName,
+                'email' => $email,
+                'password' => password_hash($defaultPassword, PASSWORD_DEFAULT)
+            ]);
+            
+            $userId = (int)db()->lastInsertId();
+            
+            // Vincular role ao usuário
+            $roleStmt = db()->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (:user_id, :role_id)');
+            $roleStmt->execute([
+                'user_id' => $userId,
+                'role_id' => $roleId
+            ]);
+            
+            // Vincular usuário ao funcionário
+            $updateStmt = db()->prepare('UPDATE hr_employees SET user_id = :user_id WHERE id = :id');
+            $updateStmt->execute([
+                'user_id' => $userId,
+                'id' => $newId
+            ]);
+            
+            audit_log('create', 'users', (string)$userId, null, [
+                'name' => $fullName,
+                'email' => $email,
+                'created_from_hr' => true,
+                'employee_id' => $newId
+            ]);
+        }
+    }
+    
+    flash_set('success', 'Funcionário cadastrado com sucesso! Login: ' . $email . ' | Senha padrão: padrao123456');
     header('Location: /hr_employee_profile.php?id=' . $newId . '&tab=contrato');
     exit;
     
@@ -203,6 +271,7 @@ if ($isNew) {
     // Atualizar funcionário existente
     $updateFields = [
         'full_name = :full_name',
+        'position = :position', 'department = :department', 'role_id = :role_id',
         'cpf = :cpf', 'rg = :rg', 'rg_issuer = :rg_issuer', 'rg_issue_date = :rg_issue_date',
         'birth_date = :birth_date', 'gender = :gender', 'marital_status = :marital_status',
         'nationality = :nationality', 'birth_city = :birth_city', 'birth_state = :birth_state',
@@ -230,6 +299,9 @@ if ($isNew) {
     $params = [
         'id' => (int)$employeeId,
         'full_name' => $fullName,
+        'position' => $position,
+        'department' => $department !== '' ? $department : null,
+        'role_id' => $roleId,
         'cpf' => $cpf !== '' ? $cpf : null,
         'rg' => $rg !== '' ? $rg : null,
         'rg_issuer' => $rgIssuer !== '' ? $rgIssuer : null,

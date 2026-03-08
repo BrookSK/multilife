@@ -74,7 +74,29 @@ echo '<div class="col6"><label>Nome do Pai<input name="father_name" maxlength="1
 echo '</div>';
 echo '</div>';
 
-// 2. Documentação Trabalhista
+// 2. Função no Sistema
+echo '<div>';
+echo '<h3 style="font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid hsl(var(--border))">2. Função no Sistema</h3>';
+echo '<div class="grid" style="gap:12px">';
+
+// Buscar funções disponíveis no sistema
+$rolesStmt = db()->query('SELECT id, name, slug FROM roles ORDER BY name ASC');
+$availableRoles = $rolesStmt->fetchAll();
+
+echo '<div class="col12"><label>Função *<select name="role_id" required>';
+echo '<option value="">Selecione a função...</option>';
+foreach ($availableRoles as $role) {
+    $sel = (!$isNew && isset($employee['role_id']) && (int)$employee['role_id'] === (int)$role['id']) ? ' selected' : '';
+    echo '<option value="' . (int)$role['id'] . '"' . $sel . '>' . h((string)$role['name']) . ' (' . h((string)$role['slug']) . ')</option>';
+}
+echo '</select>';
+echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));display:block;margin-top:4px">Define o cargo, departamento e permissões de acesso do funcionário no sistema. <a href="/admin_settings.php" style="color:hsl(var(--primary))" target="_blank">Gerenciar funções</a></span>';
+echo '</label></div>';
+
+echo '</div>';
+echo '</div>';
+
+// 3. Documentação Trabalhista
 echo '<div>';
 echo '<h3 style="font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid hsl(var(--border))">2. Documentação Trabalhista</h3>';
 echo '<div class="grid" style="gap:12px">';

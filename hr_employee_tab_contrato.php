@@ -17,22 +17,20 @@ echo '<div>';
 echo '<h3 style="font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid hsl(var(--border))">Dados Contratuais</h3>';
 echo '<div class="grid" style="gap:12px">';
 
-echo '<div class="col4"><label>Matrícula<input name="employee_number" maxlength="20" value="' . h((string)($employee['employee_number'] ?? '')) . '" placeholder="000000"></label></div>';
-echo '<div class="col4"><label>Cargo/Função *<input name="position" required maxlength="120" value="' . h((string)($employee['position'] ?? '')) . '" placeholder="Ex: Captador, Analista"></label></div>';
-echo '<div class="col4"><label>Departamento<input name="department" maxlength="100" value="' . h((string)($employee['department'] ?? '')) . '" placeholder="Ex: Comercial, TI"></label></div>';
+echo '<div class="col6"><label>Matrícula<input name="employee_number" maxlength="20" value="' . h((string)($employee['employee_number'] ?? '')) . '" placeholder="000000"></label></div>';
 
 // Buscar funções disponíveis no sistema
 $rolesStmt = db()->query('SELECT id, name, slug FROM roles ORDER BY name ASC');
 $availableRoles = $rolesStmt->fetchAll();
 
-echo '<div class="col12"><label>Função no Sistema *<select name="role_id" required>';
+echo '<div class="col6"><label>Função no Sistema *<select name="role_id" required>';
 echo '<option value="">Selecione a função...</option>';
 foreach ($availableRoles as $role) {
     $sel = (!$isNew && isset($employee['role_id']) && (int)$employee['role_id'] === (int)$role['id']) ? ' selected' : '';
     echo '<option value="' . (int)$role['id'] . '"' . $sel . '>' . h((string)$role['name']) . ' (' . h((string)$role['slug']) . ')</option>';
 }
 echo '</select>';
-echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));display:block;margin-top:4px">Define as permissões de acesso do funcionário no sistema. <a href="/admin_settings.php" style="color:hsl(var(--primary))">Gerenciar funções</a></span>';
+echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));display:block;margin-top:4px">Define o cargo, departamento e permissões de acesso. <a href="/admin_settings.php" style="color:hsl(var(--primary))">Gerenciar funções</a></span>';
 echo '</label></div>';
 
 echo '<div class="col6"><label>Centro de Custo<select name="cost_center_id">';

@@ -20,9 +20,21 @@ if (!$employee) {
 }
 
 $employeeNumber = trim((string)($_POST['employee_number'] ?? ''));
-$position = trim((string)($_POST['position'] ?? ''));
-$department = trim((string)($_POST['department'] ?? ''));
 $roleId = (int)($_POST['role_id'] ?? 0);
+
+// Buscar position e department automaticamente da role selecionada
+$position = '';
+$department = '';
+if ($roleId > 0) {
+    $roleStmt = db()->prepare('SELECT name FROM roles WHERE id = :id');
+    $roleStmt->execute(['id' => $roleId]);
+    $roleData = $roleStmt->fetch();
+    if ($roleData) {
+        $position = (string)$roleData['name'];
+        $department = (string)$roleData['name'];
+    }
+}
+
 $costCenterId = trim((string)($_POST['cost_center_id'] ?? ''));
 $contractType = trim((string)($_POST['contract_type'] ?? ''));
 $admissionDate = trim((string)($_POST['admission_date'] ?? ''));
@@ -34,12 +46,6 @@ $status = trim((string)($_POST['status'] ?? ''));
 $terminationDate = trim((string)($_POST['termination_date'] ?? ''));
 $terminationReason = trim((string)($_POST['termination_reason'] ?? ''));
 $internalNotes = trim((string)($_POST['internal_notes'] ?? ''));
-
-if ($position === '') {
-    flash_set('error', 'Informe o cargo/função.');
-    header('Location: /hr_employee_profile.php?id=' . $employeeId . '&tab=contrato');
-    exit;
-}
 
 if ($roleId === 0) {
     flash_set('error', 'Selecione a função no sistema.');
