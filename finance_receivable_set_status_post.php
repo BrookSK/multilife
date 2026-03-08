@@ -10,30 +10,49 @@ rbac_require_permission('finance.manage');
 $id = (int)($_POST['id'] ?? 0);
 $status = (string)($_POST['status'] ?? '');
 
-if (!in_array($status, ['pendente','recebido','inadimplente'], true)) {
+if ($id === 0) {
+    flash_set('error', 'ID inválido.');
+    header('Location: /finance_receivable_list.php');
+    exit;
+}
+
+// Converter status do formulário para o padrão do banco
+$statusMap = [
+    'pendente' => 'pending',
+    'recebido' => 'paid',
+    'inadimplente' => 'cancelled',
+    'pending' => 'pending',
+    'paid' => 'paid',
+    'cancelled' => 'cancelled',
+];
+
+$dbStatus = $statusMap[$status] ?? null;
+
+if ($dbStatus === null) {
     flash_set('error', 'Status inválido.');
     header('Location: /finance_receivable_list.php');
     exit;
 }
 
-$stmt = db()->prepare('SELECT id, status FROM finance_accounts_receivable WHERE id = :id');
+$stmt = db()->prepare('SELECT id, status, entry_type FROM financial_entries WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $old = $stmt->fetch();
+
 if (!$old) {
-    flash_set('error', 'Registro não encontrado.');
+    flash_set('error', 'Lançamento não encontrado.');
     header('Location: /finance_receivable_list.php');
     exit;
 }
 
-$receivedAt = null;
-if ($status === 'recebido') {
-    $receivedAt = (new DateTime())->format('Y-m-d H:i:s');
+$paymentDate = null;
+if ($dbStatus === 'paid') {
+    $paymentDate = (new DateTime())->format('Y-m-d H:i:s');
 }
 
-$stmt = db()->prepare('UPDATE finance_accounts_receivable SET status = :st, received_at = :ra WHERE id = :id');
-$stmt->execute(['st' => $status, 'ra' => $receivedAt, 'id' => $id]);
+$stmt = db()->prepare('UPDATE financial_entries SET status = :st, payment_date = :pd WHERE id = :id');
+$stmt->execute(['st' => $dbStatus, 'pd' => $paymentDate, 'id' => $id]);
 
-audit_log('update', 'finance_accounts_receivable', (string)$id, $old, ['status' => $status]);
+audit_log('update', 'financial_entries', (string)$id, $old, ['status' => $dbStatus]);
 
 flash_set('success', 'Conta a receber atualizada.');
 header('Location: /finance_receivable_list.php');

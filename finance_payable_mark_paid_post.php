@@ -9,25 +9,32 @@ rbac_require_permission('finance.manage');
 
 $id = (int)($_POST['id'] ?? 0);
 
-$stmt = db()->prepare('SELECT id, status FROM finance_accounts_payable WHERE id = :id');
-$stmt->execute(['id' => $id]);
-$old = $stmt->fetch();
-if (!$old) {
-    flash_set('error', 'Registro não encontrado.');
+if ($id === 0) {
+    flash_set('error', 'ID inválido.');
     header('Location: /finance_payable_list.php');
     exit;
 }
 
-if ((string)$old['status'] === 'pago') {
+$stmt = db()->prepare('SELECT id, status, entry_type FROM financial_entries WHERE id = :id');
+$stmt->execute(['id' => $id]);
+$old = $stmt->fetch();
+
+if (!$old) {
+    flash_set('error', 'Lançamento não encontrado.');
+    header('Location: /finance_payable_list.php');
+    exit;
+}
+
+if ((string)$old['status'] === 'paid') {
     flash_set('success', 'Já estava marcado como pago.');
     header('Location: /finance_payable_list.php');
     exit;
 }
 
-$stmt = db()->prepare("UPDATE finance_accounts_payable SET status = 'pago', paid_at = NOW() WHERE id = :id");
+$stmt = db()->prepare("UPDATE financial_entries SET status = 'paid', payment_date = NOW() WHERE id = :id");
 $stmt->execute(['id' => $id]);
 
-audit_log('update', 'finance_accounts_payable', (string)$id, $old, ['status' => 'pago']);
+audit_log('update', 'financial_entries', (string)$id, $old, ['status' => 'paid']);
 
 flash_set('success', 'Conta a pagar marcada como paga.');
 header('Location: /finance_payable_list.php');
