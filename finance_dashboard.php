@@ -286,11 +286,9 @@ echo '</form>';
 
 echo '</section>';
 
-// Cards principais - 7 colunas fixas
-echo '<div style="overflow-x:auto;margin-bottom:16px">';
-echo '<div style="display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:12px;min-width:1050px">';
+// Cards principais - Linha 1
 
-echo '<section class="card">';
+echo '<section class="card col3">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Número de Atendimentos</div>';
 echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--foreground))">' . $numAtendimentos . '</div>';
 $crescAtendIcon = $crescimentoAtendimentos >= 0 ? '↑' : '↓';
@@ -300,7 +298,7 @@ echo $crescAtendIcon . ' ' . number_format(abs($crescimentoAtendimentos), 1) . '
 echo '</div>';
 echo '</section>';
 
-echo '<section class="card">';
+echo '<section class="card col3">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Atendimentos Cancelados</div>';
 echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--destructive))">' . $numCancelados . '</div>';
 $taxaCancelamento = $numAtendimentos > 0 ? ($numCancelados / $numAtendimentos) * 100 : 0;
@@ -309,7 +307,7 @@ echo number_format($taxaCancelamento, 1) . '% do total';
 echo '</div>';
 echo '</section>';
 
-echo '<section class="card">';
+echo '<section class="card col3">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Faturamento Total</div>';
 echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--primary))">R$ ' . number_format($faturamentoTotal, 2, ',', '.') . '</div>';
 $crescFatIcon = $crescimentoFaturamento >= 0 ? '↑' : '↓';
@@ -319,13 +317,15 @@ echo $crescFatIcon . ' ' . number_format(abs($crescimentoFaturamento), 1) . '% v
 echo '</div>';
 echo '</section>';
 
-echo '<section class="card">';
+echo '<section class="card col3">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Custo Total</div>';
 echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--destructive))">R$ ' . number_format($custoAtendimentos, 2, ',', '.') . '</div>';
 echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Repasses pagos</div>';
 echo '</section>';
 
-echo '<section class="card">';
+
+// Cards secundários - Linha 2
+echo '<section class="card col4">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Lucro Líquido Real</div>';
 $lucroColor = $lucroLiquido >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(var(--destructive))';
 echo '<div style="font-size:28px;font-weight:900;color:' . $lucroColor . '">R$ ' . number_format($lucroLiquido, 2, ',', '.') . '</div>';
@@ -333,20 +333,18 @@ $margemPercentual = $faturamentoTotal > 0 ? ($lucroLiquido / $faturamentoTotal) 
 echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Margem: ' . number_format($margemPercentual, 1) . '%</div>';
 echo '</section>';
 
-echo '<section class="card">';
+echo '<section class="card col4">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Contas a Receber</div>';
 echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--foreground))">R$ ' . number_format($contasReceber, 2, ',', '.') . '</div>';
 echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Pendente de recebimento</div>';
 echo '</section>';
 
-echo '<section class="card">';
+echo '<section class="card col4">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Contas a Pagar</div>';
 echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--foreground))">R$ ' . number_format($contasPagar, 2, ',', '.') . '</div>';
 echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Pendente de pagamento</div>';
 echo '</section>';
 
-echo '</div>'; // Fecha grid de cards
-echo '</div>'; // Fecha wrapper com overflow-x
 
 // Atendimentos por Especialidade + Movimentações (UNIFICADO)
 echo '<section class="card col12">';
