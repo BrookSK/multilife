@@ -71,7 +71,6 @@ $documentsOverdue = db()->query("
         INNER JOIN documents d ON d.folder_id = df.id
         WHERE df.entity_type = 'professional' 
         AND df.entity_id = u.id
-        AND d.deleted_at IS NULL
     )
     ORDER BY u.created_at ASC
     LIMIT 50
