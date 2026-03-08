@@ -5,142 +5,255 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('chat.manage');
+// Pendências são visíveis para todos os usuários logados
 
-$status = isset($_GET['status']) ? (string)$_GET['status'] : 'open';
-$type = isset($_GET['type']) ? trim((string)$_GET['type']) : '';
-$mine = isset($_GET['mine']) ? (string)$_GET['mine'] : '1';
+// ============================================
+// PENDÊNCIAS FINANCEIRAS
+// ============================================
 
-if (!in_array($status, ['open', 'done', 'dismissed', 'all'], true)) {
-    $status = 'open';
-}
+// 1. Contas a Pagar em Atraso
+$payablesOverdue = db()->query("
+    SELECT 
+        id, 
+        description, 
+        amount, 
+        due_date,
+        DATEDIFF(CURDATE(), due_date) as days_overdue
+    FROM financial_entries 
+    WHERE type = 'expense' 
+    AND status = 'pending' 
+    AND due_date < CURDATE()
+    ORDER BY due_date ASC
+    LIMIT 50
+")->fetchAll();
 
-$sql = 'SELECT p.*, u.name AS assigned_user_name FROM pending_items p LEFT JOIN users u ON u.id = p.assigned_user_id WHERE 1=1';
-$params = [];
+// 2. Contas a Receber em Atraso
+$receivablesOverdue = db()->query("
+    SELECT 
+        id, 
+        description, 
+        amount, 
+        due_date,
+        DATEDIFF(CURDATE(), due_date) as days_overdue
+    FROM financial_entries 
+    WHERE type = 'income' 
+    AND status = 'pending' 
+    AND due_date < CURDATE()
+    ORDER BY due_date ASC
+    LIMIT 50
+")->fetchAll();
 
-if ($status !== 'all') {
-    $sql .= ' AND p.status = :st';
-    $params['st'] = $status;
-}
+// ============================================
+// PENDÊNCIAS OPERACIONAIS
+// ============================================
 
-if ($type !== '') {
-    $sql .= ' AND p.type = :tp';
-    $params['tp'] = $type;
-}
+// 3. Documentos de Profissionais Atrasados
+// Buscar prazo nas configurações
+$docDeadlineStmt = db()->query("SELECT setting_value FROM admin_settings WHERE setting_key = 'professional_document_deadline_days'");
+$docDeadlineRow = $docDeadlineStmt->fetch();
+$docDeadlineDays = $docDeadlineRow ? (int)$docDeadlineRow['setting_value'] : 7; // Padrão: 7 dias
 
-if ($mine === '1') {
-    $sql .= ' AND (p.assigned_user_id = :uid OR p.assigned_user_id IS NULL)';
-    $params['uid'] = auth_user_id();
-}
+$documentsOverdue = db()->query("
+    SELECT 
+        u.id as user_id,
+        u.name,
+        u.email,
+        u.created_at,
+        DATEDIFF(CURDATE(), u.created_at) as days_since_creation
+    FROM users u
+    INNER JOIN user_roles ur ON ur.user_id = u.id
+    INNER JOIN roles r ON r.id = ur.role_id
+    WHERE r.slug = 'profissional'
+    AND u.status = 'active'
+    AND DATEDIFF(CURDATE(), u.created_at) > {$docDeadlineDays}
+    AND NOT EXISTS (
+        SELECT 1 FROM documents d 
+        WHERE d.related_table = 'users' 
+        AND d.related_id = u.id
+    )
+    ORDER BY u.created_at ASC
+    LIMIT 50
+")->fetchAll();
 
-$sql .= ' ORDER BY p.created_at DESC, p.id DESC LIMIT 300';
-
-$stmt = db()->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
-
-$types = db()->query('SELECT DISTINCT type FROM pending_items ORDER BY type ASC')->fetchAll();
+// 4. Atendimentos Parados >24h nas Etapas Críticas
+$appointmentsStuck = db()->query("
+    SELECT 
+        a.id,
+        a.patient_name,
+        a.status,
+        a.updated_at,
+        TIMESTAMPDIFF(HOUR, a.updated_at, NOW()) as hours_stuck,
+        d.id as demand_id
+    FROM appointments a
+    LEFT JOIN demands d ON d.id = a.demand_id
+    WHERE a.status IN ('captacao', 'aguardando_email', 'tratamento_manual')
+    AND TIMESTAMPDIFF(HOUR, a.updated_at, NOW()) > 24
+    ORDER BY a.updated_at ASC
+    LIMIT 50
+")->fetchAll();
 
 view_header('Pendências');
 
 echo '<div class="grid">';
 
+// Header
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">Pendências</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Alertas automáticos e tarefas pendentes (ex: chats sem resposta).</div>';
+echo '<div style="font-size:22px;font-weight:900">⚠️ Pendências do Sistema</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Itens em atraso que requerem atenção imediata.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/dashboard.php">Voltar</a>';
+echo '<a class="btn" href="/dashboard.php">← Voltar</a>';
 echo '</div>';
 echo '</div>';
+echo '</section>';
 
-echo '<form method="get" action="/pending_items_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<select name="status" style="min-width:200px">';
-foreach (['open' => 'Abertas', 'done' => 'Concluídas', 'dismissed' => 'Dispensadas', 'all' => 'Todas'] as $k => $lbl) {
-    echo '<option value="' . h($k) . '"' . ($status === $k ? ' selected' : '') . '>' . h($lbl) . '</option>';
+// ============================================
+// BLOCO 1: PENDÊNCIAS FINANCEIRAS
+// ============================================
+echo '<section class="card col12">';
+echo '<h2 style="font-size:18px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid hsl(var(--border))">💰 Pendências Financeiras</h2>';
+
+// Contas a Pagar em Atraso
+echo '<div style="margin-bottom:24px">';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#ef4444">📤 Contas a Pagar em Atraso (' . count($payablesOverdue) . ')</h3>';
+
+if (count($payablesOverdue) > 0) {
+    echo '<div style="display:flex;flex-direction:column;gap:8px">';
+    foreach ($payablesOverdue as $item) {
+        $daysOverdue = (int)$item['days_overdue'];
+        $urgencyColor = $daysOverdue > 30 ? '#dc2626' : ($daysOverdue > 7 ? '#f59e0b' : '#ef4444');
+        
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:hsl(var(--muted));border-radius:8px;border-left:4px solid ' . $urgencyColor . '">';
+        echo '<div style="flex:1">';
+        echo '<div style="font-weight:600">' . h((string)$item['description']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">';
+        echo 'Vencimento: ' . date('d/m/Y', strtotime((string)$item['due_date'])) . ' • ';
+        echo '<span style="color:' . $urgencyColor . ';font-weight:600">' . $daysOverdue . ' dias em atraso</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="display:flex;align-items:center;gap:12px">';
+        echo '<div style="font-size:16px;font-weight:700;color:#ef4444">R$ ' . number_format((float)$item['amount'], 2, ',', '.') . '</div>';
+        echo '<a class="btn" href="/finance_payable_list.php" style="font-size:12px;padding:6px 12px">Ver Detalhes</a>';
+        echo '</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+} else {
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhuma conta a pagar em atraso</div>';
 }
+echo '</div>';
 
-echo '</select>';
+// Contas a Receber em Atraso
+echo '<div>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#f59e0b">📥 Contas a Receber em Atraso (' . count($receivablesOverdue) . ')</h3>';
 
-echo '<select name="type" style="min-width:240px">';
-echo '<option value="">Tipo (todos)</option>';
-foreach ($types as $t) {
-    $tv = (string)$t['type'];
-    echo '<option value="' . h($tv) . '"' . ($type === $tv ? ' selected' : '') . '>' . h($tv) . '</option>';
+if (count($receivablesOverdue) > 0) {
+    echo '<div style="display:flex;flex-direction:column;gap:8px">';
+    foreach ($receivablesOverdue as $item) {
+        $daysOverdue = (int)$item['days_overdue'];
+        $urgencyColor = $daysOverdue > 30 ? '#dc2626' : ($daysOverdue > 7 ? '#f59e0b' : '#fbbf24');
+        
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:hsl(var(--muted));border-radius:8px;border-left:4px solid ' . $urgencyColor . '">';
+        echo '<div style="flex:1">';
+        echo '<div style="font-weight:600">' . h((string)$item['description']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">';
+        echo 'Vencimento: ' . date('d/m/Y', strtotime((string)$item['due_date'])) . ' • ';
+        echo '<span style="color:' . $urgencyColor . ';font-weight:600">' . $daysOverdue . ' dias em atraso</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="display:flex;align-items:center;gap:12px">';
+        echo '<div style="font-size:16px;font-weight:700;color:#f59e0b">R$ ' . number_format((float)$item['amount'], 2, ',', '.') . '</div>';
+        echo '<a class="btn" href="/finance_receivable_list.php" style="font-size:12px;padding:6px 12px">Ver Detalhes</a>';
+        echo '</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+} else {
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhuma conta a receber em atraso</div>';
 }
-
-echo '</select>';
-
-echo '<label style="display:flex;align-items:center;gap:8px">';
-echo '<input type="checkbox" name="mine" value="1"' . ($mine === '1' ? ' checked' : '') . '>'; 
-echo '<span style="font-size:13px">Minhas / Sem responsável</span>';
-echo '</label>';
-
-echo '<button class="btn" type="submit">Filtrar</button>';
-echo '</form>';
+echo '</div>';
 
 echo '</section>';
 
+// ============================================
+// BLOCO 2: PENDÊNCIAS OPERACIONAIS
+// ============================================
 echo '<section class="card col12">';
-echo '<div style="overflow:auto">';
-echo '<table>';
-echo '<thead><tr>';
-echo '<th>ID</th><th>Tipo</th><th>Status</th><th>Título</th><th>Responsável</th><th>Criada</th><th style="text-align:right">Ações</th>';
-echo '</tr></thead><tbody>';
+echo '<h2 style="font-size:18px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid hsl(var(--border))">⚙️ Pendências Operacionais</h2>';
 
-foreach ($rows as $r) {
-    $assigned = $r['assigned_user_name'] ? (string)$r['assigned_user_name'] : '-';
+// Documentos de Profissionais Atrasados
+echo '<div style="margin-bottom:24px">';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#8b5cf6">📄 Documentos de Profissionais Não Recebidos (' . count($documentsOverdue) . ')</h3>';
 
-    echo '<tr>';
-    echo '<td>' . (int)$r['id'] . '</td>';
-    echo '<td>' . h((string)$r['type']) . '</td>';
-    echo '<td>' . h((string)$r['status']) . '</td>';
-    echo '<td>' . h((string)$r['title']) . '</td>';
-    echo '<td>' . h($assigned) . '</td>';
-    echo '<td>' . h((string)$r['created_at']) . '</td>';
-
-    echo '<td style="text-align:right">';
-    if ((string)$r['related_table'] === 'chat_conversations' && $r['related_id'] !== null) {
-        echo '<a class="btn" href="/chat_web.php?id=' . (int)$r['related_id'] . '">Abrir chat</a>';
+if (count($documentsOverdue) > 0) {
+    echo '<div style="display:flex;flex-direction:column;gap:8px">';
+    foreach ($documentsOverdue as $item) {
+        $daysSince = (int)$item['days_since_creation'];
+        $urgencyColor = $daysSince > 30 ? '#dc2626' : ($daysSince > 14 ? '#f59e0b' : '#8b5cf6');
+        
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:hsl(var(--muted));border-radius:8px;border-left:4px solid ' . $urgencyColor . '">';
+        echo '<div style="flex:1">';
+        echo '<div style="font-weight:600">' . h((string)$item['name']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">';
+        echo 'E-mail: ' . h((string)$item['email']) . ' • ';
+        echo 'Cadastrado há: <span style="color:' . $urgencyColor . ';font-weight:600">' . $daysSince . ' dias</span> • ';
+        echo 'Prazo: ' . $docDeadlineDays . ' dias';
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:8px">';
+        echo '<a class="btn" href="/documents_list.php?user_id=' . (int)$item['user_id'] . '" style="font-size:12px;padding:6px 12px">Ver Documentos</a>';
+        echo '<a class="btn" href="/users_edit.php?id=' . (int)$item['user_id'] . '" style="font-size:12px;padding:6px 12px">Ver Perfil</a>';
+        echo '</div>';
+        echo '</div>';
     }
-
-    if ((string)$r['type'] === 'patient_feedback' && (string)$r['related_table'] === 'appointments' && $r['related_id'] !== null) {
-        $aid = (int)$r['related_id'];
-        echo '<a class="btn" href="/appointments_view.php?id=' . $aid . '">Abrir agendamento</a>';
-
-        try {
-            $stmt = db()->prepare('SELECT demand_id FROM appointments WHERE id = :id');
-            $stmt->execute(['id' => $aid]);
-            $a = $stmt->fetch();
-            if ($a && $a['demand_id'] !== null) {
-                echo ' <a class="btn" href="/demands_view.php?id=' . (int)$a['demand_id'] . '">Abrir demanda</a>';
-            }
-        } catch (Throwable $e) {
-        }
-    }
-
-    if ((string)$r['type'] === 'appointment_cycle_renewal' && (string)$r['related_table'] === 'appointments' && $r['related_id'] !== null) {
-        echo '<a class="btn btnPrimary" href="/appointments_renew_cycle.php?appointment_id=' . (int)$r['related_id'] . '" style="font-size:11px;padding:4px 8px">Renovar</a>';
-        echo ' <a class="btn" href="/appointments_view.php?id=' . (int)$r['related_id'] . '" style="font-size:11px;padding:4px 8px">Ver agendamento</a>';
-    }
-
-    if ((string)$r['type'] === 'appointment_review' && (string)$r['related_table'] === 'appointments' && $r['related_id'] !== null) {
-        echo '<a class="btn" href="/appointments_view.php?id=' . (int)$r['related_id'] . '" style="font-size:11px;padding:4px 8px">Revisar agendamento</a>';
-    }
-
-    echo ' ';
-    echo '<a class="btn" href="/pending_items_set_status_post.php?id=' . (int)$r['id'] . '&status=done">Concluir</a>';
-    echo ' ';
-    echo '<a class="btn" href="/pending_items_set_status_post.php?id=' . (int)$r['id'] . '&status=dismissed">Dispensar</a>';
-    echo '</td>';
-
-    echo '</tr>';
+    echo '</div>';
+} else {
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Todos os profissionais enviaram documentos no prazo</div>';
 }
-
-echo '</tbody></table>';
 echo '</div>';
+
+// Atendimentos Parados >24h
+echo '<div>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#3b82f6">🚨 Atendimentos Parados há Mais de 24h (' . count($appointmentsStuck) . ')</h3>';
+
+if (count($appointmentsStuck) > 0) {
+    echo '<div style="display:flex;flex-direction:column;gap:8px">';
+    foreach ($appointmentsStuck as $item) {
+        $hoursStuck = (int)$item['hours_stuck'];
+        $daysStuck = floor($hoursStuck / 24);
+        $urgencyColor = $hoursStuck > 72 ? '#dc2626' : ($hoursStuck > 48 ? '#f59e0b' : '#3b82f6');
+        
+        $statusLabels = [
+            'captacao' => 'Captação',
+            'aguardando_email' => 'Aguardando E-mail',
+            'tratamento_manual' => 'Tratamento Manual'
+        ];
+        $statusLabel = $statusLabels[$item['status']] ?? $item['status'];
+        
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:hsl(var(--muted));border-radius:8px;border-left:4px solid ' . $urgencyColor . '">';
+        echo '<div style="flex:1">';
+        echo '<div style="font-weight:600">' . h((string)$item['patient_name']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">';
+        echo 'Etapa: <span style="font-weight:600">' . $statusLabel . '</span> • ';
+        echo 'Parado há: <span style="color:' . $urgencyColor . ';font-weight:600">' . $daysStuck . ' dias e ' . ($hoursStuck % 24) . ' horas</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:8px">';
+        if ($item['demand_id']) {
+            echo '<a class="btn" href="/demands_view.php?id=' . (int)$item['demand_id'] . '" style="font-size:12px;padding:6px 12px">Ver Demanda</a>';
+        }
+        echo '<a class="btn btnPrimary" href="/appointments_view.php?id=' . (int)$item['id'] . '" style="font-size:12px;padding:6px 12px">Resolver</a>';
+        echo '</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+} else {
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhum atendimento parado há mais de 24h</div>';
+}
+echo '</div>';
+
 echo '</section>';
 
 echo '</div>';
