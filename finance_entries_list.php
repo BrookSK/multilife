@@ -15,7 +15,7 @@ $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $sql = "
     SELECT 
         fe.*,
-        p.name as patient_name,
+        p.full_name as patient_name,
         u.name as professional_name,
         creator.name as created_by_name,
         CASE 
@@ -43,7 +43,7 @@ if ($status !== 'all') {
 }
 
 if ($searchQuery !== '') {
-    $sql .= " AND (p.name LIKE :search OR u.name LIKE :search OR fe.description LIKE :search)";
+    $sql .= " AND (p.full_name LIKE :search OR u.name LIKE :search OR fe.description LIKE :search)";
     $params['search'] = '%' . $searchQuery . '%';
 }
 
