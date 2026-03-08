@@ -52,25 +52,31 @@ function getRecentLogs(int $lines = 100): array {
     return array_values($webhookLogs);
 }
 
-// Buscar últimos webhooks recebidos do integration_log
-$stmt = db()->prepare("
-    SELECT 
-        id,
-        service,
-        direction,
-        status,
-        http_code,
-        request_data,
-        response_data,
-        error_message,
-        created_at
-    FROM integration_log
-    WHERE service = 'evolution_webhook'
-    ORDER BY id DESC
-    LIMIT 20
-");
-$stmt->execute();
-$webhooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Tentar buscar últimos webhooks recebidos do integration_log (se existir)
+$webhooks = [];
+try {
+    $stmt = db()->prepare("
+        SELECT 
+            id,
+            service,
+            direction,
+            status,
+            http_code,
+            request_data,
+            response_data,
+            error_message,
+            created_at
+        FROM integration_log
+        WHERE service = 'evolution_webhook'
+        ORDER BY id DESC
+        LIMIT 20
+    ");
+    $stmt->execute();
+    $webhooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    // Tabela não existe, continuar sem webhooks
+    $webhooks = [];
+}
 
 // Buscar últimas mensagens de mídia
 $stmt = db()->prepare("
