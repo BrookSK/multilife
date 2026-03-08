@@ -480,8 +480,12 @@ if ($event === 'messages.upsert') {
             error_log("[WEBHOOK] MESSAGE DATA KEYS: " . json_encode(array_keys($messageData)));
             
             // Priorizar base64 se disponível (mais confiável que URL)
+            // Base64 está em msgPayload['base64'], não em image['base64']
             $base64Data = null;
-            if (!empty($image['base64'])) {
+            if (!empty($msgPayload['base64'])) {
+                $base64Data = $msgPayload['base64'];
+                error_log("[WEBHOOK] ✅ Base64 encontrado em msgPayload['base64'] (" . strlen($base64Data) . " chars)");
+            } elseif (!empty($image['base64'])) {
                 $base64Data = $image['base64'];
                 error_log("[WEBHOOK] ✅ Base64 encontrado em image['base64']");
             } elseif (!empty($messageData['base64'])) {
