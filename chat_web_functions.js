@@ -525,9 +525,14 @@ function handleMediaUpload(input, mediaType) {
 
 // Função para mostrar preview do arquivo selecionado
 function showMediaPreview(file, mediaType) {
+  console.log('=== INICIO showMediaPreview ===');
+  console.log('File:', file);
+  console.log('MediaType:', mediaType);
+  
   // Remover preview anterior se existir
   const existingPreview = document.getElementById('mediaPreview');
   if (existingPreview) {
+    console.log('Removendo preview anterior');
     existingPreview.remove();
   }
   
@@ -535,6 +540,8 @@ function showMediaPreview(file, mediaType) {
   const previewDiv = document.createElement('div');
   previewDiv.id = 'mediaPreview';
   previewDiv.style.cssText = 'padding:12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:12px;position:relative';
+  
+  console.log('Preview div criado');
   
   // Ícone baseado no tipo
   let icon = '';
@@ -553,6 +560,8 @@ function showMediaPreview(file, mediaType) {
     label = 'Documento';
   }
   
+  console.log('Ícone e label definidos:', label);
+  
   previewDiv.innerHTML = `
     <div style="color:hsl(var(--primary))">${icon}</div>
     <div style="flex:1">
@@ -562,14 +571,36 @@ function showMediaPreview(file, mediaType) {
     <button type="button" onclick="clearMediaPreview()" style="background:hsl(var(--destructive));color:hsl(var(--destructive-foreground));border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;font-weight:bold">×</button>
   `;
   
+  console.log('HTML do preview definido');
+  
   // Inserir preview antes do textarea
   const form = document.getElementById('sendMessageForm');
+  console.log('Form encontrado:', !!form);
+  
+  if (!form) {
+    console.error('ERRO: Formulário sendMessageForm não encontrado!');
+    return;
+  }
+  
   const textarea = form.querySelector('textarea');
+  console.log('Textarea encontrado:', !!textarea);
+  
+  if (!textarea) {
+    console.error('ERRO: Textarea não encontrado no formulário!');
+    return;
+  }
+  
+  console.log('Inserindo preview antes do textarea');
   form.insertBefore(previewDiv, textarea);
+  
+  console.log('Preview inserido no DOM');
   
   // Tornar textarea opcional quando há mídia
   textarea.removeAttribute('required');
   textarea.placeholder = 'Digite uma legenda (opcional)...';
+  
+  console.log('Textarea atualizado');
+  console.log('=== FIM showMediaPreview ===');
 }
 
 // Função para limpar preview e arquivo selecionado
@@ -786,35 +817,54 @@ document.addEventListener('DOMContentLoaded', function() {
   const videoInput = document.getElementById('videoInput');
   const documentInput = document.getElementById('documentInput');
   
+  console.log('Procurando inputs de mídia:', {
+    audio: !!audioInput,
+    image: !!imageInput,
+    video: !!videoInput,
+    document: !!documentInput
+  });
+  
   if (audioInput) {
-    audioInput.addEventListener('change', function() {
+    console.log('Adicionando listener para audioInput');
+    audioInput.addEventListener('change', function(e) {
+      console.log('CHANGE EVENT DISPARADO - audioInput', e);
       const mediaType = this.getAttribute('data-media-type');
+      console.log('Media type:', mediaType);
       handleMediaUpload(this, mediaType);
     });
   }
   
   if (imageInput) {
-    imageInput.addEventListener('change', function() {
+    console.log('Adicionando listener para imageInput');
+    imageInput.addEventListener('change', function(e) {
+      console.log('CHANGE EVENT DISPARADO - imageInput', e);
       const mediaType = this.getAttribute('data-media-type');
+      console.log('Media type:', mediaType);
       handleMediaUpload(this, mediaType);
     });
   }
   
   if (videoInput) {
-    videoInput.addEventListener('change', function() {
+    console.log('Adicionando listener para videoInput');
+    videoInput.addEventListener('change', function(e) {
+      console.log('CHANGE EVENT DISPARADO - videoInput', e);
       const mediaType = this.getAttribute('data-media-type');
+      console.log('Media type:', mediaType);
       handleMediaUpload(this, mediaType);
     });
   }
   
   if (documentInput) {
-    documentInput.addEventListener('change', function() {
+    console.log('Adicionando listener para documentInput');
+    documentInput.addEventListener('change', function(e) {
+      console.log('CHANGE EVENT DISPARADO - documentInput', e);
       const mediaType = this.getAttribute('data-media-type');
+      console.log('Media type:', mediaType);
       handleMediaUpload(this, mediaType);
     });
   }
   
-  console.log('Event listeners de mídia adicionados');
+  console.log('✅ Event listeners de mídia adicionados com sucesso');
 });
 
 // Adicionar CSS para animações

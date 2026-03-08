@@ -469,4 +469,33 @@ final class EvolutionApiV1
             ['expiration' => $expirationSeconds]
         );
     }
+
+    // --------------------
+    // Métodos auxiliares para envio de mídias
+    // --------------------
+
+    public function sendAudio(string $number, string $audioUrl, array $options = []): array
+    {
+        return $this->sendWhatsAppAudio($number, $audioUrl, $options);
+    }
+
+    public function sendImage(string $number, string $imageUrl, ?string $caption = null, array $options = []): array
+    {
+        $fileName = basename(parse_url($imageUrl, PHP_URL_PATH));
+        return $this->sendMedia($number, 'image', $fileName, $imageUrl, $caption, $options);
+    }
+
+    public function sendVideo(string $number, string $videoUrl, ?string $caption = null, array $options = []): array
+    {
+        $fileName = basename(parse_url($videoUrl, PHP_URL_PATH));
+        return $this->sendMedia($number, 'video', $fileName, $videoUrl, $caption, $options);
+    }
+
+    public function sendDocument(string $number, string $documentUrl, ?string $fileName = null, array $options = []): array
+    {
+        if ($fileName === null || $fileName === '') {
+            $fileName = basename(parse_url($documentUrl, PHP_URL_PATH));
+        }
+        return $this->sendMedia($number, 'document', $fileName, $documentUrl, null, $options);
+    }
 }
