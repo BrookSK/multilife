@@ -17,7 +17,7 @@ if (!in_array($status, $allowed, true)) {
 
 // Contas a pagar de atendimentos (patient_assignments)
 $sql = 'SELECT pa.id, 
-               COALESCE(pa.authorized_value, pa.payment_value, 0) as amount,
+               pa.authorized_value as amount,
                pa.created_at as due_at,
                CASE 
                    WHEN pa.status = "paid" THEN "pago"
@@ -35,7 +35,7 @@ $sql = 'SELECT pa.id,
         FROM patient_assignments pa
         LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN patients p ON p.id = pa.patient_id
-        WHERE 1=1';
+        WHERE pa.authorized_value IS NOT NULL AND pa.authorized_value > 0';
 
 $params = [];
 
