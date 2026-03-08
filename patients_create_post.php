@@ -49,6 +49,7 @@ $emergencyEmail = trim((string)($_POST['emergency_email'] ?? ''));
 
 // 5. Convênio
 $hasInsurance = (int)($_POST['has_insurance'] ?? 0);
+$healthInsurerId = isset($_POST['health_insurer_id']) && $_POST['health_insurer_id'] !== '' ? (int)$_POST['health_insurer_id'] : null;
 $insuranceName = trim((string)($_POST['insurance_name'] ?? ''));
 $insuranceCardNumber = trim((string)($_POST['insurance_card_number'] ?? ''));
 $insurancePlan = trim((string)($_POST['insurance_plan'] ?? ''));

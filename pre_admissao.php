@@ -24,12 +24,14 @@ $sql = 'SELECT pa.id, pa.demand_id, pa.created_at, pa.status,
                pa.agreed_value, pa.authorized_value,
                p.full_name AS patient_name, p.phone_primary AS patient_phone,
                u.name AS professional_name, u.phone AS professional_phone,
-               assigned_by.name AS assigned_by_name
+               assigned_by.name AS assigned_by_name,
+               hi.name AS health_insurer_name
         FROM patient_assignments pa
         INNER JOIN demands d ON d.id = pa.demand_id
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN users assigned_by ON assigned_by.id = pa.assigned_by_user_id
+        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
         WHERE pa.status = \'confirmed\'
         AND pa.approved_at IS NULL';
 
@@ -69,14 +71,16 @@ if ($selectedId > 0) {
         $stmt = db()->prepare('
             SELECT pa.*, 
                    d.title, d.location_city, d.location_state, d.origin_email, d.description,
-                   patient.name AS patient_name, patient.phone AS patient_phone,
+                   p.full_name AS patient_name, p.phone_primary AS patient_phone,
                    prof.name AS professional_name, prof.phone AS professional_phone,
-                   assigned_by.name AS assigned_by_name
+                   assigned_by.name AS assigned_by_name,
+                   hi.name AS health_insurer_name
             FROM patient_assignments pa
             INNER JOIN demands d ON d.id = pa.demand_id
-            INNER JOIN users patient ON patient.id = pa.patient_id
+            INNER JOIN patients p ON p.id = pa.patient_id
             LEFT JOIN users prof ON prof.id = pa.professional_user_id
             LEFT JOIN users assigned_by ON assigned_by.id = pa.assigned_by_user_id
+            LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
             WHERE pa.id = :id
             LIMIT 1
         ');
@@ -339,7 +343,8 @@ if ($selected) {
     echo '<label>Tipo de Serviço<input value="' . h($serviceType) . '" readonly></label>';
     echo '<label>Sessões<input value="' . h($sessionQty . 'x - ' . $sessionFreq) . '" readonly></label>';
     echo '<label>Valor por Sessão<input value="R$ ' . h(number_format($paymentValue, 2, ',', '.')) . '" readonly></label>';
-    echo '<label>Plano<input placeholder="Plano do convênio"></label>';
+    $insurerName = $selected['health_insurer_name'] ?? 'Não informado';
+    echo '<label>Operadora/Convênio<input value="' . h($insurerName) . '" readonly></label>';
     echo '<label>Dados financeiros<input placeholder="Nº contrato / autorização"></label>';
     echo '</div>';
     echo '</div>';

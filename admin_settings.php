@@ -119,6 +119,10 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
         'keys' => ['_specialties_']
     ],
+    'Operadoras' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+        'keys' => ['_health_insurers_']
+    ],
     'Operacional' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
         'keys' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'chat.unanswered_timeout_minutes', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url']
@@ -242,6 +246,39 @@ foreach ($sections as $sectionTitle => $sectionData) {
             }
             echo '</div>';
         }
+        
+        echo '</div>';
+    } elseif ($sectionTitle === 'Operadoras') {
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle" style="display:flex;align-items:center;justify-content:space-between">';
+        echo '<span>Operadoras de Saúde</span>';
+        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Gerenciar Operadoras</a>';
+        echo '</div>';
+        
+        // Buscar operadoras
+        $insurersStmt = db()->query('SELECT id, name, is_active FROM health_insurers ORDER BY name ASC');
+        $insurers = $insurersStmt->fetchAll();
+        
+        if (count($insurers) === 0) {
+            echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma operadora cadastrada</div>';
+        } else {
+            echo '<div style="display:grid;gap:8px;margin-top:12px">';
+            foreach ($insurers as $ins) {
+                $statusColor = $ins['is_active'] ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))';
+                $statusText = $ins['is_active'] ? 'Ativa' : 'Inativa';
+                echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
+                echo '<div>';
+                echo '<strong>' . h((string)$ins['name']) . '</strong>';
+                echo '<span style="margin-left:10px;font-size:12px;color:' . $statusColor . '">' . $statusText . '</span>';
+                echo '</div>';
+                echo '</div>';
+            }
+            echo '</div>';
+        }
+        
+        echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--info)/.08);border-radius:8px;font-size:13px;color:hsl(var(--muted-foreground))">';
+        echo '💡 <strong>Dica:</strong> As operadoras são usadas para identificar convênios nos atendimentos. Clique em "Gerenciar Operadoras" para adicionar, editar ou desativar.';
+        echo '</div>';
         
         echo '</div>';
     } elseif ($sectionTitle === 'Ajuda') {

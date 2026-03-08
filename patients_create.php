@@ -111,7 +111,18 @@ echo '<div class="formSection">';
 echo '<div class="formSectionTitle">5. Convênio / Seguro Saúde</div>';
 echo '<div class="grid">';
 echo '<div class="col6"><label>Possui convênio?<select name="has_insurance"><option value="0">Não</option><option value="1">Sim</option></select></label></div>';
-echo '<div class="col6"><label>Nome do convênio<input name="insurance_name" maxlength="120" placeholder="Nome da operadora"></label></div>';
+echo '<div class="col6"><label>Operadora/Convênio<select name="health_insurer_id"><option value="">Selecione...</option>';
+try {
+    $insurersStmt = db()->prepare("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
+    $insurersStmt->execute();
+    $insurers = $insurersStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($insurers as $ins) {
+        echo '<option value="' . (int)$ins['id'] . '">' . h($ins['name']) . '</option>';
+    }
+} catch (Exception $e) {
+    error_log("Erro ao buscar operadoras: " . $e->getMessage());
+}
+echo '</select></label></div>';
 echo '<div class="col6"><label>Número da carteirinha<input name="insurance_card_number" maxlength="60" placeholder="Número"></label></div>';
 echo '<div class="col6"><label>Plano<input name="insurance_plan" maxlength="120" placeholder="Nome do plano"></label></div>';
 echo '<div class="col6"><label>Validade<input type="date" name="insurance_valid_until"></label></div>';
