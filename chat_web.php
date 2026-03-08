@@ -1579,11 +1579,17 @@ if (empty($selectedChat)) {
             $mediaUrl = $msg['mediaUrl'] ?? '';
             $timestamp = isset($msg['timestamp']) ? date('H:i', $msg['timestamp']) : '';
             
+            // DEBUG: Log de cada mensagem
+            if ($messageType !== 'text') {
+                error_log("[RENDER] Tipo: $messageType | URL: '$mediaUrl' | Text: '$messageText'");
+            }
+            
             echo '<div class="whatsapp-message ' . $messageClass . '">';
             echo '<div class="whatsapp-message-bubble">';
             
             // Renderizar baseado no tipo de mensagem
             if ($messageType === 'audio' && !empty($mediaUrl)) {
+                echo '<!-- DEBUG AUDIO: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="margin-bottom:8px">';
                 echo '<audio controls style="max-width:100%;height:40px">';
                 echo '<source src="' . h($mediaUrl) . '" type="' . h($msg['mediaMimeType'] ?? 'audio/mpeg') . '">';
@@ -1596,13 +1602,15 @@ if (empty($selectedChat)) {
                     echo '</div>';
                 }
             } elseif ($messageType === 'image' && !empty($mediaUrl)) {
+                echo '<!-- DEBUG IMAGE: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="margin-bottom:8px">';
-                echo '<img src="' . h($mediaUrl) . '" alt="Imagem" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)">';
+                echo '<img src="' . h($mediaUrl) . '" alt="Imagem" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)" onerror="console.error(\'Erro ao carregar imagem:\', this.src); this.style.border=\'2px solid red\';">';
                 echo '</div>';
                 if (!empty($messageText) && $messageText !== '[Imagem]') {
                     echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
                 }
             } elseif ($messageType === 'video' && !empty($mediaUrl)) {
+                echo '<!-- DEBUG VIDEO: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="margin-bottom:8px">';
                 echo '<video controls style="max-width:100%;border-radius:8px">';
                 echo '<source src="' . h($mediaUrl) . '" type="' . h($msg['mediaMimeType'] ?? 'video/mp4') . '">';
@@ -1613,6 +1621,7 @@ if (empty($selectedChat)) {
                     echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
                 }
             } elseif ($messageType === 'document' && !empty($mediaUrl)) {
+                echo '<!-- DEBUG DOCUMENT: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="display:flex;align-items:center;gap:12px;padding:8px;background:hsl(var(--muted));border-radius:8px">';
                 echo '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
                 echo '<div style="flex:1">';
