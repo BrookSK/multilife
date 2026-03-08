@@ -527,6 +527,106 @@ if (empty($operadorasComDados)) {
 
 echo '</section>';
 
+// Card: Receitas e Despesas por Centro de Custo
+$stmt = $db->prepare(
+    "SELECT 
+        COALESCE(fe.cost_center, 'Não informado') as centro_custo,
+        SUM(CASE WHEN fe.entry_type = 'income' THEN fe.amount ELSE 0 END) as total_receitas,
+        SUM(CASE WHEN fe.entry_type = 'expense' THEN fe.amount ELSE 0 END) as total_despesas,
+        COUNT(*) as quantidade
+     FROM financial_entries fe
+     WHERE fe.is_active = 1 AND $whereClause
+     GROUP BY fe.cost_center
+     ORDER BY (total_receitas + total_despesas) DESC"
+);
+$stmt->execute($params);
+$centrosCusto = $stmt->fetchAll();
+
+// Buscar todos os centros de custo ativos para mostrar mesmo com zero lançamentos
+$todosCentros = $db->query("SELECT id, name, color FROM cost_centers WHERE is_active = 1 ORDER BY name ASC")->fetchAll();
+$centrosComDados = [];
+foreach ($centrosCusto as $cc) {
+    $centrosComDados[$cc['centro_custo']] = [
+        'receitas' => (float)$cc['total_receitas'],
+        'despesas' => (float)$cc['total_despesas'],
+        'quantidade' => (int)$cc['quantidade'],
+        'color' => '#3b82f6'
+    ];
+}
+// Adicionar centros sem lançamentos
+foreach ($todosCentros as $cc) {
+    if (!isset($centrosComDados[$cc['name']])) {
+        $centrosComDados[$cc['name']] = [
+            'receitas' => 0,
+            'despesas' => 0,
+            'quantidade' => 0,
+            'color' => $cc['color']
+        ];
+    } else {
+        $centrosComDados[$cc['name']]['color'] = $cc['color'];
+    }
+}
+// Adicionar "Não informado" se houver lançamentos sem centro de custo
+if (!isset($centrosComDados['Não informado'])) {
+    $centrosComDados['Não informado'] = ['receitas' => 0, 'despesas' => 0, 'quantidade' => 0, 'color' => '#9ca3af'];
+}
+
+echo '<section class="card col12">';
+echo '<div style="font-weight:700;font-size:16px;margin-bottom:16px">Receitas e Despesas por Centro de Custo</div>';
+
+if (empty($centrosComDados)) {
+    echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum centro de custo cadastrado</div>';
+} else {
+    // Ordenar por total (receitas + despesas) decrescente
+    uasort($centrosComDados, function($a, $b) {
+        return ($b['receitas'] + $b['despesas']) - ($a['receitas'] + $a['despesas']);
+    });
+    
+    $maxTotal = 0;
+    foreach ($centrosComDados as $dados) {
+        $total = $dados['receitas'] + $dados['despesas'];
+        if ($total > $maxTotal) $maxTotal = $total;
+    }
+    if ($maxTotal === 0) $maxTotal = 1; // Evitar divisão por zero
+    
+    foreach ($centrosComDados as $nomeCentro => $dados) {
+        $receitas = $dados['receitas'];
+        $despesas = $dados['despesas'];
+        $total = $receitas + $despesas;
+        $saldo = $receitas - $despesas;
+        $percentage = ($total / $maxTotal) * 100;
+        
+        echo '<div style="margin-bottom:16px">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        echo '<div style="display:flex;align-items:center;gap:8px">';
+        echo '<div style="width:12px;height:12px;border-radius:3px;background:' . h($dados['color']) . '"></div>';
+        echo '<span style="font-size:14px;font-weight:600">' . h($nomeCentro) . '</span>';
+        echo '</div>';
+        echo '<div style="display:flex;gap:16px;align-items:center">';
+        if ($receitas > 0) {
+            echo '<span style="font-size:13px;color:hsl(142, 76%, 36%)">↑ R$ ' . number_format($receitas, 2, ',', '.') . '</span>';
+        }
+        if ($despesas > 0) {
+            echo '<span style="font-size:13px;color:hsl(0, 84%, 60%)">↓ R$ ' . number_format($despesas, 2, ',', '.') . '</span>';
+        }
+        if ($saldo != 0) {
+            $saldoColor = $saldo >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(0, 84%, 60%)';
+            echo '<span style="font-size:13px;font-weight:600;color:' . $saldoColor . '">Saldo: R$ ' . number_format($saldo, 2, ',', '.') . '</span>';
+        }
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<div style="height:10px;background:hsl(var(--accent));border-radius:5px;overflow:hidden">';
+        if ($total > 0) {
+            echo '<div style="height:100%;background:' . h($dados['color']) . ';width:' . $percentage . '%;transition:width 0.3s ease"></div>';
+        }
+        echo '</div>';
+        echo '</div>';
+    }
+}
+
+echo '</section>';
+
 echo '</div>';
 
 view_footer();

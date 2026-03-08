@@ -12,6 +12,7 @@ $status = isset($_GET['status']) ? (string)$_GET['status'] : 'all';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $periodMonth = isset($_GET['month']) ? trim((string)$_GET['month']) : '';
 $periodYear = isset($_GET['year']) ? trim((string)$_GET['year']) : date('Y');
+$costCenter = isset($_GET['cost_center']) ? trim((string)$_GET['cost_center']) : '';
 
 $db = db();
 
@@ -104,6 +105,12 @@ if ($status !== 'all') {
 if ($searchQuery !== '') {
     $sql .= " AND (patient_name LIKE :search OR professional_name LIKE :search OR description LIKE :search OR category LIKE :search)";
     $params['search'] = '%' . $searchQuery . '%';
+}
+
+// Filtro por centro de custo
+if ($costCenter !== '') {
+    $sql .= " AND (source = 'manual' AND installment_info LIKE :cost_center)";
+    $params['cost_center'] = '%' . $costCenter . '%';
 }
 
 // Filtro por período
@@ -211,6 +218,19 @@ for ($m = 1; $m <= 12; $m++) {
     $sel = ($periodMonth === (string)$m) ? ' selected' : '';
     $monthName = date('F', mktime(0, 0, 0, $m, 1));
     echo '<option value="' . $m . '"' . $sel . '>' . $monthName . '</option>';
+}
+echo '</select>';
+echo '</div>';
+
+echo '<div>';
+echo '<label style="display:block;font-weight:600;margin-bottom:4px">Centro de Custo</label>';
+echo '<select name="cost_center" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px">';
+echo '<option value="">Todos</option>';
+$costCentersStmt = $db->query('SELECT DISTINCT name FROM cost_centers WHERE is_active = 1 ORDER BY name ASC');
+$costCentersList = $costCentersStmt->fetchAll();
+foreach ($costCentersList as $cc) {
+    $sel = ($costCenter === $cc['name']) ? ' selected' : '';
+    echo '<option value="' . h($cc['name']) . '"' . $sel . '>' . h($cc['name']) . '</option>';
 }
 echo '</select>';
 echo '</div>';

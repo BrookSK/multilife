@@ -89,6 +89,7 @@ try {
             entry_date,
             paid_date,
             status,
+            cost_center,
             created_by_user_id,
             created_at
         ) VALUES (
@@ -103,6 +104,7 @@ try {
             ?,
             ?,
             'paid',
+            'Fluxo Operacional',
             ?,
             NOW()
         )

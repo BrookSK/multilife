@@ -123,6 +123,10 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
         'keys' => ['_health_insurers_']
     ],
+    'Centros de Custo' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        'keys' => ['_cost_centers_']
+    ],
     'Operacional' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
         'keys' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'chat.unanswered_timeout_minutes', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url']
@@ -278,6 +282,40 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--info)/.08);border-radius:8px;font-size:13px;color:hsl(var(--muted-foreground))">';
         echo '💡 <strong>Dica:</strong> As operadoras são usadas para identificar convênios nos atendimentos. Clique em "Gerenciar Operadoras" para adicionar, editar ou desativar.';
+        echo '</div>';
+        
+        echo '</div>';
+    } elseif ($sectionTitle === 'Centros de Custo') {
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle" style="display:flex;align-items:center;justify-content:space-between">';
+        echo '<span>Centros de Custo</span>';
+        echo '<a class="btn btnPrimary" href="/cost_centers_config.php" style="font-size:12px;padding:6px 12px">Gerenciar Centros de Custo</a>';
+        echo '</div>';
+        
+        // Buscar centros de custo
+        $costCentersStmt = db()->query('SELECT id, name, color, is_active FROM cost_centers ORDER BY name ASC');
+        $costCenters = $costCentersStmt->fetchAll();
+        
+        if (count($costCenters) === 0) {
+            echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum centro de custo cadastrado</div>';
+        } else {
+            echo '<div style="display:grid;gap:8px;margin-top:12px">';
+            foreach ($costCenters as $cc) {
+                $statusColor = $cc['is_active'] ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))';
+                $statusText = $cc['is_active'] ? 'Ativo' : 'Inativo';
+                echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
+                echo '<div style="display:flex;align-items:center;gap:10px">';
+                echo '<div style="width:16px;height:16px;border-radius:4px;background:' . h((string)$cc['color']) . '"></div>';
+                echo '<strong>' . h((string)$cc['name']) . '</strong>';
+                echo '<span style="margin-left:10px;font-size:12px;color:' . $statusColor . '">' . $statusText . '</span>';
+                echo '</div>';
+                echo '</div>';
+            }
+            echo '</div>';
+        }
+        
+        echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--info)/.08);border-radius:8px;font-size:13px;color:hsl(var(--muted-foreground))">';
+        echo '💡 <strong>Dica:</strong> Os centros de custo são usados para organizar e categorizar receitas e despesas. Clique em "Gerenciar Centros de Custo" para adicionar, editar ou desativar.';
         echo '</div>';
         
         echo '</div>';

@@ -121,9 +121,9 @@ try {
         throw $e;
     }
     
-    // Criar lançamento de receita (income) no financeiro
-    $incomeStmt = db()->prepare("
-        INSERT INTO financial_entries (
+    // Criar lançamento financeiro de receita
+    $incomeStmt = db()->prepare(
+        "INSERT INTO financial_entries (
             entry_type,
             category,
             invoice_id,
@@ -134,21 +134,25 @@ try {
             description,
             entry_date,
             status,
-            created_by_user_id
+            cost_center,
+            created_by_user_id,
+            created_at
         ) VALUES (
             'income',
-            'Atendimento Profissional',
+            'Receita de Atendimento',
             ?,
             ?,
             ?,
             ?,
             ?,
             ?,
-            CURDATE(),
+            NOW(),
             'pending',
-            ?
-        )
-    ");
+            'Fluxo Operacional',
+            ?,
+            NOW()
+        )"
+    );
     $incomeDescription = "Receita de atendimento - " . $assignment['patient_name'] . " - " . (int)$assignment['session_quantity'] . " sessões";
     error_log("Criando lançamento de receita (income)");
     try {

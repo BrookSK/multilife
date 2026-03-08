@@ -201,8 +201,8 @@ echo '</label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>Centro de Custo';
-echo '<select name="cost_center">';
+echo '<label>Centro de Custo *';
+echo '<select name="cost_center" required>';
 echo '<option value="">Selecione...</option>';
 foreach ($costCenters as $cc) {
     echo '<option value="' . h((string)$cc['name']) . '">' . h((string)$cc['name']) . '</option>';
