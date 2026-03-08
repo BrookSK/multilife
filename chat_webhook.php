@@ -239,14 +239,55 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     
     $messageType = $mediaData['type'] ?? 'text';
     $mediaUrl = $mediaData['url'] ?? null;
+    $base64Data = $mediaData['base64'] ?? null;
     $mediaMimeType = $mediaData['mime_type'] ?? null;
     $mediaFilename = $mediaData['filename'] ?? null;
     $mediaSize = $mediaData['size'] ?? null;
     $audioTranscription = $mediaData['transcription'] ?? null;
     $thumbnailUrl = $mediaData['thumbnail'] ?? null;
     
-    // Se é mídia externa ou URL sem barra inicial, processar
-    if ($messageType !== 'text' && !empty($mediaUrl)) {
+    // Se tem base64, salvar diretamente (mais confiável que URL)
+    if ($messageType !== 'text' && !empty($base64Data)) {
+        error_log("[SAVE_MSG] Base64 detectado, salvando mídia localmente...");
+        
+        // Decodificar base64
+        $binaryData = base64_decode($base64Data);
+        
+        if ($binaryData !== false && strlen($binaryData) > 0) {
+            // Criar diretório
+            $uploadDir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            
+            // Gerar nome único
+            $extension = pathinfo($mediaFilename ?? 'file', PATHINFO_EXTENSION);
+            if (empty($extension)) {
+                $mimeToExt = [
+                    'image/jpeg' => 'jpg',
+                    'image/png' => 'png',
+                    'image/gif' => 'gif',
+                    'image/webp' => 'webp',
+                ];
+                $extension = $mimeToExt[$mediaMimeType] ?? 'jpg';
+            }
+            
+            $uniqueFilename = uniqid('chat_', true) . '.' . $extension;
+            $localPath = $uploadDir . '/' . $uniqueFilename;
+            
+            // Salvar arquivo
+            file_put_contents($localPath, $binaryData);
+            
+            $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
+            error_log("[SAVE_MSG] ✅ Mídia salva via base64: $mediaUrl (" . strlen($binaryData) . " bytes)");
+        } else {
+            error_log("[SAVE_MSG] ERRO: Base64 inválido");
+            $mediaUrl = null;
+            $messageText = $messageText ?: '[Mídia não disponível]';
+        }
+    }
+    // Se não tem base64, tentar URL
+    elseif ($messageType !== 'text' && !empty($mediaUrl)) {
         $isExternalUrl = (strpos($mediaUrl, 'http://') === 0 || strpos($mediaUrl, 'https://') === 0);
         $isRelativeUrl = (strpos($mediaUrl, '/') !== 0 && !$isExternalUrl);
         
@@ -432,13 +473,26 @@ if ($event === 'messages.upsert') {
         elseif (isset($msgPayload['imageMessage'])) {
             $image = $msgPayload['imageMessage'];
             $messageType = 'image';
+            
+            // Priorizar base64 se disponível (mais confiável que URL)
+            $base64Data = null;
+            if (!empty($image['base64'])) {
+                $base64Data = $image['base64'];
+                error_log("[WEBHOOK] IMAGEM DETECTADA - Base64 disponível");
+            } elseif (!empty($messageData['base64'])) {
+                $base64Data = $messageData['base64'];
+                error_log("[WEBHOOK] IMAGEM DETECTADA - Base64 no messageData");
+            }
+            
             $rawUrl = $image['url'] ?? null;
-            error_log("[WEBHOOK] IMAGEM DETECTADA");
             error_log("[WEBHOOK] IMAGE RAW URL: " . ($rawUrl ?? 'NULL'));
-            error_log("[WEBHOOK] IMAGE FULL DATA: " . json_encode($image));
+            error_log("[WEBHOOK] IMAGE HAS BASE64: " . (!empty($base64Data) ? 'YES (' . strlen($base64Data) . ' chars)' : 'NO'));
+            error_log("[WEBHOOK] IMAGE KEYS: " . json_encode(array_keys($image)));
+            
             $mediaData = [
                 'type' => 'image',
                 'url' => $rawUrl,
+                'base64' => $base64Data,
                 'mime_type' => $image['mimetype'] ?? 'image/jpeg',
                 'filename' => $image['fileName'] ?? 'image.jpg',
                 'size' => $image['fileLength'] ?? null,
