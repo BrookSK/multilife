@@ -287,7 +287,6 @@ echo '</form>';
 echo '</section>';
 
 // Cards principais - Linha 1
-
 echo '<section class="card col3">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Número de Atendimentos</div>';
 echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--foreground))">' . $numAtendimentos . '</div>';
@@ -323,7 +322,6 @@ echo '<div style="font-size:32px;font-weight:900;color:hsl(var(--destructive))">
 echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Repasses pagos</div>';
 echo '</section>';
 
-
 // Cards secundários - Linha 2
 echo '<section class="card col4">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Lucro Líquido Real</div>';
@@ -344,7 +342,6 @@ echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foregroun
 echo '<div style="font-size:28px;font-weight:900;color:hsl(var(--foreground))">R$ ' . number_format($contasPagar, 2, ',', '.') . '</div>';
 echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground))">Pendente de pagamento</div>';
 echo '</section>';
-
 
 // Atendimentos por Especialidade + Movimentações (UNIFICADO)
 echo '<section class="card col12">';
