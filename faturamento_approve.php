@@ -49,13 +49,9 @@ if ((int)$docsCheck['pending_count'] > 0) {
     exit;
 }
 
-// Calcular valores usando novos campos ou fallback para payment_value
-$agreedValue = isset($assignment['agreed_value']) && $assignment['agreed_value'] > 0 
-    ? (float)$assignment['agreed_value'] 
-    : (float)$assignment['payment_value'];
-$authorizedValue = isset($assignment['authorized_value']) && $assignment['authorized_value'] > 0 
-    ? (float)$assignment['authorized_value'] 
-    : (float)$assignment['payment_value'];
+// Calcular valores usando agreed_value e authorized_value
+$agreedValue = (float)($assignment['agreed_value'] ?? 0);
+$authorizedValue = (float)($assignment['authorized_value'] ?? 0);
 
 $totalRevenue = $authorizedValue * (int)$assignment['session_quantity'];  // RECEITA: valor autorizado
 $totalCost = $agreedValue * (int)$assignment['session_quantity'];        // CUSTO: valor acordado

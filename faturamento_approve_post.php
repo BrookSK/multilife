@@ -53,8 +53,8 @@ try {
     error_log("Transaction iniciada");
     
     // Calcular valores corretos
-    $agreedValue = (float)($assignment['agreed_value'] ?? $assignment['payment_value'] ?? 0);
-    $authorizedValue = (float)($assignment['authorized_value'] ?? $assignment['payment_value'] ?? 0);
+    $agreedValue = (float)($assignment['agreed_value'] ?? 0);
+    $authorizedValue = (float)($assignment['authorized_value'] ?? 0);
     $sessionQty = (int)$assignment['session_quantity'];
     
     $totalRevenue = $authorizedValue * $sessionQty;  // RECEITA: valor autorizado

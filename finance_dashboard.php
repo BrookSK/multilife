@@ -60,7 +60,7 @@ $stmt = $db->prepare(
     "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
+     WHERE pa.status IN ('confirmed', 'approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $receitasAtendimentos = (float)$stmt->fetchColumn();
@@ -81,7 +81,7 @@ $stmt = $db->prepare(
     "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
+     WHERE pa.status IN ('confirmed', 'approved', 'completed', 'paid') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $despesasAtendimentos = (float)$stmt->fetchColumn();
@@ -158,7 +158,7 @@ $stmt = $db->prepare(
     "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $previousWhereClause"
+     WHERE pa.status IN ('confirmed', 'approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $previousWhereClause"
 );
 $stmt->execute($params);
 $faturamentoPrevious = (float)$stmt->fetchColumn();
@@ -189,7 +189,7 @@ $stmt = $db->prepare(
     "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
+     WHERE pa.status IN ('confirmed', 'approved', 'completed') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $contasReceberAtendimentos = (float)$stmt->fetchColumn();
@@ -210,7 +210,7 @@ $stmt = $db->prepare(
     "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
+     WHERE pa.status IN ('confirmed', 'approved', 'completed') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $contasPagarAtendimentos = (float)$stmt->fetchColumn();
