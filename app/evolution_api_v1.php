@@ -219,7 +219,7 @@ final class EvolutionApiV1
     public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = []): array
     {
         $msg = [
-            'mediaType' => $mediaType,
+            'mediatype' => $mediaType,  // Evolution API espera minúsculo
             'fileName' => $fileName,
             'media' => $media,
         ];
