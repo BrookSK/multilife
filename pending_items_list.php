@@ -67,9 +67,11 @@ $documentsOverdue = db()->query("
     AND u.status = 'active'
     AND DATEDIFF(CURDATE(), u.created_at) > {$docDeadlineDays}
     AND NOT EXISTS (
-        SELECT 1 FROM documents d 
-        WHERE d.related_table = 'users' 
-        AND d.related_id = u.id
+        SELECT 1 FROM document_folders df 
+        INNER JOIN documents d ON d.folder_id = df.id
+        WHERE df.entity_type = 'professional' 
+        AND df.entity_id = u.id
+        AND d.deleted_at IS NULL
     )
     ORDER BY u.created_at ASC
     LIMIT 50
