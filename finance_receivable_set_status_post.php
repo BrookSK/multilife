@@ -44,13 +44,13 @@ if (!$old) {
     exit;
 }
 
-$paymentDate = null;
+$paidDate = null;
 if ($dbStatus === 'paid') {
-    $paymentDate = (new DateTime())->format('Y-m-d H:i:s');
+    $paidDate = (new DateTime())->format('Y-m-d');
 }
 
-$stmt = db()->prepare('UPDATE financial_entries SET status = :st, payment_date = :pd WHERE id = :id');
-$stmt->execute(['st' => $dbStatus, 'pd' => $paymentDate, 'id' => $id]);
+$stmt = db()->prepare('UPDATE financial_entries SET status = :st, paid_date = :pd WHERE id = :id');
+$stmt->execute(['st' => $dbStatus, 'pd' => $paidDate, 'id' => $id]);
 
 audit_log('update', 'financial_entries', (string)$id, $old, ['status' => $dbStatus]);
 

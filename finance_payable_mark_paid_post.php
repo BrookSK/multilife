@@ -31,7 +31,7 @@ if ((string)$old['status'] === 'paid') {
     exit;
 }
 
-$stmt = db()->prepare("UPDATE financial_entries SET status = 'paid', payment_date = NOW() WHERE id = :id");
+$stmt = db()->prepare("UPDATE financial_entries SET status = 'paid', paid_date = CURDATE() WHERE id = :id");
 $stmt->execute(['id' => $id]);
 
 audit_log('update', 'financial_entries', (string)$id, $old, ['status' => 'paid']);

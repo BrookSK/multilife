@@ -117,7 +117,7 @@ if ($payrollId === 0) {
             'due_date' => $dueDate->format('Y-m-d'),
             'status' => 'pending',
             'supplier_name' => $employee['full_name'],
-            'payment_type' => 'transferencia',
+            'payment_type' => 'single',
             'cost_center' => $defaultCostCenter,
             'created_by_user_id' => auth_user_id(),
         ]);
