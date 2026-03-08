@@ -474,20 +474,26 @@ if ($event === 'messages.upsert') {
             $image = $msgPayload['imageMessage'];
             $messageType = 'image';
             
+            error_log("[WEBHOOK] ===== IMAGEM DETECTADA =====");
+            error_log("[WEBHOOK] IMAGE FULL PAYLOAD: " . json_encode($image));
+            error_log("[WEBHOOK] IMAGE KEYS: " . json_encode(array_keys($image)));
+            error_log("[WEBHOOK] MESSAGE DATA KEYS: " . json_encode(array_keys($messageData)));
+            
             // Priorizar base64 se disponível (mais confiável que URL)
             $base64Data = null;
             if (!empty($image['base64'])) {
                 $base64Data = $image['base64'];
-                error_log("[WEBHOOK] IMAGEM DETECTADA - Base64 disponível");
+                error_log("[WEBHOOK] ✅ Base64 encontrado em image['base64']");
             } elseif (!empty($messageData['base64'])) {
                 $base64Data = $messageData['base64'];
-                error_log("[WEBHOOK] IMAGEM DETECTADA - Base64 no messageData");
+                error_log("[WEBHOOK] ✅ Base64 encontrado em messageData['base64']");
+            } else {
+                error_log("[WEBHOOK] ❌ Base64 NÃO encontrado");
             }
             
             $rawUrl = $image['url'] ?? null;
             error_log("[WEBHOOK] IMAGE RAW URL: " . ($rawUrl ?? 'NULL'));
             error_log("[WEBHOOK] IMAGE HAS BASE64: " . (!empty($base64Data) ? 'YES (' . strlen($base64Data) . ' chars)' : 'NO'));
-            error_log("[WEBHOOK] IMAGE KEYS: " . json_encode(array_keys($image)));
             
             $mediaData = [
                 'type' => 'image',
