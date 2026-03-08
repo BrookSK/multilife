@@ -100,6 +100,26 @@ $custoAtendimentos = $despesasAtendimentos + $despesasLancamentos;
 $margemOperacional = $faturamentoTotal - $custoAtendimentos;
 $lucroLiquido = $margemOperacional;
 
+// Valores JÁ RECEBIDOS (apenas status 'paid')
+$stmt = $db->prepare(
+    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status = 'paid' AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
+);
+$stmt->execute($params);
+$valoresRecebidos = (float)$stmt->fetchColumn();
+
+// Valores JÁ PAGOS (apenas status 'paid')
+$stmt = $db->prepare(
+    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status = 'paid' AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
+);
+$stmt->execute($params);
+$valoresPagos = (float)$stmt->fetchColumn();
+
 // Número de atendimentos
 $stmt = $db->prepare(
     "SELECT COUNT(*) AS total
@@ -395,12 +415,12 @@ echo '<div style="display:grid;gap:10px">';
 
 echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsla(var(--primary)/.05);border-radius:8px">';
 echo '<span style="font-size:14px;font-weight:600">Entradas (Recebido)</span>';
-echo '<span style="font-size:14px;font-weight:700;color:hsl(142, 76%, 36%)">+ R$ ' . number_format($faturamentoTotal, 2, ',', '.') . '</span>';
+echo '<span style="font-size:14px;font-weight:700;color:hsl(142, 76%, 36%)">+ R$ ' . number_format($valoresRecebidos, 2, ',', '.') . '</span>';
 echo '</div>';
 
 echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsla(var(--destructive)/.05);border-radius:8px">';
 echo '<span style="font-size:14px;font-weight:600">Saídas (Pago)</span>';
-echo '<span style="font-size:14px;font-weight:700;color:hsl(var(--destructive))">- R$ ' . number_format($custoAtendimentos, 2, ',', '.') . '</span>';
+echo '<span style="font-size:14px;font-weight:700;color:hsl(var(--destructive))">- R$ ' . number_format($valoresPagos, 2, ',', '.') . '</span>';
 echo '</div>';
 
 echo '<div style="display:flex;justify-content:space-between;padding:10px;background:hsl(var(--accent));border-radius:8px">';
@@ -415,7 +435,7 @@ echo '</div>';
 
 echo '<div style="height:1px;background:hsl(var(--border));margin:8px 0"></div>';
 
-$saldoFinal = $faturamentoTotal - $custoAtendimentos + $contasReceber - $contasPagar;
+$saldoFinal = $valoresRecebidos - $valoresPagos + $contasReceber - $contasPagar;
 $saldoColor = $saldoFinal >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(var(--destructive))';
 echo '<div style="display:flex;justify-content:space-between;padding:12px;background:hsla(var(--primary)/.08);border-radius:8px">';
 echo '<span style="font-size:15px;font-weight:700">Saldo Projetado</span>';
