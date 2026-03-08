@@ -1,6 +1,7 @@
 <?php
-require_once 'bootstrap.php';
-auth_require();
+require_once __DIR__ . '/app/bootstrap.php';
+auth_require_login();
+rbac_require_permission('admin.settings.manage');
 
 $db = db();
 
