@@ -81,7 +81,7 @@ $sqlManuais = "
     LEFT JOIN patients p ON p.id = fe.patient_id
     LEFT JOIN users u ON u.id = fe.professional_user_id
     LEFT JOIN users creator ON creator.id = fe.created_by_user_id
-    WHERE fe.is_active = 1
+    WHERE fe.is_active = 1 AND fe.amount > 0
 ";
 
 // Combinar tudo com UNION ALL
