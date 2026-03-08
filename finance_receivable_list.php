@@ -153,14 +153,26 @@ echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';
     echo '<td>' . (int)$r['id'] . '</td>';
-    $appointmentDisplay = ((int)$r['appointment_id'] > 0) ? '#' . (int)$r['appointment_id'] : '-';
+    
+    // Agendamento: "Não aplicável" para lançamentos manuais, "#ID" para atendimentos
+    $appointmentDisplay = '-';
+    if ((string)$r['source'] === 'financial_entry') {
+        $appointmentDisplay = 'Não aplicável';
+    } elseif ((int)$r['appointment_id'] > 0) {
+        $appointmentDisplay = '#' . (int)$r['appointment_id'];
+    }
     echo '<td>' . $appointmentDisplay . '</td>';
+    
     echo '<td>' . date('d/m/Y', strtotime((string)$r['first_at'])) . '</td>';
     echo '<td style="font-weight:700">' . h((string)$r['patient_name']) . '</td>';
     
-    // Formatar Ligação: "Profissional - nome" quando for profissional
+    // Ligação: "Profissional - nome" para atendimentos, "Categoria" para lançamentos manuais
     $ligacao = '-';
-    if (!empty($r['professional_name'])) {
+    if ((string)$r['source'] === 'financial_entry') {
+        // Lançamento manual: mostrar categoria
+        $ligacao = h((string)($r['specialty'] ?? 'Sem categoria'));
+    } elseif (!empty($r['professional_name'])) {
+        // Atendimento: mostrar profissional
         $ligacao = 'Profissional - ' . h((string)$r['professional_name']);
     }
     echo '<td>' . $ligacao . '</td>';
