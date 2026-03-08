@@ -140,7 +140,7 @@ try {
                 'category' => $category,
                 'amount' => $currentAmount,
                 'description' => $description . ' (Parcela ' . $i . '/' . $totalInstallments . ')',
-                'entry_date' => $entryDate,
+                'entry_date' => $installmentDueDate->format('Y-m-d'), // Usar due_date para distribuir cronologicamente
                 'due_date' => $installmentDueDate->format('Y-m-d'),
                 'status' => 'pending',
                 'payment_type' => $paymentType,
