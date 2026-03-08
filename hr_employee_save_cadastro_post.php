@@ -231,11 +231,11 @@ if ($isNew) {
         if (!$existingUser) {
             // Criar usuário com senha padrão
             $defaultPassword = 'padrao123456';
-            $userStmt = db()->prepare('INSERT INTO users (name, email, password, status) VALUES (:name, :email, :password, "active")');
+            $userStmt = db()->prepare('INSERT INTO users (name, email, password_hash, status) VALUES (:name, :email, :password_hash, "active")');
             $userStmt->execute([
                 'name' => $fullName,
                 'email' => $email,
-                'password' => password_hash($defaultPassword, PASSWORD_DEFAULT)
+                'password_hash' => password_hash($defaultPassword, PASSWORD_DEFAULT)
             ]);
             
             $userId = (int)db()->lastInsertId();

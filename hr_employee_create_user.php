@@ -55,11 +55,11 @@ if ($existingUser) {
 $tempPassword = bin2hex(random_bytes(8)); // Senha aleatória de 16 caracteres
 
 // Criar usuário
-$stmt = db()->prepare('INSERT INTO users (name, email, password, status) VALUES (:name, :email, :password, "active")');
+$stmt = db()->prepare('INSERT INTO users (name, email, password_hash, status) VALUES (:name, :email, :password_hash, "active")');
 $stmt->execute([
     'name' => $employee['full_name'],
     'email' => $employee['email'],
-    'password' => password_hash($tempPassword, PASSWORD_DEFAULT)
+    'password_hash' => password_hash($tempPassword, PASSWORD_DEFAULT)
 ]);
 
 $userId = (int)db()->lastInsertId();
