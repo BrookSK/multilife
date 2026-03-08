@@ -20,16 +20,16 @@ if (!in_array($period, $allowedPeriods, true)) {
 $dateFilter = '';
 switch ($period) {
     case 'day':
-        $dateFilter = 'DATE(pa.first_at) = CURDATE()';
+        $dateFilter = 'DATE(pa.created_at) = CURDATE()';
         break;
     case 'week':
-        $dateFilter = 'YEARWEEK(pa.first_at, 1) = YEARWEEK(CURDATE(), 1)';
+        $dateFilter = 'YEARWEEK(pa.created_at, 1) = YEARWEEK(CURDATE(), 1)';
         break;
     case 'month':
-        $dateFilter = 'YEAR(pa.first_at) = YEAR(CURDATE()) AND MONTH(pa.first_at) = MONTH(CURDATE())';
+        $dateFilter = 'YEAR(pa.created_at) = YEAR(CURDATE()) AND MONTH(pa.created_at) = MONTH(CURDATE())';
         break;
     case 'year':
-        $dateFilter = 'YEAR(pa.first_at) = YEAR(CURDATE())';
+        $dateFilter = 'YEAR(pa.created_at) = YEAR(CURDATE())';
         break;
 }
 
@@ -137,16 +137,16 @@ $atendimentosPorEspecialidade = $stmt->fetchAll();
 $previousDateFilter = '';
 switch ($period) {
     case 'day':
-        $previousDateFilter = 'DATE(pa.first_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
+        $previousDateFilter = 'DATE(pa.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
         break;
     case 'week':
-        $previousDateFilter = 'YEARWEEK(pa.first_at, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
+        $previousDateFilter = 'YEARWEEK(pa.created_at, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
         break;
     case 'month':
-        $previousDateFilter = 'YEAR(pa.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND MONTH(pa.first_at) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
+        $previousDateFilter = 'YEAR(pa.created_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND MONTH(pa.created_at) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
         break;
     case 'year':
-        $previousDateFilter = 'YEAR(pa.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
+        $previousDateFilter = 'YEAR(pa.created_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
         break;
 }
 
