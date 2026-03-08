@@ -67,14 +67,14 @@ $sqlFaturamento = 'SELECT fe.id, fe.amount,
                               ELSE "pendente"
                           END as status, 
                           fe.paid_date as paid_at,
-                          fe.assignment_id as appointment_id, 
+                          COALESCE(fe.assignment_id, 0) as appointment_id, 
                           fe.created_at as first_at,
-                          u.name AS professional_name,
+                          COALESCE(u.name, "-") AS professional_name,
                           "financial_entry" as source,
                           fe.description,
                           fe.category as specialty,
                           fe.payment_type as service_type,
-                          fe.supplier_name as patient_name
+                          COALESCE(fe.supplier_name, "-") as patient_name
                    FROM financial_entries fe
                    LEFT JOIN users u ON u.id = fe.professional_user_id
                    WHERE fe.entry_type = "expense" AND fe.is_active = 1';
@@ -150,10 +150,11 @@ echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';
     echo '<td>' . (int)$r['id'] . '</td>';
-    echo '<td>#' . (int)$r['appointment_id'] . '</td>';
-    echo '<td>' . h((string)$r['first_at']) . '</td>';
+    $appointmentDisplay = ((int)$r['appointment_id'] > 0) ? '#' . (int)$r['appointment_id'] : '-';
+    echo '<td>' . $appointmentDisplay . '</td>';
+    echo '<td>' . date('d/m/Y', strtotime((string)$r['first_at'])) . '</td>';
     echo '<td style="font-weight:700">' . h((string)$r['professional_name']) . '</td>';
-    echo '<td>' . h((string)$r['amount']) . '</td>';
+    echo '<td style="font-weight:600;color:#dc2626">R$ ' . number_format((float)$r['amount'], 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right">';
 

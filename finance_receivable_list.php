@@ -66,9 +66,9 @@ $sqlFaturamento = 'SELECT fe.id, fe.amount,
                               ELSE "pendente"
                           END as status, 
                           fe.paid_date as received_at,
-                          fe.assignment_id as appointment_id, 
+                          COALESCE(fe.assignment_id, 0) as appointment_id, 
                           fe.created_at as first_at,
-                          p.full_name AS patient_name,
+                          COALESCE(p.full_name, fe.supplier_name, "-") AS patient_name,
                           u.name AS professional_name,
                           "financial_entry" as source,
                           fe.description,
@@ -151,11 +151,12 @@ echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';
     echo '<td>' . (int)$r['id'] . '</td>';
-    echo '<td>#' . (int)$r['appointment_id'] . '</td>';
-    echo '<td>' . h((string)$r['first_at']) . '</td>';
+    $appointmentDisplay = ((int)$r['appointment_id'] > 0) ? '#' . (int)$r['appointment_id'] : '-';
+    echo '<td>' . $appointmentDisplay . '</td>';
+    echo '<td>' . date('d/m/Y', strtotime((string)$r['first_at'])) . '</td>';
     echo '<td style="font-weight:700">' . h((string)$r['patient_name']) . '</td>';
-    echo '<td>' . h((string)$r['professional_name']) . '</td>';
-    echo '<td>' . h((string)$r['amount']) . '</td>';
+    echo '<td>' . h((string)($r['professional_name'] ?? '-')) . '</td>';
+    echo '<td style="font-weight:600;color:#10b981">R$ ' . number_format((float)$r['amount'], 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right">';
 
