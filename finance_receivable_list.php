@@ -32,6 +32,7 @@ $sql = 'SELECT pa.id,
                "patient_assignment" as source,
                pa.specialty,
                pa.service_type,
+               NULL as category,
                "Fluxo Operacional" as cost_center
         FROM patient_assignments pa
         INNER JOIN patients p ON p.id = pa.patient_id
@@ -73,8 +74,9 @@ $sqlFaturamento = 'SELECT fe.id, fe.amount,
                           u.name AS professional_name,
                           "financial_entry" as source,
                           fe.description,
-                          fe.category as specialty,
+                          NULL as specialty,
                           fe.payment_type as service_type,
+                          fe.category,
                           COALESCE(fe.cost_center, "-") as cost_center
                    FROM financial_entries fe
                    LEFT JOIN patients p ON p.id = fe.patient_id
@@ -170,8 +172,8 @@ foreach ($rows as $r) {
     $ligacao = '-';
     if ((string)$r['source'] === 'financial_entry') {
         // Lançamento manual: mostrar categoria
-        $ligacao = h((string)($r['specialty'] ?? 'Sem categoria'));
-    } elseif (!empty($r['professional_name'])) {
+        $ligacao = h((string)($r['category'] ?? 'Sem categoria'));
+    } elseif (!empty($r['professional_name']) && $r['professional_name'] !== '-') {
         // Atendimento: mostrar profissional
         $ligacao = 'Profissional - ' . h((string)$r['professional_name']);
     }
