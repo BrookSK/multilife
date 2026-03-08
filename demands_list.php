@@ -16,15 +16,17 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
 $assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : '';
-$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
-$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
+
+// Pré-selecionar últimos 30 dias se não houver filtro
+$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : date('Y-m-d', strtotime('-30 days'));
+$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : date('Y-m-d');
 
 $allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
 
-$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name
+$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name
         FROM demands d
         LEFT JOIN users u ON u.id = d.assumed_by_user_id';
 
@@ -182,28 +184,30 @@ foreach ($columns as $col) {
     $colId = (string)$col['id'];
     $items = $byStatus[$colId] ?? [];
     
-    // Coluna "Concluídos": apenas últimos 7 dias, máximo 10 cards
+    // Coluna "Concluídos": apenas últimos 30 dias (baseado em updated_at), máximo 20 cards
     if ($colId === 'concluido') {
-        $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
         $filtered = [];
         foreach ($items as $item) {
-            if ($item['created_at'] >= $sevenDaysAgo) {
+            $updateDate = $item['updated_at'] ?? $item['created_at'];
+            if ($updateDate >= $thirtyDaysAgo) {
                 $filtered[] = $item;
             }
         }
-        $items = array_slice($filtered, 0, 10);
+        $items = array_slice($filtered, 0, 20);
     }
     
-    // Coluna "Cancelado": apenas últimos 7 dias, máximo 10 cards
+    // Coluna "Cancelado": apenas últimos 30 dias (baseado em updated_at), máximo 20 cards
     if ($colId === 'cancelado') {
-        $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
         $filtered = [];
         foreach ($items as $item) {
-            if ($item['created_at'] >= $sevenDaysAgo) {
+            $updateDate = $item['updated_at'] ?? $item['created_at'];
+            if ($updateDate >= $thirtyDaysAgo) {
                 $filtered[] = $item;
             }
         }
-        $items = array_slice($filtered, 0, 10);
+        $items = array_slice($filtered, 0, 20);
     }
 
     echo '<div class="kanbanCol">';
