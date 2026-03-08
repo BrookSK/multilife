@@ -34,10 +34,11 @@ $sql = 'SELECT pa.id,
                pa.service_type,
                NULL as category,
                "Fluxo Operacional" as cost_center,
-               COALESCE(pa.health_insurer, "Não informado") as operadora
+               COALESCE(hi.name, "Não informado") as operadora
         FROM patient_assignments pa
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
+        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
         WHERE p.deleted_at IS NULL AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0';
 $params = [];
 
