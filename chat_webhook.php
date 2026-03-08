@@ -96,10 +96,19 @@ function normalizeJid(string $jid): string {
 // Função para fazer download de mídia externa e salvar localmente
 function downloadMedia(string $externalUrl, string $filename, string $mimeType): ?string {
     try {
+        error_log("[DOWNLOAD_MEDIA] === INICIANDO DOWNLOAD ===");
+        error_log("[DOWNLOAD_MEDIA] URL: $externalUrl");
+        error_log("[DOWNLOAD_MEDIA] Filename: $filename");
+        error_log("[DOWNLOAD_MEDIA] MIME: $mimeType");
+        
         // Criar diretório se não existir
         $uploadDir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+            error_log("[DOWNLOAD_MEDIA] Criando diretório: $uploadDir");
+            if (!mkdir($uploadDir, 0755, true)) {
+                error_log("[DOWNLOAD_MEDIA] ERRO: Falha ao criar diretório");
+                return null;
+            }
         }
         
         // Gerar nome único
@@ -110,6 +119,7 @@ function downloadMedia(string $externalUrl, string $filename, string $mimeType):
                 'audio/ogg' => 'ogg',
                 'audio/mpeg' => 'mp3',
                 'audio/mp4' => 'm4a',
+                'audio/aac' => 'aac',
                 'image/jpeg' => 'jpg',
                 'image/png' => 'png',
                 'image/gif' => 'gif',
@@ -124,14 +134,33 @@ function downloadMedia(string $externalUrl, string $filename, string $mimeType):
         $uniqueFilename = uniqid('chat_', true) . '.' . $extension;
         $localPath = $uploadDir . '/' . $uniqueFilename;
         
-        // Fazer download
-        error_log("[DOWNLOAD_MEDIA] Baixando de: $externalUrl");
-        $content = file_get_contents($externalUrl);
+        error_log("[DOWNLOAD_MEDIA] Path local: $localPath");
         
-        if ($content === false) {
-            error_log("[DOWNLOAD_MEDIA] ERRO: Falha ao baixar arquivo");
+        // Fazer download com contexto customizado (timeout maior, aceitar qualquer conteúdo)
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 30,
+                'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'follow_location' => true,
+                'max_redirects' => 5,
+            ],
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+            ]
+        ]);
+        
+        error_log("[DOWNLOAD_MEDIA] Iniciando download...");
+        $content = @file_get_contents($externalUrl, false, $context);
+        
+        if ($content === false || empty($content)) {
+            $error = error_get_last();
+            error_log("[DOWNLOAD_MEDIA] ERRO: Falha ao baixar arquivo - " . ($error['message'] ?? 'unknown'));
             return null;
         }
+        
+        $contentSize = strlen($content);
+        error_log("[DOWNLOAD_MEDIA] Download concluído: $contentSize bytes");
         
         // Salvar arquivo
         $saved = file_put_contents($localPath, $content);
@@ -141,12 +170,21 @@ function downloadMedia(string $externalUrl, string $filename, string $mimeType):
             return null;
         }
         
+        // Verificar se arquivo foi salvo
+        if (!file_exists($localPath)) {
+            error_log("[DOWNLOAD_MEDIA] ERRO: Arquivo não existe após salvar");
+            return null;
+        }
+        
         $localUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
-        error_log("[DOWNLOAD_MEDIA] Arquivo salvo com sucesso - Path: $localPath | URL: $localUrl | Bytes: $saved");
+        error_log("[DOWNLOAD_MEDIA] ✅ SUCESSO - Arquivo salvo: $localPath");
+        error_log("[DOWNLOAD_MEDIA] ✅ URL local: $localUrl");
+        error_log("[DOWNLOAD_MEDIA] ✅ Tamanho: " . number_format($saved / 1024, 2) . " KB");
         
         return $localUrl;
-    } catch (Exception $e) {
-        error_log("[DOWNLOAD_MEDIA] ERRO: " . $e->getMessage());
+    } catch (Throwable $e) {
+        error_log("[DOWNLOAD_MEDIA] ERRO EXCEPTION: " . $e->getMessage());
+        error_log("[DOWNLOAD_MEDIA] Stack trace: " . $e->getTraceAsString());
         return null;
     }
 }
