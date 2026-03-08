@@ -47,6 +47,15 @@ $appointmentsStmt = db()->prepare("
 $appointmentsStmt->execute([$userId, $userId, $currentYear, $currentMonth]);
 $appointments = $appointmentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// DEBUG: Verificar se há agendamentos
+error_log("DEBUG Agendamentos - User: $userId, Year: $currentYear, Month: $currentMonth, Count: " . count($appointments));
+
+// DEBUG: Buscar TODOS os agendamentos do profissional (sem filtro de mês)
+$debugStmt = db()->prepare("SELECT COUNT(*) as total, MIN(first_at) as primeiro, MAX(first_at) as ultimo FROM appointments WHERE professional_user_id = ?");
+$debugStmt->execute([$userId]);
+$debugInfo = $debugStmt->fetch(PDO::FETCH_ASSOC);
+error_log("DEBUG Total de agendamentos do profissional: " . $debugInfo['total'] . " | Primeiro: " . ($debugInfo['primeiro'] ?? 'nenhum') . " | Último: " . ($debugInfo['ultimo'] ?? 'nenhum'));
+
 // Agrupar por data
 $appointmentsByDate = [];
 foreach ($appointments as $apt) {
