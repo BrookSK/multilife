@@ -173,6 +173,7 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     }
     
     error_log("[SAVE_MSG] Original JID: '$remoteJid' | Normalized: '$normalizedJid' | fromMe: $fromMe | type: '$messageType' | text: '" . substr($text, 0, 30) . "'");
+    error_log("[SAVE_MSG] MEDIA DATA - URL: " . ($mediaUrl ?? 'NULL') . " | MIME: " . ($mediaMimeType ?? 'NULL') . " | Filename: " . ($mediaFilename ?? 'NULL') . " | Size: " . ($mediaSize ?? 'NULL'));
     
     $stmt = db()->prepare("
         INSERT INTO chat_messages 
@@ -192,6 +193,8 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
         $fromMe, 
         $timestamp
     ]);
+    
+    error_log("[SAVE_MSG] Mensagem salva no banco - ID: " . db()->lastInsertId());
 
     // Atualizar contato com preview da última mensagem
     $isGroup = strpos($normalizedJid, '@g.us') !== false ? 1 : 0;
