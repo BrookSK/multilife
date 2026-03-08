@@ -153,6 +153,42 @@ $stmt = $db->prepare(
 $stmt->execute($params);
 $atendimentosPorEspecialidade = $stmt->fetchAll();
 
+// Atendimentos por operadora
+$stmt = $db->prepare(
+    "SELECT 
+        COALESCE(hi.name, 'Não informado') as operadora,
+        COUNT(*) as count,
+        SUM(pa.authorized_value) as total_receita
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+     WHERE $whereClause
+     GROUP BY pa.health_insurer_id, hi.name
+     ORDER BY count DESC"
+);
+$stmt->execute($params);
+$atendimentosPorOperadora = $stmt->fetchAll();
+
+// Buscar todas as operadoras ativas para mostrar mesmo com zero atendimentos
+$todasOperadoras = $db->query("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC")->fetchAll();
+$operadorasComDados = [];
+foreach ($atendimentosPorOperadora as $op) {
+    $operadorasComDados[$op['operadora']] = [
+        'count' => (int)$op['count'],
+        'total_receita' => (float)$op['total_receita']
+    ];
+}
+// Adicionar operadoras sem atendimentos
+foreach ($todasOperadoras as $op) {
+    if (!isset($operadorasComDados[$op['name']])) {
+        $operadorasComDados[$op['name']] = ['count' => 0, 'total_receita' => 0];
+    }
+}
+// Adicionar "Não informado" se houver atendimentos sem operadora
+if (!isset($operadorasComDados['Não informado'])) {
+    $operadorasComDados['Não informado'] = ['count' => 0, 'total_receita' => 0];
+}
+
 // Dados do período anterior (últimos 30 dias antes do período atual)
 $previousDateFilter = '';
 switch ($period) {
@@ -447,6 +483,49 @@ echo '</div>'; // Fecha coluna 2
 
 echo '</div>'; // Fecha grid de 2 colunas
 echo '</section>'; // Fecha card unificado
+
+// Card: Atendimentos por Operadora
+echo '<section class="card col12">';
+echo '<div style="font-weight:700;font-size:16px;margin-bottom:16px">Atendimentos por Operadora</div>';
+
+if (empty($operadorasComDados)) {
+    echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma operadora cadastrada</div>';
+} else {
+    // Ordenar por quantidade de atendimentos (decrescente)
+    uasort($operadorasComDados, function($a, $b) {
+        return $b['count'] - $a['count'];
+    });
+    
+    $maxCountOp = max(array_column($operadorasComDados, 'count'));
+    if ($maxCountOp === 0) $maxCountOp = 1; // Evitar divisão por zero
+    
+    foreach ($operadorasComDados as $nomeOperadora => $dados) {
+        $count = $dados['count'];
+        $receita = $dados['total_receita'];
+        $percentage = ($count / $maxCountOp) * 100;
+        
+        // Cor da barra baseada na quantidade
+        $barColor = $count > 0 ? 'hsl(var(--primary))' : 'hsl(var(--muted))';
+        
+        echo '<div style="margin-bottom:14px">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        echo '<span style="font-size:14px;font-weight:600">' . h($nomeOperadora) . '</span>';
+        echo '<div style="display:flex;gap:16px;align-items:center">';
+        echo '<span style="font-size:13px;color:hsl(var(--muted-foreground))">' . $count . ' atendimento' . ($count !== 1 ? 's' : '') . '</span>';
+        if ($receita > 0) {
+            echo '<span style="font-size:13px;font-weight:600;color:hsl(142, 76%, 36%)">R$ ' . number_format($receita, 2, ',', '.') . '</span>';
+        }
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<div style="height:10px;background:hsl(var(--accent));border-radius:5px;overflow:hidden">';
+        echo '<div style="height:100%;background:' . $barColor . ';width:' . $percentage . '%;transition:width 0.3s ease"></div>';
+        echo '</div>';
+        echo '</div>';
+    }
+}
+
+echo '</section>';
 
 echo '</div>';
 
