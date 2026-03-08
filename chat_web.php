@@ -550,17 +550,17 @@ try {
         $params = [];
         
         if ($chatType === 'atendendo') {
-            $whereClauses[] = "status = 'atendendo'";
+            $whereClauses[] = "cc.status = 'atendendo'";
         } elseif ($chatType === 'aguardando') {
-            $whereClauses[] = "status = 'aguardando'";
+            $whereClauses[] = "cc.status = 'aguardando'";
         } elseif ($chatType === 'resolvidos') {
-            $whereClauses[] = "status = 'resolvido'";
+            $whereClauses[] = "cc.status = 'resolvido'";
         } elseif ($chatType === 'organizacao') {
-            $whereClauses[] = "contact_name LIKE '%Organização%' OR contact_name LIKE '%Admin%'";
+            $whereClauses[] = "cc.contact_name LIKE '%Organização%' OR cc.contact_name LIKE '%Admin%'";
         }
         
         if (!empty($searchQuery)) {
-            $whereClauses[] = "(contact_name LIKE ? OR remote_jid LIKE ?)";
+            $whereClauses[] = "(cc.contact_name LIKE ? OR cc.remote_jid LIKE ?)";
             $params[] = '%' . $searchQuery . '%';
             $params[] = '%' . $searchQuery . '%';
         }
