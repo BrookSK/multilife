@@ -1579,6 +1579,13 @@ if (empty($selectedChat)) {
             $mediaUrl = $msg['mediaUrl'] ?? '';
             $timestamp = isset($msg['timestamp']) ? date('H:i', $msg['timestamp']) : '';
             
+            // Converter URL relativa para absoluta
+            if (!empty($mediaUrl) && $mediaUrl[0] === '/' && strpos($mediaUrl, 'http') !== 0) {
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+                $mediaUrl = $protocol . '://' . $host . $mediaUrl;
+            }
+            
             // DEBUG: Log de cada mensagem
             if ($messageType !== 'text') {
                 error_log("[RENDER] Tipo: $messageType | URL: '$mediaUrl' | Text: '$messageText'");
