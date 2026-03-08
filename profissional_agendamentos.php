@@ -18,16 +18,16 @@ if ($currentYear < 2020 || $currentYear > 2030) {
     $currentYear = (int)date('Y');
 }
 
-// Buscar agendamentos do profissional
+// Buscar agendamentos do profissional (via patient_assignments)
 $appointmentsStmt = db()->prepare("
     SELECT 
-        a.id,
-        DATE(a.first_at) as appointment_date,
-        TIME(a.first_at) as appointment_time,
-        a.first_at,
-        a.status,
-        a.value_per_session,
-        a.recurrence_rule as notes,
+        pa.id,
+        DATE(pa.created_at) as appointment_date,
+        TIME(pa.created_at) as appointment_time,
+        pa.created_at as first_at,
+        pa.status,
+        COALESCE(pa.agreed_value, pa.payment_value) as value_per_session,
+        pa.notes,
         p.id as patient_id,
         p.full_name as patient_name,
         p.phone_primary as patient_phone,
@@ -36,25 +36,15 @@ $appointmentsStmt = db()->prepare("
         pa.service_type,
         pa.session_quantity,
         pa.session_frequency
-    FROM appointments a
-    INNER JOIN patients p ON p.id = a.patient_id
-    LEFT JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.professional_user_id = ?
-    WHERE a.professional_user_id = ?
-    AND YEAR(a.first_at) = ?
-    AND MONTH(a.first_at) = ?
-    ORDER BY a.first_at ASC
+    FROM patient_assignments pa
+    INNER JOIN patients p ON p.id = pa.patient_id
+    WHERE pa.professional_user_id = ?
+    AND YEAR(pa.created_at) = ?
+    AND MONTH(pa.created_at) = ?
+    ORDER BY pa.created_at ASC
 ");
-$appointmentsStmt->execute([$userId, $userId, $currentYear, $currentMonth]);
+$appointmentsStmt->execute([$userId, $currentYear, $currentMonth]);
 $appointments = $appointmentsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-// DEBUG: Verificar se há agendamentos
-error_log("DEBUG Agendamentos - User: $userId, Year: $currentYear, Month: $currentMonth, Count: " . count($appointments));
-
-// DEBUG: Buscar TODOS os agendamentos do profissional (sem filtro de mês)
-$debugStmt = db()->prepare("SELECT COUNT(*) as total, MIN(first_at) as primeiro, MAX(first_at) as ultimo FROM appointments WHERE professional_user_id = ?");
-$debugStmt->execute([$userId]);
-$debugInfo = $debugStmt->fetch(PDO::FETCH_ASSOC);
-error_log("DEBUG Total de agendamentos do profissional: " . $debugInfo['total'] . " | Primeiro: " . ($debugInfo['primeiro'] ?? 'nenhum') . " | Último: " . ($debugInfo['ultimo'] ?? 'nenhum'));
 
 // Agrupar por data
 $appointmentsByDate = [];
@@ -108,9 +98,9 @@ echo '<section class="card col12">';
 echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">';
 
 $totalAppointments = count($appointments);
-$confirmedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'agendado'));
-$pendingCount = count(array_filter($appointments, fn($a) => $a['status'] === 'pendente_formulario'));
-$completedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'realizado'));
+$confirmedCount = count(array_filter($appointments, fn($a) => $a['status'] === 'confirmed'));
+$pendingCount = count(array_filter($appointments, fn($a) => $a['status'] === 'pending'));
+$completedCount = count(array_filter($appointments, fn($a) => in_array($a['status'], ['approved', 'completed'])));
 
 echo '<div style="padding:20px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:calc(var(--radius) + 4px);box-shadow:var(--shadow-card)">';
 echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));font-weight:600;margin-bottom:8px">Total de Agendamentos</div>';
@@ -173,9 +163,10 @@ for ($day = 1; $day <= $daysInMonth; $day++) {
     if ($hasAppointments) {
         foreach ($appointmentsByDate[$date] as $apt) {
             $statusColor = match($apt['status']) {
-                'agendado' => '#10b981',
-                'pendente_formulario' => 'hsl(var(--warning))',
-                'realizado' => 'hsl(var(--muted-foreground))',
+                'confirmed' => '#10b981',
+                'pending' => 'hsl(var(--warning))',
+                'approved', 'completed' => 'hsl(var(--muted-foreground))',
+                'cancelled' => '#dc2626',
                 default => 'hsl(var(--info))'
             };
             echo '<div style="background:' . $statusColor . ';color:white;font-size:10px;font-weight:600;padding:3px 6px;border-radius:4px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-appointment-id="' . $apt['id'] . '">';
@@ -220,20 +211,18 @@ if (count($appointments) === 0) {
     
     foreach ($appointments as $apt) {
         $statusColors = [
-            'agendado' => '#10b981',
-            'pendente_formulario' => '#f59e0b',
-            'realizado' => '#667781',
-            'atrasado' => '#dc2626',
-            'cancelado' => '#dc2626',
-            'revisao_admin' => '#0284c7'
+            'confirmed' => '#10b981',
+            'pending' => '#f59e0b',
+            'approved' => '#0284c7',
+            'completed' => '#667781',
+            'cancelled' => '#dc2626'
         ];
         $statusLabels = [
-            'agendado' => 'Agendado',
-            'pendente_formulario' => 'Pendente Formulário',
-            'realizado' => 'Realizado',
-            'atrasado' => 'Atrasado',
-            'cancelado' => 'Cancelado',
-            'revisao_admin' => 'Em Revisão'
+            'confirmed' => 'Confirmado',
+            'pending' => 'Pendente',
+            'approved' => 'Aprovado',
+            'completed' => 'Concluído',
+            'cancelled' => 'Cancelado'
         ];
         $statusColor = $statusColors[$apt['status']] ?? '#667781';
         $statusLabel = $statusLabels[$apt['status']] ?? $apt['status'];
@@ -268,20 +257,18 @@ echo '    ';
 echo '    let html = "<div style=\"display:flex;flex-direction:column;gap:16px\">";';
 echo '    appointments.forEach(apt => {';
 echo '      const statusLabels = {';
-echo '        "agendado": "Agendado",';
-echo '        "pendente_formulario": "Pendente Formulário",';
-echo '        "realizado": "Realizado",';
-echo '        "atrasado": "Atrasado",';
-echo '        "cancelado": "Cancelado",';
-echo '        "revisao_admin": "Em Revisão"';
+echo '        "confirmed": "Confirmado",';
+echo '        "pending": "Pendente",';
+echo '        "approved": "Aprovado",';
+echo '        "completed": "Concluído",';
+echo '        "cancelled": "Cancelado"';
 echo '      };';
 echo '      const statusColors = {';
-echo '        "agendado": "#10b981",';
-echo '        "pendente_formulario": "hsl(var(--warning))",';
-echo '        "realizado": "hsl(var(--muted-foreground))",';
-echo '        "atrasado": "#dc2626",';
-echo '        "cancelado": "#dc2626",';
-echo '        "revisao_admin": "hsl(var(--info))"';
+echo '        "confirmed": "#10b981",';
+echo '        "pending": "hsl(var(--warning))",';
+echo '        "approved": "hsl(var(--info))",';
+echo '        "completed": "hsl(var(--muted-foreground))",';
+echo '        "cancelled": "#dc2626"';
 echo '      };';
 echo '      ';
 echo '      html += "<div style=\\"padding:16px;background:hsl(var(--muted));border-radius:8px;border-left:4px solid " + (statusColors[apt.status] || "hsl(var(--border))") + "\\">";';
