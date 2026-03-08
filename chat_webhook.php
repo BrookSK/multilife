@@ -93,6 +93,59 @@ function normalizeJid(string $jid): string {
     return $numberOnly . '@s.whatsapp.net';
 }
 
+// Função para fazer download de mídia externa e salvar localmente
+function downloadMedia(string $externalUrl, string $filename, string $mimeType): ?string {
+    try {
+        // Criar diretório se não existir
+        $uploadDir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+        
+        // Gerar nome único
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        if (empty($extension)) {
+            // Tentar extrair extensão do MIME type
+            $mimeToExt = [
+                'audio/ogg' => 'ogg',
+                'audio/mpeg' => 'mp3',
+                'audio/mp4' => 'm4a',
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/gif' => 'gif',
+                'image/webp' => 'webp',
+                'video/mp4' => 'mp4',
+                'video/webm' => 'webm',
+                'application/pdf' => 'pdf',
+            ];
+            $extension = $mimeToExt[$mimeType] ?? 'bin';
+        }
+        
+        $uniqueFilename = uniqid('chat_', true) . '.' . $extension;
+        $localPath = $uploadDir . '/' . $uniqueFilename;
+        
+        // Fazer download
+        error_log("[DOWNLOAD_MEDIA] Baixando de: $externalUrl");
+        $content = file_get_contents($externalUrl);
+        
+        if ($content === false) {
+            error_log("[DOWNLOAD_MEDIA] ERRO: Falha ao baixar arquivo");
+            return null;
+        }
+        
+        // Salvar arquivo
+        file_put_contents($localPath, $content);
+        
+        $localUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
+        error_log("[DOWNLOAD_MEDIA] Arquivo salvo em: $localUrl");
+        
+        return $localUrl;
+    } catch (Exception $e) {
+        error_log("[DOWNLOAD_MEDIA] ERRO: " . $e->getMessage());
+        return null;
+    }
+}
+
 function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp, array $mediaData = []): void {
     ensureChatTables();
     
@@ -106,6 +159,18 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $mediaSize = $mediaData['size'] ?? null;
     $audioTranscription = $mediaData['transcription'] ?? null;
     $thumbnailUrl = $mediaData['thumbnail'] ?? null;
+    
+    // Se é mídia externa, fazer download para o servidor
+    if ($messageType !== 'text' && !empty($mediaUrl) && (strpos($mediaUrl, 'http://') === 0 || strpos($mediaUrl, 'https://') === 0)) {
+        error_log("[SAVE_MSG] Mídia externa detectada, fazendo download...");
+        $localUrl = downloadMedia($mediaUrl, $mediaFilename ?? 'media', $mediaMimeType ?? 'application/octet-stream');
+        if ($localUrl !== null) {
+            $mediaUrl = $localUrl;
+            error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
+        } else {
+            error_log("[SAVE_MSG] AVISO: Falha ao baixar mídia, usando URL externa");
+        }
+    }
     
     error_log("[SAVE_MSG] Original JID: '$remoteJid' | Normalized: '$normalizedJid' | fromMe: $fromMe | type: '$messageType' | text: '" . substr($text, 0, 30) . "'");
     
