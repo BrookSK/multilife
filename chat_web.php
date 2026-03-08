@@ -1281,7 +1281,7 @@ echo '.whatsapp-chat-info{flex:1;min-width:0}';
 echo '.whatsapp-chat-name{font-size:16px;font-weight:500;color:#111b21;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 echo '.whatsapp-chat-preview{font-size:14px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 echo '.whatsapp-chat-meta{text-align:right;font-size:12px;color:#667781;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}';
-echo '.whatsapp-unread-badge{background:#25d366;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:600;min-width:20px;text-align:center}';
+echo '.whatsapp-unread-badge{background:#00a884;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:600;min-width:20px;text-align:center}';
 echo '.whatsapp-main{flex:1;display:flex;flex-direction:column;background:#efeae2}';
 echo '.whatsapp-chat-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-chat-header-info{display:flex;align-items:center;gap:12px}';
@@ -1964,6 +1964,29 @@ if (!empty($messages)) {
 }
 echo 'window.lastTimestamp = ' . $lastTs . ';';
 echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window.chatName);';
+
+// Marcar mensagens como lidas quando chat for aberto
+if (!empty($selectedChat)) {
+    echo '
+// Marcar mensagens como lidas automaticamente
+if (window.chatId) {
+    fetch("/chat_mark_read.php", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: "chat_id=" + encodeURIComponent(window.chatId)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.marked > 0) {
+            console.log("✅ Mensagens marcadas como lidas:", data.marked);
+        }
+    })
+    .catch(error => console.error("Erro ao marcar como lido:", error));
+}
+';
+}
 echo '
 // Função para transcrever áudio
 async function transcribeAudio(messageId) {
