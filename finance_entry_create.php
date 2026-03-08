@@ -9,6 +9,9 @@ rbac_require_permission('finance.manage');
 
 $db = db();
 
+// Pré-selecionar tipo se vier na URL
+$preselectedType = isset($_GET['type']) && in_array($_GET['type'], ['income', 'expense']) ? $_GET['type'] : '';
+
 // Buscar categorias
 $categories = $db->query(
     "SELECT * FROM financial_categories WHERE is_active = 1 ORDER BY type, name"
@@ -60,8 +63,8 @@ echo '<div class="col6">';
 echo '<label>Tipo de Lançamento *';
 echo '<select name="entry_type" id="entryType" required onchange="updateCategoryOptions()">';
 echo '<option value="">Selecione...</option>';
-echo '<option value="income">Receita (Entrada)</option>';
-echo '<option value="expense">Despesa (Saída)</option>';
+echo '<option value="income"' . ($preselectedType === 'income' ? ' selected' : '') . '>Receita (Entrada)</option>';
+echo '<option value="expense"' . ($preselectedType === 'expense' ? ' selected' : '') . '>Despesa (Saída)</option>';
 echo '</select>';
 echo '</label>';
 echo '</div>';
@@ -298,6 +301,10 @@ function togglePaymentFields() {
 // Inicializar
 document.addEventListener("DOMContentLoaded", function() {
     togglePaymentFields();
+    // Se tipo já está selecionado, carregar categorias
+    if (document.getElementById("entryType").value) {
+        updateCategoryOptions();
+    }
 });
 ';
 echo '</script>';

@@ -15,47 +15,69 @@ if (!in_array($status, $allowed, true)) {
     $status = '';
 }
 
-// Contas a receber antigas (appointments)
-$sql = 'SELECT ar.id, ar.amount, ar.due_at, ar.status, ar.received_at,
-               a.id AS appointment_id, a.first_at,
+// Contas a receber de atendimentos (patient_assignments)
+$sql = 'SELECT pa.id, 
+               COALESCE(pa.agreed_value, pa.payment_value, 0) as amount,
+               pa.created_at as due_at,
+               CASE 
+                   WHEN pa.status = "paid" THEN "recebido"
+                   WHEN pa.status IN ("approved", "completed") THEN "pendente"
+                   ELSE "pendente"
+               END as status,
+               NULL as received_at,
+               pa.id AS appointment_id,
+               pa.created_at as first_at,
                p.full_name AS patient_name,
                u.name AS professional_name,
-               "appointment" as source
-        FROM finance_accounts_receivable ar
-        INNER JOIN appointments a ON a.id = ar.appointment_id
-        INNER JOIN patients p ON p.id = ar.patient_id
-        INNER JOIN users u ON u.id = ar.professional_user_id
+               "patient_assignment" as source,
+               pa.specialty,
+               pa.service_type
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        LEFT JOIN users u ON u.id = pa.professional_user_id
         WHERE p.deleted_at IS NULL';
 $params = [];
 
 if ($status !== '') {
-    $sql .= ' AND ar.status = :status';
-    $params['status'] = $status;
+    if ($status === 'recebido') {
+        $sql .= ' AND pa.status = "paid"';
+    } elseif ($status === 'pendente') {
+        $sql .= ' AND pa.status IN ("approved", "completed", "confirmed")';
+    }
 }
 
 if ($q !== '') {
-    $sql .= ' AND (p.full_name LIKE :q OR u.name LIKE :q OR ar.appointment_id LIKE :q)';
+    $sql .= ' AND (p.full_name LIKE :q OR u.name LIKE :q OR pa.specialty LIKE :q)';
     $params['q'] = '%' . $q . '%';
 }
 
-$sql .= ' ORDER BY ar.id DESC';
+$sql .= ' ORDER BY pa.id DESC';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-// Receitas de lançamentos financeiros (faturamento)
-$sqlFaturamento = 'SELECT fe.id, fe.amount, fe.entry_date as due_at, fe.status, 
+// Receitas de lançamentos financeiros manuais
+$sqlFaturamento = 'SELECT fe.id, fe.amount, 
+                          COALESCE(fe.due_date, fe.entry_date) as due_at, 
+                          CASE 
+                              WHEN fe.status = "paid" THEN "recebido"
+                              WHEN fe.status = "pending" THEN "pendente"
+                              ELSE "pendente"
+                          END as status, 
                           fe.paid_date as received_at,
-                          fe.assignment_id as appointment_id, fe.created_at as first_at,
+                          fe.assignment_id as appointment_id, 
+                          fe.created_at as first_at,
                           p.full_name AS patient_name,
                           u.name AS professional_name,
-                          "faturamento" as source,
-                          fe.description
+                          "financial_entry" as source,
+                          fe.description,
+                          fe.category as specialty,
+                          fe.payment_type as service_type
                    FROM financial_entries fe
                    LEFT JOIN patients p ON p.id = fe.patient_id
                    LEFT JOIN users u ON u.id = fe.professional_user_id
-                   WHERE fe.entry_type = "income"';
+                   WHERE fe.entry_type = "income" AND fe.is_active = 1';
 
 $paramsFat = [];
 
@@ -93,6 +115,8 @@ echo '<div style="font-size:22px;font-weight:900">Contas a Receber</div>';
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Geradas ao criar o agendamento.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<a class="btn btnPrimary" href="/finance_entry_create.php?type=income">+ Nova Receita</a>';
+echo '<a class="btn" href="/finance_entries_list.php">Ver Lançamentos</a>';
 echo '<a class="btn" href="/finance_payable_list.php">Contas a Pagar</a>';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
