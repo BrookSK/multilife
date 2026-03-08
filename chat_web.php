@@ -578,14 +578,18 @@ try {
                     cc.status,
                     cc.last_message_timestamp as lastMsgTimestamp,
                     cc.last_message_text as lastMsgText,
-                    cc.last_message_type as lastMsgType
+                    cc.last_message_type as lastMsgType,
+                    COUNT(CASE WHEN cm.from_me = 0 AND cm.is_read = 0 THEN 1 END) as unreadCount
                 FROM chat_contacts cc
                 LEFT JOIN users u ON (
                     REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '') = u.phone
                     OR CONCAT('55', u.phone) = REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '')
                     OR u.phone = CONCAT('55', REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', ''))
                 )
+                LEFT JOIN chat_messages cm ON cm.remote_jid = cc.remote_jid
                 $whereSQL
+                GROUP BY cc.remote_jid, cc.contact_name, cc.profile_picture_url, cc.is_group, cc.status, 
+                         cc.last_message_timestamp, cc.last_message_text, cc.last_message_type, u.name
                 ORDER BY cc.last_message_timestamp DESC
                 LIMIT 50
             ");
@@ -1456,6 +1460,7 @@ if ($chatType === 'grupos') {
             $isActive = $selectedChat === $chatId ? ' active' : '';
             $lastMsg = $chat['lastMsgText'] ?? '';
             $lastMsgType = $chat['lastMsgType'] ?? 'text';
+            $unreadCount = (int)($chat['unreadCount'] ?? 0);
             
             // Formatar preview baseado no tipo de mensagem
             // Se for mídia E não tiver texto (ou texto for placeholder), usar ícone
@@ -1495,6 +1500,9 @@ if ($chatType === 'grupos') {
             echo '</div>';
             echo '<div class="whatsapp-chat-meta">';
             echo h($lastTime);
+            if ($unreadCount > 0) {
+                echo '<div class="whatsapp-unread-badge">' . h($unreadCount) . '</div>';
+            }
             echo '</div>';
             echo '</a>';
         }
