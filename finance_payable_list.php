@@ -32,7 +32,8 @@ $sql = 'SELECT pa.id,
                pa.specialty,
                pa.service_type,
                p.full_name as patient_name,
-               "Fluxo Operacional" as cost_center
+               "Fluxo Operacional" as cost_center,
+               COALESCE(pa.health_insurer, "Não informado") as operadora
         FROM patient_assignments pa
         LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN patients p ON p.id = pa.patient_id
@@ -76,7 +77,8 @@ $sqlFaturamento = 'SELECT fe.id, fe.amount,
                           fe.category as specialty,
                           fe.payment_type as service_type,
                           COALESCE(fe.supplier_name, "-") as patient_name,
-                          COALESCE(fe.cost_center, "-") as cost_center
+                          COALESCE(fe.cost_center, "-") as cost_center,
+                          NULL as operadora
                    FROM financial_entries fe
                    LEFT JOIN users u ON u.id = fe.professional_user_id
                    WHERE fe.entry_type = "expense" AND fe.is_active = 1';
@@ -147,7 +149,7 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Ligação</th><th>Centro de Custo</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Fornecedor</th><th>Operadora</th><th>Ligação</th><th>Centro de Custo</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';
@@ -164,6 +166,20 @@ foreach ($rows as $r) {
     
     echo '<td>' . date('d/m/Y', strtotime((string)$r['first_at'])) . '</td>';
     
+    // Fornecedor/Paciente: "Não aplicável" para lançamentos manuais sem fornecedor
+    $fornecedorDisplay = h((string)($r['patient_name'] ?? '-'));
+    if ((string)$r['source'] === 'financial_entry' && ($fornecedorDisplay === '-' || empty($fornecedorDisplay))) {
+        $fornecedorDisplay = 'Não aplicável';
+    }
+    echo '<td>' . $fornecedorDisplay . '</td>';
+    
+    // Operadora: mostrar operadora para atendimentos, "Não aplicável" para lançamentos manuais
+    $operadoraDisplay = 'Não aplicável';
+    if ((string)$r['source'] === 'patient_assignment' && !empty($r['operadora'])) {
+        $operadoraDisplay = h((string)$r['operadora']);
+    }
+    echo '<td>' . $operadoraDisplay . '</td>';
+    
     // Ligação: "Profissional - nome" para atendimentos, "Categoria" para lançamentos manuais
     $ligacao = '-';
     if ((string)$r['source'] === 'financial_entry') {
@@ -175,7 +191,12 @@ foreach ($rows as $r) {
     }
     echo '<td>' . $ligacao . '</td>';
     
-    echo '<td>' . h((string)($r['cost_center'] ?? '-')) . '</td>';
+    // Centro de Custo: "Não selecionado" quando vazio
+    $costCenterDisplay = h((string)($r['cost_center'] ?? ''));
+    if (empty($costCenterDisplay) || $costCenterDisplay === '-') {
+        $costCenterDisplay = 'Não selecionado';
+    }
+    echo '<td>' . $costCenterDisplay . '</td>';
     echo '<td style="font-weight:600;color:#dc2626">R$ ' . number_format((float)$r['amount'], 2, ',', '.') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right"';
@@ -190,7 +211,7 @@ foreach ($rows as $r) {
     echo '</tr>';
 }
 if (count($rows) === 0) {
-    echo '<tr><td colspan="8" class="pill" style="display:table-cell;padding:12px">Sem registros.</td></tr>';
+    echo '<tr><td colspan="10" class="pill" style="display:table-cell;padding:12px">Sem registros.</td></tr>';
 }
 
 echo '</tbody></table>';
