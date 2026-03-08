@@ -71,6 +71,22 @@ if ($payrollId === 0) {
     $endDate = new DateTime($startDate);
     $endDate->modify('+12 months');
     
+    // Buscar configurações padrão para lançamentos financeiros
+    $defaultCategory = 'Folha de Pagamento';
+    $defaultCostCenter = 'Administrativo';
+    
+    $settingStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'payroll.default_category'");
+    $categoryRow = $settingStmt->fetch();
+    if ($categoryRow) {
+        $defaultCategory = $categoryRow['setting_value'];
+    }
+    
+    $settingStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'payroll.default_cost_center'");
+    $costCenterRow = $settingStmt->fetch();
+    if ($costCenterRow) {
+        $defaultCostCenter = $costCenterRow['setting_value'];
+    }
+    
     while ($currentDate <= $endDate) {
         $referenceMonth = $currentDate->format('Y-m');
         $dueDate = new DateTime($currentDate->format('Y-m-' . str_pad((string)$paymentDay, 2, '0', STR_PAD_LEFT)));
@@ -80,10 +96,39 @@ if ($payrollId === 0) {
             $dueDate = new DateTime($currentDate->format('Y-m-t'));
         }
         
-        $stmt = db()->prepare('INSERT INTO hr_payroll_entries (
-            employee_id, payroll_id, reference_month, amount, due_date, status
+        // Criar lançamento financeiro automaticamente
+        $monthYearFormatted = $currentDate->format('m/Y');
+        $description = 'Salário - ' . $employee['full_name'] . ' - ' . $monthYearFormatted;
+        
+        $financialStmt = db()->prepare('INSERT INTO financial_entries (
+            entry_type, category, description, amount, entry_date, due_date, status,
+            supplier_name, payment_type, cost_center, created_by_user_id
         ) VALUES (
-            :employee_id, :payroll_id, :reference_month, :amount, :due_date, :status
+            :entry_type, :category, :description, :amount, :entry_date, :due_date, :status,
+            :supplier_name, :payment_type, :cost_center, :created_by_user_id
+        )');
+        
+        $financialStmt->execute([
+            'entry_type' => 'expense',
+            'category' => $defaultCategory,
+            'description' => $description,
+            'amount' => (float)$baseSalary,
+            'entry_date' => date('Y-m-d'),
+            'due_date' => $dueDate->format('Y-m-d'),
+            'status' => 'pending',
+            'supplier_name' => $employee['full_name'],
+            'payment_type' => 'transferencia',
+            'cost_center' => $defaultCostCenter,
+            'created_by_user_id' => auth_user_id(),
+        ]);
+        
+        $financialEntryId = (int)db()->lastInsertId();
+        
+        // Criar lançamento de folha vinculado ao lançamento financeiro
+        $stmt = db()->prepare('INSERT INTO hr_payroll_entries (
+            employee_id, payroll_id, reference_month, amount, due_date, status, financial_entry_id, generated_at
+        ) VALUES (
+            :employee_id, :payroll_id, :reference_month, :amount, :due_date, :status, :financial_entry_id, NOW()
         )');
         
         $stmt->execute([
@@ -92,7 +137,8 @@ if ($payrollId === 0) {
             'reference_month' => $referenceMonth,
             'amount' => (float)$baseSalary,
             'due_date' => $dueDate->format('Y-m-d'),
-            'status' => 'pending',
+            'status' => 'generated',
+            'financial_entry_id' => $financialEntryId,
         ]);
         
         $currentDate->modify('+1 month');
@@ -109,7 +155,7 @@ if ($payrollId === 0) {
         'created_by_user_id' => auth_user_id(),
     ]);
     
-    flash_set('success', 'Salário cadastrado com sucesso! Lançamentos dos próximos 12 meses foram criados.');
+    flash_set('success', 'Salário cadastrado com sucesso! 12 lançamentos financeiros foram criados automaticamente em Contas a Pagar.');
 } else {
     // Atualizar salário existente
     $sql = 'UPDATE hr_employee_payroll SET 

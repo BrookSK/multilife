@@ -66,10 +66,26 @@ $stmt->execute($params);
 $receitasAtendimentos = (float)$stmt->fetchColumn();
 
 // Receitas de lançamentos financeiros adicionais
+$dateFilterFinancial = '';
+switch ($period) {
+    case 'day':
+        $dateFilterFinancial = 'DATE(fe.entry_date) = CURDATE()';
+        break;
+    case 'week':
+        $dateFilterFinancial = 'YEARWEEK(fe.entry_date, 1) = YEARWEEK(CURDATE(), 1)';
+        break;
+    case 'month':
+        $dateFilterFinancial = 'YEAR(fe.entry_date) = YEAR(CURDATE()) AND MONTH(fe.entry_date) = MONTH(CURDATE())';
+        break;
+    case 'year':
+        $dateFilterFinancial = 'YEAR(fe.entry_date) = YEAR(CURDATE())';
+        break;
+}
+
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(fe.amount), 0) AS total
      FROM financial_entries fe
-     WHERE fe.entry_type = 'income' AND fe.status IN ('pending', 'paid')"
+     WHERE fe.entry_type = 'income' AND fe.status IN ('pending', 'paid') AND $dateFilterFinancial"
 );
 $stmt->execute();
 $receitasLancamentos = (float)$stmt->fetchColumn();
@@ -86,11 +102,11 @@ $stmt = $db->prepare(
 $stmt->execute($params);
 $despesasAtendimentos = (float)$stmt->fetchColumn();
 
-// Despesas de lançamentos financeiros adicionais
+// Despesas de lançamentos financeiros adicionais (incluindo folha de pagamento)
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(fe.amount), 0) AS total
      FROM financial_entries fe
-     WHERE fe.entry_type = 'expense' AND fe.status IN ('pending', 'paid')"
+     WHERE fe.entry_type = 'expense' AND fe.status IN ('pending', 'paid') AND $dateFilterFinancial"
 );
 $stmt->execute();
 $despesasLancamentos = (float)$stmt->fetchColumn();
