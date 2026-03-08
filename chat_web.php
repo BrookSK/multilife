@@ -1596,11 +1596,12 @@ if (empty($selectedChat)) {
             
             // Renderizar baseado no tipo de mensagem
             if ($messageType === 'audio' && !empty($mediaUrl)) {
-                echo '<!-- DEBUG AUDIO: URL=' . h($mediaUrl) . ' -->';
+                $mimeType = $msg['mediaMimeType'] ?? 'audio/ogg; codecs=opus';
+                echo '<!-- DEBUG AUDIO: URL=' . h($mediaUrl) . ' MIME=' . h($mimeType) . ' -->';
                 echo '<div style="margin-bottom:8px">';
-                echo '<audio controls style="max-width:100%;height:40px">';
-                echo '<source src="' . h($mediaUrl) . '" type="' . h($msg['mediaMimeType'] ?? 'audio/mpeg') . '">';
-                echo 'Seu navegador não suporta áudio.';
+                echo '<audio controls preload="metadata" style="max-width:100%;height:40px">';
+                echo '<source src="' . h($mediaUrl) . '" type="' . h($mimeType) . '">';
+                echo 'Seu navegador não suporta este formato de áudio.';
                 echo '</audio>';
                 echo '</div>';
                 if (!empty($msg['audioTranscription'])) {

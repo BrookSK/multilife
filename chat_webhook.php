@@ -456,14 +456,30 @@ if ($event === 'messages.upsert') {
         if (isset($msgPayload['audioMessage'])) {
             $audio = $msgPayload['audioMessage'];
             $messageType = 'audio';
+            
+            error_log("[WEBHOOK] ===== ÁUDIO DETECTADO =====");
+            
+            // Verificar se tem base64 (mesmo padrão das imagens)
+            $base64Data = null;
+            if (!empty($msgPayload['base64'])) {
+                $base64Data = $msgPayload['base64'];
+                error_log("[WEBHOOK] ✅ Base64 de áudio encontrado em msgPayload['base64'] (" . strlen($base64Data) . " chars)");
+            } elseif (!empty($audio['base64'])) {
+                $base64Data = $audio['base64'];
+                error_log("[WEBHOOK] ✅ Base64 de áudio encontrado em audio['base64']");
+            } else {
+                error_log("[WEBHOOK] ⚠️ Base64 de áudio NÃO encontrado, usando URL");
+            }
+            
             $rawUrl = $audio['url'] ?? null;
-            error_log("[WEBHOOK] AUDIO DETECTADO");
             error_log("[WEBHOOK] AUDIO RAW URL: " . ($rawUrl ?? 'NULL'));
-            error_log("[WEBHOOK] AUDIO FULL DATA: " . json_encode($audio));
+            error_log("[WEBHOOK] AUDIO MIME: " . ($audio['mimetype'] ?? 'N/A'));
+            
             $mediaData = [
                 'type' => 'audio',
                 'url' => $rawUrl,
-                'mime_type' => $audio['mimetype'] ?? 'audio/ogg',
+                'base64' => $base64Data,
+                'mime_type' => $audio['mimetype'] ?? 'audio/ogg; codecs=opus',
                 'filename' => $audio['fileName'] ?? 'audio.ogg',
                 'size' => $audio['fileLength'] ?? null,
             ];
