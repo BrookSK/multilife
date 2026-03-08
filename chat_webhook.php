@@ -162,6 +162,48 @@ function downloadMedia(string $externalUrl, string $filename, string $mimeType):
         $contentSize = strlen($content);
         error_log("[DOWNLOAD_MEDIA] Download concluído: $contentSize bytes");
         
+        // Validar se o conteúdo não é HTML de erro
+        if (stripos($content, '<!DOCTYPE') !== false || stripos($content, '<html') !== false) {
+            error_log("[DOWNLOAD_MEDIA] ERRO: Conteúdo baixado é HTML, não mídia válida");
+            return null;
+        }
+        
+        // Validar tamanho mínimo (evitar arquivos vazios ou muito pequenos)
+        if ($contentSize < 100) {
+            error_log("[DOWNLOAD_MEDIA] ERRO: Arquivo muito pequeno ($contentSize bytes), provavelmente corrompido");
+            return null;
+        }
+        
+        // Validar magic bytes para imagens
+        if (strpos($mimeType, 'image/') === 0) {
+            $magicBytes = substr($content, 0, 4);
+            $isValidImage = false;
+            
+            // JPEG: FF D8 FF
+            if (substr($magicBytes, 0, 3) === "\xFF\xD8\xFF") {
+                $isValidImage = true;
+            }
+            // PNG: 89 50 4E 47
+            elseif ($magicBytes === "\x89\x50\x4E\x47") {
+                $isValidImage = true;
+            }
+            // GIF: 47 49 46 38
+            elseif (substr($magicBytes, 0, 3) === "\x47\x49\x46") {
+                $isValidImage = true;
+            }
+            // WebP: 52 49 46 46
+            elseif ($magicBytes === "\x52\x49\x46\x46") {
+                $isValidImage = true;
+            }
+            
+            if (!$isValidImage) {
+                error_log("[DOWNLOAD_MEDIA] ERRO: Arquivo não é uma imagem válida (magic bytes incorretos)");
+                error_log("[DOWNLOAD_MEDIA] Magic bytes: " . bin2hex($magicBytes));
+                error_log("[DOWNLOAD_MEDIA] Primeiros 100 bytes: " . substr($content, 0, 100));
+                return null;
+            }
+        }
+        
         // Salvar arquivo
         $saved = file_put_contents($localPath, $content);
         
