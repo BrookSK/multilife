@@ -24,16 +24,24 @@ if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
 
-$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name
+$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status, d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
+        pa.completed_at
         FROM demands d
-        LEFT JOIN users u ON u.id = d.assumed_by_user_id';
+        LEFT JOIN users u ON u.id = d.assumed_by_user_id
+        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
 
 $where = [];
 $params = [];
 
 if ($status !== '') {
-    $where[] = 'd.status = :status';
-    $params['status'] = $status;
+    if ($status === 'concluido') {
+        // Para status concluído, buscar demandas que têm patient_assignments com status 'completed'
+        $where[] = 'pa.status = :pa_status';
+        $params['pa_status'] = 'completed';
+    } else {
+        $where[] = 'd.status = :status';
+        $params['status'] = $status;
+    }
 }
 
 if ($q !== '') {
@@ -183,13 +191,14 @@ foreach ($columns as $col) {
     $colId = (string)$col['id'];
     $items = $byStatus[$colId] ?? [];
     
-    // Coluna "Concluídos": apenas últimos 30 dias (baseado em updated_at), máximo 20 cards
+    // Coluna "Concluídos": apenas últimos 30 dias (baseado em completed_at do patient_assignment), máximo 20 cards
     if ($colId === 'concluido') {
         $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
         $filtered = [];
         foreach ($items as $item) {
-            $updateDate = $item['updated_at'] ?? $item['created_at'];
-            if ($updateDate >= $thirtyDaysAgo) {
+            // Usar completed_at do patient_assignment
+            $completedDate = $item['completed_at'] ?? null;
+            if ($completedDate && $completedDate >= $thirtyDaysAgo) {
                 $filtered[] = $item;
             }
         }
