@@ -19,7 +19,7 @@ $sqlReceitas = "
         pa.id,
         'income' as entry_type,
         COALESCE(pa.specialty, 'Atendimento') as category,
-        pa.agreed_value as amount,
+        pa.authorized_value as amount,
         CONCAT('Atendimento - ', COALESCE(pa.specialty, 'Sem especialidade'), ' - ', p.full_name) as description,
         pa.created_at as entry_date,
         pa.created_at,
@@ -32,17 +32,17 @@ $sqlReceitas = "
     FROM patient_assignments pa
     LEFT JOIN patients p ON p.id = pa.patient_id
     LEFT JOIN users u ON u.id = pa.professional_user_id
-    WHERE pa.agreed_value IS NOT NULL AND pa.agreed_value > 0
+    WHERE pa.authorized_value IS NOT NULL AND pa.authorized_value > 0
 ";
 
-// DESPESAS de atendimentos (repasses para profissionais)
+// DESPESAS de atendimentos (custos)
 $sqlDespesas = "
     SELECT 
         pa.id + 1000000 as id,
         'expense' as entry_type,
-        CONCAT('Repasse - ', COALESCE(pa.specialty, 'Atendimento')) as category,
-        pa.authorized_value as amount,
-        CONCAT('Repasse profissional - ', COALESCE(pa.specialty, 'Sem especialidade'), ' - ', u.name) as description,
+        CONCAT('Custo - ', COALESCE(pa.specialty, 'Atendimento')) as category,
+        pa.agreed_value as amount,
+        CONCAT('Custo do atendimento - ', COALESCE(pa.specialty, 'Sem especialidade'), ' - ', p.full_name) as description,
         pa.created_at as entry_date,
         pa.created_at,
         CASE WHEN pa.status = 'paid' THEN 'paid' ELSE 'pending' END as status,
@@ -50,11 +50,11 @@ $sqlDespesas = "
         u.name as professional_name,
         'Sistema' as created_by_name,
         NULL as installment_info,
-        'repasse' as source
+        'custo' as source
     FROM patient_assignments pa
     LEFT JOIN patients p ON p.id = pa.patient_id
     LEFT JOIN users u ON u.id = pa.professional_user_id
-    WHERE pa.authorized_value IS NOT NULL AND pa.authorized_value > 0
+    WHERE pa.agreed_value IS NOT NULL AND pa.agreed_value > 0
 ";
 
 // LANÇAMENTOS MANUAIS

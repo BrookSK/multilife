@@ -412,8 +412,8 @@ document.addEventListener("DOMContentLoaded", function() {
         return;
       }
       
-      if (authorizedValue < agreedValue) {
-        if (!confirm("O Valor Autorizado (R$ " + authorizedValue.toFixed(2) + ") é menor que o Valor Acordado (R$ " + agreedValue.toFixed(2) + "). Isso resultará em prejuízo. Deseja continuar?")) {
+      if (agreedValue > authorizedValue) {
+        if (!confirm("ATENÇÃO: O Valor Acordado (R$ " + agreedValue.toFixed(2) + ") é MAIOR que o Valor Autorizado (R$ " + authorizedValue.toFixed(2) + "). Isso resultará em PREJUÍZO de R$ " + (agreedValue - authorizedValue).toFixed(2) + ". Deseja continuar?")) {
           return;
         }
       }

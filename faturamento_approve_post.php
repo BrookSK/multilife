@@ -57,8 +57,8 @@ try {
     $authorizedValue = (float)($assignment['authorized_value'] ?? $assignment['payment_value'] ?? 0);
     $sessionQty = (int)$assignment['session_quantity'];
     
-    $totalRevenue = $agreedValue * $sessionQty;  // RECEITA: cliente paga
-    $totalCost = $authorizedValue * $sessionQty; // DESPESA: profissional recebe
+    $totalRevenue = $authorizedValue * $sessionQty;  // RECEITA: valor autorizado
+    $totalCost = $agreedValue * $sessionQty;         // DESPESA: valor acordado
     
     error_log("Receita total: R$ " . $totalRevenue);
     error_log("Custo total: R$ " . $totalCost);

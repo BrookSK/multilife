@@ -17,7 +17,7 @@ if (!in_array($status, $allowed, true)) {
 
 // Contas a receber de atendimentos (patient_assignments)
 $sql = 'SELECT pa.id, 
-               pa.agreed_value as amount,
+               pa.authorized_value as amount,
                pa.created_at as due_at,
                CASE 
                    WHEN pa.status = "paid" THEN "recebido"
@@ -35,7 +35,7 @@ $sql = 'SELECT pa.id,
         FROM patient_assignments pa
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
-        WHERE p.deleted_at IS NULL AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0';
+        WHERE p.deleted_at IS NULL AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0';
 $params = [];
 
 if ($status !== '') {

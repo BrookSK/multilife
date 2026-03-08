@@ -55,12 +55,12 @@ $whereClause = implode(' AND ', $baseWhere);
 
 $db = db();
 
-// Receitas: soma dos valores acordados dos atendimentos aprovados/finalizados
+// Receitas: soma dos valores autorizados dos atendimentos aprovados/finalizados
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
+    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
+     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $receitasAtendimentos = (float)$stmt->fetchColumn();
@@ -76,12 +76,12 @@ $receitasLancamentos = (float)$stmt->fetchColumn();
 
 $faturamentoTotal = $receitasAtendimentos + $receitasLancamentos;
 
-// Despesas: soma dos valores autorizados para profissionais
+// Despesas: soma dos valores acordados (custos)
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
+    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
+     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $despesasAtendimentos = (float)$stmt->fetchColumn();
@@ -155,10 +155,10 @@ $previousWhereClause = implode(' AND ', $previousWhere);
 
 // Faturamento período anterior
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
+    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $previousWhereClause"
+     WHERE pa.status IN ('approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $previousWhereClause"
 );
 $stmt->execute($params);
 $faturamentoPrevious = (float)$stmt->fetchColumn();
@@ -186,10 +186,10 @@ if ($numAtendimentosPrevious > 0) {
 
 // Contas a receber: atendimentos aprovados mas ainda não pagos
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
+    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
+     WHERE pa.status IN ('approved', 'completed') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $contasReceberAtendimentos = (float)$stmt->fetchColumn();
@@ -205,12 +205,12 @@ $contasReceberLancamentos = (float)$stmt->fetchColumn();
 
 $contasReceber = $contasReceberAtendimentos + $contasReceberLancamentos;
 
-// Contas a pagar: valores autorizados para profissionais ainda não pagos
+// Contas a pagar: valores acordados (custos) ainda não pagos
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
+    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
      FROM patient_assignments pa
      INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('approved', 'completed') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
+     WHERE pa.status IN ('approved', 'completed') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
 );
 $stmt->execute($params);
 $contasPagarAtendimentos = (float)$stmt->fetchColumn();
