@@ -7,13 +7,16 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('finance.manage');
 
-$status = isset($_GET['status']) ? (string)$_GET['status'] : '';
+$tab = isset($_GET['tab']) ? (string)$_GET['tab'] : 'pendentes';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
-$allowed = ['', 'pendente', 'pago'];
-if (!in_array($status, $allowed, true)) {
-    $status = '';
+$allowedTabs = ['pendentes', 'historico'];
+if (!in_array($tab, $allowedTabs, true)) {
+    $tab = 'pendentes';
 }
+
+// Definir status baseado na aba
+$status = ($tab === 'pendentes') ? 'pendente' : 'pago';
 
 // Contas a pagar de atendimentos (patient_assignments)
 $sql = 'SELECT pa.id, 
@@ -42,12 +45,10 @@ $sql = 'SELECT pa.id,
 
 $params = [];
 
-if ($status !== '') {
-    if ($status === 'pago') {
-        $sql .= ' AND pa.status = "paid"';
-    } elseif ($status === 'pendente') {
-        $sql .= ' AND pa.status IN ("approved", "completed", "confirmed")';
-    }
+if ($status === 'pago') {
+    $sql .= ' AND pa.status = "paid"';
+} elseif ($status === 'pendente') {
+    $sql .= ' AND pa.status IN ("approved", "completed", "confirmed")';
 }
 
 if ($q !== '') {
@@ -116,8 +117,8 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">Contas a Pagar (Repasse)</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Geradas quando a documentação é aprovada.</div>';
+echo '<div style="font-size:22px;font-weight:900">Contas a Pagar</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Gerencie suas despesas e pagamentos.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn btnPrimary" href="/finance_entry_create.php?type=expense">+ Nova Despesa</a>';
@@ -127,20 +128,43 @@ echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="get" action="/finance_payable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<select name="status" style="min-width:220px">';
-$labels = [
-    '' => 'Todos',
-    'pendente' => 'Pendente',
-    'pago' => 'Pago',
+// Sistema de abas
+echo '<div style="margin-top:20px;border-bottom:2px solid hsl(var(--border))">';
+echo '<div style="display:flex;gap:4px">';
+
+$tabs = [
+    'pendentes' => ['label' => 'Pendentes', 'icon' => '⏳'],
+    'historico' => ['label' => 'Histórico', 'icon' => '📋'],
 ];
-foreach ($labels as $k => $label) {
-    $sel = ($status === $k) ? ' selected' : '';
-    echo '<option value="' . h($k) . '"' . $sel . '>' . h($label) . '</option>';
+
+foreach ($tabs as $tabKey => $tabInfo) {
+    $isActive = ($tab === $tabKey);
+    $activeStyle = $isActive 
+        ? 'background:hsl(var(--primary));color:white;border-bottom:3px solid hsl(var(--primary))' 
+        : 'background:transparent;color:hsl(var(--foreground));border-bottom:3px solid transparent';
+    
+    $queryParams = ['tab' => $tabKey];
+    if ($q !== '') {
+        $queryParams['q'] = $q;
+    }
+    
+    echo '<a href="/finance_payable_list.php?' . http_build_query($queryParams) . '" ';
+    echo 'style="padding:12px 24px;text-decoration:none;font-weight:600;font-size:15px;transition:all 0.2s;' . $activeStyle . '">';
+    echo $tabInfo['icon'] . ' ' . h($tabInfo['label']);
+    echo '</a>';
 }
-echo '</select>';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (profissional/agendamento)" style="flex:1;min-width:240px">';
-echo '<button class="btn" type="submit">Filtrar</button>';
+
+echo '</div>';
+echo '</div>';
+
+// Formulário de busca
+echo '<form method="get" action="/finance_payable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (fornecedor/descrição/categoria)" style="flex:1;min-width:240px">';
+echo '<button class="btn" type="submit">Buscar</button>';
+if ($q !== '') {
+    echo '<a class="btn" href="/finance_payable_list.php?tab=' . h($tab) . '">Limpar</a>';
+}
 echo '</form>';
 
 echo '</section>';
@@ -205,15 +229,16 @@ foreach ($rows as $r) {
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td style="text-align:right">';
 
-    // Só permitir marcar como pago lançamentos financeiros manuais
-    if ((string)$r['source'] === 'financial_entry') {
+    // Só permitir marcar como pago lançamentos financeiros manuais na aba de pendentes
+    if ($tab === 'pendentes' && (string)$r['source'] === 'financial_entry' && (string)$r['status'] === 'pendente') {
         echo '<form method="post" action="/finance_payable_mark_paid_post.php" style="display:inline">';
         echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
-        $disabled = ((string)$r['status'] === 'pago') ? ' disabled' : '';
-        echo '<button class="btn" type="submit" style="height:34px"' . $disabled . '>Marcar como pago</button>';
+        echo '<button class="btn" type="submit" style="height:34px">Marcar como pago</button>';
         echo '</form>';
+    } elseif ($tab === 'historico' && !empty($r['paid_at'])) {
+        // Mostrar data de pagamento no histórico
+        echo '<span style="font-size:13px;color:hsl(var(--muted-foreground))">Pago em ' . date('d/m/Y', strtotime($r['paid_at'])) . '</span>';
     } else {
-        // Para patient_assignments, não tem ação aqui
         echo '<span style="font-size:13px;color:hsl(var(--muted-foreground))">-</span>';
     }
 
