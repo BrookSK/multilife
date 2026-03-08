@@ -286,13 +286,9 @@ echo '</form>';
 
 echo '</section>';
 
-// Cards principais - Grid responsivo que ocupa tela inteira
-echo '<style>
-@media (min-width: 1400px) { .finance-cards-grid { grid-template-columns: repeat(7, 1fr); } }
-@media (min-width: 1024px) and (max-width: 1399px) { .finance-cards-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 1023px) { .finance-cards-grid { grid-template-columns: repeat(2, 1fr); } }
-</style>';
-echo '<div class="finance-cards-grid" style="display:grid;gap:16px;margin-bottom:16px">';
+// Cards principais - 7 colunas fixas
+echo '<div style="overflow-x:auto;margin-bottom:16px">';
+echo '<div style="display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:12px;min-width:1050px">';
 
 echo '<section class="card">';
 echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:8px">Número de Atendimentos</div>';
@@ -350,6 +346,7 @@ echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground
 echo '</section>';
 
 echo '</div>'; // Fecha grid de cards
+echo '</div>'; // Fecha wrapper com overflow-x
 
 // Atendimentos por Especialidade + Movimentações (UNIFICADO)
 echo '<section class="card col12">';
