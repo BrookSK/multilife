@@ -263,10 +263,11 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                 $mediaUrl = $localUrl;
                 error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
             } else {
-                // Se falhou ao baixar, não salvar a mensagem
-                error_log("[SAVE_MSG] ERRO: Falha ao baixar mídia, mensagem não será salva");
+                // Se falhou ao baixar, salvar mensagem mas sem URL (não exibir mídia quebrada)
+                error_log("[SAVE_MSG] AVISO: Falha ao baixar mídia, salvando mensagem sem URL");
                 error_log("[SAVE_MSG] URL que falhou: $mediaUrl");
-                return; // Não salvar mensagem com mídia inválida
+                $mediaUrl = null; // Limpar URL para não exibir mídia quebrada
+                $messageText = $messageText ?: '[Mídia não disponível]';
             }
         }
     }
