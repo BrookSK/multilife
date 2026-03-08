@@ -631,6 +631,7 @@ if (!empty($selectedChat)) {
         
         $stmt = db()->prepare("
             SELECT 
+                id,
                 message_text as text, 
                 from_me as fromMe, 
                 message_timestamp as timestamp,
