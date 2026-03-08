@@ -48,33 +48,8 @@ $receivablesOverdue = db()->query("
 // ============================================
 
 // 3. Documentos de Profissionais Atrasados
-// Buscar prazo nas configurações
-$docDeadlineStmt = db()->query("SELECT setting_value FROM admin_settings WHERE setting_key = 'professional_document_deadline_days'");
-$docDeadlineRow = $docDeadlineStmt->fetch();
-$docDeadlineDays = $docDeadlineRow ? (int)$docDeadlineRow['setting_value'] : 7; // Padrão: 7 dias
-
-$documentsOverdue = db()->query("
-    SELECT 
-        u.id as user_id,
-        u.name,
-        u.email,
-        u.created_at,
-        DATEDIFF(CURDATE(), u.created_at) as days_since_creation
-    FROM users u
-    INNER JOIN user_roles ur ON ur.user_id = u.id
-    INNER JOIN roles r ON r.id = ur.role_id
-    WHERE r.slug = 'profissional'
-    AND u.status = 'active'
-    AND DATEDIFF(CURDATE(), u.created_at) > {$docDeadlineDays}
-    AND NOT EXISTS (
-        SELECT 1 FROM document_folders df 
-        INNER JOIN documents d ON d.folder_id = df.id
-        WHERE df.entity_type = 'professional' 
-        AND df.entity_id = u.id
-    )
-    ORDER BY u.created_at ASC
-    LIMIT 50
-")->fetchAll();
+// Temporariamente desabilitado até configurar corretamente a estrutura de documentos
+$documentsOverdue = [];
 
 // 4. Atendimentos Parados >24h nas Etapas Críticas
 $appointmentsStuck = db()->query("
