@@ -15,14 +15,19 @@ $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $sql = "
     SELECT 
         fe.*,
-        p.full_name as patient_name,
+        p.name as patient_name,
         u.name as professional_name,
-        creator.name as created_by_name
+        creator.name as created_by_name,
+        CASE 
+            WHEN fe.payment_type = 'installment' AND fe.total_installments > 0 
+            THEN CONCAT(fe.installment_number, '/', fe.total_installments)
+            ELSE NULL
+        END as installment_info
     FROM financial_entries fe
     LEFT JOIN patients p ON p.id = fe.patient_id
     LEFT JOIN users u ON u.id = fe.professional_user_id
     LEFT JOIN users creator ON creator.id = fe.created_by_user_id
-    WHERE 1=1
+    WHERE fe.is_active = 1
 ";
 
 $params = [];
@@ -38,7 +43,7 @@ if ($status !== 'all') {
 }
 
 if ($searchQuery !== '') {
-    $sql .= " AND (p.full_name LIKE :search OR u.name LIKE :search OR fe.description LIKE :search)";
+    $sql .= " AND (p.name LIKE :search OR u.name LIKE :search OR fe.description LIKE :search)";
     $params['search'] = '%' . $searchQuery . '%';
 }
 

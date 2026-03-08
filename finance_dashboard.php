@@ -20,16 +20,16 @@ if (!in_array($period, $allowedPeriods, true)) {
 $dateFilter = '';
 switch ($period) {
     case 'day':
-        $dateFilter = 'DATE(a.first_at) = CURDATE()';
+        $dateFilter = 'DATE(pa.first_at) = CURDATE()';
         break;
     case 'week':
-        $dateFilter = 'YEARWEEK(a.first_at, 1) = YEARWEEK(CURDATE(), 1)';
+        $dateFilter = 'YEARWEEK(pa.first_at, 1) = YEARWEEK(CURDATE(), 1)';
         break;
     case 'month':
-        $dateFilter = 'YEAR(a.first_at) = YEAR(CURDATE()) AND MONTH(a.first_at) = MONTH(CURDATE())';
+        $dateFilter = 'YEAR(pa.first_at) = YEAR(CURDATE()) AND MONTH(pa.first_at) = MONTH(CURDATE())';
         break;
     case 'year':
-        $dateFilter = 'YEAR(a.first_at) = YEAR(CURDATE())';
+        $dateFilter = 'YEAR(pa.first_at) = YEAR(CURDATE())';
         break;
 }
 
@@ -37,12 +37,12 @@ $baseWhere = [$dateFilter];
 $params = [];
 
 if ($professionalId > 0) {
-    $baseWhere[] = 'a.professional_user_id = :prof_id';
+    $baseWhere[] = 'pa.professional_user_id = :prof_id';
     $params['prof_id'] = $professionalId;
 }
 
 if ($specialty !== '') {
-    $baseWhere[] = 'a.specialty = :specialty';
+    $baseWhere[] = 'pa.specialty = :specialty';
     $params['specialty'] = $specialty;
 }
 
@@ -55,49 +55,47 @@ $whereClause = implode(' AND ', $baseWhere);
 
 $db = db();
 
-// Receitas de contas a receber (sistema antigo)
+// Receitas: soma dos valores acordados dos atendimentos aprovados/finalizados
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(ar.amount), 0) AS total
-     FROM finance_accounts_receivable ar
-     INNER JOIN appointments a ON a.id = ar.appointment_id
-     INNER JOIN patients p ON p.id = ar.patient_id
-     WHERE ar.status IN ('recebido') AND $whereClause"
+    "SELECT COALESCE(SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status IN ('approved', 'completed', 'paid') AND $whereClause"
 );
 $stmt->execute($params);
-$receitasContasReceber = (float)$stmt->fetchColumn();
+$receitasAtendimentos = (float)$stmt->fetchColumn();
 
-// Receitas de lançamentos financeiros (sistema de faturamento)
+// Receitas de lançamentos financeiros adicionais
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(fe.amount), 0) AS total
      FROM financial_entries fe
      WHERE fe.entry_type = 'income' AND fe.status IN ('pending', 'paid')"
 );
 $stmt->execute();
-$receitasFaturamento = (float)$stmt->fetchColumn();
+$receitasLancamentos = (float)$stmt->fetchColumn();
 
-$faturamentoTotal = $receitasContasReceber + $receitasFaturamento;
+$faturamentoTotal = $receitasAtendimentos + $receitasLancamentos;
 
-// Despesas de contas a pagar (sistema antigo)
+// Despesas: soma dos valores autorizados para profissionais
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(ap.amount), 0) AS total
-     FROM finance_accounts_payable ap
-     INNER JOIN appointments a ON a.id = ap.appointment_id
-     INNER JOIN patients p ON p.id = a.patient_id
-     WHERE ap.status IN ('pago') AND $whereClause"
+    "SELECT COALESCE(SUM(COALESCE(pa.authorized_value, pa.payment_value, 0)), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status IN ('approved', 'completed', 'paid') AND $whereClause"
 );
 $stmt->execute($params);
-$despesasContasPagar = (float)$stmt->fetchColumn();
+$despesasAtendimentos = (float)$stmt->fetchColumn();
 
-// Despesas de lançamentos financeiros (sistema de faturamento)
+// Despesas de lançamentos financeiros adicionais
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(fe.amount), 0) AS total
      FROM financial_entries fe
      WHERE fe.entry_type = 'expense' AND fe.status IN ('pending', 'paid')"
 );
 $stmt->execute();
-$despesasFaturamento = (float)$stmt->fetchColumn();
+$despesasLancamentos = (float)$stmt->fetchColumn();
 
-$custoAtendimentos = $despesasContasPagar + $despesasFaturamento;
+$custoAtendimentos = $despesasAtendimentos + $despesasLancamentos;
 
 $margemOperacional = $faturamentoTotal - $custoAtendimentos;
 $lucroLiquido = $margemOperacional;
@@ -105,8 +103,8 @@ $lucroLiquido = $margemOperacional;
 // Número de atendimentos
 $stmt = $db->prepare(
     "SELECT COUNT(*) AS total
-     FROM appointments a
-     INNER JOIN patients p ON p.id = a.patient_id
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
      WHERE $whereClause"
 );
 $stmt->execute($params);
@@ -115,20 +113,20 @@ $numAtendimentos = (int)$stmt->fetchColumn();
 // Atendimentos cancelados
 $stmt = $db->prepare(
     "SELECT COUNT(*) AS total
-     FROM appointments a
-     INNER JOIN patients p ON p.id = a.patient_id
-     WHERE a.status = 'cancelado' AND $whereClause"
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status = 'cancelled' AND $whereClause"
 );
 $stmt->execute($params);
 $numCancelados = (int)$stmt->fetchColumn();
 
 // Atendimentos por especialidade
 $stmt = $db->prepare(
-    "SELECT a.specialty, COUNT(*) as count
-     FROM appointments a
-     INNER JOIN patients p ON p.id = a.patient_id
+    "SELECT pa.specialty, COUNT(*) as count
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
      WHERE $whereClause
-     GROUP BY a.specialty
+     GROUP BY pa.specialty
      ORDER BY count DESC
      LIMIT 10"
 );
@@ -139,16 +137,16 @@ $atendimentosPorEspecialidade = $stmt->fetchAll();
 $previousDateFilter = '';
 switch ($period) {
     case 'day':
-        $previousDateFilter = 'DATE(a.first_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
+        $previousDateFilter = 'DATE(pa.first_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)';
         break;
     case 'week':
-        $previousDateFilter = 'YEARWEEK(a.first_at, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
+        $previousDateFilter = 'YEARWEEK(pa.first_at, 1) = YEARWEEK(DATE_SUB(CURDATE(), INTERVAL 1 WEEK), 1)';
         break;
     case 'month':
-        $previousDateFilter = 'YEAR(a.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND MONTH(a.first_at) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
+        $previousDateFilter = 'YEAR(pa.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) AND MONTH(pa.first_at) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH))';
         break;
     case 'year':
-        $previousDateFilter = 'YEAR(a.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
+        $previousDateFilter = 'YEAR(pa.first_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
         break;
 }
 
@@ -157,11 +155,10 @@ $previousWhereClause = implode(' AND ', $previousWhere);
 
 // Faturamento período anterior
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(ar.amount), 0) AS total
-     FROM finance_accounts_receivable ar
-     INNER JOIN appointments a ON a.id = ar.appointment_id
-     INNER JOIN patients p ON p.id = ar.patient_id
-     WHERE ar.status IN ('recebido') AND $previousWhereClause"
+    "SELECT COALESCE(SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status IN ('approved', 'completed', 'paid') AND $previousWhereClause"
 );
 $stmt->execute($params);
 $faturamentoPrevious = (float)$stmt->fetchColumn();
@@ -175,8 +172,8 @@ if ($faturamentoPrevious > 0) {
 // Número de atendimentos período anterior
 $stmt = $db->prepare(
     "SELECT COUNT(*) AS total
-     FROM appointments a
-     INNER JOIN patients p ON p.id = a.patient_id
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
      WHERE $previousWhereClause"
 );
 $stmt->execute($params);
@@ -187,42 +184,57 @@ if ($numAtendimentosPrevious > 0) {
     $crescimentoAtendimentos = (($numAtendimentos - $numAtendimentosPrevious) / $numAtendimentosPrevious) * 100;
 }
 
+// Contas a receber: atendimentos aprovados mas ainda não pagos
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(ar.amount), 0) AS total
-     FROM finance_accounts_receivable ar
-     INNER JOIN appointments a ON a.id = ar.appointment_id
-     INNER JOIN patients p ON p.id = ar.patient_id
-     WHERE ar.status = 'pendente' AND $whereClause"
+    "SELECT COALESCE(SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status IN ('approved', 'completed') AND $whereClause"
 );
 $stmt->execute($params);
-$contasReceber = (float)$stmt->fetchColumn();
+$contasReceberAtendimentos = (float)$stmt->fetchColumn();
 
+// Contas a receber de lançamentos financeiros
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(ap.amount), 0) AS total
-     FROM finance_accounts_payable ap
-     INNER JOIN appointments a ON a.id = ap.appointment_id
-     INNER JOIN patients p ON p.id = a.patient_id
-     WHERE ap.status = 'pendente' AND $whereClause"
+    "SELECT COALESCE(SUM(fe.amount), 0) AS total
+     FROM financial_entries fe
+     WHERE fe.entry_type = 'income' AND fe.status = 'pending'"
 );
-$stmt->execute($params);
-$contasPagar = (float)$stmt->fetchColumn();
+$stmt->execute();
+$contasReceberLancamentos = (float)$stmt->fetchColumn();
 
+$contasReceber = $contasReceberAtendimentos + $contasReceberLancamentos;
+
+// Contas a pagar: valores autorizados para profissionais ainda não pagos
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(ar.amount), 0) AS total
-     FROM finance_accounts_receivable ar
-     INNER JOIN appointments a ON a.id = ar.appointment_id
-     INNER JOIN patients p ON p.id = ar.patient_id
-     WHERE ar.status = 'inadimplente' AND $whereClause"
+    "SELECT COALESCE(SUM(COALESCE(pa.authorized_value, pa.payment_value, 0)), 0) AS total
+     FROM patient_assignments pa
+     INNER JOIN patients p ON p.id = pa.patient_id
+     WHERE pa.status IN ('approved', 'completed') AND $whereClause"
 );
 $stmt->execute($params);
-$inadimplencia = (float)$stmt->fetchColumn();
+$contasPagarAtendimentos = (float)$stmt->fetchColumn();
+
+// Contas a pagar de lançamentos financeiros
+$stmt = $db->prepare(
+    "SELECT COALESCE(SUM(fe.amount), 0) AS total
+     FROM financial_entries fe
+     WHERE fe.entry_type = 'expense' AND fe.status = 'pending'"
+);
+$stmt->execute();
+$contasPagarLancamentos = (float)$stmt->fetchColumn();
+
+$contasPagar = $contasPagarAtendimentos + $contasPagarLancamentos;
+
+// Inadimplência não é mais usada no novo sistema
+$inadimplencia = 0;
 
 $professionals = $db->query(
     "SELECT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.slug = 'profissional' AND u.status = 'active' ORDER BY u.name ASC"
 )->fetchAll();
 
 $specialties = $db->query(
-    "SELECT DISTINCT specialty FROM appointments WHERE specialty IS NOT NULL AND specialty != '' ORDER BY specialty ASC"
+    "SELECT DISTINCT specialty FROM patient_assignments WHERE specialty IS NOT NULL AND specialty != '' ORDER BY specialty ASC"
 )->fetchAll();
 
 $cities = $db->query(
