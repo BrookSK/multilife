@@ -454,14 +454,34 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 });
 
-// Função para upload de mídia
-async function handleMediaUpload(input, mediaType) {
+// Variável global para armazenar arquivo selecionado
+let selectedMediaFile = null;
+let selectedMediaType = null;
+
+// Função para selecionar mídia (não envia automaticamente)
+function handleMediaUpload(input, mediaType) {
+  console.log('=== INICIO handleMediaUpload ===');
+  console.log('Tipo de mídia:', mediaType);
+  console.log('Input files:', input.files);
+  
   const file = input.files[0];
-  if (!file) return;
+  if (!file) {
+    console.warn('Nenhum arquivo selecionado');
+    return;
+  }
+  
+  console.log('Arquivo selecionado:', {
+    name: file.name,
+    size: file.size,
+    type: file.type
+  });
   
   // Validar tamanho
   const maxSize = mediaType === 'video' ? 25 * 1024 * 1024 : 10 * 1024 * 1024;
+  console.log('Tamanho máximo permitido:', maxSize, 'bytes');
+  
   if (file.size > maxSize) {
+    console.error('Arquivo muito grande:', file.size, '>', maxSize);
     alert('Arquivo muito grande. Máximo: ' + (maxSize / 1024 / 1024) + 'MB');
     input.value = '';
     return;
@@ -475,57 +495,186 @@ async function handleMediaUpload(input, mediaType) {
     'document': ['application/pdf']
   };
   
+  console.log('Tipos válidos para', mediaType, ':', validTypes[mediaType]);
+  
   if (!validTypes[mediaType].includes(file.type)) {
+    console.error('Tipo de arquivo não permitido:', file.type);
     alert('Tipo de arquivo não permitido para ' + mediaType);
     input.value = '';
     return;
   }
+  
+  console.log('Validações OK - Armazenando arquivo');
+  
+  // Armazenar arquivo e tipo
+  selectedMediaFile = file;
+  selectedMediaType = mediaType;
+  
+  console.log('Arquivo armazenado globalmente:', {
+    file: selectedMediaFile,
+    type: selectedMediaType
+  });
+  
+  // Mostrar preview na área de input
+  showMediaPreview(file, mediaType);
+  
+  // Limpar input file
+  input.value = '';
+  console.log('=== FIM handleMediaUpload ===');
+}
+
+// Função para mostrar preview do arquivo selecionado
+function showMediaPreview(file, mediaType) {
+  // Remover preview anterior se existir
+  const existingPreview = document.getElementById('mediaPreview');
+  if (existingPreview) {
+    existingPreview.remove();
+  }
+  
+  // Criar área de preview
+  const previewDiv = document.createElement('div');
+  previewDiv.id = 'mediaPreview';
+  previewDiv.style.cssText = 'padding:12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:12px;position:relative';
+  
+  // Ícone baseado no tipo
+  let icon = '';
+  let label = '';
+  if (mediaType === 'audio') {
+    icon = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+    label = 'Áudio';
+  } else if (mediaType === 'image') {
+    icon = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+    label = 'Imagem';
+  } else if (mediaType === 'video') {
+    icon = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+    label = 'Vídeo';
+  } else if (mediaType === 'document') {
+    icon = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
+    label = 'Documento';
+  }
+  
+  previewDiv.innerHTML = `
+    <div style="color:hsl(var(--primary))">${icon}</div>
+    <div style="flex:1">
+      <div style="font-weight:600;color:hsl(var(--foreground))">${label}: ${file.name}</div>
+      <div style="font-size:12px;color:hsl(var(--muted-foreground))">${(file.size / 1024).toFixed(1)} KB</div>
+    </div>
+    <button type="button" onclick="clearMediaPreview()" style="background:hsl(var(--destructive));color:hsl(var(--destructive-foreground));border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;font-weight:bold">×</button>
+  `;
+  
+  // Inserir preview antes do textarea
+  const form = document.getElementById('sendMessageForm');
+  const textarea = form.querySelector('textarea');
+  form.insertBefore(previewDiv, textarea);
+  
+  // Tornar textarea opcional quando há mídia
+  textarea.removeAttribute('required');
+  textarea.placeholder = 'Digite uma legenda (opcional)...';
+}
+
+// Função para limpar preview e arquivo selecionado
+function clearMediaPreview() {
+  selectedMediaFile = null;
+  selectedMediaType = null;
+  
+  const preview = document.getElementById('mediaPreview');
+  if (preview) {
+    preview.remove();
+  }
+  
+  // Restaurar textarea como obrigatório
+  const textarea = document.querySelector('#sendMessageForm textarea');
+  if (textarea) {
+    textarea.setAttribute('required', 'required');
+    textarea.placeholder = 'Digite uma mensagem';
+  }
+}
+
+// Modificar envio do formulário para incluir mídia
+document.addEventListener('DOMContentLoaded', function() {
+  const sendForm = document.getElementById('sendMessageForm');
+  if (sendForm) {
+    sendForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      // Se há mídia selecionada, enviar via upload
+      if (selectedMediaFile && selectedMediaType) {
+        await sendMediaMessage();
+      } else {
+        // Envio normal de texto
+        this.submit();
+      }
+    });
+  }
+});
+
+// Função para enviar mensagem com mídia
+async function sendMediaMessage() {
+  console.log('=== INICIO sendMediaMessage ===');
+  console.log('Arquivo selecionado:', selectedMediaFile);
+  console.log('Tipo de mídia:', selectedMediaType);
+  console.log('Chat ID:', window.chatId);
+  
+  const textarea = document.querySelector('#sendMessageForm textarea');
+  const caption = textarea ? textarea.value.trim() : '';
+  console.log('Legenda:', caption);
   
   // Mostrar loading
   const messagesContainer = document.getElementById('messagesContainer');
   const loadingDiv = document.createElement('div');
   loadingDiv.id = 'uploadLoading';
   loadingDiv.style.cssText = 'text-align:center;padding:20px;color:#667781';
-  loadingDiv.innerHTML = '<div style="display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #00a884;border-radius:50%;animation:spin 1s linear infinite"></div><p style="margin-top:12px">Enviando ' + mediaType + '...</p>';
+  loadingDiv.innerHTML = '<div style="display:inline-block;width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #00a884;border-radius:50%;animation:spin 1s linear infinite"></div><p style="margin-top:12px">Enviando ' + selectedMediaType + '...</p>';
   messagesContainer.appendChild(loadingDiv);
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
   
+  console.log('Loading exibido');
+  
   // Criar FormData
   const formData = new FormData();
-  formData.append('media', file);
+  formData.append('media', selectedMediaFile);
   formData.append('remote_jid', window.chatId);
-  formData.append('media_type', mediaType);
-  
-  // Adicionar legenda se for imagem ou vídeo
-  if (mediaType === 'image' || mediaType === 'video') {
-    const caption = prompt('Digite uma legenda (opcional):');
-    if (caption) {
-      formData.append('caption', caption);
-    }
+  formData.append('media_type', selectedMediaType);
+  if (caption) {
+    formData.append('caption', caption);
   }
   
+  console.log('FormData criado:', {
+    media: selectedMediaFile.name,
+    remote_jid: window.chatId,
+    media_type: selectedMediaType,
+    caption: caption
+  });
+  
   try {
+    console.log('Enviando requisição para /chat_send_media.php...');
     const response = await fetch('/chat_send_media.php', {
       method: 'POST',
       body: formData
     });
     
+    console.log('Resposta recebida - Status:', response.status);
+    
     const data = await response.json();
+    console.log('Dados da resposta:', data);
     
     if (data.success) {
-      // Recarregar página para mostrar nova mensagem
+      console.log('Upload bem-sucedido!');
+      // Limpar preview e recarregar
+      clearMediaPreview();
       window.location.reload();
     } else {
+      console.error('Erro no upload:', data.error);
       alert('Erro ao enviar mídia: ' + (data.error || 'Erro desconhecido'));
       loadingDiv.remove();
     }
   } catch (error) {
+    console.error('Exception ao enviar mídia:', error);
     alert('Erro ao enviar mídia: ' + error.message);
     loadingDiv.remove();
   }
   
-  // Limpar input
-  input.value = '';
+  console.log('=== FIM sendMediaMessage ===');
 }
 
 // Função para gravar áudio
