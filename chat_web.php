@@ -1596,6 +1596,7 @@ if (empty($selectedChat)) {
             
             // Renderizar baseado no tipo de mensagem
             if ($messageType === 'audio' && !empty($mediaUrl)) {
+                $messageId = $msg['id'] ?? 0;
                 $mimeType = $msg['mediaMimeType'] ?? 'audio/ogg; codecs=opus';
                 echo '<!-- DEBUG AUDIO: URL=' . h($mediaUrl) . ' MIME=' . h($mimeType) . ' -->';
                 echo '<div style="margin-bottom:8px">';
@@ -1604,11 +1605,19 @@ if (empty($selectedChat)) {
                 echo 'Seu navegador não suporta este formato de áudio.';
                 echo '</audio>';
                 echo '</div>';
+                
+                // Área de transcrição
+                echo '<div id="transcription-area-' . $messageId . '" style="margin-top:8px;">';
                 if (!empty($msg['audioTranscription'])) {
-                    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));font-style:italic;margin-top:4px">';
-                    echo h($msg['audioTranscription']);
+                    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));font-style:italic;">';
+                    echo '📝 ' . h($msg['audioTranscription']);
                     echo '</div>';
+                } else {
+                    echo '<button onclick="transcribeAudio(' . $messageId . ')" id="transcribe-btn-' . $messageId . '" class="btn btn-sm" style="padding:4px 12px;font-size:12px;background:#569cd6;color:#fff;border:none;border-radius:4px;cursor:pointer;">';
+                    echo '🎤 Transcrever Áudio';
+                    echo '</button>';
                 }
+                echo '</div>';
             } elseif ($messageType === 'image' && !empty($mediaUrl)) {
                 echo '<!-- DEBUG IMAGE: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="margin-bottom:8px">';
@@ -1939,6 +1948,61 @@ if (!empty($messages)) {
 }
 echo 'window.lastTimestamp = ' . $lastTs . ';';
 echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window.chatName);';
+echo '
+// Função para transcrever áudio
+async function transcribeAudio(messageId) {
+    const btn = document.getElementById("transcribe-btn-" + messageId);
+    const area = document.getElementById("transcription-area-" + messageId);
+    
+    if (!btn || !area) return;
+    
+    // Desabilitar botão e mostrar loading
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Transcrevendo...";
+    btn.style.opacity = "0.6";
+    
+    try {
+        const formData = new FormData();
+        formData.append("message_id", messageId);
+        
+        const response = await fetch("/chat_transcribe_audio.php", {
+            method: "POST",
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Substituir botão pela transcrição
+            area.innerHTML = `<div style="font-size:13px;color:hsl(var(--muted-foreground));font-style:italic;">📝 ${escapeHtml(result.transcription)}</div>`;
+            
+            if (result.cached) {
+                console.log("✅ Transcrição carregada do cache");
+            } else {
+                console.log("✅ Transcrição concluída via Whisper API");
+            }
+        } else {
+            // Mostrar erro
+            area.innerHTML = `<div style="font-size:12px;color:#f48771;">❌ Erro: ${escapeHtml(result.error)}</div>`;
+            console.error("Erro na transcrição:", result.error);
+        }
+    } catch (error) {
+        // Restaurar botão em caso de erro
+        btn.disabled = false;
+        btn.innerHTML = "🎤 Transcrever Áudio";
+        btn.style.opacity = "1";
+        console.error("Erro ao transcrever:", error);
+        alert("Erro ao transcrever áudio. Tente novamente.");
+    }
+}
+
+// Função auxiliar para escapar HTML
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+}
+';
 echo '</script>';
 
 view_footer();

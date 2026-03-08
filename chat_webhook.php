@@ -268,6 +268,7 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                     'image/png' => 'png',
                     'image/gif' => 'gif',
                     'image/webp' => 'webp',
+                    'audio/ogg' => 'ogg',
                 ];
                 $extension = $mimeToExt[$mediaMimeType] ?? 'jpg';
             }

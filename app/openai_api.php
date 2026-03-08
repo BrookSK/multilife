@@ -60,4 +60,72 @@ final class OpenAiApi
 
         return $this->request('POST', '/v1/chat/completions', $payload);
     }
+
+    /**
+     * Transcreve áudio usando Whisper API
+     * @param string $audioFilePath Caminho completo do arquivo de áudio
+     * @param string $language Código do idioma (opcional, ex: 'pt' para português)
+     * @return array Resposta da API com a transcrição
+     */
+    public function transcribeAudio(string $audioFilePath, string $language = 'pt'): array
+    {
+        if (!file_exists($audioFilePath)) {
+            throw new RuntimeException("Arquivo de áudio não encontrado: $audioFilePath");
+        }
+
+        $url = $this->baseUrl . '/v1/audio/transcriptions';
+        
+        // Criar multipart/form-data manualmente
+        $boundary = '----WebKitFormBoundary' . uniqid();
+        $fileContent = file_get_contents($audioFilePath);
+        $fileName = basename($audioFilePath);
+        
+        $body = "--$boundary\r\n";
+        $body .= "Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"\r\n";
+        $body .= "Content-Type: audio/ogg\r\n\r\n";
+        $body .= $fileContent . "\r\n";
+        
+        $body .= "--$boundary\r\n";
+        $body .= "Content-Disposition: form-data; name=\"model\"\r\n\r\n";
+        $body .= "whisper-1\r\n";
+        
+        $body .= "--$boundary\r\n";
+        $body .= "Content-Disposition: form-data; name=\"language\"\r\n\r\n";
+        $body .= "$language\r\n";
+        
+        $body .= "--$boundary--\r\n";
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $this->apiKey,
+            'Content-Type: multipart/form-data; boundary=' . $boundary,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $result = json_decode($response, true);
+        
+        $ok = $httpCode >= 200 && $httpCode < 300;
+        integration_log(
+            'openai_whisper',
+            'transcribe',
+            $ok ? 'success' : 'error',
+            $httpCode,
+            ['file' => $fileName, 'language' => $language],
+            $result,
+            $ok ? null : 'HTTP ' . $httpCode,
+            1
+        );
+
+        return [
+            'status' => $httpCode,
+            'json' => $result,
+            'body_raw' => $response,
+        ];
+    }
 }
