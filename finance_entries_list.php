@@ -31,6 +31,7 @@ $sqlReceitas = "
         u.name as professional_name,
         'Sistema' as created_by_name,
         NULL as installment_info,
+        'Fluxo Operacional' as cost_center,
         'atendimento' as source
     FROM patient_assignments pa
     LEFT JOIN patients p ON p.id = pa.patient_id
@@ -53,6 +54,7 @@ $sqlDespesas = "
         u.name as professional_name,
         'Sistema' as created_by_name,
         NULL as installment_info,
+        'Fluxo Operacional' as cost_center,
         'custo' as source
     FROM patient_assignments pa
     LEFT JOIN patients p ON p.id = pa.patient_id
@@ -79,6 +81,7 @@ $sqlManuais = "
             THEN CONCAT(fe.installment_number, '/', fe.total_installments)
             ELSE NULL
         END as installment_info,
+        fe.cost_center,
         'manual' as source
     FROM financial_entries fe
     LEFT JOIN patients p ON p.id = fe.patient_id
@@ -109,8 +112,8 @@ if ($searchQuery !== '') {
 
 // Filtro por centro de custo
 if ($costCenter !== '') {
-    $sql .= " AND (source = 'manual' AND installment_info LIKE :cost_center)";
-    $params['cost_center'] = '%' . $costCenter . '%';
+    $sql .= " AND cost_center = :cost_center";
+    $params['cost_center'] = $costCenter;
 }
 
 // Filtro por período
@@ -260,6 +263,7 @@ if (count($entries) === 0) {
     echo '<th>Data</th>';
     echo '<th>Tipo</th>';
     echo '<th>Categoria</th>';
+    echo '<th>Centro de Custo</th>';
     echo '<th>Paciente</th>';
     echo '<th>Profissional</th>';
     echo '<th>Descrição</th>';
@@ -281,6 +285,7 @@ if (count($entries) === 0) {
         echo '<td>' . date('d/m/Y', strtotime($entry['entry_date'])) . '</td>';
         echo '<td><span style="color:' . $typeColor . ';font-weight:600">' . ($entry['entry_type'] === 'income' ? 'Receita' : 'Despesa') . '</span></td>';
         echo '<td>' . h($entry['category']) . '</td>';
+        echo '<td>' . h($entry['cost_center'] ?? '-') . '</td>';
         echo '<td>' . h($entry['patient_name'] ?? '-') . '</td>';
         echo '<td>' . h($entry['professional_name'] ?? '-') . '</td>';
         echo '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . h($entry['description'] ?? '-') . '</td>';
