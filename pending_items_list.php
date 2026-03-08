@@ -55,14 +55,15 @@ $documentsOverdue = [];
 $appointmentsStuck = db()->query("
     SELECT 
         a.id,
-        a.patient_name,
+        p.full_name as patient_name,
         a.status,
         a.updated_at,
         TIMESTAMPDIFF(HOUR, a.updated_at, NOW()) as hours_stuck,
         d.id as demand_id
     FROM appointments a
+    INNER JOIN patients p ON p.id = a.patient_id
     LEFT JOIN demands d ON d.id = a.demand_id
-    WHERE a.status IN ('captacao', 'aguardando_email', 'tratamento_manual')
+    WHERE a.status IN ('agendado', 'pendente_formulario', 'revisao_admin')
     AND TIMESTAMPDIFF(HOUR, a.updated_at, NOW()) > 24
     ORDER BY a.updated_at ASC
     LIMIT 50
