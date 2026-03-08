@@ -22,6 +22,7 @@ if (!$employee) {
 $employeeNumber = trim((string)($_POST['employee_number'] ?? ''));
 $position = trim((string)($_POST['position'] ?? ''));
 $department = trim((string)($_POST['department'] ?? ''));
+$roleId = (int)($_POST['role_id'] ?? 0);
 $costCenterId = trim((string)($_POST['cost_center_id'] ?? ''));
 $contractType = trim((string)($_POST['contract_type'] ?? ''));
 $admissionDate = trim((string)($_POST['admission_date'] ?? ''));
@@ -40,6 +41,12 @@ if ($position === '') {
     exit;
 }
 
+if ($roleId === 0) {
+    flash_set('error', 'Selecione a função no sistema.');
+    header('Location: /hr_employee_profile.php?id=' . $employeeId . '&tab=contrato');
+    exit;
+}
+
 if ($status === '') {
     flash_set('error', 'Informe o status.');
     header('Location: /hr_employee_profile.php?id=' . $employeeId . '&tab=contrato');
@@ -50,6 +57,7 @@ $sql = 'UPDATE hr_employees SET
     employee_number = :employee_number,
     position = :position,
     department = :department,
+    role_id = :role_id,
     cost_center_id = :cost_center_id,
     contract_type = :contract_type,
     admission_date = :admission_date,
@@ -69,6 +77,7 @@ $stmt->execute([
     'employee_number' => $employeeNumber !== '' ? $employeeNumber : null,
     'position' => $position,
     'department' => $department !== '' ? $department : null,
+    'role_id' => $roleId,
     'cost_center_id' => $costCenterId !== '' ? (int)$costCenterId : null,
     'contract_type' => $contractType !== '' ? $contractType : null,
     'admission_date' => $admissionDate !== '' ? $admissionDate : null,

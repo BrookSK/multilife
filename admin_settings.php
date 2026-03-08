@@ -159,6 +159,10 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
         'keys' => ['appointments.email_subject_template', 'appointments.email_body_template', 'professional.onboarding_email_subject_template', 'professional.onboarding_email_body_template', 'professional.application_need_more_info_email_subject_template', 'professional.application_need_more_info_email_body_template', 'professional.application_rejected_email_subject_template', 'professional.application_rejected_email_body_template', 'professional.docs_reminder_email_subject_template', 'professional.docs_reminder_email_body_template', 'professional.docs_overdue_email_subject_template', 'professional.docs_overdue_email_body_template', 'professional.docs_approved_email_subject_template', 'professional.docs_approved_email_body_template']
     ],
+    'Funções' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>',
+        'keys' => ['_roles_manage_']
+    ],
     'Ajuda' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
         'keys' => ['_help_']
@@ -432,6 +436,39 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '4. No perfil do funcionário, clique em "Gerar Contrato"<br>';
         echo '5. Selecione o template e envie para assinatura<br>';
         echo '6. Acompanhe o status e baixe o PDF assinado';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '</div>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Funções') {
+        // Aba especial de Funções (Roles)
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Gerenciamento de Funções</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo '<strong>ℹ️ Sobre Funções:</strong><br>';
+        echo '• Funções definem o que cada usuário pode acessar no sistema<br>';
+        echo '• Cada função tem um conjunto de permissões específicas<br>';
+        echo '• Ao criar um funcionário no RH, você deve atribuir uma função<br>';
+        echo '• Exemplos: Admin, Financeiro, Captador, TI, Profissional';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<div style="display:grid;gap:12px">';
+        
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<a class="btn btnPrimary" href="/roles_list.php">Gerenciar Funções</a>';
+        echo '<a class="btn" href="/roles_create.php">+ Nova Função</a>';
+        echo '</div>';
+        
+        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Criar, editar e excluir funções<br>';
+        echo '• Definir permissões para cada função<br>';
+        echo '• Visualizar quais usuários têm cada função<br>';
+        echo '• Atribuir funções aos funcionários do RH';
         echo '</div>';
         echo '</div>';
         

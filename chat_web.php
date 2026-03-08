@@ -5,8 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-// Qualquer usuário logado pode acessar o chat
-// rbac_require_permission('chat.manage');
+rbac_require_permission('chat.manage');
 
 // Buscar especialidades
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");

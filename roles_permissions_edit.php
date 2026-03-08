@@ -48,9 +48,9 @@ echo '<input type="hidden" name="id" value="' . (int)$role['id'] . '">';
 foreach ($perms as $perm) {
     $pid = (int)$perm['id'];
     $checked = isset($current[$pid]) ? ' checked' : '';
-    echo '<label class="pill" style="display:flex;align-items:center;gap:10px;padding:10px 12px">';
+    echo '<label class="pill" style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer">';
     echo '<input type="checkbox" name="permission_ids[]" value="' . $pid . '"' . $checked . '> ';
-    echo '<span><strong>' . h((string)$perm['slug']) . '</strong> <span style="color:hsl(var(--muted-foreground))">— ' . h((string)$perm['name']) . '</span></span>';
+    echo '<span><strong>' . h((string)$perm['name']) . '</strong> <span style="color:hsl(var(--muted-foreground));font-size:13px">(' . h((string)$perm['slug']) . ')</span></span>';
     echo '</label>';
 }
 

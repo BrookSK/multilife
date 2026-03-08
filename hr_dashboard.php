@@ -14,7 +14,7 @@ if (!in_array($status, ['', 'active', 'inactive', 'terminated'], true)) {
     $status = 'active';
 }
 
-$sql = 'SELECT id, full_name, email, phone, position, department, photo_url, status, created_at FROM hr_employees WHERE 1=1';
+$sql = 'SELECT id, full_name, email, phone, position, department, role_id, photo_url, status, created_at FROM hr_employees WHERE 1=1';
 $params = [];
 
 if ($status !== '') {

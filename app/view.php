@@ -51,7 +51,6 @@ function view_header(string $title): void
             ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
             ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
             ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
-            ['title' => 'Permissões', 'path' => '/permissions_list.php'],
             ['title' => 'Configurações', 'path' => '/admin_settings.php'],
         ];
     }

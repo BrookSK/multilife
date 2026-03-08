@@ -89,6 +89,19 @@ echo '</div>';
 // Botões
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 if (!$isNew) {
+    // Botões de acesso ao usuário (se houver usuário vinculado)
+    if ($linkedUser) {
+        $currentUserId = auth_user_id();
+        
+        // Ver Perfil do Usuário
+        echo '<a class="btn" href="/users_edit.php?id=' . (int)$linkedUser['id'] . '" style="background:#667eea;color:#fff">👤 Ver Perfil</a>';
+        
+        // Login as User (apenas se não for o próprio usuário)
+        if ((int)$linkedUser['id'] !== $currentUserId) {
+            echo '<a class="btn" href="/login_as_user.php?user_id=' . (int)$linkedUser['id'] . '" style="background:#8b5cf6;color:#fff" onclick="return confirm(\'Fazer login como ' . h((string)$linkedUser['name']) . '?\')">🔑 Login as User</a>';
+        }
+    }
+    
     echo '<a class="btn btnPrimary" href="/hr_contract_generate.php?employee_id=' . (int)$employee['id'] . '" style="background:#10b981">📝 Gerar Contrato</a>';
     
     // Botão de suspender/desbloquear (apenas para admins e se houver usuário vinculado)
