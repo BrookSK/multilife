@@ -1653,25 +1653,25 @@ if (empty($selectedChat)) {
     echo '<div style="display:flex;gap:4px;align-items:center">';
     
     // Botão de áudio
-    echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" onchange="handleMediaUpload(this, \'audio\')">';
+    echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" data-media-type="audio">';
     echo '<button type="button" onclick="document.getElementById(\'audioInput\').click()" class="whatsapp-action-btn" title="Enviar áudio">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     echo '</button>';
     
     // Botão de imagem
-    echo '<input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleMediaUpload(this, \'image\')">';
+    echo '<input type="file" id="imageInput" accept="image/*" style="display:none" data-media-type="image">';
     echo '<button type="button" onclick="document.getElementById(\'imageInput\').click()" class="whatsapp-action-btn" title="Enviar imagem">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
     echo '</button>';
     
     // Botão de vídeo
-    echo '<input type="file" id="videoInput" accept="video/*" style="display:none" onchange="handleMediaUpload(this, \'video\')">';
+    echo '<input type="file" id="videoInput" accept="video/*" style="display:none" data-media-type="video">';
     echo '<button type="button" onclick="document.getElementById(\'videoInput\').click()" class="whatsapp-action-btn" title="Enviar vídeo">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
     echo '</button>';
     
     // Botão de documento
-    echo '<input type="file" id="documentInput" accept=".pdf" style="display:none" onchange="handleMediaUpload(this, \'document\')">';
+    echo '<input type="file" id="documentInput" accept=".pdf" style="display:none" data-media-type="document">';
     echo '<button type="button" onclick="document.getElementById(\'documentInput\').click()" class="whatsapp-action-btn" title="Enviar documento PDF">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
     echo '</button>';

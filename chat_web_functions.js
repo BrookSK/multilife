@@ -779,6 +779,42 @@ document.addEventListener('DOMContentLoaded', function() {
   if (groupSpecialty && groupRegion) {
     loadGroupsByFilter();
   }
+  
+  // Adicionar event listeners para inputs de mídia
+  const audioInput = document.getElementById('audioInput');
+  const imageInput = document.getElementById('imageInput');
+  const videoInput = document.getElementById('videoInput');
+  const documentInput = document.getElementById('documentInput');
+  
+  if (audioInput) {
+    audioInput.addEventListener('change', function() {
+      const mediaType = this.getAttribute('data-media-type');
+      handleMediaUpload(this, mediaType);
+    });
+  }
+  
+  if (imageInput) {
+    imageInput.addEventListener('change', function() {
+      const mediaType = this.getAttribute('data-media-type');
+      handleMediaUpload(this, mediaType);
+    });
+  }
+  
+  if (videoInput) {
+    videoInput.addEventListener('change', function() {
+      const mediaType = this.getAttribute('data-media-type');
+      handleMediaUpload(this, mediaType);
+    });
+  }
+  
+  if (documentInput) {
+    documentInput.addEventListener('change', function() {
+      const mediaType = this.getAttribute('data-media-type');
+      handleMediaUpload(this, mediaType);
+    });
+  }
+  
+  console.log('Event listeners de mídia adicionados');
 });
 
 // Adicionar CSS para animações
