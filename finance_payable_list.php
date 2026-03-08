@@ -167,10 +167,13 @@ foreach ($rows as $r) {
     
     echo '<td>' . date('d/m/Y', strtotime((string)$r['first_at'])) . '</td>';
     
-    // Fornecedor/Paciente: "Não aplicável" para lançamentos manuais sem fornecedor
-    $fornecedorDisplay = h((string)($r['patient_name'] ?? '-'));
-    if ((string)$r['source'] === 'financial_entry' && ($fornecedorDisplay === '-' || empty($fornecedorDisplay))) {
-        $fornecedorDisplay = 'Não aplicável';
+    // Fornecedor: Profissional para atendimentos, "Não aplicável" para lançamentos manuais
+    $fornecedorDisplay = 'Não aplicável';
+    if ((string)$r['source'] === 'patient_assignment' && !empty($r['professional_name'])) {
+        $fornecedorDisplay = 'Profissional - ' . h((string)$r['professional_name']);
+    } elseif ((string)$r['source'] === 'financial_entry' && !empty($r['patient_name']) && $r['patient_name'] !== '-') {
+        // Lançamento manual com fornecedor informado
+        $fornecedorDisplay = h((string)$r['patient_name']);
     }
     echo '<td>' . $fornecedorDisplay . '</td>';
     
@@ -181,14 +184,14 @@ foreach ($rows as $r) {
     }
     echo '<td>' . $operadoraDisplay . '</td>';
     
-    // Ligação: "Profissional - nome" para atendimentos, "Categoria" para lançamentos manuais
+    // Ligação: Paciente para atendimentos, Categoria para lançamentos manuais
     $ligacao = '-';
     if ((string)$r['source'] === 'financial_entry') {
         // Lançamento manual: mostrar categoria
         $ligacao = h((string)($r['specialty'] ?? 'Sem categoria'));
-    } elseif (!empty($r['professional_name']) && $r['professional_name'] !== '-') {
-        // Atendimento: mostrar profissional
-        $ligacao = 'Profissional - ' . h((string)$r['professional_name']);
+    } elseif ((string)$r['source'] === 'patient_assignment' && !empty($r['patient_name'])) {
+        // Atendimento: mostrar paciente
+        $ligacao = 'Paciente - ' . h((string)$r['patient_name']);
     }
     echo '<td>' . $ligacao . '</td>';
     
