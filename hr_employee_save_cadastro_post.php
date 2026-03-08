@@ -70,8 +70,6 @@ $educationYear = trim((string)($_POST['education_year'] ?? ''));
 $bloodType = trim((string)($_POST['blood_type'] ?? ''));
 $allergies = trim((string)($_POST['allergies'] ?? ''));
 $medicalRestrictions = trim((string)($_POST['medical_restrictions'] ?? ''));
-$admissionExamDate = trim((string)($_POST['admission_exam_date'] ?? ''));
-$admissionExamStatus = trim((string)($_POST['admission_exam_status'] ?? ''));
 
 // Validações
 if ($fullName === '') {
@@ -127,7 +125,7 @@ if ($isNew) {
         address_cep, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_country,
         bank_name, bank_agency, bank_account, bank_account_type, bank_pix_key,
         education_level, education_course, education_institution, education_year,
-        blood_type, allergies, medical_restrictions, admission_exam_date, admission_exam_status,
+        blood_type, allergies, medical_restrictions,
         status
     ) VALUES (
         :full_name, :photo_url, :cpf, :rg, :rg_issuer, :rg_issue_date, :birth_date, :gender, :marital_status,
@@ -137,7 +135,7 @@ if ($isNew) {
         :address_cep, :address_street, :address_number, :address_complement, :address_neighborhood, :address_city, :address_state, :address_country,
         :bank_name, :bank_agency, :bank_account, :bank_account_type, :bank_pix_key,
         :education_level, :education_course, :education_institution, :education_year,
-        :blood_type, :allergies, :medical_restrictions, :admission_exam_date, :admission_exam_status,
+        :blood_type, :allergies, :medical_restrictions,
         "active"
     )';
     
@@ -191,8 +189,6 @@ if ($isNew) {
         'blood_type' => $bloodType !== '' ? $bloodType : null,
         'allergies' => $allergies !== '' ? $allergies : null,
         'medical_restrictions' => $medicalRestrictions !== '' ? $medicalRestrictions : null,
-        'admission_exam_date' => $admissionExamDate !== '' ? $admissionExamDate : null,
-        'admission_exam_status' => $admissionExamStatus !== '' ? $admissionExamStatus : null,
     ]);
     
     $newId = (int)db()->lastInsertId();
@@ -222,8 +218,7 @@ if ($isNew) {
         'bank_account_type = :bank_account_type', 'bank_pix_key = :bank_pix_key',
         'education_level = :education_level', 'education_course = :education_course',
         'education_institution = :education_institution', 'education_year = :education_year',
-        'blood_type = :blood_type', 'allergies = :allergies', 'medical_restrictions = :medical_restrictions',
-        'admission_exam_date = :admission_exam_date', 'admission_exam_status = :admission_exam_status'
+        'blood_type = :blood_type', 'allergies = :allergies', 'medical_restrictions = :medical_restrictions'
     ];
     
     if ($photoUrl !== null) {
@@ -281,8 +276,6 @@ if ($isNew) {
         'blood_type' => $bloodType !== '' ? $bloodType : null,
         'allergies' => $allergies !== '' ? $allergies : null,
         'medical_restrictions' => $medicalRestrictions !== '' ? $medicalRestrictions : null,
-        'admission_exam_date' => $admissionExamDate !== '' ? $admissionExamDate : null,
-        'admission_exam_status' => $admissionExamStatus !== '' ? $admissionExamStatus : null,
     ];
     
     if ($photoUrl !== null) {
