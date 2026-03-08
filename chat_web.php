@@ -578,11 +578,7 @@ try {
                     cc.status,
                     cc.last_message_timestamp as lastMsgTimestamp,
                     cc.last_message_text as lastMsgText,
-                    cc.last_message_type as lastMsgType,
-                    (SELECT COUNT(*) FROM chat_messages cm 
-                     WHERE cm.remote_jid = cc.remote_jid 
-                     AND cm.from_me = 0 
-                     AND cm.is_read = 0) as unreadCount
+                    cc.last_message_type as lastMsgType
                 FROM chat_contacts cc
                 LEFT JOIN users u ON (
                     REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '') = u.phone
@@ -1460,7 +1456,6 @@ if ($chatType === 'grupos') {
             $isActive = $selectedChat === $chatId ? ' active' : '';
             $lastMsg = $chat['lastMsgText'] ?? '';
             $lastMsgType = $chat['lastMsgType'] ?? 'text';
-            $unreadCount = (int)($chat['unreadCount'] ?? 0);
             
             // Formatar preview baseado no tipo de mensagem
             // Se for mídia E não tiver texto (ou texto for placeholder), usar ícone
@@ -1500,9 +1495,6 @@ if ($chatType === 'grupos') {
             echo '</div>';
             echo '<div class="whatsapp-chat-meta">';
             echo h($lastTime);
-            if ($unreadCount > 0) {
-                echo '<div class="whatsapp-unread-badge">' . h($unreadCount) . '</div>';
-            }
             echo '</div>';
             echo '</a>';
         }
