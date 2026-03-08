@@ -221,11 +221,10 @@ try {
         VALUES (?, ?, 'faturamento_aprovacao', NOW(), ?)
     ");
     $prontuarioNotes = "Atendimento aprovado financeiramente:\n";
-    $prontuarioNotes .= "Valor total: R$ " . number_format($totalValue, 2, ',', '.') . "\n";
+    $prontuarioNotes .= "Receita total: R$ " . number_format($totalRevenue, 2, ',', '.') . "\n";
     $prontuarioNotes .= "Sessões: " . (int)$assignment['session_quantity'] . "\n";
-    $prontuarioNotes .= "Receita registrada: R$ " . number_format($totalValue, 2, ',', '.') . "\n";
-    $prontuarioNotes .= "Custo profissional: R$ " . number_format($professionalCost, 2, ',', '.') . "\n";
-    $prontuarioNotes .= "Lucro líquido: R$ " . number_format($totalValue - $professionalCost, 2, ',', '.') . "\n";
+    $prontuarioNotes .= "Custo total: R$ " . number_format($totalCost, 2, ',', '.') . "\n";
+    $prontuarioNotes .= "Lucro líquido: R$ " . number_format($totalRevenue - $totalCost, 2, ',', '.') . "\n";
     if ($notes !== '') {
         $prontuarioNotes .= "Observações: " . $notes;
     }
