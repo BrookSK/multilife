@@ -1093,6 +1093,22 @@ echo '<option value="">Selecione primeiro a especialidade...</option>';
 echo '</select>';
 echo '<input type="hidden" id="serviceMinValue" value="0">';
 
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Operadora *</label>';
+echo '<select id="healthInsurer" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+echo '<option value="">Selecione...</option>';
+try {
+    $insurersStmt = db()->prepare("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
+    $insurersStmt->execute();
+    $insurers = $insurersStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($insurers as $ins) {
+        echo '<option value="' . (int)$ins['id'] . '">' . h($ins['name']) . '</option>';
+    }
+} catch (Exception $e) {
+    error_log("Erro ao buscar operadoras: " . $e->getMessage());
+    echo '<option value="">Erro ao carregar operadoras</option>';
+}
+echo '</select>';
+
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Quantidade de Sessões *</label>';

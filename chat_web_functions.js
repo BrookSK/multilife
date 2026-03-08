@@ -387,6 +387,7 @@ document.addEventListener("DOMContentLoaded", function() {
       const authorizedValue = parseFloat(document.getElementById("authorizedValue").value);
       const serviceMinValue = parseFloat(document.getElementById("serviceMinValue").value || "0");
       const notes = document.getElementById("assignmentNotes").value;
+      const healthInsurerId = document.getElementById("healthInsurer").value;
       
       if (!demandSelect || !demandSelect.value) {
         alert("Por favor, selecione um card de captação primeiro.");
@@ -432,6 +433,7 @@ document.addEventListener("DOMContentLoaded", function() {
           session_frequency: sessionFrequency,
           agreed_value: agreedValue,
           authorized_value: authorizedValue,
+          health_insurer_id: healthInsurerId,
           notes: notes
         })
       })

@@ -25,6 +25,7 @@ $sessionQuantity = isset($input['session_quantity']) ? (int)$input['session_quan
 $sessionFrequency = $input['session_frequency'] ?? '';
 $agreedValue = isset($input['agreed_value']) ? (float)$input['agreed_value'] : 0.0;
 $authorizedValue = isset($input['authorized_value']) ? (float)$input['authorized_value'] : 0.0;
+$healthInsurerId = isset($input['health_insurer_id']) ? (int)$input['health_insurer_id'] : null;
 $notes = $input['notes'] ?? '';
 
 // Validações
@@ -129,9 +130,9 @@ try {
     $insertStmt = $db->prepare("
         INSERT INTO patient_assignments (
             demand_id, patient_id, professional_remote_jid, professional_user_id,
-            assigned_by_user_id, specialty, specialty_service_id, session_quantity,
-            session_frequency, agreed_value, authorized_value, notes, status, confirmed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())
+            assigned_by_user_id, specialty, specialty_service_id, health_insurer_id,
+            session_quantity, session_frequency, agreed_value, authorized_value, notes, status, confirmed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())
     ");
     
     $insertStmt->execute([
@@ -142,6 +143,7 @@ try {
         auth_user_id(),
         $specialty,
         $serviceTypeId,
+        $healthInsurerId,
         $sessionQuantity,
         $sessionFrequency,
         $agreedValue,
