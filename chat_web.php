@@ -578,7 +578,11 @@ try {
                     cc.status,
                     cc.last_message_timestamp as lastMsgTimestamp,
                     cc.last_message_text as lastMsgText,
-                    cc.last_message_type as lastMsgType
+                    cc.last_message_type as lastMsgType,
+                    (SELECT COUNT(*) FROM chat_messages cm 
+                     WHERE cm.remote_jid = cc.remote_jid 
+                     AND cm.from_me = 0 
+                     AND cm.is_read = 0) as unreadCount
                 FROM chat_contacts cc
                 LEFT JOIN users u ON (
                     REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '') = u.phone
@@ -1275,7 +1279,8 @@ echo '.whatsapp-chat-avatar{width:48px;height:48px;border-radius:50%;background:
 echo '.whatsapp-chat-info{flex:1;min-width:0}';
 echo '.whatsapp-chat-name{font-size:16px;font-weight:500;color:#111b21;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 echo '.whatsapp-chat-preview{font-size:14px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
-echo '.whatsapp-chat-meta{text-align:right;font-size:12px;color:#667781;flex-shrink:0}';
+echo '.whatsapp-chat-meta{text-align:right;font-size:12px;color:#667781;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}';
+echo '.whatsapp-unread-badge{background:#25d366;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:600;min-width:20px;text-align:center}';
 echo '.whatsapp-main{flex:1;display:flex;flex-direction:column;background:#efeae2}';
 echo '.whatsapp-chat-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-chat-header-info{display:flex;align-items:center;gap:12px}';
@@ -1455,17 +1460,21 @@ if ($chatType === 'grupos') {
             $isActive = $selectedChat === $chatId ? ' active' : '';
             $lastMsg = $chat['lastMsgText'] ?? '';
             $lastMsgType = $chat['lastMsgType'] ?? 'text';
+            $unreadCount = (int)($chat['unreadCount'] ?? 0);
             
             // Formatar preview baseado no tipo de mensagem
-            if ($lastMsgType === 'audio') {
+            // Se for mídia E não tiver texto (ou texto for placeholder), usar ícone
+            if ($lastMsgType === 'audio' && (empty($lastMsg) || $lastMsg === '[Áudio]')) {
                 $lastMsg = '🎤 Áudio';
-            } elseif ($lastMsgType === 'image') {
+            } elseif ($lastMsgType === 'image' && (empty($lastMsg) || $lastMsg === '[Imagem]')) {
                 $lastMsg = '📷 Imagem';
-            } elseif ($lastMsgType === 'video') {
+            } elseif ($lastMsgType === 'video' && (empty($lastMsg) || $lastMsg === '[Vídeo]')) {
                 $lastMsg = '🎥 Vídeo';
-            } elseif ($lastMsgType === 'document') {
+            } elseif ($lastMsgType === 'document' && (empty($lastMsg) || $lastMsg === '[Documento]')) {
                 $lastMsg = '📄 Documento';
             }
+            // Se tiver texto real (caption ou mensagem de texto), manter o texto
+            // Não fazer nada, $lastMsg já tem o texto correto
             
             $lastTime = isset($chat['lastMsgTimestamp']) && $chat['lastMsgTimestamp'] > 0 ? date('H:i', $chat['lastMsgTimestamp']) : '';
             
@@ -1489,7 +1498,12 @@ if ($chatType === 'grupos') {
             echo '</div>';
             echo '<div class="whatsapp-chat-preview">' . h(mb_strimwidth($lastMsg, 0, 50, '...')) . '</div>';
             echo '</div>';
-            echo '<div class="whatsapp-chat-meta">' . h($lastTime) . '</div>';
+            echo '<div class="whatsapp-chat-meta">';
+            echo h($lastTime);
+            if ($unreadCount > 0) {
+                echo '<div class="whatsapp-unread-badge">' . h($unreadCount) . '</div>';
+            }
+            echo '</div>';
             echo '</a>';
         }
     } else {
