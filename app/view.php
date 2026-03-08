@@ -47,7 +47,7 @@ function view_header(string $title): void
             ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php'],
             ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
             ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
-            ['title' => 'RH', 'path' => '/hr_employees_list.php'],
+            ['title' => 'RH', 'path' => '/hr_dashboard.php'],
             ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
             ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
             ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
