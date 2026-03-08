@@ -407,12 +407,18 @@ if ($event === 'messages.upsert') {
         $mediaData = [];
         $messageType = 'text';
         
+        // LOG COMPLETO DO PAYLOAD DE MÍDIA
+        error_log("[WEBHOOK] === PROCESSANDO MENSAGEM ===");
+        error_log("[WEBHOOK] Message payload keys: " . json_encode(array_keys($msgPayload)));
+        
         // Áudio
         if (isset($msgPayload['audioMessage'])) {
             $audio = $msgPayload['audioMessage'];
             $messageType = 'audio';
             $rawUrl = $audio['url'] ?? null;
+            error_log("[WEBHOOK] AUDIO DETECTADO");
             error_log("[WEBHOOK] AUDIO RAW URL: " . ($rawUrl ?? 'NULL'));
+            error_log("[WEBHOOK] AUDIO FULL DATA: " . json_encode($audio));
             $mediaData = [
                 'type' => 'audio',
                 'url' => $rawUrl,
@@ -427,7 +433,9 @@ if ($event === 'messages.upsert') {
             $image = $msgPayload['imageMessage'];
             $messageType = 'image';
             $rawUrl = $image['url'] ?? null;
+            error_log("[WEBHOOK] IMAGEM DETECTADA");
             error_log("[WEBHOOK] IMAGE RAW URL: " . ($rawUrl ?? 'NULL'));
+            error_log("[WEBHOOK] IMAGE FULL DATA: " . json_encode($image));
             $mediaData = [
                 'type' => 'image',
                 'url' => $rawUrl,
