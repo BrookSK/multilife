@@ -93,31 +93,68 @@ function normalizeJid(string $jid): string {
     return $numberOnly . '@s.whatsapp.net';
 }
 
-function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp): void {
+function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp, array $mediaData = []): void {
     ensureChatTables();
     
     // NORMALIZAR JID para evitar duplicação
     $normalizedJid = normalizeJid($remoteJid);
     
-    error_log("[SAVE_MSG] Original JID: '$remoteJid' | Normalized: '$normalizedJid' | fromMe: $fromMe | text: '" . substr($text, 0, 30) . "'");
+    $messageType = $mediaData['type'] ?? 'text';
+    $mediaUrl = $mediaData['url'] ?? null;
+    $mediaMimeType = $mediaData['mime_type'] ?? null;
+    $mediaFilename = $mediaData['filename'] ?? null;
+    $mediaSize = $mediaData['size'] ?? null;
+    $audioTranscription = $mediaData['transcription'] ?? null;
+    $thumbnailUrl = $mediaData['thumbnail'] ?? null;
     
-    $stmt = db()->prepare("INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp) VALUES (?, ?, ?, ?)");
-    $stmt->execute([$normalizedJid, $text, $fromMe, $timestamp]);
+    error_log("[SAVE_MSG] Original JID: '$remoteJid' | Normalized: '$normalizedJid' | fromMe: $fromMe | type: '$messageType' | text: '" . substr($text, 0, 30) . "'");
+    
+    $stmt = db()->prepare("
+        INSERT INTO chat_messages 
+        (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, thumbnail_url, from_me, message_timestamp) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->execute([
+        $normalizedJid, 
+        $text, 
+        $messageType,
+        $mediaUrl,
+        $mediaMimeType,
+        $mediaFilename,
+        $mediaSize,
+        $audioTranscription,
+        $thumbnailUrl,
+        $fromMe, 
+        $timestamp
+    ]);
 
-    // Atualizar contato
+    // Atualizar contato com preview da última mensagem
     $isGroup = strpos($normalizedJid, '@g.us') !== false ? 1 : 0;
     $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $normalizedJid);
+    
+    $lastMessageText = $text;
+    if ($messageType !== 'text' && empty($text)) {
+        $lastMessageText = match($messageType) {
+            'audio' => '[Áudio]',
+            'image' => '[Imagem]',
+            'video' => '[Vídeo]',
+            'document' => '[Documento]',
+            default => '[Mídia]'
+        };
+    }
 
     error_log("[SAVE_CONTACT] Salvando/atualizando contato - normalizedJid: '$normalizedJid' | contactName: '$contactName' | isGroup: $isGroup");
 
     $stmtContact = db()->prepare("
-        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             last_message_timestamp = VALUES(last_message_timestamp),
+            last_message_text = VALUES(last_message_text),
+            last_message_type = VALUES(last_message_type),
             updated_at = CURRENT_TIMESTAMP
     ");
-    $stmtContact->execute([$normalizedJid, $contactName, $isGroup, $timestamp]);
+    $stmtContact->execute([$normalizedJid, $contactName, $isGroup, $timestamp, $lastMessageText, $messageType]);
     
     error_log("[SAVE_CONTACT] Contato salvo com sucesso - normalizedJid: '$normalizedJid'");
 }
@@ -198,6 +235,67 @@ if ($event === 'messages.upsert') {
                        ?? '';
         $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
+        // Extrair dados de mídia
+        $mediaData = [];
+        $messageType = 'text';
+        
+        // Áudio
+        if (isset($msgPayload['audioMessage'])) {
+            $audio = $msgPayload['audioMessage'];
+            $messageType = 'audio';
+            $mediaData = [
+                'type' => 'audio',
+                'url' => $audio['url'] ?? null,
+                'mime_type' => $audio['mimetype'] ?? 'audio/ogg',
+                'filename' => $audio['fileName'] ?? 'audio.ogg',
+                'size' => $audio['fileLength'] ?? null,
+            ];
+            $messageText = $audio['caption'] ?? '[Áudio]';
+        }
+        // Imagem
+        elseif (isset($msgPayload['imageMessage'])) {
+            $image = $msgPayload['imageMessage'];
+            $messageType = 'image';
+            $mediaData = [
+                'type' => 'image',
+                'url' => $image['url'] ?? null,
+                'mime_type' => $image['mimetype'] ?? 'image/jpeg',
+                'filename' => $image['fileName'] ?? 'image.jpg',
+                'size' => $image['fileLength'] ?? null,
+                'thumbnail' => $image['thumbnailUrl'] ?? null,
+            ];
+            $messageText = $image['caption'] ?? '[Imagem]';
+        }
+        // Vídeo
+        elseif (isset($msgPayload['videoMessage'])) {
+            $video = $msgPayload['videoMessage'];
+            $messageType = 'video';
+            $mediaData = [
+                'type' => 'video',
+                'url' => $video['url'] ?? null,
+                'mime_type' => $video['mimetype'] ?? 'video/mp4',
+                'filename' => $video['fileName'] ?? 'video.mp4',
+                'size' => $video['fileLength'] ?? null,
+                'thumbnail' => $video['thumbnailUrl'] ?? null,
+            ];
+            $messageText = $video['caption'] ?? '[Vídeo]';
+        }
+        // Documento
+        elseif (isset($msgPayload['documentMessage'])) {
+            $doc = $msgPayload['documentMessage'];
+            $messageType = 'document';
+            $mediaData = [
+                'type' => 'document',
+                'url' => $doc['url'] ?? null,
+                'mime_type' => $doc['mimetype'] ?? 'application/pdf',
+                'filename' => $doc['fileName'] ?? 'document.pdf',
+                'size' => $doc['fileLength'] ?? null,
+            ];
+            $messageText = $doc['caption'] ?? '[Documento]';
+        }
+
+        error_log("[WEBHOOK] Tipo de mensagem detectado: '$messageType' | URL: " . ($mediaData['url'] ?? 'N/A'));
+
         // CORREÇÃO: Se senderPn existe, usar ele em vez de remoteJid
         // Isso acontece quando remoteJid é um canal (@lid) mas senderPn tem o número real
         if (!empty($senderPn) && !$fromMe) {
@@ -214,11 +312,14 @@ if ($event === 'messages.upsert') {
         $isSystemType = isSystemMessageType($msgPayload);
         $isSystemMsg  = isSystemText($messageText);
 
-        if (!$fromMe && !empty($remoteJid) && !empty($messageText)
+        // Permitir salvar mídia mesmo sem texto (só verificar se tem remoteJid válido)
+        $hasContent = !empty($messageText) || $messageType !== 'text';
+
+        if (!$fromMe && !empty($remoteJid) && $hasContent
             && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg) {
             try {
-                saveMessage($remoteJid, $messageText, 0, $timestamp);
-                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' text='" . substr($messageText,0,50) . "'");
+                saveMessage($remoteJid, $messageText, 0, $timestamp, $mediaData);
+                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' text='" . substr($messageText,0,50) . "'");
             } catch (Exception $e) {
                 error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
             }
@@ -226,7 +327,7 @@ if ($event === 'messages.upsert') {
             $reason = [];
             if ($fromMe) $reason[] = 'fromMe';
             if (empty($remoteJid)) $reason[] = 'jid_vazio';
-            if (empty($messageText)) $reason[] = 'text_vazio';
+            if (!$hasContent) $reason[] = 'sem_conteudo';
             if ($isStatusBroadcast) $reason[] = 'broadcast';
             if ($isSystemType) $reason[] = 'systemType';
             if ($isSystemMsg) $reason[] = 'systemMsg';
@@ -245,13 +346,75 @@ if ($event === 'send.message') {
                    ?? '';
     $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
+    // Extrair dados de mídia
+    $mediaData = [];
+    $messageType = 'text';
+    
+    // Áudio
+    if (isset($msgPayload['audioMessage'])) {
+        $audio = $msgPayload['audioMessage'];
+        $messageType = 'audio';
+        $mediaData = [
+            'type' => 'audio',
+            'url' => $audio['url'] ?? null,
+            'mime_type' => $audio['mimetype'] ?? 'audio/ogg',
+            'filename' => $audio['fileName'] ?? 'audio.ogg',
+            'size' => $audio['fileLength'] ?? null,
+        ];
+        $messageText = $audio['caption'] ?? '[Áudio]';
+    }
+    // Imagem
+    elseif (isset($msgPayload['imageMessage'])) {
+        $image = $msgPayload['imageMessage'];
+        $messageType = 'image';
+        $mediaData = [
+            'type' => 'image',
+            'url' => $image['url'] ?? null,
+            'mime_type' => $image['mimetype'] ?? 'image/jpeg',
+            'filename' => $image['fileName'] ?? 'image.jpg',
+            'size' => $image['fileLength'] ?? null,
+            'thumbnail' => $image['thumbnailUrl'] ?? null,
+        ];
+        $messageText = $image['caption'] ?? '[Imagem]';
+    }
+    // Vídeo
+    elseif (isset($msgPayload['videoMessage'])) {
+        $video = $msgPayload['videoMessage'];
+        $messageType = 'video';
+        $mediaData = [
+            'type' => 'video',
+            'url' => $video['url'] ?? null,
+            'mime_type' => $video['mimetype'] ?? 'video/mp4',
+            'filename' => $video['fileName'] ?? 'video.mp4',
+            'size' => $video['fileLength'] ?? null,
+            'thumbnail' => $video['thumbnailUrl'] ?? null,
+        ];
+        $messageText = $video['caption'] ?? '[Vídeo]';
+    }
+    // Documento
+    elseif (isset($msgPayload['documentMessage'])) {
+        $doc = $msgPayload['documentMessage'];
+        $messageType = 'document';
+        $mediaData = [
+            'type' => 'document',
+            'url' => $doc['url'] ?? null,
+            'mime_type' => $doc['mimetype'] ?? 'application/pdf',
+            'filename' => $doc['fileName'] ?? 'document.pdf',
+            'size' => $doc['fileLength'] ?? null,
+        ];
+        $messageText = $doc['caption'] ?? '[Documento]';
+    }
+
     $isStatusBroadcast = strpos($remoteJid, 'status@broadcast') !== false
                        || strpos($remoteJid, 'broadcast') !== false;
 
-    if (!empty($remoteJid) && !empty($messageText)
+    $hasContent = !empty($messageText) || $messageType !== 'text';
+
+    if (!empty($remoteJid) && $hasContent
         && !$isStatusBroadcast && !isSystemMessageType($msgPayload) && !isSystemText($messageText)) {
         try {
-            saveMessage($remoteJid, $messageText, 1, $timestamp);
+            saveMessage($remoteJid, $messageText, 1, $timestamp, $mediaData);
+            error_log("[WEBHOOK] mensagem ENVIADA salva: jid='$remoteJid' type='$messageType'");
         } catch (Exception $e) {
             error_log("Webhook erro ao salvar mensagem enviada: " . $e->getMessage());
         }
