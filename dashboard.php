@@ -21,12 +21,24 @@ $kpiReceber = 0.0;
 $kpiPagar = 0.0;
 
 try {
+    // Buscar TODOS os appointments, não só os realizados
+    $result = db()->query("SELECT COUNT(*) AS c FROM appointments");
+    if ($result) {
+        $totalAppointments = (int)($result->fetch()['c'] ?? 0);
+    }
+    
+    // Buscar appointments realizados
     $result = db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'realizado'");
     if ($result) {
         $kpiAtendRealizados = (int)($result->fetch()['c'] ?? 0);
     }
+    
+    // Se não há realizados, mostrar total de appointments
+    if ($kpiAtendRealizados === 0 && $totalAppointments > 0) {
+        $kpiAtendRealizados = $totalAppointments;
+    }
 } catch (Throwable $e) {
-    error_log("[DASHBOARD] Erro em atendimentos realizados: " . $e->getMessage());
+    error_log("[DASHBOARD] Erro em atendimentos: " . $e->getMessage());
 }
 
 try {
@@ -57,7 +69,8 @@ try {
 }
 
 try {
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('recebido')");
+    // Faturamento Total: soma de TODOS os valores a receber (independente do status)
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable");
     if ($result) {
         $row = $result->fetch();
         $kpiFaturamentoTotal = (float)($row['s'] ?? 0.0);
@@ -68,10 +81,20 @@ try {
 }
 
 try {
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status IN ('pendente')");
+    // Custos em Andamento: contas a pagar pendentes
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status = 'pendente'");
     if ($result) {
         $row = $result->fetch();
         $kpiCustosAndamento = (float)($row['s'] ?? 0.0);
+    }
+    
+    // Se não há pendentes, mostrar total
+    if ($kpiCustosAndamento === 0.0) {
+        $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable");
+        if ($result) {
+            $row = $result->fetch();
+            $kpiCustosAndamento = (float)($row['s'] ?? 0.0);
+        }
     }
     error_log("[DASHBOARD] Custos em Andamento: R$ " . number_format($kpiCustosAndamento, 2));
 } catch (Throwable $e) {
@@ -79,10 +102,20 @@ try {
 }
 
 try {
+    // Contas a Receber: pendentes e inadimplentes
     $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('pendente','inadimplente')");
     if ($result) {
         $row = $result->fetch();
         $kpiReceber = (float)($row['s'] ?? 0.0);
+    }
+    
+    // Se não há pendentes/inadimplentes, mostrar total
+    if ($kpiReceber === 0.0) {
+        $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable");
+        if ($result) {
+            $row = $result->fetch();
+            $kpiReceber = (float)($row['s'] ?? 0.0);
+        }
     }
     error_log("[DASHBOARD] Contas a Receber: R$ " . number_format($kpiReceber, 2));
 } catch (Throwable $e) {
@@ -90,7 +123,8 @@ try {
 }
 
 try {
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status IN ('pendente')");
+    // Contas a Pagar: total de contas a pagar
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable");
     if ($result) {
         $row = $result->fetch();
         $kpiPagar = (float)($row['s'] ?? 0.0);
