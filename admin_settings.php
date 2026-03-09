@@ -528,6 +528,60 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
         echo '</div>';
+    } elseif ($sectionTitle === 'WhatsApp') {
+        // Aba especial de WhatsApp com gerenciamento de eventos
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Configurações WhatsApp</div>';
+        
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo '<strong>📱 Sistema de Eventos WhatsApp</strong><br>';
+        echo 'Gerencie mensagens automáticas baseadas em eventos do sistema.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Templates configuráveis para profissionais e pacientes<br>';
+        echo '• Variáveis dinâmicas (nome, data, links, etc)<br>';
+        echo '• Anexos de arquivos (PDF, imagens, documentos)<br>';
+        echo '• Links adicionais personalizados<br>';
+        echo '• Log completo de envios para auditoria<br>';
+        echo '• Ativar/desativar eventos individualmente';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">';
+        echo '<a class="btn btnPrimary" href="/admin_whatsapp_events.php" style="font-size:16px;padding:12px 24px">🎯 Gerenciar Eventos WhatsApp</a>';
+        echo '</div>';
+        
+        echo '<div style="padding:12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:20px">';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
+        echo '<strong>⚠️ Migração de Mensagens Hardcoded:</strong><br>';
+        echo 'As mensagens abaixo são templates antigos que ainda estão no código.<br>';
+        echo 'Recomendamos migrar para o novo sistema de eventos para facilitar a edição sem alterar código.';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Templates Legados (Hardcoded)</div>';
+        echo '<div style="display:grid;gap:12px">';
+        
+        foreach ($sectionData['keys'] as $key) {
+            if (!isset($fields[$key])) continue;
+            $label = $fields[$key];
+            $val = $settings[$key] ?? '';
+            $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'evolution.api_key', 'zapsign.api_token'], true);
+            $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';
+            
+            if ($isSensitive) {
+                echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
+            } elseif ($isTemplate) {
+                echo '<label>' . h($label) . '<textarea name="settings[' . h($key) . ']" rows="4" placeholder="(configure)">' . h($val) . '</textarea></label>';
+            } else {
+                echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
+            }
+        }
+        
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
     } else {
         // Abas normais de configuração
         echo '<div class="formSection">';
