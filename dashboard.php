@@ -289,7 +289,7 @@ try {
 }
 
 // Cards de Atendimentos (4 em cima)
-echo '<div class="kpiGrid">';
+echo '<div class="kpiGrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
 
 echo '<div class="kpiCard"><div class="kpiBody">';
 echo '<div class="kpiTop"><div class="kpiIcon">OK</div><div class="kpiChange">+12%</div></div>';
@@ -320,7 +320,7 @@ echo '</div>';
 echo '<div style="height:12px"></div>';
 
 // Cards Financeiros (4 embaixo)
-echo '<div class="kpiGrid">';
+echo '<div class="kpiGrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
 
 echo '<div class="kpiCard"><div class="kpiBody">';
 echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--success)/.10);color:hsl(var(--success))">R$</div><div class="kpiChange">+18%</div></div>';
