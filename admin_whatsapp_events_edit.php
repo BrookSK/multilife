@@ -72,7 +72,7 @@ $availableVariables = [
     '{{motivo_cancelamento}}' => 'Motivo do cancelamento',
 ];
 
-require __DIR__ . '/app/header.php';
+view_header($pageTitle);
 ?>
 
 <div class="container-fluid py-4">
@@ -494,4 +494,4 @@ document.getElementById('eventForm').addEventListener('submit', function(e) {
 });
 </script>
 
-<?php require __DIR__ . '/app/footer.php'; ?>
+<?php view_footer(); ?>

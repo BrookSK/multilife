@@ -37,7 +37,7 @@ function getRecipientType($sendToProfessional, $sendToPatient): string {
     return 'Nenhum';
 }
 
-require __DIR__ . '/app/header.php';
+view_header('Eventos WhatsApp');
 ?>
 
 <div class="container-fluid py-4">
@@ -160,4 +160,4 @@ function deleteEvent(eventId, eventName) {
 }
 </script>
 
-<?php require __DIR__ . '/app/footer.php'; ?>
+<?php view_footer(); ?>
