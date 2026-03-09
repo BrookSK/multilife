@@ -88,7 +88,7 @@ try {
     $result = db()->query("
         SELECT IFNULL(SUM(amount), 0) AS s
         FROM financial_entries
-        WHERE entry_type = 'receita' AND status = 'paid'
+        WHERE entry_type = 'income' AND status = 'paid'
     ");
     if ($result) {
         $row = $result->fetch();
@@ -118,7 +118,7 @@ try {
     $result = db()->query("
         SELECT IFNULL(SUM(amount), 0) AS s
         FROM financial_entries
-        WHERE entry_type = 'despesa' AND status = 'pending'
+        WHERE entry_type = 'expense' AND status = 'pending'
     ");
     if ($result) {
         $row = $result->fetch();
@@ -150,7 +150,7 @@ try {
     $result = db()->query("
         SELECT IFNULL(SUM(amount), 0) AS s
         FROM financial_entries
-        WHERE entry_type = 'receita' AND status = 'pending'
+        WHERE entry_type = 'income' AND status = 'pending'
     ");
     if ($result) {
         $row = $result->fetch();
@@ -179,7 +179,7 @@ try {
     $result = db()->query("
         SELECT IFNULL(SUM(amount), 0) AS s
         FROM financial_entries
-        WHERE entry_type = 'despesa'
+        WHERE entry_type = 'expense'
     ");
     if ($result) {
         $row = $result->fetch();
