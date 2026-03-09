@@ -21,31 +21,33 @@ $kpiReceber = 0.0;
 $kpiPagar = 0.0;
 
 try {
-    // MESMA QUERY da aba appointments_list.php
+    // Atendimentos realizados (patient_assignments com status completed ou paid)
     $result = db()->query("
         SELECT COUNT(*) AS c 
-        FROM appointments a
-        INNER JOIN patients p ON p.id = a.patient_id
-        WHERE p.deleted_at IS NULL AND a.status = 'realizado'
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        WHERE p.deleted_at IS NULL AND pa.status IN ('completed', 'paid')
     ");
     if ($result) {
         $kpiAtendRealizados = (int)($result->fetch()['c'] ?? 0);
     }
+    error_log("[DASHBOARD] Atendimentos Realizados: " . $kpiAtendRealizados);
 } catch (Throwable $e) {
     error_log("[DASHBOARD] Erro em atendimentos realizados: " . $e->getMessage());
 }
 
 try {
-    // MESMA QUERY da aba appointments_list.php
+    // Atendimentos cancelados
     $result = db()->query("
         SELECT COUNT(*) AS c 
-        FROM appointments a
-        INNER JOIN patients p ON p.id = a.patient_id
-        WHERE p.deleted_at IS NULL AND a.status = 'cancelado'
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        WHERE p.deleted_at IS NULL AND pa.status = 'cancelled'
     ");
     if ($result) {
         $kpiAtendRecusados = (int)($result->fetch()['c'] ?? 0);
     }
+    error_log("[DASHBOARD] Atendimentos Cancelados: " . $kpiAtendRecusados);
 } catch (Throwable $e) {
     error_log("[DASHBOARD] Erro em atendimentos cancelados: " . $e->getMessage());
 }
@@ -197,6 +199,74 @@ error_log("[DASHBOARD] Atendimentos Cancelados: " . $kpiAtendRecusados);
 error_log("[DASHBOARD] Captações Ativas: " . $kpiCaptacoesAtivas);
 error_log("[DASHBOARD] Captações Pendentes: " . $kpiCaptacoesPendentes);
 
+// Dados para gráfico de faturamento - últimos 6 meses
+$chartFaturamento = [];
+try {
+    $stmt = db()->query("
+        SELECT 
+            DATE_FORMAT(pa.created_at, '%Y-%m') as mes,
+            SUM(pa.authorized_value) as total
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        WHERE p.deleted_at IS NULL 
+        AND pa.authorized_value IS NOT NULL 
+        AND pa.authorized_value > 0
+        AND pa.created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(pa.created_at, '%Y-%m')
+        ORDER BY mes ASC
+    ");
+    $chartFaturamento = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Adicionar financial_entries
+    $stmt = db()->query("
+        SELECT 
+            DATE_FORMAT(entry_date, '%Y-%m') as mes,
+            SUM(amount) as total
+        FROM financial_entries
+        WHERE entry_type = 'income'
+        AND entry_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(entry_date, '%Y-%m')
+        ORDER BY mes ASC
+    ");
+    $chartFaturamentoEntries = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Combinar os dois arrays
+    foreach ($chartFaturamentoEntries as $entry) {
+        $found = false;
+        foreach ($chartFaturamento as &$item) {
+            if ($item['mes'] === $entry['mes']) {
+                $item['total'] += $entry['total'];
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $chartFaturamento[] = $entry;
+        }
+    }
+} catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em gráfico faturamento: " . $e->getMessage());
+}
+
+// Dados para gráfico de atendimentos - últimos 6 meses
+$chartAtendimentos = [];
+try {
+    $stmt = db()->query("
+        SELECT 
+            DATE_FORMAT(pa.created_at, '%Y-%m') as mes,
+            COUNT(*) as total
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        WHERE p.deleted_at IS NULL
+        AND pa.created_at >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(pa.created_at, '%Y-%m')
+        ORDER BY mes ASC
+    ");
+    $chartAtendimentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em gráfico atendimentos: " . $e->getMessage());
+}
+
 $recentDemands = [];
 try {
     $stmt = db()->prepare(
@@ -280,7 +350,21 @@ echo '<div style="display:flex;align-items:center;justify-content:space-between;
 echo '<div style="font-weight:900">Faturamento — Últimos 6 meses</div>';
 echo '<a class="btn" href="/finance_receivable_list.php">Ver</a>';
 echo '</div>';
-echo '<div class="chartBox"><div class="chartBoxInner">Chart placeholder</div></div>';
+echo '<div style="overflow:auto">';
+echo '<table><thead><tr><th>Mês</th><th style="text-align:right">Valor</th></tr></thead><tbody>';
+if (empty($chartFaturamento)) {
+    echo '<tr><td colspan="2" style="text-align:center;color:hsl(var(--muted-foreground))">Sem dados</td></tr>';
+} else {
+    foreach ($chartFaturamento as $item) {
+        $mesFormatado = date('m/Y', strtotime($item['mes'] . '-01'));
+        echo '<tr>';
+        echo '<td>' . h($mesFormatado) . '</td>';
+        echo '<td style="text-align:right;font-weight:700">R$ ' . number_format((float)$item['total'], 2, ',', '.') . '</td>';
+        echo '</tr>';
+    }
+}
+echo '</tbody></table>';
+echo '</div>';
 echo '</section>';
 
 echo '<section class="card col6">';
@@ -288,7 +372,21 @@ echo '<div style="display:flex;align-items:center;justify-content:space-between;
 echo '<div style="font-weight:900">Atendimentos por Mês</div>';
 echo '<a class="btn" href="/appointments_list.php">Ver</a>';
 echo '</div>';
-echo '<div class="chartBox"><div class="chartBoxInner">Chart placeholder</div></div>';
+echo '<div style="overflow:auto">';
+echo '<table><thead><tr><th>Mês</th><th style="text-align:right">Quantidade</th></tr></thead><tbody>';
+if (empty($chartAtendimentos)) {
+    echo '<tr><td colspan="2" style="text-align:center;color:hsl(var(--muted-foreground))">Sem dados</td></tr>';
+} else {
+    foreach ($chartAtendimentos as $item) {
+        $mesFormatado = date('m/Y', strtotime($item['mes'] . '-01'));
+        echo '<tr>';
+        echo '<td>' . h($mesFormatado) . '</td>';
+        echo '<td style="text-align:right;font-weight:700">' . number_format((int)$item['total'], 0, ',', '.') . '</td>';
+        echo '</tr>';
+    }
+}
+echo '</tbody></table>';
+echo '</div>';
 echo '</section>';
 
 echo '<section class="card col12">';
