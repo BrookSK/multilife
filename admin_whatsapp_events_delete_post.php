@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('admin.settings');
+rbac_require_permission('whatsapp.manage');
 
 header('Content-Type: application/json; charset=utf-8');
 
