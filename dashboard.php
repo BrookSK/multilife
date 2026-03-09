@@ -21,28 +21,28 @@ $kpiReceber = 0.0;
 $kpiPagar = 0.0;
 
 try {
-    // Buscar TODOS os appointments, não só os realizados
-    $result = db()->query("SELECT COUNT(*) AS c FROM appointments");
-    if ($result) {
-        $totalAppointments = (int)($result->fetch()['c'] ?? 0);
-    }
-    
-    // Buscar appointments realizados
-    $result = db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'realizado'");
+    // MESMA QUERY da aba appointments_list.php
+    $result = db()->query("
+        SELECT COUNT(*) AS c 
+        FROM appointments a
+        INNER JOIN patients p ON p.id = a.patient_id
+        WHERE p.deleted_at IS NULL AND a.status = 'realizado'
+    ");
     if ($result) {
         $kpiAtendRealizados = (int)($result->fetch()['c'] ?? 0);
     }
-    
-    // Se não há realizados, mostrar total de appointments
-    if ($kpiAtendRealizados === 0 && $totalAppointments > 0) {
-        $kpiAtendRealizados = $totalAppointments;
-    }
 } catch (Throwable $e) {
-    error_log("[DASHBOARD] Erro em atendimentos: " . $e->getMessage());
+    error_log("[DASHBOARD] Erro em atendimentos realizados: " . $e->getMessage());
 }
 
 try {
-    $result = db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'cancelado'");
+    // MESMA QUERY da aba appointments_list.php
+    $result = db()->query("
+        SELECT COUNT(*) AS c 
+        FROM appointments a
+        INNER JOIN patients p ON p.id = a.patient_id
+        WHERE p.deleted_at IS NULL AND a.status = 'cancelado'
+    ");
     if ($result) {
         $kpiAtendRecusados = (int)($result->fetch()['c'] ?? 0);
     }
@@ -69,66 +69,123 @@ try {
 }
 
 try {
-    // Faturamento Total: soma de TODOS os valores a receber (independente do status)
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable");
+    // MESMA QUERY da aba finance_receivable_list.php - Faturamento Total (recebido)
+    $result = db()->query("
+        SELECT IFNULL(SUM(pa.authorized_value), 0) AS s
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        WHERE p.deleted_at IS NULL 
+        AND pa.authorized_value IS NOT NULL 
+        AND pa.authorized_value > 0
+        AND pa.status = 'paid'
+    ");
     if ($result) {
         $row = $result->fetch();
         $kpiFaturamentoTotal = (float)($row['s'] ?? 0.0);
     }
+    
+    // Adicionar receitas de financial_entries
+    $result = db()->query("
+        SELECT IFNULL(SUM(amount), 0) AS s
+        FROM financial_entries
+        WHERE entry_type = 'receita' AND status = 'paid'
+    ");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiFaturamentoTotal += (float)($row['s'] ?? 0.0);
+    }
+    
     error_log("[DASHBOARD] Faturamento Total: R$ " . number_format($kpiFaturamentoTotal, 2));
 } catch (Throwable $e) {
     error_log("[DASHBOARD] Erro em faturamento total: " . $e->getMessage());
 }
 
 try {
-    // Custos em Andamento: contas a pagar pendentes
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status = 'pendente'");
+    // MESMA QUERY da aba finance_payable_list.php - Custos em Andamento (pendente)
+    $result = db()->query("
+        SELECT IFNULL(SUM(pa.agreed_value), 0) AS s
+        FROM patient_assignments pa
+        WHERE pa.agreed_value IS NOT NULL 
+        AND pa.agreed_value > 0
+        AND pa.status IN ('approved', 'completed', 'confirmed')
+    ");
     if ($result) {
         $row = $result->fetch();
         $kpiCustosAndamento = (float)($row['s'] ?? 0.0);
     }
     
-    // Se não há pendentes, mostrar total
-    if ($kpiCustosAndamento === 0.0) {
-        $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable");
-        if ($result) {
-            $row = $result->fetch();
-            $kpiCustosAndamento = (float)($row['s'] ?? 0.0);
-        }
+    // Adicionar despesas de financial_entries
+    $result = db()->query("
+        SELECT IFNULL(SUM(amount), 0) AS s
+        FROM financial_entries
+        WHERE entry_type = 'despesa' AND status = 'pending'
+    ");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiCustosAndamento += (float)($row['s'] ?? 0.0);
     }
+    
     error_log("[DASHBOARD] Custos em Andamento: R$ " . number_format($kpiCustosAndamento, 2));
 } catch (Throwable $e) {
     error_log("[DASHBOARD] Erro em custos: " . $e->getMessage());
 }
 
 try {
-    // Contas a Receber: pendentes e inadimplentes
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('pendente','inadimplente')");
+    // MESMA QUERY da aba finance_receivable_list.php - Contas a Receber (pendente)
+    $result = db()->query("
+        SELECT IFNULL(SUM(pa.authorized_value), 0) AS s
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        WHERE p.deleted_at IS NULL 
+        AND pa.authorized_value IS NOT NULL 
+        AND pa.authorized_value > 0
+        AND pa.status IN ('approved', 'completed', 'confirmed')
+    ");
     if ($result) {
         $row = $result->fetch();
         $kpiReceber = (float)($row['s'] ?? 0.0);
     }
     
-    // Se não há pendentes/inadimplentes, mostrar total
-    if ($kpiReceber === 0.0) {
-        $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable");
-        if ($result) {
-            $row = $result->fetch();
-            $kpiReceber = (float)($row['s'] ?? 0.0);
-        }
+    // Adicionar receitas pendentes de financial_entries
+    $result = db()->query("
+        SELECT IFNULL(SUM(amount), 0) AS s
+        FROM financial_entries
+        WHERE entry_type = 'receita' AND status = 'pending'
+    ");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiReceber += (float)($row['s'] ?? 0.0);
     }
+    
     error_log("[DASHBOARD] Contas a Receber: R$ " . number_format($kpiReceber, 2));
 } catch (Throwable $e) {
     error_log("[DASHBOARD] Erro em contas a receber: " . $e->getMessage());
 }
 
 try {
-    // Contas a Pagar: total de contas a pagar
-    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable");
+    // MESMA QUERY da aba finance_payable_list.php - Contas a Pagar (total)
+    $result = db()->query("
+        SELECT IFNULL(SUM(pa.agreed_value), 0) AS s
+        FROM patient_assignments pa
+        WHERE pa.agreed_value IS NOT NULL 
+        AND pa.agreed_value > 0
+    ");
     if ($result) {
         $row = $result->fetch();
         $kpiPagar = (float)($row['s'] ?? 0.0);
     }
+    
+    // Adicionar despesas de financial_entries
+    $result = db()->query("
+        SELECT IFNULL(SUM(amount), 0) AS s
+        FROM financial_entries
+        WHERE entry_type = 'despesa'
+    ");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiPagar += (float)($row['s'] ?? 0.0);
+    }
+    
     error_log("[DASHBOARD] Contas a Pagar: R$ " . number_format($kpiPagar, 2));
 } catch (Throwable $e) {
     error_log("[DASHBOARD] Erro em contas a pagar: " . $e->getMessage());
