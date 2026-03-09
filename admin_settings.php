@@ -330,41 +330,168 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div style="margin-top:12px">';
         
         $helpTopics = [
-            'Fluxo de Captação de Demandas' => [
-                'Recebimento da Demanda' => 'Uma demanda chega por e-mail ou WhatsApp e é registrada automaticamente no sistema.',
-                'Captador Assume a Demanda' => 'O captador visualiza a demanda na lista de Captação e clica em "Assumir". A partir desse momento, ele é responsável por encontrar um profissional.',
-                'Disparo para Grupos WhatsApp' => 'O captador deve disparar a demanda para os grupos de WhatsApp dos profissionais. O sistema envia automaticamente a mensagem com os detalhes da demanda.',
-                'Profissional Manifesta Interesse' => 'Os profissionais que receberem a mensagem no grupo podem responder demonstrando interesse em atender a demanda.',
-                'Captador Seleciona Profissional' => 'O captador escolhe o profissional mais adequado e registra no sistema quem foi selecionado.',
-                'Finalização' => 'A demanda é marcada como "Atendida" e o fluxo é concluído.'
+            '📋 1. CAPTAÇÃO DE DEMANDAS' => [
+                '🎯 O QUE É' => 'Módulo responsável por receber, organizar e distribuir solicitações de atendimento para profissionais de saúde.',
+                
+                '📥 PASSO 1: Recebimento' => 'AÇÃO: E-mail chega na caixa configurada em SMTP Entrada. RESULTADO: Sistema cria automaticamente um card na coluna "Recebimento de E-mail" com status "aguardando_captacao". TESTE: Envie e-mail para o endereço configurado e verifique se aparece em Captação.',
+                
+                '👤 PASSO 2: Assumir Demanda' => 'AÇÃO: Captador acessa Captação → Demandas, clica no card e clica em "Assumir Demanda". RESULTADO: Campo assumed_by_user_id é preenchido com ID do captador, status muda para "em_captacao", card move para coluna "Em Captação". TESTE: Assuma uma demanda e verifique se seu nome aparece como responsável.',
+                
+                '📱 PASSO 3: Disparar para Grupos WhatsApp' => 'AÇÃO: No card da demanda, clicar em "Realizar Captação". RESULTADO: Sistema busca grupos WhatsApp compatíveis (mesma especialidade/região), gera token único (#CAP123-XXXXX), envia mensagem para cada grupo, cria registros em demand_dispatch_logs. TESTE: Verifique se mensagem chegou nos grupos WhatsApp com o token.',
+                
+                '💬 PASSO 4: Profissional Responde' => 'AÇÃO: Profissional responde no grupo WhatsApp citando o token. RESULTADO: Sistema registra em whatsapp_group_messages vinculado ao demand_id. TESTE: Responda no grupo e verifique se aparece na aba "Respostas" do card.',
+                
+                '✅ PASSO 5: Confirmar Admissão via Chat' => 'AÇÃO: Captador abre Chat, seleciona conversa com profissional, clica em "Confirmar Admissão", preenche dados do paciente. RESULTADO: Cria paciente em patients, cria atendimento em patient_assignments, cria agendamento em appointments, atualiza demand para status "admitido". TESTE: Confirme admissão e verifique se paciente foi criado.',
+                
+                '📊 STATUS POSSÍVEIS' => 'aguardando_captacao (inicial) → tratamento_manual (requer ação manual) → em_captacao (captador assumiu) → admitido (paciente confirmado) → concluido (atendimento finalizado) → cancelado (demanda cancelada).',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Envie e-mail → 2) Assuma demanda → 3) Dispare para grupos → 4) Responda no WhatsApp → 5) Confirme admissão → 6) Verifique se paciente e agendamento foram criados.'
             ],
-            'Gestão de Profissionais' => [
-                'Candidatura' => 'O profissional preenche o formulário de candidatura no site público. Os dados são salvos como "Pendente".',
-                'Análise da Candidatura' => 'A equipe de RH acessa "Candidaturas" e visualiza os dados. Pode aprovar, reprovar ou solicitar mais informações.',
-                'Aprovação e Onboarding' => 'Ao aprovar, o sistema cria automaticamente um usuário para o profissional e envia e-mail/WhatsApp com login e senha.',
-                'Documentação' => 'O profissional acessa o sistema e faz upload dos documentos obrigatórios (RG, CPF, certificados, etc).',
-                'Revisão de Documentos' => 'A equipe revisa os documentos em "Profissionais → Documentos para Revisão" e aprova ou rejeita.',
-                'Profissional Ativo' => 'Com todos os documentos aprovados, o profissional está apto a receber demandas.'
+            
+            '💼 2. ATENDIMENTOS (PATIENT ASSIGNMENTS)' => [
+                '🎯 O QUE É' => 'Módulo que gerencia todo o ciclo de vida de um atendimento, desde a admissão até o pagamento final.',
+                
+                '📝 PASSO 1: Criação do Atendimento' => 'AÇÃO: Ao confirmar admissão no chat, sistema cria automaticamente. RESULTADO: INSERT em patient_assignments com status "admitted", vincula paciente + profissional + especialidade + valores. TESTE: Confirme admissão e verifique registro em Faturamento.',
+                
+                '📄 PASSO 2: Upload de Documentos' => 'AÇÃO: Profissional acessa "Meus Atendimentos", clica no atendimento, faz upload de documentos obrigatórios. RESULTADO: Arquivos salvos em billing_document_requirements com status "uploaded". TESTE: Faça login como profissional e envie documentos.',
+                
+                '📤 PASSO 3: Solicitar Aprovação' => 'AÇÃO: Após enviar todos documentos, profissional clica em "Solicitar Aprovação Financeira". RESULTADO: Status muda para "awaiting_financial_approval", notificação enviada para equipe financeira. TESTE: Solicite aprovação e verifique se aparece na aba "Aguardando Aprovação".',
+                
+                '💰 PASSO 4: Aprovação Financeira' => 'AÇÃO: Equipe financeira acessa Faturamento → Aguardando Aprovação, revisa documentos, preenche valores, clica em "Aprovar". RESULTADO: Cria billing_invoices, cria 2 financial_entries (receita + despesa), atualiza patient_assignment para "approved", registra em patient_prontuario_entries. TESTE: Aprove atendimento e verifique se fatura foi criada.',
+                
+                '✔️ PASSO 5: Conclusão' => 'AÇÃO: Após sessões realizadas, clicar em "Finalizar Atendimento". RESULTADO: Status muda para "completed", atualiza billing_invoices, marca financial_entries como "paid", atualiza demand vinculada para "concluido". TESTE: Finalize atendimento e verifique se tudo foi atualizado.',
+                
+                '📊 STATUS POSSÍVEIS' => 'admitted (inicial) → awaiting_financial_approval (aguardando) → approved (aprovado) → completed (concluído) → paid (pago) → cancelled (cancelado).',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Crie atendimento → 2) Envie documentos → 3) Solicite aprovação → 4) Aprove financeiramente → 5) Finalize → 6) Verifique se status = completed e valores foram lançados.'
             ],
-            'Gestão de Pacientes' => [
-                'Cadastro do Paciente' => 'Quando uma demanda é atendida, o captador ou profissional cadastra o paciente no sistema com dados pessoais e de saúde.',
-                'Vínculos' => 'O paciente é vinculado ao profissional que irá atendê-lo. Um paciente pode ter vários profissionais (ex: fisioterapeuta + nutricionista).',
-                'Acompanhamento' => 'O profissional acessa "Meus Pacientes" para ver todos os pacientes sob seus cuidados.',
-                'Histórico' => 'Todas as interações, sessões e documentos do paciente ficam registrados para consulta futura.'
+            
+            '💵 3. FINANCEIRO' => [
+                '🎯 O QUE É' => 'Módulo de gestão financeira com receitas, despesas, contas a pagar/receber e dashboard de indicadores.',
+                
+                '📊 Dashboard Financeiro' => 'AÇÃO: Acessar Finance → Dashboard. RESULTADO: Exibe faturamento total, custos, margem operacional, lucro líquido, crescimento vs período anterior, gráficos por especialidade/operadora. TESTE: Acesse e verifique se valores batem com atendimentos aprovados.',
+                
+                '💰 Contas a Receber' => 'AÇÃO: Acessar Finance → Contas a Receber. RESULTADO: Lista todos financial_entries com entry_type="income" e status="pending". TESTE: Crie lançamento de receita e verifique se aparece na lista.',
+                
+                '💸 Contas a Pagar' => 'AÇÃO: Acessar Finance → Contas a Pagar. RESULTADO: Lista todos financial_entries com entry_type="expense" e status="pending". TESTE: Crie lançamento de despesa e verifique se aparece na lista.',
+                
+                '➕ Criar Lançamento' => 'AÇÃO: Clicar em "Novo Lançamento", preencher tipo (receita/despesa), valor, data, categoria, descrição. RESULTADO: INSERT em financial_entries. TESTE: Crie lançamento e verifique se aparece no dashboard.',
+                
+                '✅ Marcar como Pago' => 'AÇÃO: Na lista de contas, clicar em "Marcar como Pago". RESULTADO: UPDATE financial_entries SET status="paid". TESTE: Marque como pago e verifique se saiu da lista de pendentes.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Aprove atendimento → 2) Verifique se receita apareceu em Contas a Receber → 3) Verifique se despesa apareceu em Contas a Pagar → 4) Marque como pago → 5) Verifique dashboard atualizado.'
             ],
-            'Chat e Comunicação' => [
-                'Chat Interno' => 'O sistema possui chat interno para comunicação entre equipe e profissionais.',
-                'Mensagens WhatsApp' => 'Integrado com WhatsApp via Evolution API para envio automático de mensagens.',
-                'E-mails Automáticos' => 'O sistema envia e-mails automáticos em eventos importantes (aprovação, lembretes, etc).',
-                'Notificações' => 'O sininho no topo mostra notificações de pendências, novos e-mails, mensagens WhatsApp e captações atrasadas.'
+            
+            '💬 4. CHAT E WHATSAPP' => [
+                '🎯 O QUE É' => 'Sistema de comunicação integrado com WhatsApp via Evolution API para envio/recebimento de mensagens.',
+                
+                '📱 Enviar Mensagem Texto' => 'AÇÃO: Acessar Chat, selecionar conversa, digitar mensagem, clicar em Enviar. RESULTADO: POST para Evolution API /message/sendText, salva em chat_messages com from_me=1. TESTE: Envie mensagem e verifique se chegou no WhatsApp.',
+                
+                '📎 Enviar Mídia' => 'AÇÃO: Clicar em ícone de anexo, selecionar arquivo (imagem/áudio/vídeo/PDF), enviar. RESULTADO: Upload para servidor, POST para Evolution API /message/sendMedia, salva em chat_messages. TESTE: Envie imagem e verifique se chegou.',
+                
+                '📥 Receber Mensagens' => 'AÇÃO: Webhook configurado em Evolution API aponta para /chat_webhook.php. RESULTADO: Ao receber mensagem, Evolution envia POST para webhook, sistema salva em chat_messages com from_me=0. TESTE: Envie mensagem do WhatsApp e verifique se aparece no chat.',
+                
+                '👥 Criar Grupo WhatsApp' => 'AÇÃO: Acessar Configurações → Evolution → Gerenciar Grupos → Criar Grupo, preencher especialidade/UF/cidade. RESULTADO: POST para Evolution API /group/create, salva em whatsapp_groups. TESTE: Crie grupo e verifique se foi criado no WhatsApp.',
+                
+                '🔗 Vincular Contato' => 'AÇÃO: No chat, clicar em "Vincular Contato", selecionar tipo (paciente/profissional) e ID. RESULTADO: UPDATE chat_messages SET contact_kind e contact_ref_id. TESTE: Vincule contato e verifique se nome aparece no chat.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Configure Evolution API → 2) Conecte instância via QR Code → 3) Envie mensagem texto → 4) Envie mídia → 5) Responda do WhatsApp → 6) Verifique se apareceu no chat.'
             ],
-            'Como Testar o Sistema' => [
-                '1. Teste de Captação' => 'Crie uma demanda manualmente em "Captação → Criar Demanda". Assuma a demanda e teste o disparo para grupos WhatsApp.',
-                '2. Teste de Candidatura' => 'Acesse a página pública de candidatura (/apply_professional.php) e preencha o formulário. Depois, aprove a candidatura no admin.',
-                '3. Teste de Documentos' => 'Faça login como profissional e envie documentos. Depois, acesse como admin e revise os documentos.',
-                '4. Teste de Paciente' => 'Cadastre um paciente de teste e vincule a um profissional. Verifique se aparece em "Meus Pacientes".',
-                '5. Teste de Notificações' => 'Execute a migration de notificações e crie notificações de teste usando as funções helper.',
-                '6. Teste de Integrações' => 'Configure as credenciais em "Integrações" e teste o console de cada integração (WhatsApp, OpenAI, etc).'
+            
+            '👨‍⚕️ 5. GESTÃO DE PROFISSIONAIS' => [
+                '🎯 O QUE É' => 'Módulo completo de recrutamento, onboarding, documentação e gestão de profissionais de saúde.',
+                
+                '📝 PASSO 1: Candidatura Pública' => 'AÇÃO: Profissional acessa /public/apply_professional.php, preenche formulário. RESULTADO: INSERT em professional_applications com status="pending". TESTE: Acesse link público e preencha candidatura.',
+                
+                '👀 PASSO 2: Análise' => 'AÇÃO: Admin acessa Candidaturas, visualiza dados, pode: Aprovar / Reprovar / Solicitar Complemento. RESULTADO: UPDATE professional_applications SET status. TESTE: Aprove candidatura e verifique se profissional foi criado.',
+                
+                '✅ PASSO 3: Aprovação e Onboarding' => 'AÇÃO: Ao aprovar, sistema cria usuário automaticamente. RESULTADO: INSERT em users, INSERT em user_roles (role=profissional), envia e-mail/WhatsApp com login e senha. TESTE: Aprove e verifique se e-mail foi enviado.',
+                
+                '📄 PASSO 4: Upload de Documentos' => 'AÇÃO: Profissional faz login, acessa "Meus Documentos", faz upload de RG, CPF, certificados, etc. RESULTADO: Arquivos salvos em professional_documents. TESTE: Faça login como profissional e envie documentos.',
+                
+                '🔍 PASSO 5: Revisão de Documentos' => 'AÇÃO: Admin acessa Profissionais → Documentos para Revisão, aprova ou rejeita cada documento. RESULTADO: UPDATE professional_documents SET status="approved" ou "rejected". TESTE: Revise documentos e aprove.',
+                
+                '🟢 PASSO 6: Profissional Ativo' => 'AÇÃO: Com todos documentos aprovados, profissional fica apto. RESULTADO: Aparece em listas de seleção para atendimentos. TESTE: Verifique se profissional aparece ao criar atendimento.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Preencha candidatura → 2) Aprove no admin → 3) Faça login como profissional → 4) Envie documentos → 5) Aprove documentos → 6) Verifique se está ativo.'
+            ],
+            
+            '🏥 6. GESTÃO DE PACIENTES' => [
+                '🎯 O QUE É' => 'Cadastro completo de pacientes com dados pessoais, saúde, vínculos com profissionais e prontuário.',
+                
+                '➕ Criar Paciente' => 'AÇÃO: Acessar Pacientes → Novo Paciente, preencher dados pessoais, saúde, contato, endereço. RESULTADO: INSERT em patients. TESTE: Cadastre paciente e verifique se aparece na lista.',
+                
+                '🔗 Vincular Profissional' => 'AÇÃO: No perfil do paciente, clicar em "Vínculos", adicionar profissional + especialidade. RESULTADO: INSERT em patient_assignments. TESTE: Vincule profissional e verifique se aparece em "Meus Pacientes" do profissional.',
+                
+                '📋 Prontuário' => 'AÇÃO: No perfil do paciente, acessar aba "Prontuário". RESULTADO: Exibe todos registros de patient_prontuario_entries (consultas, procedimentos, observações). TESTE: Adicione entrada no prontuário e verifique se aparece.',
+                
+                '📄 Documentos' => 'AÇÃO: No perfil do paciente, acessar aba "Documentos", fazer upload. RESULTADO: Arquivos salvos em patient_documents. TESTE: Envie documento e verifique se aparece na lista.',
+                
+                '📊 Histórico' => 'AÇÃO: Visualizar todas interações do paciente. RESULTADO: Exibe atendimentos, agendamentos, mensagens, documentos. TESTE: Verifique se histórico está completo.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Cadastre paciente → 2) Vincule a profissional → 3) Crie atendimento → 4) Adicione entrada no prontuário → 5) Envie documento → 6) Verifique histórico completo.'
+            ],
+            
+            '👥 7. RH - RECURSOS HUMANOS' => [
+                '🎯 O QUE É' => 'Gestão completa de funcionários internos (não profissionais de saúde), com contratos, benefícios, folha de pagamento.',
+                
+                '➕ Cadastrar Funcionário' => 'AÇÃO: Acessar RH → Novo Funcionário, preencher dados pessoais, cargo, departamento, salário. RESULTADO: INSERT em hr_employees. TESTE: Cadastre funcionário e verifique se aparece no dashboard RH.',
+                
+                '📄 Gerar Contrato (ZapSign)' => 'AÇÃO: No perfil do funcionário, clicar em "Gerar Contrato", selecionar template (CLT/PJ/Estágio). RESULTADO: POST para ZapSign API, cria documento, envia para assinatura. TESTE: Gere contrato e verifique se e-mail foi enviado.',
+                
+                '💰 Folha de Pagamento' => 'AÇÃO: Acessar RH → Folha de Pagamento, selecionar mês, gerar. RESULTADO: Cria hr_payroll_entries para cada funcionário ativo. TESTE: Gere folha e verifique se valores estão corretos.',
+                
+                '🎁 Benefícios' => 'AÇÃO: No perfil do funcionário, adicionar benefícios (VT, VR, plano de saúde). RESULTADO: INSERT em hr_employee_benefits. TESTE: Adicione benefício e verifique se aparece na folha.',
+                
+                '📊 Relatórios' => 'AÇÃO: Acessar RH → Relatórios, selecionar tipo (aniversariantes, férias, admissões). RESULTADO: Gera relatório em PDF/Excel. TESTE: Gere relatório e verifique dados.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Cadastre funcionário → 2) Gere contrato → 3) Funcionário assina → 4) Adicione benefícios → 5) Gere folha de pagamento → 6) Verifique relatórios.'
+            ],
+            
+            '📅 8. AGENDAMENTOS' => [
+                '🎯 O QUE É' => 'Gestão de consultas e sessões agendadas entre pacientes e profissionais.',
+                
+                '➕ Criar Agendamento' => 'AÇÃO: Acessar Agendamentos → Novo, selecionar paciente, profissional, especialidade, data/hora, recorrência. RESULTADO: INSERT em appointments. TESTE: Crie agendamento e verifique se aparece na lista.',
+                
+                '🔁 Recorrência' => 'AÇÃO: Ao criar, selecionar tipo (single/weekly/monthly/custom), definir regra. RESULTADO: Sistema cria múltiplos appointments baseado na regra. TESTE: Crie agendamento semanal e verifique se criou todas sessões.',
+                
+                '✅ Marcar como Realizado' => 'AÇÃO: Na lista, clicar em "Marcar como Realizado". RESULTADO: UPDATE appointments SET status="realizado". TESTE: Marque como realizado e verifique se status mudou.',
+                
+                '❌ Cancelar' => 'AÇÃO: Clicar em "Cancelar Agendamento", informar motivo. RESULTADO: UPDATE appointments SET status="cancelado", cancellation_reason. TESTE: Cancele e verifique se motivo foi salvo.',
+                
+                '📧 Notificações' => 'AÇÃO: Sistema envia e-mail/WhatsApp automático para paciente e profissional. RESULTADO: Usa templates configurados em admin_settings. TESTE: Crie agendamento e verifique se notificações foram enviadas.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Crie agendamento → 2) Verifique notificações → 3) Marque como realizado → 4) Verifique se aparece no histórico do paciente.'
+            ],
+            
+            '🔧 9. INTEGRAÇÕES' => [
+                '🎯 O QUE É' => 'Conexões com serviços externos: Evolution API (WhatsApp), OpenAI (IA), ZapSign (Assinatura Digital).',
+                
+                '📱 Evolution API (WhatsApp)' => 'CONFIGURAR: Admin → Configurações → Evolution, preencher Base URL, API Key, Instance. TESTAR: Admin → Evolution → Console, enviar mensagem de teste. VALIDAR: Mensagem deve chegar no WhatsApp.',
+                
+                '🤖 OpenAI (Inteligência Artificial)' => 'CONFIGURAR: Admin → Configurações → OpenAI, preencher API Key, Model, Prompt. TESTAR: Admin → OpenAI → Console, enviar texto para processar. VALIDAR: Deve retornar resposta da IA.',
+                
+                '✍️ ZapSign (Assinatura Digital)' => 'CONFIGURAR: Admin → Configurações → ZapSign → Configurar, preencher Token, criar templates. TESTAR: RH → Funcionário → Gerar Contrato. VALIDAR: E-mail de assinatura deve ser enviado.',
+                
+                '📧 SMTP (E-mail)' => 'CONFIGURAR: Admin → Configurações → SMTP Entrada/Saída, preencher host, porta, usuário, senha. TESTAR: Enviar e-mail de teste. VALIDAR: E-mail deve chegar na caixa.',
+                
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Configure cada integração → 2) Teste no console → 3) Use em fluxo real → 4) Verifique logs de erro.'
+            ],
+            
+            '✅ 10. TESTES COMPLETOS PONTA A PONTA' => [
+                '🧪 TESTE 1: Fluxo Completo de Captação' => '1) Envie e-mail para caixa de demandas → 2) Verifique se card foi criado → 3) Assuma demanda → 4) Dispare para grupos WhatsApp → 5) Responda no grupo → 6) Confirme admissão → 7) Verifique se paciente, atendimento e agendamento foram criados. RESULTADO ESPERADO: Tudo criado automaticamente.',
+                
+                '🧪 TESTE 2: Fluxo Completo de Atendimento' => '1) Crie atendimento → 2) Faça login como profissional → 3) Envie documentos → 4) Solicite aprovação → 5) Faça login como admin → 6) Aprove financeiramente → 7) Finalize atendimento → 8) Verifique se valores foram lançados no financeiro. RESULTADO ESPERADO: Status = completed, fatura criada.',
+                
+                '🧪 TESTE 3: Fluxo Completo de Profissional' => '1) Acesse link público de candidatura → 2) Preencha formulário → 3) Aprove no admin → 4) Verifique e-mail de boas-vindas → 5) Faça login como profissional → 6) Envie documentos → 7) Aprove documentos → 8) Verifique se profissional está ativo. RESULTADO ESPERADO: Profissional apto para receber demandas.',
+                
+                '🧪 TESTE 4: Fluxo Completo de Chat' => '1) Configure Evolution API → 2) Conecte via QR Code → 3) Envie mensagem texto → 4) Envie imagem → 5) Responda do WhatsApp → 6) Verifique se mensagens aparecem no chat → 7) Vincule contato. RESULTADO ESPERADO: Chat sincronizado.',
+                
+                '🧪 TESTE 5: Fluxo Completo Financeiro' => '1) Aprove 3 atendimentos → 2) Verifique dashboard financeiro → 3) Acesse contas a receber → 4) Marque 1 como pago → 5) Acesse contas a pagar → 6) Marque 1 como pago → 7) Verifique se dashboard atualizou. RESULTADO ESPERADO: Valores corretos.',
+                
+                '🧪 TESTE 6: Fluxo Completo de RH' => '1) Cadastre funcionário → 2) Configure ZapSign → 3) Gere contrato → 4) Assine contrato → 5) Adicione benefícios → 6) Gere folha de pagamento → 7) Verifique se valores estão corretos. RESULTADO ESPERADO: Folha gerada com benefícios.',
+                
+                '📊 CHECKLIST DE VALIDAÇÃO FINAL' => 'Todos os testes acima devem passar sem erros. Se algum falhar, verifique: 1) Configurações corretas 2) Permissões de usuário 3) Integrações ativas 4) Logs de erro 5) Banco de dados atualizado.'
             ]
         ];
         
