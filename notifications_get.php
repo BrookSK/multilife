@@ -8,7 +8,11 @@ auth_require_login();
 
 header('Content-Type: application/json');
 
-$userId = (int)$_SESSION['user_id'];
+$userId = auth_user_id();
+if ($userId === null) {
+    echo json_encode(['notifications' => []], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $stmt = db()->prepare('
     SELECT id, type, title, message, link, is_read, created_at

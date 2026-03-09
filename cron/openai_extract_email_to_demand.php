@@ -319,15 +319,25 @@ foreach ($emails as $e) {
         }
 
         // Determinar status baseado em completude dos dados
+        // Critério: Se tiver especialidade, pode ir para captação (mesmo sem cidade/estado completos)
+        // Apenas vai para tratamento_manual se faltar especialidade E (cidade OU estado)
+        $hasSpecialty = ($specialty !== '');
+        $hasLocation = ($city !== '' && $state !== '');
+        
         $status = 'aguardando_captacao';
-        $needsManual = ($city === '' || $state === '' || $specialty === '');
-        if ($needsManual) {
+        
+        // Só marca como tratamento_manual se faltar especialidade OU se não tiver nenhuma localização
+        if (!$hasSpecialty || (!$hasLocation && $city === '' && $state === '')) {
             $status = 'tratamento_manual';
+            $needsManual = true;
+        } else {
+            $needsManual = false;
         }
         
-        // Se urgente, priorizar
-        if ($urgency === 'urgente' && !$needsManual) {
+        // Se urgente e tiver especialidade, sempre priorizar para captação
+        if ($urgency === 'urgente' && $hasSpecialty) {
             $status = 'aguardando_captacao';
+            $needsManual = false;
         }
 
         $db->beginTransaction();
@@ -349,14 +359,26 @@ foreach ($emails as $e) {
             $note = 'criação automática via e-mail';
             if ($needsManual) {
                 $missing = [];
-                if ($city === '' || $state === '') {
-                    $missing[] = 'localização';
-                }
                 if ($specialty === '') {
                     $missing[] = 'especialidade';
                 }
+                if ($city === '' && $state === '') {
+                    $missing[] = 'localização completa';
+                }
                 if (count($missing) > 0) {
                     $note .= ' (tratamento_manual: faltando ' . implode(', ', $missing) . ')';
+                }
+            } else {
+                // Adicionar nota se tiver dados parciais
+                $partial = [];
+                if ($city === '') {
+                    $partial[] = 'cidade';
+                }
+                if ($state === '') {
+                    $partial[] = 'UF';
+                }
+                if (count($partial) > 0) {
+                    $note .= ' (dados parciais: faltando ' . implode(', ', $partial) . ')';
                 }
             }
 

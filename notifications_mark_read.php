@@ -8,7 +8,11 @@ auth_require_login();
 
 header('Content-Type: application/json');
 
-$userId = (int)$_SESSION['user_id'];
+$userId = auth_user_id();
+if ($userId === null) {
+    echo json_encode(['success' => false, 'error' => 'Usuário não autenticado']);
+    exit;
+}
 
 $input = json_decode(file_get_contents('php://input'), true);
 $notifId = isset($input['id']) ? (int)$input['id'] : 0;
