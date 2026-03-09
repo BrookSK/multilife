@@ -288,6 +288,7 @@ try {
 } catch (Throwable $e) {
 }
 
+// Cards de Atendimentos (4 em cima)
 echo '<div class="kpiGrid">';
 
 echo '<div class="kpiCard"><div class="kpiBody">';
@@ -313,6 +314,13 @@ echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--warn
 echo '<div class="kpiValue">' . number_format($kpiCaptacoesPendentes, 0, ',', '.') . '</div>';
 echo '<div class="kpiLabel">Captações Pendentes</div>';
 echo '</div></div>';
+
+echo '</div>';
+
+echo '<div style="height:12px"></div>';
+
+// Cards Financeiros (4 embaixo)
+echo '<div class="kpiGrid">';
 
 echo '<div class="kpiCard"><div class="kpiBody">';
 echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--success)/.10);color:hsl(var(--success))">R$</div><div class="kpiChange">+18%</div></div>';
