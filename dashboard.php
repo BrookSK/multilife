@@ -13,19 +13,47 @@ $user = auth_user();
 
 $kpiAtendRealizados = 0;
 $kpiAtendRecusados = 0;
+$kpiCaptacoesAtivas = 0;
+$kpiCaptacoesPendentes = 0;
 $kpiFaturamentoTotal = 0.0;
 $kpiCustosAndamento = 0.0;
 $kpiReceber = 0.0;
 $kpiPagar = 0.0;
 
 try {
-    $kpiAtendRealizados = (int)db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'realizado'")->fetch()['c'];
+    $result = db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'realizado'");
+    if ($result) {
+        $kpiAtendRealizados = (int)($result->fetch()['c'] ?? 0);
+    }
 } catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em atendimentos realizados: " . $e->getMessage());
 }
 
 try {
-    $kpiAtendRecusados = (int)db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'cancelado'")->fetch()['c'];
+    $result = db()->query("SELECT COUNT(*) AS c FROM appointments WHERE status = 'cancelado'");
+    if ($result) {
+        $kpiAtendRecusados = (int)($result->fetch()['c'] ?? 0);
+    }
 } catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em atendimentos cancelados: " . $e->getMessage());
+}
+
+try {
+    $result = db()->query("SELECT COUNT(*) AS c FROM demands WHERE status IN ('em_captacao', 'tratamento_manual')");
+    if ($result) {
+        $kpiCaptacoesAtivas = (int)($result->fetch()['c'] ?? 0);
+    }
+} catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em captações ativas: " . $e->getMessage());
+}
+
+try {
+    $result = db()->query("SELECT COUNT(*) AS c FROM demands WHERE status = 'aguardando_captacao'");
+    if ($result) {
+        $kpiCaptacoesPendentes = (int)($result->fetch()['c'] ?? 0);
+    }
+} catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em captações pendentes: " . $e->getMessage());
 }
 
 try {
@@ -85,7 +113,19 @@ echo '<div class="kpiLabel">Atendimentos Cancelados</div>';
 echo '</div></div>';
 
 echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--primary)/.10);color:hsl(var(--primary-darker))">R$</div><div class="kpiChange">+18%</div></div>';
+echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--primary)/.10);color:hsl(var(--primary))">HE</div><div class="kpiChange">+18%</div></div>';
+echo '<div class="kpiValue">' . number_format($kpiCaptacoesAtivas, 0, ',', '.') . '</div>';
+echo '<div class="kpiLabel">Captações Ativas</div>';
+echo '</div></div>';
+
+echo '<div class="kpiCard"><div class="kpiBody">';
+echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--warning)/.10);color:hsl(var(--warning))">⏸</div><div class="kpiChange">+3%</div></div>';
+echo '<div class="kpiValue">' . number_format($kpiCaptacoesPendentes, 0, ',', '.') . '</div>';
+echo '<div class="kpiLabel">Captações Pendentes</div>';
+echo '</div></div>';
+
+echo '<div class="kpiCard"><div class="kpiBody">';
+echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--success)/.10);color:hsl(var(--success))">R$</div><div class="kpiChange">+18%</div></div>';
 echo '<div class="kpiValue">R$ ' . number_format($kpiFaturamentoTotal, 2, ',', '.') . '</div>';
 echo '<div class="kpiLabel">Faturamento Total</div>';
 echo '</div></div>';
