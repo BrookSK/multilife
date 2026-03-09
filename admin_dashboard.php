@@ -11,93 +11,73 @@ $db = db();
 
 $metrics = [];
 
+error_log("[DASHBOARD] Iniciando coleta de métricas...");
+
 // Métricas de Demandas
 try {
-    $metrics['demands_open'] = (int)$db->query("SELECT COUNT(*) c FROM demands WHERE status IN ('aguardando_captacao','tratamento_manual','em_captacao')")->fetch()['c'];
+    $result = $db->query("SELECT COUNT(*) c FROM demands WHERE status IN ('aguardando_captacao','tratamento_manual','em_captacao')");
+    if ($result) {
+        $row = $result->fetch();
+        $metrics['demands_open'] = (int)($row['c'] ?? 0);
+        error_log("[DASHBOARD] Demandas abertas: " . $metrics['demands_open']);
+    } else {
+        $metrics['demands_open'] = 0;
+    }
 } catch (Exception $e) {
+    error_log("[DASHBOARD] Erro em demands: " . $e->getMessage());
     $metrics['demands_open'] = 0;
 }
 
-// Métricas de Documentação
-try {
-    $metrics['docs_submitted'] = (int)$db->query("SELECT COUNT(*) c FROM professional_documentations WHERE status = 'submitted'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['docs_submitted'] = 0;
+// Função helper para executar queries com segurança
+function getMetric($db, $query, $default = 0) {
+    try {
+        $result = $db->query($query);
+        if ($result) {
+            $row = $result->fetch(PDO::FETCH_ASSOC);
+            return (int)($row['c'] ?? $default);
+        }
+        return $default;
+    } catch (Exception $e) {
+        error_log("[DASHBOARD] Erro na query: " . $e->getMessage());
+        return $default;
+    }
 }
+
+// Métricas de Documentação
+$metrics['docs_submitted'] = getMetric($db, "SELECT COUNT(*) c FROM professional_documentations WHERE status = 'submitted'");
 
 // Métricas de Agendamentos
-try {
-    $metrics['appointments_pending'] = (int)$db->query("SELECT COUNT(*) c FROM appointments WHERE status = 'pendente_formulario'")->fetch()['c'];
-    $metrics['appointments_total'] = (int)$db->query("SELECT COUNT(*) c FROM appointments")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['appointments_pending'] = 0;
-    $metrics['appointments_total'] = 0;
-}
+$metrics['appointments_pending'] = getMetric($db, "SELECT COUNT(*) c FROM appointments WHERE status = 'pendente_formulario'");
+$metrics['appointments_total'] = getMetric($db, "SELECT COUNT(*) c FROM appointments");
 
 // Métricas Financeiras
-try {
-    $metrics['ar_pending'] = (int)$db->query("SELECT COUNT(*) c FROM finance_accounts_receivable WHERE status = 'pendente'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['ar_pending'] = 0;
-}
-
-try {
-    $metrics['ap_pending'] = (int)$db->query("SELECT COUNT(*) c FROM finance_accounts_payable WHERE status = 'pendente'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['ap_pending'] = 0;
-}
+$metrics['ar_pending'] = getMetric($db, "SELECT COUNT(*) c FROM finance_accounts_receivable WHERE status = 'pendente'");
+$metrics['ap_pending'] = getMetric($db, "SELECT COUNT(*) c FROM finance_accounts_payable WHERE status = 'pendente'");
 
 // Métricas de Usuários
-try {
-    $metrics['users_total'] = (int)$db->query("SELECT COUNT(*) c FROM users")->fetch()['c'];
-    $metrics['users_active'] = (int)$db->query("SELECT COUNT(*) c FROM users WHERE status = 'active'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['users_total'] = 0;
-    $metrics['users_active'] = 0;
-}
+$metrics['users_total'] = getMetric($db, "SELECT COUNT(*) c FROM users");
+$metrics['users_active'] = getMetric($db, "SELECT COUNT(*) c FROM users WHERE status = 'active'");
 
 // Métricas de Profissionais
-try {
-    $metrics['professionals_total'] = (int)$db->query("SELECT COUNT(*) c FROM users WHERE role = 'professional'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['professionals_total'] = 0;
-}
+$metrics['professionals_total'] = getMetric($db, "SELECT COUNT(*) c FROM users WHERE role = 'professional'");
 
 // Métricas de Pacientes
-try {
-    $metrics['patients_total'] = (int)$db->query("SELECT COUNT(*) c FROM patients")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['patients_total'] = 0;
-}
+$metrics['patients_total'] = getMetric($db, "SELECT COUNT(*) c FROM patients");
 
 // Métricas de Chat
-try {
-    $metrics['chat_contacts'] = (int)$db->query("SELECT COUNT(*) c FROM chat_contacts")->fetch()['c'];
-    $metrics['chat_messages'] = (int)$db->query("SELECT COUNT(*) c FROM chat_messages")->fetch()['c'];
-    $metrics['chat_unread'] = (int)$db->query("SELECT COUNT(*) c FROM chat_messages WHERE from_me = 0 AND is_read = 0")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['chat_contacts'] = 0;
-    $metrics['chat_messages'] = 0;
-    $metrics['chat_unread'] = 0;
-}
+$metrics['chat_contacts'] = getMetric($db, "SELECT COUNT(*) c FROM chat_contacts");
+$metrics['chat_messages'] = getMetric($db, "SELECT COUNT(*) c FROM chat_messages");
+$metrics['chat_unread'] = getMetric($db, "SELECT COUNT(*) c FROM chat_messages WHERE from_me = 0 AND is_read = 0");
 
 // Métricas de Eventos WhatsApp
-try {
-    $metrics['whatsapp_events'] = (int)$db->query("SELECT COUNT(*) c FROM whatsapp_events WHERE status = 'active'")->fetch()['c'];
-    $metrics['whatsapp_sent'] = (int)$db->query("SELECT COUNT(*) c FROM whatsapp_event_logs WHERE status = 'sent'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['whatsapp_events'] = 0;
-    $metrics['whatsapp_sent'] = 0;
-}
+$metrics['whatsapp_events'] = getMetric($db, "SELECT COUNT(*) c FROM whatsapp_events WHERE status = 'active'");
+$metrics['whatsapp_sent'] = getMetric($db, "SELECT COUNT(*) c FROM whatsapp_event_logs WHERE status = 'sent'");
 
 // Métricas de Eventos Email
-try {
-    $metrics['email_events'] = (int)$db->query("SELECT COUNT(*) c FROM email_events WHERE status = 'active'")->fetch()['c'];
-    $metrics['email_sent'] = (int)$db->query("SELECT COUNT(*) c FROM email_event_logs WHERE status = 'sent'")->fetch()['c'];
-} catch (Exception $e) {
-    $metrics['email_events'] = 0;
-    $metrics['email_sent'] = 0;
-}
+$metrics['email_events'] = getMetric($db, "SELECT COUNT(*) c FROM email_events WHERE status = 'active'");
+$metrics['email_sent'] = getMetric($db, "SELECT COUNT(*) c FROM email_event_logs WHERE status = 'sent'");
+
+error_log("[DASHBOARD] Métricas coletadas: " . json_encode($metrics));
 
 view_header('Admin - Dashboard');
 
