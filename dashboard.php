@@ -57,24 +57,54 @@ try {
 }
 
 try {
-    $kpiFaturamentoTotal = (float)db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('recebido')")->fetch()['s'];
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('recebido')");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiFaturamentoTotal = (float)($row['s'] ?? 0.0);
+    }
+    error_log("[DASHBOARD] Faturamento Total: R$ " . number_format($kpiFaturamentoTotal, 2));
 } catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em faturamento total: " . $e->getMessage());
 }
 
 try {
-    $kpiCustosAndamento = (float)db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status IN ('pendente')")->fetch()['s'];
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status IN ('pendente')");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiCustosAndamento = (float)($row['s'] ?? 0.0);
+    }
+    error_log("[DASHBOARD] Custos em Andamento: R$ " . number_format($kpiCustosAndamento, 2));
 } catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em custos: " . $e->getMessage());
 }
 
 try {
-    $kpiReceber = (float)db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('pendente','inadimplente')")->fetch()['s'];
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_receivable WHERE status IN ('pendente','inadimplente')");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiReceber = (float)($row['s'] ?? 0.0);
+    }
+    error_log("[DASHBOARD] Contas a Receber: R$ " . number_format($kpiReceber, 2));
 } catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em contas a receber: " . $e->getMessage());
 }
 
 try {
-    $kpiPagar = (float)db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status IN ('pendente')")->fetch()['s'];
+    $result = db()->query("SELECT IFNULL(SUM(amount),0) AS s FROM finance_accounts_payable WHERE status IN ('pendente')");
+    if ($result) {
+        $row = $result->fetch();
+        $kpiPagar = (float)($row['s'] ?? 0.0);
+    }
+    error_log("[DASHBOARD] Contas a Pagar: R$ " . number_format($kpiPagar, 2));
 } catch (Throwable $e) {
+    error_log("[DASHBOARD] Erro em contas a pagar: " . $e->getMessage());
 }
+
+error_log("[DASHBOARD] === RESUMO MÉTRICAS ===");
+error_log("[DASHBOARD] Atendimentos Realizados: " . $kpiAtendRealizados);
+error_log("[DASHBOARD] Atendimentos Cancelados: " . $kpiAtendRecusados);
+error_log("[DASHBOARD] Captações Ativas: " . $kpiCaptacoesAtivas);
+error_log("[DASHBOARD] Captações Pendentes: " . $kpiCaptacoesPendentes);
 
 $recentDemands = [];
 try {
