@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('email.manage');
+rbac_require_permission('admin.settings.manage');
 
 $eventId = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $pageTitle = $eventId ? 'Editar Evento de E-mail' : 'Criar Evento de E-mail';
