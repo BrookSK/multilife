@@ -37,19 +37,18 @@ try {
 }
 
 try {
-    // Atendimentos cancelados
+    // Captações canceladas (demands com status 'cancelado')
     $result = db()->query("
         SELECT COUNT(*) AS c 
-        FROM patient_assignments pa
-        INNER JOIN patients p ON p.id = pa.patient_id
-        WHERE p.deleted_at IS NULL AND pa.status = 'cancelled'
+        FROM demands
+        WHERE status = 'cancelado'
     ");
     if ($result) {
         $kpiAtendRecusados = (int)($result->fetch()['c'] ?? 0);
     }
-    error_log("[DASHBOARD] Atendimentos Cancelados: " . $kpiAtendRecusados);
+    error_log("[DASHBOARD] Captações Canceladas: " . $kpiAtendRecusados);
 } catch (Throwable $e) {
-    error_log("[DASHBOARD] Erro em atendimentos cancelados: " . $e->getMessage());
+    error_log("[DASHBOARD] Erro em captações canceladas: " . $e->getMessage());
 }
 
 try {
