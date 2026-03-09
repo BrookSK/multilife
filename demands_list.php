@@ -9,7 +9,7 @@ rbac_require_permission('demands.manage');
 
 // Buscar especialidades
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
-$specialties = $specialtiesStmt->fetchAll();
+$specialties = $specialtiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $status = isset($_GET['status']) ? (string)$_GET['status'] : '';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
@@ -341,7 +341,10 @@ echo '<div class="col6"><label>Empresa/Convênio (origem e-mail)<input name="ori
 echo '<div class="col6"><label>Tipo / Especialidade<select name="specialty">';
 echo '<option value="">Selecione...</option>';
 foreach ($specialties as $spec) {
-    echo '<option value="' . h((string)$spec['name']) . '">' . h((string)$spec['name']) . '</option>';
+    $specName = isset($spec['name']) ? (string)$spec['name'] : '';
+    if ($specName !== '') {
+        echo '<option value="' . h($specName) . '">' . h($specName) . '</option>';
+    }
 }
 echo '</select></label></div>';
 echo '<div class="col6"><label>Cidade<input name="location_city" maxlength="120" placeholder="Ex: São Paulo"></label></div>';
