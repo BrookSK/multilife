@@ -1252,11 +1252,11 @@ echo '</select>';
 echo '</div>';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Duração (semanas) *</label>';
-echo '<input type="number" name="duration_weeks" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 12">';
+echo '<input type="number" name="duration_weeks" id="selectProfDurationWeeks" onchange="calculateTotals()" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 12">';
 echo '</div>';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Total de Sessões *</label>';
-echo '<input type="number" name="total_sessions" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 24">';
+echo '<input type="number" name="total_sessions" id="selectProfTotalSessions" onchange="calculateTotals()" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 24">';
 echo '</div>';
 echo '</div>';
 
@@ -1265,11 +1265,24 @@ echo '<h3 style="margin:24px 0 16px;font-size:16px;color:#111b21;border-bottom:2
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Acordado (profissional) *</label>';
-echo '<input type="number" name="agreed_value" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 150.00">';
+echo '<input type="number" name="agreed_value" id="selectProfAgreedValue" onchange="calculateTotals()" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 150.00">';
 echo '</div>';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Proposta (operadora) *</label>';
-echo '<input type="number" name="proposal_value" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 180.00">';
+echo '<input type="number" name="proposal_value" id="selectProfProposalValue" onchange="calculateTotals()" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 180.00">';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="background:#f0f2f5;padding:16px;border-radius:8px;margin-top:16px">';
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+echo '<div>';
+echo '<div style="font-size:12px;color:#667781;margin-bottom:4px">Custo Total (Profissional)</div>';
+echo '<div style="font-size:18px;font-weight:700;color:#111b21" id="totalCost">R$ 0,00</div>';
+echo '</div>';
+echo '<div>';
+echo '<div style="font-size:12px;color:#667781;margin-bottom:4px">Faturamento Total (Operadora)</div>';
+echo '<div style="font-size:18px;font-weight:700;color:#00a884" id="totalRevenue">R$ 0,00</div>';
+echo '</div>';
 echo '</div>';
 echo '</div>';
 
@@ -2106,7 +2119,7 @@ if (window.chatId) {
 }
 echo '
 // Função para abrir modal de seleção de profissional
-async function openSelectProfessionalModal() {
+async function openSelectProfessionalModal(professionalId = null) {
     const demandSelect = document.getElementById("demandSelect");
     const demandId = demandSelect ? demandSelect.value : "";
     
@@ -2149,6 +2162,16 @@ async function openSelectProfessionalModal() {
         console.error("Erro ao buscar dados da demanda:", error);
     }
     
+    // Se profissional foi passado, pré-selecionar e carregar especialidade
+    if (professionalId) {
+        const profSelect = document.getElementById("selectProfModalProfessional");
+        if (profSelect) {
+            profSelect.value = professionalId;
+            // Carregar especialidade do profissional
+            await loadProfessionalSpecialty();
+        }
+    }
+    
     // Abrir modal
     const modal = document.getElementById("selectProfessionalModal");
     if (modal) {
@@ -2183,6 +2206,25 @@ async function loadProfessionalSpecialty() {
     } catch (error) {
         console.error("Erro ao buscar especialidade do profissional:", error);
     }
+}
+
+// Função para calcular totais automaticamente
+function calculateTotals() {
+    const totalSessions = parseFloat(document.getElementById("selectProfTotalSessions")?.value || 0);
+    const agreedValue = parseFloat(document.getElementById("selectProfAgreedValue")?.value || 0);
+    const proposalValue = parseFloat(document.getElementById("selectProfProposalValue")?.value || 0);
+    
+    const totalCost = totalSessions * agreedValue;
+    const totalRevenue = totalSessions * proposalValue;
+    
+    // Formatar valores em BRL
+    const formatter = new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+    });
+    
+    document.getElementById("totalCost").textContent = formatter.format(totalCost);
+    document.getElementById("totalRevenue").textContent = formatter.format(totalRevenue);
 }
 
 // Função para transcrever áudio

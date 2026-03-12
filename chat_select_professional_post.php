@@ -29,7 +29,7 @@ $proposalValue = (float)($_POST['proposal_value'] ?? 0);
 $notes = trim((string)($_POST['notes'] ?? ''));
 
 // Validações básicas
-if ($chatId <= 0) {
+if ($chatJid === '') {
     flash_set('error', 'Conversa inválida.');
     header('Location: /chat_web.php');
     exit;
@@ -37,37 +37,37 @@ if ($chatId <= 0) {
 
 if ($demandId <= 0) {
     flash_set('error', 'Selecione uma demanda.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
 if ($patientId <= 0 || $professionalUserId <= 0 || $specialty === '') {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
 if (!filter_var($operatorEmail, FILTER_VALIDATE_EMAIL)) {
     flash_set('error', 'E-mail da operadora inválido.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
 if ($startDate === '' || $startTime === '' || $endTime === '') {
     flash_set('error', 'Preencha data e horários do agendamento.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
 if ($totalSessions <= 0 || $durationWeeks <= 0) {
     flash_set('error', 'Informe duração e total de sessões.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
 if ($proposalValue <= 0) {
     flash_set('error', 'Valor de proposta deve ser maior que zero.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
@@ -85,7 +85,7 @@ $demand = $stmt->fetch();
 
 if (!$demand) {
     flash_set('error', 'Demanda não encontrada.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
@@ -96,7 +96,7 @@ $patient = $stmt->fetch();
 
 if (!$patient) {
     flash_set('error', 'Paciente não encontrado.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
@@ -114,7 +114,7 @@ $professional = $stmt->fetch();
 
 if (!$professional) {
     flash_set('error', 'Profissional não encontrado.');
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 
@@ -335,6 +335,6 @@ try {
     $db->rollBack();
     error_log('Erro ao criar solicitação de autorização: ' . $e->getMessage());
     flash_set('error', 'Erro ao criar solicitação: ' . $e->getMessage());
-    header('Location: /chat_select_professional.php?chat_id=' . $chatId);
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
