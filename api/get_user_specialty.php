@@ -25,6 +25,7 @@ if (!$user) {
 }
 
 echo json_encode([
+    'success' => true,
     'specialty_id' => $user['specialty_id'] ? (int)$user['specialty_id'] : null,
-    'specialty_name' => (string)($user['specialty'] ?? '')
+    'specialty' => (string)($user['specialty'] ?? '')
 ]);
