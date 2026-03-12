@@ -7,6 +7,13 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
+// ============================================================================
+// DEBUG DETALHADO - INÍCIO
+// ============================================================================
+error_log("=== CHAT_SELECT_PROFESSIONAL_POST - INÍCIO ===");
+error_log("POST DATA: " . print_r($_POST, true));
+error_log("USER ID: " . auth_user_id());
+
 $chatJid = trim((string)($_POST['chat_jid'] ?? ''));
 $demandId = (int)($_POST['demand_id'] ?? 0);
 $patientId = (int)($_POST['patient_id'] ?? 0);
@@ -14,6 +21,15 @@ $professionalUserId = (int)($_POST['professional_user_id'] ?? 0);
 $specialtyId = (int)($_POST['specialty_id'] ?? 0);
 $specialtyServiceId = (int)($_POST['specialty_service_id'] ?? 0);
 $operatorEmail = trim((string)($_POST['operator_email'] ?? ''));
+
+error_log("Parâmetros extraídos:");
+error_log("  chatJid: $chatJid");
+error_log("  demandId: $demandId");
+error_log("  patientId: $patientId");
+error_log("  professionalUserId: $professionalUserId");
+error_log("  specialtyId: $specialtyId");
+error_log("  specialtyServiceId: $specialtyServiceId");
+error_log("  operatorEmail: $operatorEmail");
 
 // Dados do agendamento
 $startDate = trim((string)($_POST['start_date'] ?? ''));
@@ -29,24 +45,34 @@ $agreedValue = (float)($_POST['agreed_value'] ?? 0);
 $proposalValue = (float)($_POST['proposal_value'] ?? 0);
 $notes = trim((string)($_POST['notes'] ?? ''));
 
-// Validações básicas
+// ============================================================================
+// VALIDAÇÕES BÁSICAS
+// ============================================================================
+error_log("=== VALIDAÇÕES ===");
+
 if ($chatJid === '') {
+    error_log("ERRO: chatJid vazio");
     flash_set('error', 'Conversa inválida.');
     header('Location: /chat_web.php');
     exit;
 }
+error_log("✓ chatJid válido");
 
 if ($demandId <= 0) {
+    error_log("ERRO: demandId inválido: $demandId");
     flash_set('error', 'Selecione uma demanda.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
+error_log("✓ demandId válido");
 
 if ($patientId <= 0 || $professionalUserId <= 0 || $specialtyId <= 0 || $specialtyServiceId <= 0) {
+    error_log("ERRO: Campos obrigatórios faltando - Patient: $patientId, Prof: $professionalUserId, Spec: $specialtyId, Service: $specialtyServiceId");
     flash_set('error', 'Preencha todos os campos obrigatórios.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
+error_log("✓ Todos os campos obrigatórios preenchidos");
 
 if (!filter_var($operatorEmail, FILTER_VALIDATE_EMAIL)) {
     flash_set('error', 'E-mail da operadora inválido.');
@@ -79,29 +105,41 @@ if (!in_array($frequency, $allowedFreq, true)) {
 
 $db = db();
 
+// ============================================================================
+// BUSCAR DADOS NO BANCO
+// ============================================================================
+error_log("=== BUSCANDO DADOS NO BANCO ===");
+
 // Buscar dados da demanda
-$stmt = $db->prepare('SELECT id, title, specialty, location_city, location_state, origin_email FROM demands WHERE id = :id');
+error_log("Buscando demanda ID: $demandId");
+$stmt = $db->prepare('SELECT id, title, specialty, location_city, location_state, origin_email, status FROM demands WHERE id = :id');
 $stmt->execute(['id' => $demandId]);
 $demand = $stmt->fetch();
 
 if (!$demand) {
+    error_log("ERRO: Demanda não encontrada - ID: $demandId");
     flash_set('error', 'Demanda não encontrada.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
+error_log("✓ Demanda encontrada: " . $demand['title'] . " (Status: " . $demand['status'] . ")");
 
 // Buscar dados do paciente
+error_log("Buscando paciente ID: $patientId");
 $stmt = $db->prepare('SELECT id, full_name, email, phone_primary, whatsapp FROM patients WHERE id = :id AND deleted_at IS NULL');
 $stmt->execute(['id' => $patientId]);
 $patient = $stmt->fetch();
 
 if (!$patient) {
+    error_log("ERRO: Paciente não encontrado - ID: $patientId");
     flash_set('error', 'Paciente não encontrado.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
+error_log("✓ Paciente encontrado: " . $patient['full_name']);
 
 // Buscar dados do profissional
+error_log("Buscando profissional ID: $professionalUserId");
 $stmt = $db->prepare(
     "SELECT u.id, u.name, u.email, u.phone 
      FROM users u 
@@ -114,21 +152,35 @@ $stmt->execute(['id' => $professionalUserId]);
 $professional = $stmt->fetch();
 
 if (!$professional) {
+    error_log("ERRO: Profissional não encontrado - ID: $professionalUserId");
     flash_set('error', 'Profissional não encontrado.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
+error_log("✓ Profissional encontrado: " . $professional['name']);
 
 // Buscar dados da especialidade e serviço selecionados
+error_log("Buscando especialidade ID: $specialtyId");
 $stmt = $db->prepare("SELECT name FROM specialties WHERE id = :id");
 $stmt->execute(['id' => $specialtyId]);
 $specialtyData = $stmt->fetch();
 $specialtyName = $specialtyData ? (string)$specialtyData['name'] : '';
 
+if (!$specialtyName) {
+    error_log("ERRO: Especialidade não encontrada - ID: $specialtyId");
+}
+error_log("✓ Especialidade: $specialtyName");
+
+error_log("Buscando serviço ID: $specialtyServiceId");
 $stmt = $db->prepare("SELECT service_name, base_value FROM specialty_services WHERE id = :id");
 $stmt->execute(['id' => $specialtyServiceId]);
 $serviceData = $stmt->fetch();
 $serviceName = $serviceData ? (string)$serviceData['service_name'] : '';
+
+if (!$serviceName) {
+    error_log("ERRO: Serviço não encontrado - ID: $specialtyServiceId");
+}
+error_log("✓ Serviço: $serviceName");
 
 // Buscar dados adicionais do profissional (registro)
 $stmt = $db->prepare("SELECT council_number, council_state FROM professional_applications WHERE created_user_id = :uid AND status = 'approved' LIMIT 1");
@@ -148,9 +200,15 @@ $frequencyDetailsJson = json_encode([
 
 $userId = auth_user_id();
 
+// ============================================================================
+// CRIAR REGISTROS NO BANCO
+// ============================================================================
+error_log("=== INICIANDO TRANSAÇÃO ===");
+
 $db->beginTransaction();
 try {
     // Criar solicitação de autorização
+    error_log("Criando authorization_request...");
     $stmt = $db->prepare(
         'INSERT INTO authorization_requests 
         (demand_id, professional_user_id, proposal_value, agreed_value, 
@@ -158,16 +216,19 @@ try {
          total_sessions, duration_weeks, operator_email, operator_name,
          status, created_by_user_id) 
         VALUES 
-        (:demand_id, :prof_id, :proposal, :agreed, 
-         :start_date, :start_time, :end_time, :frequency, :freq_details,
-         :total_sessions, :duration_weeks, :op_email, :op_name,
-         :status, :created_by)'
+        (:demand_id, :professional_user_id, :proposal_value, :agreed_value,
+         :start_date, :start_time, :end_time, :frequency, :frequency_details,
+         :total_sessions, :duration_weeks, :operator_email, :operator_name,
+         :status, :created_by_user_id)'
     );
     
     $operatorName = explode('@', $operatorEmail)[0];
     
     $stmt->execute([
         'demand_id' => $demandId,
+        'professional_user_id' => $professionalUserId,
+        'proposal_value' => $proposalValue,
+        'agreed_value' => $agreedValue,
         'prof_id' => $professionalUserId,
         'proposal' => $proposalValue,
         'agreed' => $agreedValue,
@@ -185,12 +246,16 @@ try {
     ]);
     
     $authRequestId = (int)$db->lastInsertId();
+    error_log("✓ Authorization request criado - ID: $authRequestId");
     
     // Atualizar status da demanda
+    error_log("Atualizando status da demanda...");
     $stmt = $db->prepare('UPDATE demands SET status = :status WHERE id = :id');
     $stmt->execute(['status' => 'aguardando_autorizacao', 'id' => $demandId]);
+    error_log("✓ Status da demanda atualizado");
     
     // Registrar log de status da demanda
+    error_log("Registrando log de status...");
     $stmt = $db->prepare(
         'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note) 
          VALUES (:did, :old, :new, :uid, :note)'
@@ -202,6 +267,7 @@ try {
         'uid' => $userId,
         'note' => 'Proposta enviada para operadora - Aguardando autorização'
     ]);
+    error_log("✓ Log de status registrado");
     
     // Registrar histórico da autorização
     $stmt = $db->prepare(
@@ -216,8 +282,16 @@ try {
         'notes' => 'Solicitação de autorização criada',
         'uid' => $userId
     ]);
+    error_log("✓ Histórico de autorização registrado");
     
+    error_log("=== COMMIT DA TRANSAÇÃO ===");
     $db->commit();
+    error_log("✓ Transação commitada com sucesso");
+    
+    // ============================================================================
+    // ENVIAR E-MAIL PARA OPERADORA
+    // ============================================================================
+    error_log("=== PREPARANDO E-MAIL ===");
     
     // Preparar e enviar e-mail para a operadora
     $totalProposal = $proposalValue * $totalSessions;
@@ -297,12 +371,20 @@ try {
     $emailBody .= "Sistema de Gestão de Atendimentos\n";
     
     // Enviar e-mail
+    error_log("Destinatário: $operatorEmail");
+    error_log("Assunto: $emailSubject");
+    
     try {
+        error_log("Iniciando envio de e-mail...");
         $smtp = new SmtpClient();
         $fromEmail = admin_setting_get('smtp.out.from_email', 'noreply@multilife.com.br');
         $fromName = admin_setting_get('smtp.out.from_name', 'MultiLife Care');
         
+        error_log("From: $fromEmail ($fromName)");
+        error_log("To: $operatorEmail");
+        
         $smtp->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $emailBody);
+        error_log("✓ E-mail enviado com sucesso");
         
         // Atualizar registro com data de envio e prazo de resposta
         $sentAt = date('Y-m-d H:i:s');
@@ -338,16 +420,22 @@ try {
         exit;
         
     } catch (Exception $e) {
-        error_log('Erro ao enviar e-mail de proposta: ' . $e->getMessage());
+        error_log('❌ ERRO AO ENVIAR E-MAIL: ' . $e->getMessage());
+        error_log('Stack trace: ' . $e->getTraceAsString());
         flash_set('warning', 'Solicitação criada, mas houve erro ao enviar e-mail: ' . $e->getMessage());
         header('Location: /authorization_list.php?status=aguardando_autorizacao');
         exit;
     }
     
 } catch (Exception $e) {
+    error_log('❌ ERRO FATAL NA TRANSAÇÃO: ' . $e->getMessage());
+    error_log('Stack trace: ' . $e->getTraceAsString());
+    error_log('Fazendo rollback...');
     $db->rollBack();
-    error_log('Erro ao criar solicitação de autorização: ' . $e->getMessage());
+    error_log('✓ Rollback executado');
     flash_set('error', 'Erro ao criar solicitação: ' . $e->getMessage());
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
+
+error_log("=== CHAT_SELECT_PROFESSIONAL_POST - FIM ===");
