@@ -2037,7 +2037,7 @@ async function transcribeAudio(messageId) {
         
         if (result.success) {
             // Substituir botão pela transcrição
-            area.innerHTML = `<div style="font-size:13px;color:hsl(var(--muted-foreground));font-style:italic;">📝 ${escapeHtml(result.transcription)}</div>`;
+            area.innerHTML = "<div style=\"font-size:13px;color:hsl(var(--muted-foreground));font-style:italic;\">📝 " + escapeHtml(result.transcription) + "</div>";
             
             if (result.cached) {
                 console.log("✅ Transcrição carregada do cache");
@@ -2046,7 +2046,7 @@ async function transcribeAudio(messageId) {
             }
         } else {
             // Mostrar erro
-            area.innerHTML = `<div style="font-size:12px;color:#f48771;">❌ Erro: ${escapeHtml(result.error)}</div>`;
+            area.innerHTML = "<div style=\"font-size:12px;color:#f48771;\">❌ Erro: " + escapeHtml(result.error) + "</div>";
             console.error("Erro na transcrição:", result.error);
         }
     } catch (error) {
