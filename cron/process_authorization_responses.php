@@ -46,6 +46,11 @@ foreach ($pendingRequests as $request) {
     $originEmail = (string)$request['origin_email'];
     $operatorEmail = (string)$request['operator_email'];
     
+    error_log("=== [AUTHORIZATION_RESPONSE] Processando Autorização #$authId ===");
+    error_log("[AUTHORIZATION_RESPONSE] Demanda ID: $demandId");
+    error_log("[AUTHORIZATION_RESPONSE] E-mail operadora: $operatorEmail");
+    error_log("[AUTHORIZATION_RESPONSE] E-mail origem: $originEmail");
+    
     if ($debug) {
         echo "\n=== Processando Autorização #$authId ===\n";
         echo "E-mail operadora: $operatorEmail\n";
@@ -55,6 +60,7 @@ foreach ($pendingRequests as $request) {
     try {
         // Buscar e-mails recebidos do operador após o envio da proposta
         $sentAt = (string)$request['sent_at'];
+        error_log("[AUTHORIZATION_RESPONSE] Proposta enviada em: $sentAt");
         
         // Buscar por thread_id se disponível, senão por assunto e remetente
         $emailStmt = $db->prepare(
@@ -73,7 +79,11 @@ foreach ($pendingRequests as $request) {
         ]);
         $responseEmails = $emailStmt->fetchAll();
         
+        error_log("[AUTHORIZATION_RESPONSE] Buscando e-mails recebidos após $sentAt");
+        error_log("[AUTHORIZATION_RESPONSE] E-mails encontrados: " . count($responseEmails));
+        
         if (count($responseEmails) === 0) {
+            error_log("[AUTHORIZATION_RESPONSE] ⚠️ Nenhuma resposta encontrada ainda para autorização #$authId");
             if ($debug) {
                 echo "Nenhuma resposta encontrada ainda\n";
             }
@@ -88,6 +98,13 @@ foreach ($pendingRequests as $request) {
             $subject = (string)($email['subject'] ?? '');
             $bodyText = (string)($email['body_text'] ?? '');
             $bodyHtml = (string)($email['body_html'] ?? '');
+            $receivedAt = (string)($email['received_at'] ?? '');
+            
+            error_log("[AUTHORIZATION_RESPONSE] Analisando e-mail #$emailId");
+            error_log("[AUTHORIZATION_RESPONSE] Assunto: $subject");
+            error_log("[AUTHORIZATION_RESPONSE] Recebido em: $receivedAt");
+            error_log("[AUTHORIZATION_RESPONSE] Tamanho body_text: " . strlen($bodyText) . " bytes");
+            error_log("[AUTHORIZATION_RESPONSE] Tamanho body_html: " . strlen($bodyHtml) . " bytes");
             
             $content = trim($bodyText);
             if ($content === '' && $bodyHtml !== '') {
@@ -95,8 +112,11 @@ foreach ($pendingRequests as $request) {
             }
             
             if ($content === '') {
+                error_log("[AUTHORIZATION_RESPONSE] ⚠️ E-mail #$emailId sem conteúdo, pulando");
                 continue;
             }
+            
+            error_log("[AUTHORIZATION_RESPONSE] Conteúdo extraído: " . strlen($content) . " caracteres");
             
             if ($debug) {
                 echo "\nAnalisando e-mail #$emailId\n";
@@ -121,6 +141,9 @@ foreach ($pendingRequests as $request) {
             
             $userPrompt = "ASSUNTO: $subject\n\nCORPO DO E-MAIL:\n$content";
             
+            error_log("[AUTHORIZATION_RESPONSE] 🤖 Enviando para análise de IA...");
+            error_log("[AUTHORIZATION_RESPONSE] Preview do conteúdo: " . mb_substr($content, 0, 200) . "...");
+            
             $res = $api->chatCompletions(
                 [
                     ['role' => 'system', 'content' => $systemPrompt],
@@ -134,7 +157,10 @@ foreach ($pendingRequests as $request) {
             );
             
             $statusCode = (int)($res['status'] ?? 0);
+            error_log("[AUTHORIZATION_RESPONSE] Resposta da IA - HTTP Status: $statusCode");
+            
             if ($statusCode < 200 || $statusCode >= 300) {
+                error_log("[AUTHORIZATION_RESPONSE] ❌ Erro na API OpenAI: HTTP $statusCode");
                 if ($debug) {
                     echo "Erro na API OpenAI: HTTP $statusCode\n";
                 }
@@ -148,7 +174,10 @@ foreach ($pendingRequests as $request) {
             }
             $raw = trim($raw);
             
+            error_log("[AUTHORIZATION_RESPONSE] Resposta da IA (raw): $raw");
+            
             if ($raw === '') {
+                error_log("[AUTHORIZATION_RESPONSE] ❌ OpenAI retornou vazio");
                 if ($debug) {
                     echo "OpenAI retornou vazio\n";
                 }
@@ -157,6 +186,7 @@ foreach ($pendingRequests as $request) {
             
             $parsed = json_decode($raw, true);
             if (!is_array($parsed)) {
+                error_log("[AUTHORIZATION_RESPONSE] ❌ Resposta não é JSON válido");
                 if ($debug) {
                     echo "Resposta não é JSON válido\n";
                 }
@@ -167,6 +197,11 @@ foreach ($pendingRequests as $request) {
             $confidence = (float)($parsed['confidence'] ?? 0);
             $reason = (string)($parsed['reason'] ?? '');
             
+            error_log("[AUTHORIZATION_RESPONSE] 📊 DECISÃO DA IA:");
+            error_log("[AUTHORIZATION_RESPONSE]   - Decisão: $decision");
+            error_log("[AUTHORIZATION_RESPONSE]   - Confiança: $confidence");
+            error_log("[AUTHORIZATION_RESPONSE]   - Motivo: $reason");
+            
             if ($debug) {
                 echo "Decisão: $decision (confiança: $confidence)\n";
                 echo "Motivo: $reason\n";
@@ -174,6 +209,7 @@ foreach ($pendingRequests as $request) {
             
             // Só processar se confiança >= 0.7
             if ($confidence < 0.7) {
+                error_log("[AUTHORIZATION_RESPONSE] ⚠️ Confiança baixa ($confidence < 0.7), ignorando");
                 if ($debug) {
                     echo "Confiança baixa, ignorando\n";
                 }
@@ -185,8 +221,10 @@ foreach ($pendingRequests as $request) {
             $db->beginTransaction();
             try {
                 if ($decision === 'approved') {
+                    error_log("[AUTHORIZATION_RESPONSE] ✅ PROCESSANDO APROVAÇÃO");
                     // APROVADO - Criar paciente, atendimento e financeiro
                     
+                    error_log("[AUTHORIZATION_RESPONSE] Buscando ou criando paciente...");
                     // Buscar ou criar paciente
                     $patientStmt = $db->prepare(
                         "SELECT id FROM patients 
@@ -199,9 +237,10 @@ foreach ($pendingRequests as $request) {
                     $patientId = $patientRow ? (int)$patientRow['id'] : 0;
                     
                     if ($patientId === 0) {
+                        error_log("[AUTHORIZATION_RESPONSE] Criando novo paciente...");
                         // Criar paciente básico (será completado depois)
                         $createPatientStmt = $db->prepare(
-                            "INSERT INTO patients (full_name, email, phone, status) 
+                            "INSERT INTO patients (full_name, email, phone_primary, status) 
                              VALUES (:name, :email, :phone, 'active')"
                         );
                         $createPatientStmt->execute([
@@ -210,6 +249,9 @@ foreach ($pendingRequests as $request) {
                             'phone' => ''
                         ]);
                         $patientId = (int)$db->lastInsertId();
+                        error_log("[AUTHORIZATION_RESPONSE] ✓ Paciente criado - ID: $patientId");
+                    } else {
+                        error_log("[AUTHORIZATION_RESPONSE] ✓ Paciente existente - ID: $patientId");
                     }
                     
                     // Criar atendimento (patient_assignment)
@@ -218,6 +260,13 @@ foreach ($pendingRequests as $request) {
                     $agreedValue = (float)$request['agreed_value'];
                     $proposalValue = (float)$request['proposal_value'];
                     $totalSessions = (int)$request['total_sessions'];
+                    
+                    error_log("[AUTHORIZATION_RESPONSE] Criando atendimento...");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Profissional: $professionalUserId");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Especialidade: $specialty");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Valor acordado: R$ $agreedValue");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Valor proposta: R$ $proposalValue");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Total sessões: $totalSessions");
                     
                     $assignmentStmt = $db->prepare(
                         "INSERT INTO patient_assignments 
@@ -237,10 +286,15 @@ foreach ($pendingRequests as $request) {
                         'notes' => 'Criado automaticamente após aprovação da proposta #' . $authId
                     ]);
                     $assignmentId = (int)$db->lastInsertId();
+                    error_log("[AUTHORIZATION_RESPONSE] ✓ Atendimento criado - ID: $assignmentId");
                     
                     // Criar lançamentos financeiros
                     $totalRevenue = $proposalValue * $totalSessions;
                     $totalCost = $agreedValue * $totalSessions;
+                    
+                    error_log("[AUTHORIZATION_RESPONSE] Criando lançamentos financeiros...");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Receita total: R$ $totalRevenue");
+                    error_log("[AUTHORIZATION_RESPONSE]   - Despesa total: R$ $totalCost");
                     
                     // Receita
                     $revenueStmt = $db->prepare(
@@ -255,6 +309,7 @@ foreach ($pendingRequests as $request) {
                         'ref_id' => $assignmentId,
                         'due_date' => date('Y-m-d', strtotime('+30 days'))
                     ]);
+                    error_log("[AUTHORIZATION_RESPONSE] ✓ Receita lançada");
                     
                     // Despesa (pagamento ao profissional)
                     $expenseStmt = $db->prepare(
@@ -269,6 +324,7 @@ foreach ($pendingRequests as $request) {
                         'ref_id' => $assignmentId,
                         'due_date' => date('Y-m-d', strtotime('+30 days'))
                     ]);
+                    error_log("[AUTHORIZATION_RESPONSE] ✓ Despesa lançada");
                     
                     // Atualizar authorization_request
                     $updateAuthStmt = $db->prepare(
@@ -305,14 +361,22 @@ foreach ($pendingRequests as $request) {
                         'notes' => "Aprovado automaticamente pela IA. Motivo: $reason"
                     ]);
                     
+                    error_log("[AUTHORIZATION_RESPONSE] Atualizando status da autorização e demanda...");
+                    
                     $db->commit();
                     $approved++;
+                    
+                    error_log("[AUTHORIZATION_RESPONSE] ✅ APROVAÇÃO PROCESSADA COM SUCESSO!");
+                    error_log("[AUTHORIZATION_RESPONSE] Atendimento #$assignmentId criado");
+                    error_log("[AUTHORIZATION_RESPONSE] Paciente #$patientId vinculado");
+                    error_log("[AUTHORIZATION_RESPONSE] Lançamentos financeiros criados");
                     
                     if ($debug) {
                         echo "✅ APROVADO - Atendimento #$assignmentId criado\n";
                     }
                     
                 } else {
+                    error_log("[AUTHORIZATION_RESPONSE] ❌ PROCESSANDO NEGAÇÃO");
                     // NEGADO
                     
                     $updateAuthStmt = $db->prepare(
@@ -331,12 +395,14 @@ foreach ($pendingRequests as $request) {
                         'email_id' => $emailId,
                         'id' => $authId
                     ]);
+                    error_log("[AUTHORIZATION_RESPONSE] ✓ Status da autorização atualizado para 'autorizacao_negada'");
                     
                     // Atualizar demanda
                     $updateDemandStmt = $db->prepare(
                         "UPDATE demands SET status = 'autorizacao_negada' WHERE id = :id"
                     );
                     $updateDemandStmt->execute(['id' => $demandId]);
+                    error_log("[AUTHORIZATION_RESPONSE] ✓ Status da demanda atualizado");
                     
                     // Registrar histórico
                     $historyStmt = $db->prepare(
@@ -348,9 +414,13 @@ foreach ($pendingRequests as $request) {
                         'auth_id' => $authId,
                         'notes' => "Negado automaticamente pela IA. Motivo: $reason"
                     ]);
+                    error_log("[AUTHORIZATION_RESPONSE] ✓ Histórico registrado");
                     
                     $db->commit();
                     $denied++;
+                    
+                    error_log("[AUTHORIZATION_RESPONSE] ❌ NEGAÇÃO PROCESSADA COM SUCESSO!");
+                    error_log("[AUTHORIZATION_RESPONSE] Motivo: $reason");
                     
                     if ($debug) {
                         echo "❌ NEGADO - Motivo: $reason\n";

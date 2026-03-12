@@ -108,6 +108,9 @@ if ($enc === 'ssl') {
     $flags[] = $enc;
 }
 
+// Adicionar novalidate-cert para ignorar validação de hostname do certificado
+$flags[] = 'novalidate-cert';
+
 $flagsStr = '';
 if (count($flags) > 0) {
     $flagsStr = '/' . implode('/', $flags);
