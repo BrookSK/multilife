@@ -91,7 +91,7 @@ if (!$demand) {
 }
 
 // Buscar dados do paciente
-$stmt = $db->prepare('SELECT id, full_name, email, phone FROM patients WHERE id = :id AND deleted_at IS NULL');
+$stmt = $db->prepare('SELECT id, full_name, email, phone_primary, whatsapp FROM patients WHERE id = :id AND deleted_at IS NULL');
 $stmt->execute(['id' => $patientId]);
 $patient = $stmt->fetch();
 
@@ -233,7 +233,7 @@ try {
         default => 'Semanal'
     };
     
-    $emailSubject = "Proposta de Atendimento - {$patient['full_name']} - {$specialty}";
+    $emailSubject = "Proposta de Atendimento - {$patient['full_name']} - {$specialtyName}";
     
     $emailBody = "Prezado(a),\n\n";
     $emailBody .= "Segue proposta de atendimento domiciliar:\n\n";
@@ -242,7 +242,8 @@ try {
     $emailBody .= "═══════════════════════════════════════════════════════\n";
     $emailBody .= "Nome: {$patient['full_name']}\n";
     if (!empty($patient['email'])) $emailBody .= "E-mail: {$patient['email']}\n";
-    if (!empty($patient['phone'])) $emailBody .= "Telefone: {$patient['phone']}\n";
+    $patientPhone = $patient['whatsapp'] ?? $patient['phone_primary'] ?? '';
+    if (!empty($patientPhone)) $emailBody .= "Telefone: {$patientPhone}\n";
     if (!empty($location)) $emailBody .= "Localização: {$location}\n";
     $emailBody .= "\n";
     
