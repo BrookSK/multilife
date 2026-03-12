@@ -1215,7 +1215,13 @@ echo '</div>';
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
-echo '<input type="text" name="specialty" id="selectProfSpecialty" required readonly style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;background:#f0f2f5" placeholder="Selecione o profissional primeiro">';
+echo '<select name="specialty_id" id="selectProfSpecialtyId" onchange="loadSpecialtyServices()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '<option value="">Selecione...</option>';
+$specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+foreach ($specialtiesStmt->fetchAll() as $spec) {
+    echo '<option value="' . (int)$spec['id'] . '">' . h($spec['name']) . '</option>';
+}
+echo '</select>';
 echo '</div>';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">E-mail da Operadora *</label>';
@@ -1224,9 +1230,9 @@ echo '</div>';
 echo '</div>';
 
 echo '<div style="margin-bottom:16px">';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Serviço do Profissional</label>';
-echo '<select name="service_id" id="selectProfService" onchange="loadServiceDetails()" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
-echo '<option value="">Selecione o profissional primeiro...</option>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Serviço *</label>';
+echo '<select name="specialty_service_id" id="selectProfSpecialtyServiceId" onchange="loadServiceDetails()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '<option value="">Selecione a especialidade primeiro...</option>';
 echo '</select>';
 echo '<div style="font-size:12px;color:#667781;margin-top:4px">Ao selecionar um serviço, os valores serão preenchidos automaticamente</div>';
 echo '</div>';
@@ -2193,67 +2199,56 @@ function closeSelectProfessionalModal() {
     }
 }
 
-// Função para carregar especialidade e serviços do profissional selecionado
-async function loadProfessionalSpecialty() {
-    const professionalSelect = document.getElementById("selectProfModalProfessional");
-    const professionalId = professionalSelect ? professionalSelect.value : "";
+// Função para carregar serviços da especialidade selecionada
+async function loadSpecialtyServices() {
+    const specialtySelect = document.getElementById("selectProfSpecialtyId");
+    const serviceSelect = document.getElementById("selectProfSpecialtyServiceId");
     
-    const specialtyInput = document.getElementById("selectProfSpecialty");
-    const serviceSelect = document.getElementById("selectProfService");
+    if (!specialtySelect || !serviceSelect) return;
     
-    if (!professionalId) {
-        if (specialtyInput) {
-            specialtyInput.value = "";
-            specialtyInput.placeholder = "Selecione o profissional primeiro";
-        }
-        if (serviceSelect) {
-            serviceSelect.innerHTML = "<option value=\'\'>Selecione o profissional primeiro...</option>";
-        }
+    const specialtyId = specialtySelect.value;
+    
+    if (!specialtyId) {
+        serviceSelect.innerHTML = "<option value=\'\'>Selecione a especialidade primeiro...</option>";
         return;
     }
     
     try {
-        const response = await fetch("/api/get_professional_services.php?user_id=" + professionalId);
+        const response = await fetch("/api/get_specialty_services.php?specialty_id=" + specialtyId);
         const data = await response.json();
         
-        if (data.success) {
-            // Pré-preencher especialidade do profissional
-            if (specialtyInput && data.specialty) {
-                specialtyInput.value = data.specialty;
-            }
-            
-            // Preencher dropdown de serviços
-            if (serviceSelect && data.services) {
-                serviceSelect.innerHTML = "<option value=\'\'>Selecione um serviço...</option>";
-                data.services.forEach(service => {
-                    const option = document.createElement("option");
-                    option.value = service.id;
-                    option.textContent = service.service_name + " - R$ " + parseFloat(service.value_per_session).toFixed(2);
-                    option.dataset.value = service.value_per_session;
-                    option.dataset.duration = service.duration_minutes;
-                    serviceSelect.appendChild(option);
-                });
-            }
+        if (data.success && data.services) {
+            serviceSelect.innerHTML = "<option value=\'\'>Selecione um serviço...</option>";
+            data.services.forEach(service => {
+                const option = document.createElement("option");
+                option.value = service.id;
+                option.textContent = service.service_name + " - R$ " + parseFloat(service.base_value).toFixed(2);
+                option.dataset.value = service.base_value;
+                serviceSelect.appendChild(option);
+            });
+        } else {
+            serviceSelect.innerHTML = "<option value=\'\'>Nenhum serviço cadastrado para esta especialidade</option>";
         }
     } catch (error) {
-        console.error("Erro ao buscar dados do profissional:", error);
+        console.error("Erro ao buscar serviços da especialidade:", error);
+        serviceSelect.innerHTML = "<option value=\'\'>Erro ao carregar serviços</option>";
     }
 }
 
 // Função para carregar detalhes do serviço selecionado
 function loadServiceDetails() {
-    const serviceSelect = document.getElementById("selectProfService");
+    const serviceSelect = document.getElementById("selectProfSpecialtyServiceId");
     if (!serviceSelect) return;
     
     const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
     if (!selectedOption || !selectedOption.value) return;
     
-    const valuePerSession = parseFloat(selectedOption.dataset.value) || 0;
+    const baseValue = parseFloat(selectedOption.dataset.value) || 0;
     
-    // Preencher valor acordado com o valor do serviço
+    // Preencher valor acordado com o valor base do serviço
     const agreedInput = document.getElementById("selectProfAgreedValue");
-    if (agreedInput && valuePerSession > 0) {
-        agreedInput.value = valuePerSession.toFixed(2);
+    if (agreedInput && baseValue > 0) {
+        agreedInput.value = baseValue.toFixed(2);
         // Recalcular totais
         calculateTotals();
     }

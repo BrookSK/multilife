@@ -24,7 +24,7 @@ try {
     $stmt->execute([$specialty_id]);
     $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    echo json_encode(['services' => $services]);
+    echo json_encode(['success' => true, 'services' => $services]);
 } catch (Exception $e) {
     error_log("Erro ao buscar serviços: " . $e->getMessage());
     echo json_encode(['error' => 'Erro ao buscar serviços']);

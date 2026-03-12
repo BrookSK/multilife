@@ -11,7 +11,8 @@ $chatJid = trim((string)($_POST['chat_jid'] ?? ''));
 $demandId = (int)($_POST['demand_id'] ?? 0);
 $patientId = (int)($_POST['patient_id'] ?? 0);
 $professionalUserId = (int)($_POST['professional_user_id'] ?? 0);
-$specialty = trim((string)($_POST['specialty'] ?? ''));
+$specialtyId = (int)($_POST['specialty_id'] ?? 0);
+$specialtyServiceId = (int)($_POST['specialty_service_id'] ?? 0);
 $operatorEmail = trim((string)($_POST['operator_email'] ?? ''));
 
 // Dados do agendamento
@@ -41,7 +42,7 @@ if ($demandId <= 0) {
     exit;
 }
 
-if ($patientId <= 0 || $professionalUserId <= 0 || $specialty === '') {
+if ($patientId <= 0 || $professionalUserId <= 0 || $specialtyId <= 0 || $specialtyServiceId <= 0) {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
@@ -118,12 +119,22 @@ if (!$professional) {
     exit;
 }
 
-// Buscar dados adicionais do profissional (registro, especialidade)
-$stmt = $db->prepare("SELECT specialty, council_number, council_state FROM professional_applications WHERE created_user_id = :uid AND status = 'approved' LIMIT 1");
+// Buscar dados da especialidade e serviço selecionados
+$stmt = $db->prepare("SELECT name FROM specialties WHERE id = :id");
+$stmt->execute(['id' => $specialtyId]);
+$specialtyData = $stmt->fetch();
+$specialtyName = $specialtyData ? (string)$specialtyData['name'] : '';
+
+$stmt = $db->prepare("SELECT service_name, base_value FROM specialty_services WHERE id = :id");
+$stmt->execute(['id' => $specialtyServiceId]);
+$serviceData = $stmt->fetch();
+$serviceName = $serviceData ? (string)$serviceData['service_name'] : '';
+
+// Buscar dados adicionais do profissional (registro)
+$stmt = $db->prepare("SELECT council_number, council_state FROM professional_applications WHERE created_user_id = :uid AND status = 'approved' LIMIT 1");
 $stmt->execute(['uid' => $professionalUserId]);
 $profDetails = $stmt->fetch();
 
-$professionalSpecialty = $profDetails ? (string)$profDetails['specialty'] : $specialty;
 $professionalCouncil = $profDetails ? (string)$profDetails['council_number'] : '';
 $professionalCouncilState = $profDetails ? (string)$profDetails['council_state'] : '';
 
@@ -239,7 +250,8 @@ try {
     $emailBody .= "PROFISSIONAL DESIGNADO\n";
     $emailBody .= "═══════════════════════════════════════════════════════\n";
     $emailBody .= "Nome: {$professional['name']}\n";
-    $emailBody .= "Especialidade: {$professionalSpecialty}\n";
+    $emailBody .= "Especialidade: {$specialtyName}\n";
+    $emailBody .= "Serviço: {$serviceName}\n";
     if (!empty($professionalCouncil)) {
         $emailBody .= "Registro: {$professionalCouncil}";
         if (!empty($professionalCouncilState)) $emailBody .= "/{$professionalCouncilState}";
