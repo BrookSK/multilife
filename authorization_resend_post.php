@@ -35,7 +35,7 @@ $db = db();
 $stmt = $db->prepare(
     'SELECT ar.*, d.title as demand_title, d.specialty as demand_specialty, d.location_city, d.location_state,
      u.name as professional_name, u.email as professional_email, u.phone as professional_phone,
-     p.full_name as patient_name, p.email as patient_email, p.phone as patient_phone
+     p.full_name as patient_name, p.email as patient_email, p.whatsapp as patient_phone
      FROM authorization_requests ar
      INNER JOIN demands d ON d.id = ar.demand_id
      INNER JOIN users u ON u.id = ar.professional_user_id
@@ -51,11 +51,7 @@ if (!$auth) {
     exit;
 }
 
-if ((string)$auth['status'] !== 'autorizacao_negada') {
-    flash_set('error', 'Apenas propostas negadas podem ser reenviadas.');
-    header('Location: /authorization_view.php?id=' . $authId);
-    exit;
-}
+// Permitir reenvio de qualquer proposta (removida restrição de status)
 
 $userId = auth_user_id();
 
