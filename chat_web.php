@@ -1254,7 +1254,7 @@ echo '<input type="time" name="end_time" required style="width:100%;padding:12px
 echo '</div>';
 echo '</div>';
 
-echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">';
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Frequência *</label>';
 echo '<select name="frequency" id="selectProfFrequency" onchange="calculateSessions()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
@@ -1264,6 +1264,14 @@ echo '<option value="biweekly">Quinzenal</option>';
 echo '<option value="monthly">Mensal</option>';
 echo '</select>';
 echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Sessões por Semana *</label>';
+echo '<input type="number" name="sessions_per_week" id="selectProfSessionsPerWeek" oninput="calculateSessions()" onchange="calculateSessions()" required min="1" max="7" value="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 3">';
+echo '<div style="font-size:12px;color:#667781;margin-top:4px">Quantas vezes por semana</div>';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
 echo '<div>';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Duração (semanas) *</label>';
 echo '<input type="number" name="duration_weeks" id="selectProfDurationWeeks" oninput="calculateSessions()" onchange="calculateSessions()" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 12">';
@@ -2304,12 +2312,14 @@ function loadServiceDetails() {
 function calculateSessions() {
     const frequencySelect = document.getElementById("selectProfFrequency");
     const durationInput = document.getElementById("selectProfDurationWeeks");
+    const sessionsPerWeekInput = document.getElementById("selectProfSessionsPerWeek");
     const sessionsInput = document.getElementById("selectProfTotalSessions");
     
-    if (!frequencySelect || !durationInput || !sessionsInput) return;
+    if (!frequencySelect || !durationInput || !sessionsInput || !sessionsPerWeekInput) return;
     
     const frequency = frequencySelect.value;
     const durationWeeks = parseFloat(durationInput.value) || 0;
+    const sessionsPerWeek = parseFloat(sessionsPerWeekInput.value) || 1;
     
     if (durationWeeks <= 0) {
         sessionsInput.value = "";
@@ -2317,27 +2327,30 @@ function calculateSessions() {
         return;
     }
     
-    let sessionsPerWeek = 0;
+    // Calcular total de sessões
+    let totalSessions = 0;
     
-    // Calcular sessões por semana baseado na frequência
     switch(frequency) {
         case "daily":
-            sessionsPerWeek = 5; // 5 dias úteis por semana
+            // Diária: sessões por semana (máx 5 dias úteis) × duração
+            totalSessions = Math.round(Math.min(sessionsPerWeek, 5) * durationWeeks);
             break;
         case "weekly":
-            sessionsPerWeek = 1; // 1 sessão por semana
+            // Semanal: sessões por semana × duração
+            totalSessions = Math.round(sessionsPerWeek * durationWeeks);
             break;
         case "biweekly":
-            sessionsPerWeek = 0.5; // 1 sessão a cada 2 semanas
+            // Quinzenal: sessões por semana × duração / 2
+            totalSessions = Math.round((sessionsPerWeek * durationWeeks) / 2);
             break;
         case "monthly":
-            sessionsPerWeek = 0.25; // 1 sessão por mês (aproximadamente 4 semanas)
+            // Mensal: sessões por semana × duração / 4
+            totalSessions = Math.round((sessionsPerWeek * durationWeeks) / 4);
             break;
         default:
-            sessionsPerWeek = 1;
+            totalSessions = Math.round(sessionsPerWeek * durationWeeks);
     }
     
-    const totalSessions = Math.round(durationWeeks * sessionsPerWeek);
     sessionsInput.value = totalSessions;
     
     console.log("Calculando sessões:", {frequency, durationWeeks, sessionsPerWeek, totalSessions});

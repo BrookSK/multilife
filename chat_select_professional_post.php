@@ -37,6 +37,7 @@ $startTime = trim((string)($_POST['start_time'] ?? ''));
 $endTime = trim((string)($_POST['end_time'] ?? ''));
 $frequency = trim((string)($_POST['frequency'] ?? 'weekly'));
 $frequencyDetails = trim((string)($_POST['frequency_details'] ?? ''));
+$sessionsPerWeek = (int)($_POST['sessions_per_week'] ?? 1);
 $durationWeeks = (int)($_POST['duration_weeks'] ?? 0);
 $totalSessions = (int)($_POST['total_sessions'] ?? 0);
 
@@ -194,11 +195,65 @@ $professionalCouncilState = $profDetails ? (string)$profDetails['council_state']
 $frequencyDetailsJson = json_encode([
     'type' => $frequency,
     'description' => $frequencyDetails,
+    'sessions_per_week' => $sessionsPerWeek,
     'duration_weeks' => $durationWeeks,
     'total_sessions' => $totalSessions
 ]);
 
 $userId = auth_user_id();
+
+// ============================================================================
+// CALCULAR DATAS DAS SESSÕES
+// ============================================================================
+function calculateSessionDates($startDate, $startTime, $endTime, $frequency, $sessionsPerWeek, $totalSessions) {
+    $dates = [];
+    $currentDate = new DateTime($startDate);
+    $sessionsAdded = 0;
+    $weekCounter = 0;
+    
+    while ($sessionsAdded < $totalSessions) {
+        $weekStart = clone $currentDate;
+        $weekStart->modify('+' . $weekCounter . ' weeks');
+        
+        // Adicionar sessões para esta semana
+        $sessionsThisWeek = min($sessionsPerWeek, $totalSessions - $sessionsAdded);
+        
+        for ($i = 0; $i < $sessionsThisWeek; $i++) {
+            $sessionDate = clone $weekStart;
+            
+            // Distribuir sessões ao longo da semana
+            if ($sessionsPerWeek > 1) {
+                // Calcular intervalo entre sessões (em dias)
+                $interval = floor(7 / $sessionsPerWeek);
+                $sessionDate->modify('+' . ($i * $interval) . ' days');
+            }
+            
+            // Pular finais de semana se necessário
+            while ($sessionDate->format('N') >= 6) { // 6=sábado, 7=domingo
+                $sessionDate->modify('+1 day');
+            }
+            
+            $dates[] = [
+                'date' => $sessionDate->format('Y-m-d'),
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'formatted' => $sessionDate->format('d/m/Y') . ' às ' . substr($startTime, 0, 5)
+            ];
+            
+            $sessionsAdded++;
+            if ($sessionsAdded >= $totalSessions) break;
+        }
+        
+        $weekCounter++;
+        
+        // Proteção contra loop infinito
+        if ($weekCounter > 100) break;
+    }
+    
+    return $dates;
+}
+
+$sessionDates = calculateSessionDates($startDate, $startTime, $endTime, $frequency, $sessionsPerWeek, $totalSessions);
 
 // ============================================================================
 // CRIAR REGISTROS NO BANCO
@@ -213,12 +268,12 @@ try {
         'INSERT INTO authorization_requests 
         (demand_id, professional_user_id, proposal_value, agreed_value, 
          start_date, start_time, end_time, frequency, frequency_details, 
-         total_sessions, duration_weeks, operator_email, operator_name,
+         sessions_per_week, total_sessions, duration_weeks, operator_email, operator_name,
          status, created_by_user_id) 
         VALUES 
         (:demand_id, :professional_user_id, :proposal_value, :agreed_value,
          :start_date, :start_time, :end_time, :frequency, :frequency_details,
-         :total_sessions, :duration_weeks, :operator_email, :operator_name,
+         :sessions_per_week, :total_sessions, :duration_weeks, :operator_email, :operator_name,
          :status, :created_by_user_id)'
     );
     
@@ -229,20 +284,18 @@ try {
         'professional_user_id' => $professionalUserId,
         'proposal_value' => $proposalValue,
         'agreed_value' => $agreedValue,
-        'prof_id' => $professionalUserId,
-        'proposal' => $proposalValue,
-        'agreed' => $agreedValue,
         'start_date' => $startDate,
         'start_time' => $startTime,
         'end_time' => $endTime,
         'frequency' => $frequency,
-        'freq_details' => $frequencyDetailsJson,
+        'frequency_details' => $frequencyDetailsJson,
+        'sessions_per_week' => $sessionsPerWeek,
         'total_sessions' => $totalSessions,
         'duration_weeks' => $durationWeeks,
-        'op_email' => $operatorEmail,
-        'op_name' => $operatorName,
+        'operator_email' => $operatorEmail,
+        'operator_name' => $operatorName,
         'status' => 'aguardando_autorizacao',
-        'created_by' => $userId
+        'created_by_user_id' => $userId
     ]);
     
     $authRequestId = (int)$db->lastInsertId();
@@ -337,13 +390,27 @@ try {
     $emailBody .= "\n";
     
     $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "DADOS DO ATENDIMENTO PROPOSTO\n";
+    $emailBody .= "AGENDAMENTO PROPOSTO\n";
     $emailBody .= "═══════════════════════════════════════════════════════\n";
     $emailBody .= "Data de Início: " . date('d/m/Y', strtotime($startDate)) . "\n";
-    $emailBody .= "Horário: {$startTime} às {$endTime}\n";
+    $emailBody .= "Horário: " . substr($startTime, 0, 5) . " às " . substr($endTime, 0, 5) . "\n";
     $emailBody .= "Frequência: {$frequencyText}\n";
+    $emailBody .= "Sessões por Semana: {$sessionsPerWeek}x\n";
     $emailBody .= "Duração: {$durationWeeks} semanas\n";
     $emailBody .= "Total de Sessões: {$totalSessions}\n";
+    $emailBody .= "\n";
+    
+    // Adicionar cronograma de sessões
+    $emailBody .= "═══════════════════════════════════════════════════════\n";
+    $emailBody .= "CRONOGRAMA DE SESSÕES PREVISTAS\n";
+    $emailBody .= "═══════════════════════════════════════════════════════\n";
+    
+    foreach ($sessionDates as $index => $session) {
+        $sessionNumber = $index + 1;
+        $emailBody .= "Sessão {$sessionNumber}: {$session['formatted']}\n";
+    }
+    $emailBody .= "\n";
+    
     if (!empty($frequencyDetails)) {
         $emailBody .= "Detalhes: {$frequencyDetails}\n";
     }

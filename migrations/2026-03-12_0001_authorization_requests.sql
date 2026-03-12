@@ -15,10 +15,11 @@ CREATE TABLE IF NOT EXISTS authorization_requests (
     start_date DATE NOT NULL COMMENT 'Data de início do atendimento',
     start_time TIME NOT NULL COMMENT 'Hora de início',
     end_time TIME NOT NULL COMMENT 'Hora de término',
-    frequency ENUM('single', 'daily', 'weekly', 'biweekly', 'monthly', 'custom') DEFAULT 'single' COMMENT 'Frequência do atendimento',
-    frequency_details TEXT COMMENT 'Detalhes da frequência (JSON com dias da semana, quantidade de sessões, etc)',
-    total_sessions INT UNSIGNED COMMENT 'Total de sessões calculadas',
-    duration_weeks INT UNSIGNED COMMENT 'Duração em semanas',
+    frequency ENUM('single', 'daily', 'weekly', 'biweekly', 'monthly', 'custom') NOT NULL DEFAULT 'weekly',
+    frequency_details TEXT NULL,
+    sessions_per_week INT NOT NULL DEFAULT 1 COMMENT 'Quantas vezes por semana',
+    total_sessions INT NOT NULL,
+    duration_weeks INT NOT NULL,
     
     -- Dados de contato
     operator_email VARCHAR(255) NOT NULL COMMENT 'E-mail da operadora',
