@@ -1994,7 +1994,12 @@ function redirectToSelectProfessional() {
     const demandId = demandSelect ? demandSelect.value : "";
     
     if (!demandId) {
-        alert("Selecione um card de captação primeiro");
+        alert("⚠️ Selecione um card de captação no dropdown acima antes de continuar");
+        if (demandSelect) {
+            demandSelect.focus();
+            demandSelect.style.border = "2px solid #f59e0b";
+            setTimeout(() => { demandSelect.style.border = ""; }, 2000);
+        }
         return;
     }
     

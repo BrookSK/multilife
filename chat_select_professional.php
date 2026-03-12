@@ -20,6 +20,23 @@ if (!$chat) {
     exit;
 }
 
+// Debug: verificar se a demanda existe e qual seu status
+if ($prefDemandId > 0) {
+    $debugStmt = db()->prepare('SELECT id, title, status FROM demands WHERE id = :id');
+    $debugStmt->execute(['id' => $prefDemandId]);
+    $debugDemand = $debugStmt->fetch();
+    if (!$debugDemand) {
+        flash_set('error', 'Demanda #' . $prefDemandId . ' não encontrada no banco de dados.');
+        header('Location: /chat_web.php?chat=' . urlencode($chatId));
+        exit;
+    }
+    if (!in_array((string)$debugDemand['status'], ['aguardando_captacao','tratamento_manual','em_captacao'])) {
+        flash_set('error', 'Demanda #' . $prefDemandId . ' não está disponível para seleção. Status atual: ' . $debugDemand['status']);
+        header('Location: /chat_web.php?chat=' . urlencode($chatId));
+        exit;
+    }
+}
+
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
 $specialties = $specialtiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
