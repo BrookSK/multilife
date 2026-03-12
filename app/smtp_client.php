@@ -25,18 +25,25 @@ final class SmtpClient
 
     private function connect()
     {
+        error_log("[SMTP] Conectando a {$this->host}:{$this->port} (encryption: {$this->encryption})");
+        
         $targetHost = $this->host;
         if ($this->encryption === 'ssl') {
             $targetHost = 'ssl://' . $targetHost;
         }
 
-        $fp = @fsockopen($targetHost, $this->port, $errno, $errstr, 15);
+        $fp = @fsockopen($targetHost, $this->port, $errno, $errstr, 30);
         if (!$fp) {
+            error_log("[SMTP] ERRO ao conectar: $errstr (errno: $errno)");
             throw new RuntimeException('Falha ao conectar SMTP: ' . $errstr);
         }
 
-        stream_set_timeout($fp, 15);
+        error_log("[SMTP] Conexão estabelecida");
+        stream_set_timeout($fp, 30);
+        
+        error_log("[SMTP] Aguardando banner inicial (220)...");
         $this->expect($fp, [220]);
+        error_log("[SMTP] Banner recebido");
 
         $this->write($fp, 'EHLO multilife');
         $ehlo = $this->readMulti($fp);
@@ -50,22 +57,27 @@ final class SmtpClient
         }
 
         if ($this->encryption === 'tls' && $supportsStartTls) {
+            error_log("[SMTP] Iniciando STARTTLS...");
             $this->write($fp, 'STARTTLS');
             $this->expect($fp, [220]);
             if (!stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                error_log("[SMTP] ERRO ao habilitar TLS");
                 throw new RuntimeException('Falha ao iniciar TLS no SMTP.');
             }
+            error_log("[SMTP] TLS habilitado com sucesso");
             $this->write($fp, 'EHLO multilife');
             $this->readMulti($fp);
         }
 
         if ($this->username !== '' && $this->password !== '') {
+            error_log("[SMTP] Autenticando como: {$this->username}");
             $this->write($fp, 'AUTH LOGIN');
             $this->expect($fp, [334]);
             $this->write($fp, base64_encode($this->username));
             $this->expect($fp, [334]);
             $this->write($fp, base64_encode($this->password));
             $this->expect($fp, [235]);
+            error_log("[SMTP] Autenticação bem-sucedida");
         }
 
         return $fp;
@@ -115,16 +127,25 @@ final class SmtpClient
             throw new RuntimeException('SMTP: from/to inválidos.');
         }
 
+        error_log("[SMTP] Enviando e-mail de $fromEmail para $toEmail");
+        error_log("[SMTP] Assunto: $subject");
+        
         $fp = $this->connect();
         try {
+            error_log("[SMTP] Enviando MAIL FROM...");
             $this->write($fp, 'MAIL FROM:<' . $fromEmail . '>');
             $this->expect($fp, [250]);
+            error_log("[SMTP] MAIL FROM aceito");
 
+            error_log("[SMTP] Enviando RCPT TO...");
             $this->write($fp, 'RCPT TO:<' . $toEmail . '>');
             $this->expect($fp, [250, 251]);
+            error_log("[SMTP] RCPT TO aceito");
 
+            error_log("[SMTP] Iniciando DATA...");
             $this->write($fp, 'DATA');
             $this->expect($fp, [354]);
+            error_log("[SMTP] Servidor pronto para receber dados");
 
             $fromHeader = $fromName !== '' ? $this->encodeHeader($fromName) . ' <' . $fromEmail . '>' : $fromEmail;
 
@@ -139,11 +160,15 @@ final class SmtpClient
             $data = implode("\r\n", $headers) . "\r\n\r\n" . $bodyText;
             $data = str_replace("\r\n.", "\r\n..", $data);
 
+            error_log("[SMTP] Enviando corpo do e-mail (" . strlen($data) . " bytes)...");
             fwrite($fp, $data . "\r\n.\r\n");
             $this->expect($fp, [250]);
+            error_log("[SMTP] E-mail aceito pelo servidor");
 
+            error_log("[SMTP] Encerrando conexão...");
             $this->write($fp, 'QUIT');
             $this->expect($fp, [221, 250]);
+            error_log("[SMTP] Conexão encerrada com sucesso");
         } finally {
             fclose($fp);
         }

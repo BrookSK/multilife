@@ -192,6 +192,17 @@ foreach ($columns as $col) {
             
             echo '</div>';
             echo '</a>';
+            
+            // Botão de reenviar e-mail
+            echo '<div style="padding:8px;border-top:1px solid hsl(var(--border))">';
+            echo '<form method="post" action="/authorization_resend_post.php" style="margin:0" onsubmit="return confirm(\'Deseja realmente reenviar o e-mail de proposta?\')">';
+            echo '<input type="hidden" name="auth_id" value="' . $authId . '">';
+            echo '<input type="hidden" name="resend_notes" value="Reenvio manual da proposta">';
+            echo '<button type="submit" class="btn" style="width:100%;padding:8px;font-size:12px;background:hsl(var(--primary));color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">';
+            echo '📧 Reenviar E-mail';
+            echo '</button>';
+            echo '</form>';
+            echo '</div>';
         }
     }
     

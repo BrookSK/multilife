@@ -20,7 +20,7 @@ $stmt = db()->prepare(
      d.id as demand_id, d.title as demand_title, d.specialty as demand_specialty, 
      d.location_city, d.location_state, d.origin_email,
      u.id as professional_id, u.name as professional_name, u.email as professional_email, u.phone as professional_phone,
-     p.id as patient_id, p.full_name as patient_name, p.email as patient_email, p.phone as patient_phone
+     p.id as patient_id, p.full_name as patient_name, p.email as patient_email, p.whatsapp as patient_phone
      FROM authorization_requests ar
      INNER JOIN demands d ON d.id = ar.demand_id
      INNER JOIN users u ON u.id = ar.professional_user_id
