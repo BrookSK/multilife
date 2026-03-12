@@ -7,7 +7,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
-$chatId = (int)($_POST['chat_id'] ?? 0);
+$chatJid = trim((string)($_POST['chat_jid'] ?? ''));
 $demandId = (int)($_POST['demand_id'] ?? 0);
 $patientId = (int)($_POST['patient_id'] ?? 0);
 $professionalUserId = (int)($_POST['professional_user_id'] ?? 0);

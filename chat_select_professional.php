@@ -7,11 +7,11 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
-$chatId = isset($_GET['chat_id']) ? (int)$_GET['chat_id'] : 0;
+$chatId = isset($_GET['chat_id']) ? trim((string)$_GET['chat_id']) : '';
 $prefDemandId = isset($_GET['demand_id']) ? (int)$_GET['demand_id'] : 0;
 
-$stmt = db()->prepare('SELECT * FROM chat_conversations WHERE id = :id');
-$stmt->execute(['id' => $chatId]);
+$stmt = db()->prepare('SELECT * FROM chat_conversations WHERE remote_jid = :jid');
+$stmt->execute(['jid' => $chatId]);
 $chat = $stmt->fetch();
 
 if (!$chat) {
@@ -67,14 +67,14 @@ echo '<div style="font-size:22px;font-weight:900">Selecionar Profissional</div>'
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Selecione o profissional e defina os parâmetros da proposta. O sistema enviará automaticamente um e-mail para a operadora aguardando autorização.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/chat_web.php?id=' . (int)$chat['id'] . '">Voltar ao chat</a>';
+echo '<a class="btn" href="/chat_web.php?chat=' . urlencode((string)$chat['remote_jid']) . '">Voltar ao chat</a>';
 echo '</div>';
 echo '</div>';
 echo '</section>';
 
 echo '<section class="card col12">';
 echo '<form method="post" action="/chat_select_professional_post.php" style="display:grid;gap:12px;max-width:980px" id="selectProfessionalForm">';
-echo '<input type="hidden" name="chat_id" value="' . (int)$chat['id'] . '">';
+echo '<input type="hidden" name="chat_jid" value="' . h((string)$chat['remote_jid']) . '">';
 
 echo '<div class="formSection">';
 echo '<div class="formSectionTitle">📋 Dados da Demanda</div>';
