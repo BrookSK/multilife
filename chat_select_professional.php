@@ -7,34 +7,57 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
+// DEBUG COMPLETO
+error_log("=== CHAT_SELECT_PROFESSIONAL DEBUG ===");
+error_log("GET params: " . print_r($_GET, true));
+
 $chatId = isset($_GET['chat_id']) ? trim((string)$_GET['chat_id']) : '';
 $prefDemandId = isset($_GET['demand_id']) ? (int)$_GET['demand_id'] : 0;
+
+error_log("chatId recebido: " . $chatId);
+error_log("prefDemandId recebido: " . $prefDemandId);
 
 $stmt = db()->prepare('SELECT * FROM chat_conversations WHERE external_phone = :phone');
 $stmt->execute(['phone' => $chatId]);
 $chat = $stmt->fetch();
 
+error_log("Chat encontrado: " . ($chat ? "SIM (ID: " . $chat['id'] . ")" : "NÃO"));
+
 if (!$chat) {
-    flash_set('error', 'Conversa não encontrada.');
+    error_log("ERRO: Conversa não encontrada para external_phone: " . $chatId);
+    flash_set('error', 'Conversa não encontrada. Chat ID: ' . $chatId);
     header('Location: /chat_web.php');
     exit;
 }
 
 // Debug: verificar se a demanda existe e qual seu status
 if ($prefDemandId > 0) {
+    error_log("Verificando demanda ID: " . $prefDemandId);
     $debugStmt = db()->prepare('SELECT id, title, status FROM demands WHERE id = :id');
     $debugStmt->execute(['id' => $prefDemandId]);
     $debugDemand = $debugStmt->fetch();
+    
+    error_log("Demanda encontrada: " . ($debugDemand ? "SIM" : "NÃO"));
+    if ($debugDemand) {
+        error_log("Demanda #" . $debugDemand['id'] . " - Status: " . $debugDemand['status']);
+    }
+    
     if (!$debugDemand) {
+        error_log("ERRO: Demanda #" . $prefDemandId . " não existe no banco");
         flash_set('error', 'Demanda #' . $prefDemandId . ' não encontrada no banco de dados.');
         header('Location: /chat_web.php?chat=' . urlencode($chatId));
         exit;
     }
-    if (!in_array((string)$debugDemand['status'], ['aguardando_captacao','tratamento_manual','em_captacao'])) {
-        flash_set('error', 'Demanda #' . $prefDemandId . ' não está disponível para seleção. Status atual: ' . $debugDemand['status']);
+    
+    $validStatuses = ['aguardando_captacao','tratamento_manual','em_captacao'];
+    if (!in_array((string)$debugDemand['status'], $validStatuses)) {
+        error_log("ERRO: Demanda #" . $prefDemandId . " tem status inválido: " . $debugDemand['status']);
+        flash_set('error', 'Demanda #' . $prefDemandId . ' não está disponível para seleção. Status atual: ' . $debugDemand['status'] . '. Status aceitos: ' . implode(', ', $validStatuses));
         header('Location: /chat_web.php?chat=' . urlencode($chatId));
         exit;
     }
+    
+    error_log("Demanda #" . $prefDemandId . " validada com sucesso!");
 }
 
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
