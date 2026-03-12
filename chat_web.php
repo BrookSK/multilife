@@ -1171,6 +1171,123 @@ echo '</div>';
 echo '</div>';
 echo '</div>';
 
+// Modal: Selecionar Profissional
+echo '<div id="selectProfessionalModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;overflow-y:auto">';
+echo '<div style="background:#fff;border-radius:12px;width:90%;max-width:800px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;margin:20px 0">';
+echo '<div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">';
+echo '<h2 style="margin:0;font-size:20px;color:#111b21">Selecionar Profissional</h2>';
+echo '<button onclick="closeSelectProfessionalModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>';
+echo '</div>';
+echo '<div style="flex:1;overflow-y:auto;padding:20px">';
+echo '<form method="post" action="/chat_select_professional_post.php" id="selectProfessionalForm">';
+echo '<input type="hidden" name="chat_jid" id="selectProfModalChatJid">';
+echo '<input type="hidden" name="demand_id" id="selectProfModalDemandId">';
+
+echo '<div style="background:#e7f8f4;padding:16px;border-radius:8px;margin-bottom:20px">';
+echo '<p style="margin:0;font-size:14px;color:#00a884;font-weight:600">📋 Proposta de Autorização</p>';
+echo '<p style="margin:8px 0 0;font-size:13px;color:#667781">O sistema enviará automaticamente um e-mail para a operadora aguardando autorização.</p>';
+echo '</div>';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Paciente *</label>';
+echo '<select name="patient_id" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '<option value="">Selecione...</option>';
+$patientsStmt = db()->query("SELECT id, full_name FROM patients WHERE deleted_at IS NULL ORDER BY full_name ASC");
+foreach ($patientsStmt->fetchAll() as $p) {
+    echo '<option value="' . (int)$p['id'] . '">' . h($p['full_name']) . '</option>';
+}
+echo '</select>';
+echo '</div>';
+
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Profissional *</label>';
+echo '<select name="professional_user_id" id="selectProfModalProfessional" onchange="loadProfessionalSpecialty()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '<option value="">Selecione...</option>';
+$profsStmt = db()->query("SELECT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE u.status = 'active' AND r.slug = 'profissional' ORDER BY u.name ASC");
+foreach ($profsStmt->fetchAll() as $prof) {
+    echo '<option value="' . (int)$prof['id'] . '">' . h($prof['name']) . '</option>';
+}
+echo '</select>';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Especialidade *</label>';
+echo '<input type="text" name="specialty" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: Fisioterapia">';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">E-mail da Operadora *</label>';
+echo '<input type="email" name="operator_email" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="contato@operadora.com.br">';
+echo '</div>';
+echo '</div>';
+
+echo '<h3 style="margin:24px 0 16px;font-size:16px;color:#111b21;border-bottom:2px solid #e0e0e0;padding-bottom:8px">📅 Agendamento</h3>';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Data de Início *</label>';
+echo '<input type="date" name="start_date" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Hora Início *</label>';
+echo '<input type="time" name="start_time" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Hora Fim *</label>';
+echo '<input type="time" name="end_time" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Frequência *</label>';
+echo '<select name="frequency" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
+echo '<option value="weekly">Semanal</option>';
+echo '<option value="daily">Diária</option>';
+echo '<option value="biweekly">Quinzenal</option>';
+echo '<option value="monthly">Mensal</option>';
+echo '</select>';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Duração (semanas) *</label>';
+echo '<input type="number" name="duration_weeks" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 12">';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Total de Sessões *</label>';
+echo '<input type="number" name="total_sessions" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 24">';
+echo '</div>';
+echo '</div>';
+
+echo '<h3 style="margin:24px 0 16px;font-size:16px;color:#111b21;border-bottom:2px solid #e0e0e0;padding-bottom:8px">💰 Valores</h3>';
+
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Acordado (profissional) *</label>';
+echo '<input type="number" name="agreed_value" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 150.00">';
+echo '</div>';
+echo '<div>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Proposta (operadora) *</label>';
+echo '<input type="number" name="proposal_value" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 180.00">';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="margin-bottom:16px">';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Observações</label>';
+echo '<textarea name="notes" rows="3" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;resize:vertical" placeholder="Informações adicionais..."></textarea>';
+echo '</div>';
+
+echo '<div style="display:flex;gap:12px;margin-top:20px">';
+echo '<button type="button" onclick="closeSelectProfessionalModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>';
+echo '<button type="submit" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Enviar Proposta</button>';
+echo '</div>';
+
+echo '</form>';
+echo '</div>';
+echo '</div>';
+echo '</div>';
+
 // Exibir mensagens de sucesso/erro
 if (!empty($success)) {
     echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001" id="successMessage">';
@@ -1817,7 +1934,7 @@ if (!empty($selectedChat)) {
                 }
                 echo '</select>';
                 
-                echo '<button onclick="redirectToSelectProfessional()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+                echo '<button onclick="openSelectProfessionalModal()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
                 echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>';
                 echo 'Selecionar Profissional';
                 echo '</button>';
@@ -1988,8 +2105,8 @@ if (window.chatId) {
 ';
 }
 echo '
-// Função para redirecionar para seleção de profissional
-function redirectToSelectProfessional() {
+// Função para abrir modal de seleção de profissional
+async function openSelectProfessionalModal() {
     const demandSelect = document.getElementById("demandSelect");
     const demandId = demandSelect ? demandSelect.value : "";
     
@@ -2009,7 +2126,63 @@ function redirectToSelectProfessional() {
         return;
     }
     
-    window.location.href = "/chat_select_professional.php?chat_id=" + encodeURIComponent(chatId) + "&demand_id=" + encodeURIComponent(demandId);
+    // Preencher dados do modal
+    document.getElementById("selectProfModalDemandId").value = demandId;
+    document.getElementById("selectProfModalChatJid").value = chatId;
+    
+    // Buscar dados da demanda para pré-preencher
+    try {
+        const response = await fetch("/api/get_demand_data.php?demand_id=" + demandId);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Pré-preencher e-mail da operadora (origin_email)
+            if (data.origin_email) {
+                document.querySelector("#selectProfessionalModal input[name='operator_email']").value = data.origin_email;
+            }
+            // Pré-preencher especialidade
+            if (data.specialty) {
+                document.querySelector("#selectProfessionalModal input[name='specialty']").value = data.specialty;
+            }
+        }
+    } catch (error) {
+        console.error("Erro ao buscar dados da demanda:", error);
+    }
+    
+    // Abrir modal
+    const modal = document.getElementById("selectProfessionalModal");
+    if (modal) {
+        modal.style.display = "flex";
+    }
+}
+
+function closeSelectProfessionalModal() {
+    const modal = document.getElementById("selectProfessionalModal");
+    if (modal) {
+        modal.style.display = "none";
+    }
+}
+
+// Função para carregar especialidade do profissional selecionado
+async function loadProfessionalSpecialty() {
+    const professionalSelect = document.getElementById("selectProfModalProfessional");
+    const professionalId = professionalSelect ? professionalSelect.value : "";
+    
+    if (!professionalId) {
+        return;
+    }
+    
+    try {
+        const response = await fetch("/api/get_user_specialty.php?user_id=" + professionalId);
+        const data = await response.json();
+        
+        if (data.success && data.specialty) {
+            // Pré-preencher especialidade do profissional
+            document.querySelector("#selectProfessionalModal input[name='specialty']").value = data.specialty;
+        }
+    } catch (error) {
+        console.error("Erro ao buscar especialidade do profissional:", error);
+    }
 }
 
 // Função para transcrever áudio
