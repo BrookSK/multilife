@@ -17,15 +17,16 @@ $prefDemandId = isset($_GET['demand_id']) ? (int)$_GET['demand_id'] : 0;
 error_log("chatId recebido: " . $chatId);
 error_log("prefDemandId recebido: " . $prefDemandId);
 
-$stmt = db()->prepare('SELECT * FROM chat_conversations WHERE external_phone = :phone');
-$stmt->execute(['phone' => $chatId]);
+// Buscar contato na tabela correta usando remote_jid
+$stmt = db()->prepare('SELECT * FROM chat_contacts WHERE remote_jid = :jid');
+$stmt->execute(['jid' => $chatId]);
 $chat = $stmt->fetch();
 
-error_log("Chat encontrado: " . ($chat ? "SIM (ID: " . $chat['id'] . ")" : "NÃO"));
+error_log("Chat encontrado: " . ($chat ? "SIM (ID: " . $chat['id'] . ", Nome: " . $chat['contact_name'] . ")" : "NÃO"));
 
 if (!$chat) {
-    error_log("ERRO: Conversa não encontrada para external_phone: " . $chatId);
-    flash_set('error', 'Conversa não encontrada. Chat ID: ' . $chatId);
+    error_log("ERRO: Contato não encontrado para remote_jid: " . $chatId);
+    flash_set('error', 'Contato não encontrado. Chat ID: ' . $chatId);
     header('Location: /chat_web.php');
     exit;
 }
@@ -82,18 +83,8 @@ $demands = db()->query(
 $prefPatientId = 0;
 $prefProfessionalUserId = 0;
 
-if ((string)$chat['contact_kind'] === 'patient' && $chat['contact_ref_id'] !== null) {
-    $prefPatientId = (int)$chat['contact_ref_id'];
-}
-
-if ((string)$chat['contact_kind'] === 'professional' && $chat['contact_ref_id'] !== null) {
-    $stmt = db()->prepare('SELECT created_user_id FROM professional_applications WHERE id = :id');
-    $stmt->execute(['id' => (int)$chat['contact_ref_id']]);
-    $pa = $stmt->fetch();
-    if ($pa && $pa['created_user_id'] !== null) {
-        $prefProfessionalUserId = (int)$pa['created_user_id'];
-    }
-}
+// Tabela chat_contacts não tem contact_kind/contact_ref_id
+// Esses campos serão preenchidos manualmente no formulário
 
 view_header('Selecionar Profissional');
 
@@ -107,14 +98,14 @@ echo '<div style="font-size:22px;font-weight:900">Selecionar Profissional</div>'
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Selecione o profissional e defina os parâmetros da proposta. O sistema enviará automaticamente um e-mail para a operadora aguardando autorização.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/chat_web.php?chat=' . urlencode((string)$chat['external_phone']) . '">Voltar ao chat</a>';
+echo '<a class="btn" href="/chat_web.php?chat=' . urlencode((string)$chat['remote_jid']) . '">Voltar ao chat</a>';
 echo '</div>';
 echo '</div>';
 echo '</section>';
 
 echo '<section class="card col12">';
 echo '<form method="post" action="/chat_select_professional_post.php" style="display:grid;gap:12px;max-width:980px" id="selectProfessionalForm">';
-echo '<input type="hidden" name="chat_jid" value="' . h((string)$chat['external_phone']) . '">';
+echo '<input type="hidden" name="chat_jid" value="' . h((string)$chat['remote_jid']) . '">';
 
 echo '<div class="formSection">';
 echo '<div class="formSectionTitle">📋 Dados da Demanda</div>';
