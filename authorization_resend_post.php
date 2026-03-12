@@ -18,18 +18,6 @@ if ($authId <= 0) {
     exit;
 }
 
-if ($newProposalValue <= 0) {
-    flash_set('error', 'Valor de proposta deve ser maior que zero.');
-    header('Location: /authorization_resend.php?id=' . $authId);
-    exit;
-}
-
-if ($resendNotes === '') {
-    flash_set('error', 'Informe a justificativa do reenvio.');
-    header('Location: /authorization_resend.php?id=' . $authId);
-    exit;
-}
-
 $db = db();
 
 $stmt = $db->prepare(
@@ -53,25 +41,36 @@ if (!$auth) {
 
 // Permitir reenvio de qualquer proposta (removida restrição de status)
 
+// Se novos valores não foram fornecidos, usar os valores existentes
+if ($newProposalValue <= 0) {
+    $newProposalValue = (float)$auth['proposal_value'];
+}
+if ($newAgreedValue <= 0) {
+    $newAgreedValue = (float)$auth['agreed_value'];
+}
+if ($resendNotes === '') {
+    $resendNotes = 'Reenvio manual da proposta';
+}
+
 $userId = auth_user_id();
 
 $db->beginTransaction();
 try {
-    // Criar nova solicitação de autorização (cópia da anterior com novos valores)
+    // Criar nova solicitação de autorização (cópia da anterior com valores atualizados ou existentes)
     $stmt = $db->prepare(
         'INSERT INTO authorization_requests 
         (demand_id, professional_user_id, proposal_value, agreed_value, 
          start_date, start_time, end_time, frequency, frequency_details, 
-         total_sessions, duration_weeks, operator_email, operator_name,
+         sessions_per_week, total_sessions, duration_weeks, operator_email, operator_name,
          status, created_by_user_id, resend_count, previous_request_id) 
         VALUES 
         (:demand_id, :prof_id, :proposal, :agreed, 
          :start_date, :start_time, :end_time, :frequency, :freq_details,
-         :total_sessions, :duration_weeks, :op_email, :op_name,
+         :sessions_per_week, :total_sessions, :duration_weeks, :op_email, :op_name,
          :status, :created_by, :resend_count, :previous_id)'
     );
     
-    $resendCount = (int)$auth['resend_count'] + 1;
+    $resendCount = (int)($auth['resend_count'] ?? 0) + 1;
     
     $stmt->execute([
         'demand_id' => $auth['demand_id'],
@@ -83,6 +82,7 @@ try {
         'end_time' => $auth['end_time'],
         'frequency' => $auth['frequency'],
         'freq_details' => $auth['frequency_details'],
+        'sessions_per_week' => (int)($auth['sessions_per_week'] ?? 1),
         'total_sessions' => $auth['total_sessions'],
         'duration_weeks' => $auth['duration_weeks'],
         'op_email' => $auth['operator_email'],
