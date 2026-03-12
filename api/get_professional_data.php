@@ -16,9 +16,10 @@ if ($userId <= 0) {
 }
 
 try {
-    // Buscar dados do profissional (specialty_service_id do users ou professional_applications)
+    // Buscar dados do profissional (specialty texto e specialty_service_id)
     $stmt = db()->prepare('
         SELECT 
+            u.specialty,
             u.specialty_service_id,
             pa.specialty_service_id as pa_specialty_service_id
         FROM users u
@@ -34,44 +35,58 @@ try {
         exit;
     }
     
-    // Pegar specialty_service_id (priorizar users, senão professional_applications)
+    $specialtyText = $userData['specialty'] ?? null;
     $specialtyServiceId = $userData['specialty_service_id'] ?? $userData['pa_specialty_service_id'] ?? null;
     
-    if (!$specialtyServiceId) {
-        echo json_encode(['success' => false, 'error' => 'Profissional sem especialidade/serviço cadastrado']);
+    // Buscar specialty_id baseado no texto da especialidade
+    $specialtyId = null;
+    $specialtyName = null;
+    
+    if ($specialtyText) {
+        $stmt = db()->prepare('SELECT id, name FROM specialties WHERE name = :name LIMIT 1');
+        $stmt->execute(['name' => $specialtyText]);
+        $specialtyData = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($specialtyData) {
+            $specialtyId = (int)$specialtyData['id'];
+            $specialtyName = $specialtyData['name'];
+        }
+    }
+    
+    // Se não encontrou especialidade, retornar erro
+    if (!$specialtyId) {
+        echo json_encode([
+            'success' => false, 
+            'error' => 'Especialidade "' . ($specialtyText ?? 'não definida') . '" não encontrada no sistema'
+        ]);
         exit;
     }
     
-    // Buscar dados do serviço e especialidade
-    $stmt = db()->prepare('
-        SELECT 
-            ss.id as specialty_service_id,
-            ss.specialty_id,
-            ss.service_name,
-            ss.base_value,
-            s.name as specialty_name
-        FROM specialty_services ss
-        INNER JOIN specialties s ON s.id = ss.specialty_id
-        WHERE ss.id = :id
-    ');
-    $stmt->execute(['id' => $specialtyServiceId]);
-    $serviceData = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$serviceData) {
-        echo json_encode(['success' => false, 'error' => 'Serviço não encontrado']);
-        exit;
+    // Se tiver specialty_service_id, buscar dados do serviço
+    $serviceData = null;
+    if ($specialtyServiceId) {
+        $stmt = db()->prepare('
+            SELECT 
+                id as specialty_service_id,
+                service_name,
+                base_value
+            FROM specialty_services
+            WHERE id = :id
+        ');
+        $stmt->execute(['id' => $specialtyServiceId]);
+        $serviceData = $stmt->fetch(PDO::FETCH_ASSOC);
     }
     
     echo json_encode([
         'success' => true,
-        'specialty_id' => (int)$serviceData['specialty_id'],
-        'specialty_name' => $serviceData['specialty_name'],
-        'specialty_service_id' => (int)$serviceData['specialty_service_id'],
-        'service_name' => $serviceData['service_name'],
-        'base_value' => (float)$serviceData['base_value']
+        'specialty_id' => $specialtyId,
+        'specialty_name' => $specialtyName,
+        'specialty_service_id' => $serviceData ? (int)$serviceData['specialty_service_id'] : null,
+        'service_name' => $serviceData ? $serviceData['service_name'] : null,
+        'base_value' => $serviceData ? (float)$serviceData['base_value'] : null
     ]);
     
 } catch (Exception $e) {
     error_log("Erro ao buscar dados do profissional: " . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => 'Erro ao buscar dados']);
+    echo json_encode(['success' => false, 'error' => 'Erro ao buscar dados: ' . $e->getMessage()]);
 }
