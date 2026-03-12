@@ -1817,9 +1817,9 @@ if (!empty($selectedChat)) {
                 }
                 echo '</select>';
                 
-                echo '<button onclick="if(typeof openAssignmentModal===\'function\')openAssignmentModal();else alert(\'Erro: Função não disponível\')" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+                echo '<button onclick="redirectToSelectProfessional()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
                 echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>';
-                echo 'Confirmar Atribuição';
+                echo 'Selecionar Profissional';
                 echo '</button>';
             } else {
                 echo '<p style="color:#667781;font-size:13px;margin:0">Nenhum card de captação disponível.</p>';
@@ -1988,6 +1988,25 @@ if (window.chatId) {
 ';
 }
 echo '
+// Função para redirecionar para seleção de profissional
+function redirectToSelectProfessional() {
+    const demandSelect = document.getElementById("demandSelect");
+    const demandId = demandSelect ? demandSelect.value : "";
+    
+    if (!demandId) {
+        alert("Selecione um card de captação primeiro");
+        return;
+    }
+    
+    const chatId = window.chatId || "";
+    if (!chatId) {
+        alert("Erro: Chat não identificado");
+        return;
+    }
+    
+    window.location.href = "/chat_select_professional.php?chat_id=" + encodeURIComponent(chatId) + "&demand_id=" + encodeURIComponent(demandId);
+}
+
 // Função para transcrever áudio
 async function transcribeAudio(messageId) {
     const btn = document.getElementById("transcribe-btn-" + messageId);
