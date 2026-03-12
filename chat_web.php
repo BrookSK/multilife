@@ -2138,11 +2138,11 @@ async function openSelectProfessionalModal() {
         if (data.success) {
             // Pré-preencher e-mail da operadora (origin_email)
             if (data.origin_email) {
-                document.querySelector("#selectProfessionalModal input[name='operator_email']").value = data.origin_email;
+                document.querySelector("#selectProfessionalModal input[name=\'operator_email\']").value = data.origin_email;
             }
             // Pré-preencher especialidade
             if (data.specialty) {
-                document.querySelector("#selectProfessionalModal input[name='specialty']").value = data.specialty;
+                document.querySelector("#selectProfessionalModal input[name=\'specialty\']").value = data.specialty;
             }
         }
     } catch (error) {
@@ -2178,7 +2178,7 @@ async function loadProfessionalSpecialty() {
         
         if (data.success && data.specialty) {
             // Pré-preencher especialidade do profissional
-            document.querySelector("#selectProfessionalModal input[name='specialty']").value = data.specialty;
+            document.querySelector("#selectProfessionalModal input[name=\'specialty\']").value = data.specialty;
         }
     } catch (error) {
         console.error("Erro ao buscar especialidade do profissional:", error);
