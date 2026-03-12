@@ -70,23 +70,23 @@ $fields = [
     'app.session_lifetime_seconds' => 'Sessão expira após (segundos)',
     'cron.token' => 'Token do CRON (segredo)',
 
-    'smtp.in.host' => 'SMTP/IMAP Entrada - Host',
-    'smtp.in.port' => 'SMTP/IMAP Entrada - Porta',
-    'smtp.in.encryption' => 'SMTP/IMAP Entrada - Encryption (ssl/tls/none)',
-    'smtp.in.username' => 'SMTP/IMAP Entrada - Usuário',
-    'smtp.in.password' => 'SMTP/IMAP Entrada - Senha',
-    'smtp.in.mailbox' => 'SMTP/IMAP Entrada - Mailbox (ex: INBOX)',
-    'smtp.in.archive_mailbox' => 'SMTP/IMAP Entrada - Arquivar em (Mailbox)',
-    'smtp.in.poll_minutes' => 'SMTP/IMAP Entrada - Intervalo (min)',
+    'smtp.in.host' => 'IMAP Recebimento - Host (servidor de e-mail)',
+    'smtp.in.port' => 'IMAP Recebimento - Porta (993 para SSL, 143 para TLS)',
+    'smtp.in.encryption' => 'IMAP Recebimento - Criptografia (ssl/tls/none)',
+    'smtp.in.username' => 'IMAP Recebimento - Usuário (e-mail completo)',
+    'smtp.in.password' => 'IMAP Recebimento - Senha',
+    'smtp.in.mailbox' => 'IMAP Recebimento - Caixa de entrada (INBOX)',
+    'smtp.in.archive_mailbox' => 'IMAP Recebimento - Arquivar em (INBOX.Archive)',
+    'smtp.in.poll_minutes' => 'IMAP Recebimento - Verificar a cada (minutos)',
     'smtp.demands.to_address' => 'Endereço de demandas (ex: demandas@multilife.sistema)',
 
-    'smtp.out.host' => 'SMTP Saída - Host',
-    'smtp.out.port' => 'SMTP Saída - Porta',
-    'smtp.out.encryption' => 'SMTP Saída - Encryption (ssl/tls/none)',
-    'smtp.out.username' => 'SMTP Saída - Usuário',
-    'smtp.out.password' => 'SMTP Saída - Senha',
-    'smtp.out.from_email' => 'SMTP Saída - From e-mail',
-    'smtp.out.from_name' => 'SMTP Saída - From nome',
+    'smtp.out.host' => 'SMTP Envio - Host (servidor de e-mail)',
+    'smtp.out.port' => 'SMTP Envio - Porta (465 para SSL, 587 para TLS)',
+    'smtp.out.encryption' => 'SMTP Envio - Criptografia (ssl/tls/none)',
+    'smtp.out.username' => 'SMTP Envio - Usuário (e-mail completo)',
+    'smtp.out.password' => 'SMTP Envio - Senha',
+    'smtp.out.from_email' => 'SMTP Envio - Remetente (e-mail)',
+    'smtp.out.from_name' => 'SMTP Envio - Remetente (nome)',
 
     'openai.base_url' => 'OpenAI - Base URL',
     'openai.api_key' => 'OpenAI - API Key',
@@ -131,11 +131,11 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
         'keys' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'chat.unanswered_timeout_minutes', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url']
     ],
-    'SMTP Entrada' => [
+    'E-mail Recebimento (IMAP)' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
         'keys' => ['smtp.in.host', 'smtp.in.port', 'smtp.in.encryption', 'smtp.in.username', 'smtp.in.password', 'smtp.in.mailbox', 'smtp.in.archive_mailbox', 'smtp.in.poll_minutes', 'smtp.demands.to_address']
     ],
-    'SMTP Saída' => [
+    'E-mail Envio (SMTP)' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
         'keys' => ['smtp.out.host', 'smtp.out.port', 'smtp.out.encryption', 'smtp.out.username', 'smtp.out.password', 'smtp.out.from_email', 'smtp.out.from_name']
     ],

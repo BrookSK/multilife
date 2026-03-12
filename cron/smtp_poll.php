@@ -21,11 +21,29 @@ if (function_exists('imap_timeout')) {
     @imap_timeout(IMAP_CLOSETIMEOUT, 5);
 }
 
+// Usar configurações SMTP de saída como fallback para IMAP quando não configuradas
 $host = trim((string)admin_setting_get('smtp.in.host', ''));
+if ($host === '') {
+    $host = trim((string)admin_setting_get('smtp.out.host', ''));
+}
+
 $port = (int)admin_setting_get('smtp.in.port', '993');
-$enc = strtolower(trim((string)admin_setting_get('smtp.in.encryption', 'ssl')));
+
+$enc = strtolower(trim((string)admin_setting_get('smtp.in.encryption', '')));
+if ($enc === '') {
+    $enc = strtolower(trim((string)admin_setting_get('smtp.out.encryption', 'ssl')));
+}
+
 $user = trim((string)admin_setting_get('smtp.in.username', ''));
+if ($user === '') {
+    $user = trim((string)admin_setting_get('smtp.out.username', ''));
+}
+
 $pass = (string)admin_setting_get('smtp.in.password', '');
+if ($pass === '') {
+    $pass = (string)admin_setting_get('smtp.out.password', '');
+}
+
 $mailbox = trim((string)admin_setting_get('smtp.in.mailbox', 'INBOX'));
 $archiveMailbox = trim((string)admin_setting_get('smtp.in.archive_mailbox', 'INBOX.Archive'));
 $demandsTo = trim((string)admin_setting_get('smtp.demands.to_address', ''));
