@@ -1961,7 +1961,7 @@ if (!empty($selectedChat)) {
                 }
                 echo '</select>';
                 
-                echo '<button onclick="openSelectProfessionalModal()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
+                echo '<button onclick="openSelectProfessionalModalFromDemand()" style="width:100%;padding:10px;background:#00a884;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">';
                 echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:4px"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>';
                 echo 'Selecionar Profissional';
                 echo '</button>';
@@ -2132,6 +2132,17 @@ if (window.chatId) {
 ';
 }
 echo '
+// Função auxiliar para abrir modal a partir da demanda selecionada
+async function openSelectProfessionalModalFromDemand() {
+    const demandSelect = document.getElementById("demandSelect");
+    if (!demandSelect) return;
+    
+    const selectedOption = demandSelect.options[demandSelect.selectedIndex];
+    const professionalId = selectedOption ? selectedOption.dataset.userId : null;
+    
+    await openSelectProfessionalModal(professionalId);
+}
+
 // Função para abrir modal de seleção de profissional
 async function openSelectProfessionalModal(professionalId = null) {
     const demandSelect = document.getElementById("demandSelect");
@@ -2157,29 +2168,29 @@ async function openSelectProfessionalModal(professionalId = null) {
     document.getElementById("selectProfModalDemandId").value = demandId;
     document.getElementById("selectProfModalChatJid").value = chatId;
     
-    // Buscar dados da demanda para pré-preencher APENAS o e-mail da operadora
+    // Buscar dados da demanda para pré-preencher e-mail da operadora
     try {
         const response = await fetch("/api/get_demand_data.php?demand_id=" + demandId);
         const data = await response.json();
         
         if (data.success) {
-            // Pré-preencher APENAS e-mail da operadora (origin_email)
-            if (data.origin_email) {
-                document.querySelector("#selectProfessionalModal input[name=\'operator_email\']").value = data.origin_email;
+            // Pré-preencher e-mail da operadora (origin_email)
+            const emailInput = document.querySelector("#selectProfessionalModal input[name=\'operator_email\']");
+            if (emailInput && data.origin_email) {
+                emailInput.value = data.origin_email;
             }
-            // NÃO preencher especialidade aqui - virá do profissional selecionado
         }
     } catch (error) {
         console.error("Erro ao buscar dados da demanda:", error);
     }
     
-    // Se profissional foi passado, pré-selecionar e carregar especialidade
+    // Se profissional foi passado, pré-selecionar
     if (professionalId) {
         const profSelect = document.getElementById("selectProfModalProfessional");
         if (profSelect) {
             profSelect.value = professionalId;
-            // Carregar especialidade do profissional
-            await loadProfessionalSpecialty();
+            // Carregar especialidade e serviços do profissional
+            await loadProfessionalData(professionalId);
         }
     }
     
@@ -2196,6 +2207,41 @@ function closeSelectProfessionalModal() {
     const modal = document.getElementById("selectProfessionalModal");
     if (modal) {
         modal.style.display = "none";
+    }
+}
+
+// Função para carregar dados do profissional (especialidade e serviços)
+async function loadProfessionalData(professionalId) {
+    if (!professionalId) return;
+    
+    try {
+        // Buscar dados do profissional
+        const response = await fetch("/api/get_professional_data.php?user_id=" + professionalId);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Pré-selecionar especialidade
+            const specialtySelect = document.getElementById("selectProfSpecialtyId");
+            if (specialtySelect && data.specialty_id) {
+                specialtySelect.value = data.specialty_id;
+                // Carregar serviços dessa especialidade
+                await loadSpecialtyServices();
+                
+                // Se houver um serviço padrão do profissional, selecionar
+                if (data.specialty_service_id) {
+                    const serviceSelect = document.getElementById("selectProfSpecialtyServiceId");
+                    if (serviceSelect) {
+                        // Aguardar um pouco para garantir que os serviços foram carregados
+                        setTimeout(() => {
+                            serviceSelect.value = data.specialty_service_id;
+                            loadServiceDetails();
+                        }, 200);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Erro ao buscar dados do profissional:", error);
     }
 }
 
