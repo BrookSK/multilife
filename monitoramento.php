@@ -15,7 +15,7 @@ $sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
         p.address_city as patient_city, p.address_state as patient_state,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
-        pa.service_type, pa.payment_value, pa.start_date, pa.session_quantity
+        pa.service_type, pa.payment_value, pa.session_quantity
         FROM appointments a
         INNER JOIN patients p ON p.id = a.patient_id
         INNER JOIN users u ON u.id = a.professional_user_id
@@ -56,7 +56,6 @@ foreach ($appointments as $apt) {
             'service_type' => $apt['service_type'] ?? '',
             'location_city' => $apt['location_city'] ?? '',
             'location_state' => $apt['location_state'] ?? '',
-            'start_date' => $apt['start_date'] ?? '',
             'created_at' => $apt['created_at'] ?? ''
         ]
     ];
@@ -209,9 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('aptValueTotal').textContent = totalValue 
                 ? 'R$ ' + totalValue.toFixed(2).replace('.', ',')
                 : 'Não informado';
-            document.getElementById('aptStartDate').textContent = p.start_date 
-                ? new Date(p.start_date).toLocaleDateString('pt-BR')
-                : 'Não informado';
+            document.getElementById('aptStartDate').textContent = new Date(info.event.start).toLocaleDateString('pt-BR');
             
             // Ações
             const actions = document.getElementById('actions');
