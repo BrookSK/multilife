@@ -211,7 +211,7 @@ function process_single_authorization(int $authId, int $emailId): array
                 (demand_id, patient_id, professional_user_id, assigned_by_user_id,
                  specialty, service_type, session_quantity, session_frequency, 
                  payment_value, notes, status, created_at)
-                VALUES (:did, :pid, :puid, :abuid, :spec, :stype, :sq, :sfreq, :pv, :notes, 'approved', NOW())"
+                VALUES (:did, :pid, :puid, :abuid, :spec, :stype, :sq, :sfreq, :pv, :notes, 'confirmed', NOW())"
             );
             
             // Calcular valor total baseado em sessões
