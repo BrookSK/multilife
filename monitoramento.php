@@ -80,13 +80,13 @@ view_header('Monitoramento de Atendimentos');
 <style>
 body{margin:0;padding:0;overflow:hidden}
 .grid{display:none !important}
-.container{position:fixed;top:60px;left:0;right:0;bottom:0;display:flex;flex-direction:column;background:#fff}
-.header{padding:10px 16px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.container{position:fixed;top:70px;left:10px;right:10px;bottom:10px;display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.header{padding:10px 16px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:16px;border-radius:8px 8px 0 0}
 .title{font-size:20px;font-weight:800;margin:0}
 .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .legendItem{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
 .legendColor{width:14px;height:14px;border-radius:3px}
-.calendar{flex:1;background:#fff;padding:12px;overflow:hidden;min-height:0}
+.calendar{flex:1;background:#fff;padding:16px;overflow:hidden;min-height:0}
 #calendar{height:100%;width:100%}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center}
 .modal.open{display:flex}
