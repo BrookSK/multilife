@@ -157,25 +157,22 @@ foreach ($emails as $e) {
         continue;
     }
     
-    // Verificar se é resposta de autorização
-    error_log("[EMAIL_EXTRACT] E-mail #$id - Verificando se é resposta de autorização");
+    // ========================================================================
+    // IDENTIFICAÇÃO DE RESPOSTAS DE AUTORIZAÇÃO - CRITÉRIOS OBJETIVOS APENAS
+    // ========================================================================
+    // Usa APENAS critérios técnicos e seguros:
+    // 1. Message-ID (In-Reply-To header) - 100% preciso
+    // 2. Thread-ID único - Alta precisão
+    // 3. E-mail da operadora - Precisão média (último recurso)
+    //
+    // NÃO usa palavras-chave ou análise de assunto para evitar falsos positivos
+    // ========================================================================
+    
+    error_log("[EMAIL_EXTRACT] E-mail #$id - Verificando se é resposta de autorização (critérios objetivos)");
     error_log("[EMAIL_EXTRACT] E-mail #$id - Remetente: $fromEmail");
     error_log("[EMAIL_EXTRACT] E-mail #$id - Thread ID: $threadId");
     error_log("[EMAIL_EXTRACT] E-mail #$id - In-Reply-To: $inReplyTo");
     error_log("[EMAIL_EXTRACT] E-mail #$id - Assunto: $subject");
-    
-    // Verificar se assunto indica resposta (Re:, REENVIO, etc)
-    $subjectLower = strtolower($subject);
-    $isReplySubject = (
-        strpos($subjectLower, 're:') !== false ||
-        strpos($subjectLower, 'reenvio') !== false ||
-        strpos($subjectLower, 'resposta') !== false ||
-        strpos($subjectLower, 'proposta de atendimento') !== false
-    );
-    
-    if ($isReplySubject) {
-        error_log("[EMAIL_EXTRACT] E-mail #$id - Assunto indica possível resposta de autorização");
-    }
     
     $checkAuthResponse->execute();
     $pendingAuths = $checkAuthResponse->fetchAll();
@@ -186,86 +183,36 @@ foreach ($emails as $e) {
     $matchedAuthId = null;
     
     foreach ($pendingAuths as $auth) {
-        $authThreadId = trim((string)($auth['email_thread_id'] ?? ''));
         $authMessageId = trim((string)($auth['sent_message_id'] ?? ''));
-        $operatorEmail = strtolower(trim((string)$auth['operator_email']));
-        $fromEmailLower = strtolower(trim($fromEmail));
         
         error_log("[EMAIL_EXTRACT] E-mail #$id - Comparando Auth #" . $auth['id'] . " (Patient: " . $auth['patient_id'] . ", Demand: " . $auth['demand_id'] . ")");
-        error_log("[EMAIL_EXTRACT]   Message-ID da auth: '$authMessageId'");
-        error_log("[EMAIL_EXTRACT]   In-Reply-To do email: '$inReplyTo'");
-        error_log("[EMAIL_EXTRACT]   Thread ID da auth: '$authThreadId'");
-        error_log("[EMAIL_EXTRACT]   Thread ID do email: '$threadId'");
-        error_log("[EMAIL_EXTRACT]   Operadora: '$operatorEmail' vs Remetente: '$fromEmailLower'");
+        error_log("[EMAIL_EXTRACT]   🔑 CHAVE (Message-ID enviado): '$authMessageId'");
+        error_log("[EMAIL_EXTRACT]   🔓 CADEADO (In-Reply-To recebido): '$inReplyTo'");
         
-        // PRIORIDADE MÁXIMA: Identificação 100% precisa por Message-ID
-        // In-Reply-To do e-mail recebido deve corresponder ao Message-ID do e-mail enviado
+        // ========================================================================
+        // MODELO CHAVE-CADEADO: ÚNICO CRITÉRIO DE IDENTIFICAÇÃO
+        // ========================================================================
+        // Chave (🔑): Message-ID único gerado ao ENVIAR proposta
+        // Cadeado (🔓): Header In-Reply-To do e-mail de RESPOSTA
+        // 
+        // Se Chave = Cadeado → Resposta identificada com 100% de certeza
+        // Se Chave ≠ Cadeado → NÃO é resposta desta autorização
+        // 
+        // NÃO usa Thread-ID, operadora ou qualquer outro critério
+        // ========================================================================
+        
         if ($inReplyTo !== '' && $authMessageId !== '' && $inReplyTo === $authMessageId) {
             $isAuthorizationResponse = true;
             $matchedAuthId = (int)$auth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id ✅✅✅ IDENTIFICADO por MESSAGE-ID (100% PRECISO) como resposta de autorização #$matchedAuthId");
+            error_log("[EMAIL_EXTRACT] E-mail #$id ✅✅✅ CHAVE-CADEADO MATCH! Resposta de autorização #$matchedAuthId");
             error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
+            error_log("[EMAIL_EXTRACT]   🔑🔓 Identificação 100% precisa - Modelo chave-cadeado");
             break;
-        }
-        
-        // PRIORIDADE 1: Identificação única por email_thread_id
-        // Garante que cada resposta seja vinculada à autorização correta
-        // Mesmo quando há múltiplas autorizações para o mesmo paciente
-        if ($threadId !== '' && $authThreadId !== '' && $threadId === $authThreadId) {
-            $isAuthorizationResponse = true;
-            $matchedAuthId = (int)$auth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id ✅ IDENTIFICADO por THREAD_ID como resposta de autorização #$matchedAuthId");
-            error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
-            break;
-        }
-        
-        // FALLBACK: Identificação por operadora (menos preciso, usado apenas se thread_id não disponível)
-        // IMPORTANTE: Pega a autorização mais recente para evitar conflitos
-        if ($operatorEmail !== '' && $fromEmailLower !== '' && $operatorEmail === $fromEmailLower) {
-            // Só usa fallback se ainda não encontrou por thread_id
-            if ($matchedAuthId === null) {
-                $isAuthorizationResponse = true;
-                $matchedAuthId = (int)$auth['id'];
-                error_log("[EMAIL_EXTRACT] E-mail #$id ⚠️ IDENTIFICADO por OPERADORA (fallback) como resposta de autorização #$matchedAuthId");
-                error_log("[EMAIL_EXTRACT]   ATENÇÃO: Identificação por operadora pode causar conflitos com múltiplas autorizações");
-                error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
-                // Não break aqui - continua procurando por thread_id match
-            }
-        }
-    }
-    
-    // FALLBACK ADICIONAL: Se assunto indica resposta mas não encontrou autorização aguardando,
-    // buscar autorizações recentes (últimas 24h) do mesmo remetente que AINDA estão aguardando
-    // NÃO processar autorizações já aprovadas ou negadas
-    if (!$isAuthorizationResponse && $isReplySubject && $fromEmail !== '') {
-        error_log("[EMAIL_EXTRACT] E-mail #$id - Assunto indica resposta, buscando autorizações recentes do remetente");
-        
-        $checkRecentAuth = $db->prepare(
-            "SELECT ar.id, ar.demand_id, ar.patient_id, ar.status
-             FROM authorization_requests ar
-             WHERE ar.operator_email = :email
-             AND ar.sent_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-             AND ar.patient_id > 0
-             AND ar.status = 'aguardando_autorizacao'
-             ORDER BY ar.sent_at DESC
-             LIMIT 1"
-        );
-        $checkRecentAuth->execute(['email' => $fromEmail]);
-        $recentAuth = $checkRecentAuth->fetch();
-        
-        if ($recentAuth) {
-            $isAuthorizationResponse = true;
-            $matchedAuthId = (int)$recentAuth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id ⚠️ IDENTIFICADO por ASSUNTO + REMETENTE RECENTE como resposta de autorização #$matchedAuthId");
-            error_log("[EMAIL_EXTRACT]   Status da autorização: " . $recentAuth['status']);
-            error_log("[EMAIL_EXTRACT]   Patient ID: " . $recentAuth['patient_id'] . " | Demand ID: " . $recentAuth['demand_id']);
-        } else {
-            error_log("[EMAIL_EXTRACT] E-mail #$id - Nenhuma autorização aguardando resposta encontrada para este remetente");
         }
     }
     
     if (!$isAuthorizationResponse) {
-        error_log("[EMAIL_EXTRACT] E-mail #$id - NÃO é resposta de autorização, processando como nova demanda");
+        error_log("[EMAIL_EXTRACT] E-mail #$id - 🔑🔓 Chave-cadeado NÃO identificou como resposta, processando como nova demanda");
     }
     
     // Se for resposta de autorização, processar imediatamente
