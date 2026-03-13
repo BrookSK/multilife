@@ -1480,8 +1480,8 @@ echo '.whatsapp-status-badge{display:inline-block;padding:4px 12px;border-radius
 echo '.whatsapp-status-badge.atendendo{background:#dcf8c6;color:#0a8754}';
 echo '.whatsapp-status-badge.aguardando{background:#fff3cd;color:#856404}';
 echo '.whatsapp-status-badge.resolvido{background:#d1d7db;color:#54656f}';
-echo '.whatsapp-sync-btn{padding:8px 16px;background:#00a884;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .2s}';
-echo '.whatsapp-sync-btn:hover{background:#06cf9c}';
+echo '.whatsapp-sync-btn{padding:10px 18px;background:hsl(var(--primary));color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s}';
+echo '.whatsapp-sync-btn:hover{background:hsl(var(--primary-dark))}';
 echo '.whatsapp-sync-btn:disabled{background:#d1d7db;cursor:not-allowed}';
 echo '@keyframes rotate{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
 echo '.rotating{animation:rotate 1s linear infinite}';
@@ -1500,14 +1500,14 @@ if (!empty($debugLogs)) {
 echo '<div style="padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
 echo '<button onclick="syncEvolution()" id="syncBtn" class="whatsapp-sync-btn">';
-echo '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="syncIcon"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>';
+echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="syncIcon"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>';
 echo 'Sincronizar';
 echo '</button>';
-echo '<button onclick="openNewChatModal()" style="padding:10px 18px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
+echo '<button onclick="openNewChatModal()" style="padding:10px 18px;background:hsl(var(--primary));color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
 echo 'Nova Conversa';
 echo '</button>';
-echo '<button onclick="openCreateGroupModal()" style="padding:10px 18px;background:#00a884;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
+echo '<button onclick="openCreateGroupModal()" style="padding:10px 18px;background:hsl(var(--primary));color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .2s">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
 echo 'Criar Grupo';
 echo '</button>';

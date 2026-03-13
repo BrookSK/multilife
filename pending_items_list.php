@@ -98,7 +98,7 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">⚠️ Pendências do Sistema</div>';
+echo '<div style="font-size:22px;font-weight:900">Pendências do Sistema</div>';
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Itens em atraso que requerem atenção imediata.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
@@ -111,11 +111,11 @@ echo '</section>';
 // BLOCO 1: PENDÊNCIAS FINANCEIRAS
 // ============================================
 echo '<section class="card col12">';
-echo '<h2 style="font-size:18px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid hsl(var(--border))">💰 Pendências Financeiras</h2>';
+echo '<h2 style="font-size:18px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid hsl(var(--border))">Pendências Financeiras</h2>';
 
 // Contas a Pagar em Atraso
 echo '<div style="margin-bottom:24px">';
-echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#ef4444">📤 Contas a Pagar em Atraso (' . count($payablesOverdue) . ')</h3>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#ef4444">Contas a Pagar em Atraso (' . count($payablesOverdue) . ')</h3>';
 
 if (count($payablesOverdue) > 0) {
     echo '<div style="display:flex;flex-direction:column;gap:8px">';
@@ -139,13 +139,13 @@ if (count($payablesOverdue) > 0) {
     }
     echo '</div>';
 } else {
-    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhuma conta a pagar em atraso</div>';
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma conta a pagar em atraso</div>';
 }
 echo '</div>';
 
 // Contas a Receber em Atraso
 echo '<div>';
-echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#f59e0b">📥 Contas a Receber em Atraso (' . count($receivablesOverdue) . ')</h3>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#f59e0b">Contas a Receber em Atraso (' . count($receivablesOverdue) . ')</h3>';
 
 if (count($receivablesOverdue) > 0) {
     echo '<div style="display:flex;flex-direction:column;gap:8px">';
@@ -169,7 +169,7 @@ if (count($receivablesOverdue) > 0) {
     }
     echo '</div>';
 } else {
-    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhuma conta a receber em atraso</div>';
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma conta a receber em atraso</div>';
 }
 echo '</div>';
 
@@ -179,11 +179,11 @@ echo '</section>';
 // BLOCO 2: PENDÊNCIAS OPERACIONAIS
 // ============================================
 echo '<section class="card col12">';
-echo '<h2 style="font-size:18px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid hsl(var(--border))">⚙️ Pendências Operacionais</h2>';
+echo '<h2 style="font-size:18px;font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid hsl(var(--border))">Pendências Operacionais</h2>';
 
 // Documentos de Profissionais Atrasados
 echo '<div style="margin-bottom:24px">';
-echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#8b5cf6">📄 Documentos de Profissionais Não Recebidos (' . count($documentsOverdue) . ')</h3>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#8b5cf6">Documentos de Profissionais Não Recebidos (' . count($documentsOverdue) . ')</h3>';
 
 if (count($documentsOverdue) > 0) {
     echo '<div style="display:flex;flex-direction:column;gap:8px">';
@@ -208,13 +208,13 @@ if (count($documentsOverdue) > 0) {
     }
     echo '</div>';
 } else {
-    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Todos os profissionais enviaram documentos no prazo</div>';
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">Todos os profissionais enviaram documentos no prazo</div>';
 }
 echo '</div>';
 
 // Atendimentos Parados >24h
 echo '<div style="margin-bottom:24px">';
-echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#3b82f6">🚨 Atendimentos Parados há Mais de 24h (' . count($appointmentsStuck) . ')</h3>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#3b82f6">Atendimentos Parados há Mais de 24h (' . count($appointmentsStuck) . ')</h3>';
 
 if (count($appointmentsStuck) > 0) {
     echo '<div style="display:flex;flex-direction:column;gap:8px">';
@@ -248,13 +248,13 @@ if (count($appointmentsStuck) > 0) {
     }
     echo '</div>';
 } else {
-    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhum atendimento parado há mais de 24h</div>';
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum atendimento parado há mais de 24h</div>';
 }
 echo '</div>';
 
 // Cards de Pré-admissão Aguardando Aprovação
 echo '<div>';
-echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#10b981">📋 Pré-admissão Aguardando Aprovação (' . count($preAdmissionPending) . ')</h3>';
+echo '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;color:#10b981">Pré-admissão Aguardando Aprovação (' . count($preAdmissionPending) . ')</h3>';
 
 if (count($preAdmissionPending) > 0) {
     echo '<div style="display:flex;flex-direction:column;gap:8px">';
@@ -280,7 +280,7 @@ if (count($preAdmissionPending) > 0) {
     }
     echo '</div>';
 } else {
-    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">✅ Nenhum atendimento aguardando aprovação</div>';
+    echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum atendimento aguardando aprovação</div>';
 }
 echo '</div>';
 
