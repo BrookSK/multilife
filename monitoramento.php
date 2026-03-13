@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
-view_start('Monitoramento de Atendimentos');
+
+auth_require_login();
+rbac_require_permission('demands.manage');
 
 $db = db();
 
@@ -39,6 +41,8 @@ foreach ($appointments as $apt) {
         ]
     ];
 }
+
+view_header('Monitoramento de Atendimentos');
 ?>
 
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
@@ -141,4 +145,4 @@ function closeModal() {
 }
 </script>
 
-<?php view_end(); ?>
+<?php view_footer(); ?>
