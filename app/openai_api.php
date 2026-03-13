@@ -19,7 +19,7 @@ final class OpenAiApi
             $rawBase = 'https://api.openai.com';
         }
         $this->baseUrl = rtrim($rawBase, '/');
-        $this->apiKey = (string)($apiKey ?? admin_setting_get('openai.api_key', ''));
+        $this->apiKey = trim((string)($apiKey ?? admin_setting_get('openai.api_key', '')));
         $this->model = (string)($model ?? admin_setting_get('openai.model', 'gpt-4o-mini'));
 
         if ($this->apiKey === '') {
