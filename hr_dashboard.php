@@ -67,7 +67,6 @@ if (count($employees) > 0) {
     echo '<div class="col12" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px;margin-top:10px">';
     
     foreach ($employees as $emp) {
-        $photoUrl = !empty($emp['photo_url']) ? h((string)$emp['photo_url']) : '/assets/default-avatar.png';
         $fullName = h((string)$emp['full_name']);
         $position = !empty($emp['position']) ? h((string)$emp['position']) : 'Sem cargo';
         $department = !empty($emp['department']) ? h((string)$emp['department']) : '';
@@ -82,9 +81,15 @@ if (count($employees) > 0) {
         echo '<a href="/hr_employee_profile.php?id=' . (int)$emp['id'] . '" style="text-decoration:none;color:inherit">';
         echo '<div class="card" style="padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;border:2px solid transparent" onmouseover="this.style.borderColor=\'hsl(var(--primary))\';this.style.transform=\'translateY(-4px)\'" onmouseout="this.style.borderColor=\'transparent\';this.style.transform=\'translateY(0)\';">';
         
-        // Foto circular
+        // Foto circular - usar placeholder inline quando não houver foto
         echo '<div style="width:100px;height:100px;border-radius:50%;overflow:hidden;margin:0 auto 12px;border:3px solid hsl(var(--primary))">';
-        echo '<img src="' . $photoUrl . '" alt="' . $fullName . '" style="width:100%;height:100%;object-fit:cover" onerror="this.src=\'/assets/default-avatar.png\'">';
+        if (!empty($emp['photo_url'])) {
+            $photoUrl = h((string)$emp['photo_url']);
+            echo '<img src="' . $photoUrl . '" alt="' . $fullName . '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
+            echo '<div style="display:none;width:100%;height:100%;background:#e5e7eb;align-items:center;justify-content:center;font-size:48px;color:#9ca3af">👤</div>';
+        } else {
+            echo '<div style="display:flex;width:100%;height:100%;background:#e5e7eb;align-items:center;justify-content:center;font-size:48px;color:#9ca3af">👤</div>';
+        }
         echo '</div>';
         
         // Nome em negrito
