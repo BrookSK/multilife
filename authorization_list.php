@@ -64,7 +64,7 @@ foreach ($rows as $r) {
     }
 }
 
-echo '<section class="card col12">';
+echo '<section class="card col12" style="margin-bottom:20px">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Autorização de Propostas</div>';
