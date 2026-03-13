@@ -80,7 +80,7 @@ view_header('Monitoramento de Atendimentos');
 <style>
 body{margin:0;padding:0;overflow:hidden}
 .grid{display:none !important}
-.container{position:fixed;top:70px;left:10px;right:10px;bottom:10px;display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.container{position:fixed;top:70px;left:270px;right:20px;bottom:20px;display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
 .header{padding:10px 16px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:16px;border-radius:8px 8px 0 0}
 .title{font-size:20px;font-weight:800;margin:0}
 .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
