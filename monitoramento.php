@@ -7,8 +7,10 @@ rbac_require_permission('demands.manage');
 
 $db = db();
 
-// Buscar sessões agendadas de atendimentos aprovados
-$sql = "SELECT bdr.id, bdr.session_date as first_at, bdr.session_number, bdr.status as session_status,
+// Buscar sessões de atendimentos aprovados (usa session_date se preenchido, senão usa admitted_at)
+$sql = "SELECT bdr.id, 
+        COALESCE(bdr.session_date, DATE_ADD(pa.admitted_at, INTERVAL (bdr.session_number - 1) WEEK)) as first_at,
+        bdr.session_number, bdr.status as session_status,
         pa.id as assignment_id, pa.status as assignment_status,
         COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.created_at,
         p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
@@ -24,9 +26,8 @@ $sql = "SELECT bdr.id, bdr.session_date as first_at, bdr.session_number, bdr.sta
         INNER JOIN users u ON u.id = bdr.professional_user_id
         LEFT JOIN demands d ON d.id = pa.demand_id
         WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval', 'completed')
-        AND bdr.session_date IS NOT NULL
-        AND bdr.session_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-        ORDER BY bdr.session_date ASC";
+        AND pa.admitted_at IS NOT NULL
+        ORDER BY first_at ASC";
 
 $appointments = $db->query($sql)->fetchAll();
 
