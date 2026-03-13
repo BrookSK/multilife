@@ -238,28 +238,32 @@ function process_single_authorization(int $authId, int $emailId): array
             
             $insReceita = $db->prepare(
                 "INSERT INTO financial_entries 
-                (entry_type, amount, description, entry_date, status, patient_assignment_id, created_at)
-                VALUES ('receita', :amt, :desc, :dt, 'pendente', :aid, NOW())"
+                (entry_type, category, assignment_id, patient_id, amount, description, entry_date, status, created_by_user_id, created_at)
+                VALUES ('income', 'servicos', :aid, :pid, :amt, :desc, :dt, 'pending', :cbuid, NOW())"
             );
             $insReceita->execute([
+                'aid' => $assignmentId,
+                'pid' => $patientId,
                 'amt' => $totalReceita,
                 'desc' => "Receita - Atendimento #$assignmentId - $totalSessions sessões",
                 'dt' => $startDate,
-                'aid' => $assignmentId,
+                'cbuid' => 1, // Sistema automático
             ]);
             error_log("[PROCESS_SINGLE_AUTH] ✓ Receita lançada: R$ $totalReceita");
             
             $insDespesa = $db->prepare(
                 "INSERT INTO financial_entries 
-                (entry_type, amount, description, entry_date, status, patient_assignment_id, professional_user_id, created_at)
-                VALUES ('despesa', :amt, :desc, :dt, 'pendente', :aid, :puid, NOW())"
+                (entry_type, category, assignment_id, patient_id, professional_user_id, amount, description, entry_date, status, created_by_user_id, created_at)
+                VALUES ('expense', 'profissionais', :aid, :pid, :puid, :amt, :desc, :dt, 'pending', :cbuid, NOW())"
             );
             $insDespesa->execute([
+                'aid' => $assignmentId,
+                'pid' => $patientId,
+                'puid' => $professionalUserId,
                 'amt' => $totalDespesa,
                 'desc' => "Despesa - Atendimento #$assignmentId - $totalSessions sessões",
                 'dt' => $startDate,
-                'aid' => $assignmentId,
-                'puid' => $professionalUserId,
+                'cbuid' => 1, // Sistema automático
             ]);
             error_log("[PROCESS_SINGLE_AUTH] ✓ Despesa lançada: R$ $totalDespesa");
             
