@@ -146,8 +146,14 @@ foreach ($emails as $e) {
     }
     
     // Verificar se é resposta de autorização
+    error_log("[EMAIL_EXTRACT] E-mail #$id - Verificando se é resposta de autorização");
+    error_log("[EMAIL_EXTRACT] E-mail #$id - Remetente: $fromEmail");
+    
     $checkAuthResponse->execute();
     $pendingAuths = $checkAuthResponse->fetchAll();
+    
+    error_log("[EMAIL_EXTRACT] E-mail #$id - Autorizações aguardando resposta: " . count($pendingAuths));
+    
     $isAuthorizationResponse = false;
     $matchedAuthId = null;
     
@@ -155,13 +161,19 @@ foreach ($emails as $e) {
         $operatorEmail = strtolower(trim((string)$auth['operator_email']));
         $fromEmailLower = strtolower(trim($fromEmail));
         
+        error_log("[EMAIL_EXTRACT] E-mail #$id - Comparando: '$fromEmailLower' com operadora '$operatorEmail' (Auth #" . $auth['id'] . ")");
+        
         // Verificar se o e-mail vem da operadora que está aguardando resposta
         if ($operatorEmail !== '' && $fromEmailLower !== '' && $operatorEmail === $fromEmailLower) {
             $isAuthorizationResponse = true;
             $matchedAuthId = (int)$auth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id identificado como resposta de autorização #$matchedAuthId (de: $fromEmail)");
+            error_log("[EMAIL_EXTRACT] E-mail #$id ✅ IDENTIFICADO como resposta de autorização #$matchedAuthId (de: $fromEmail)");
             break;
         }
+    }
+    
+    if (!$isAuthorizationResponse) {
+        error_log("[EMAIL_EXTRACT] E-mail #$id - NÃO é resposta de autorização, processando como nova demanda");
     }
     
     // Se for resposta de autorização, processar imediatamente
