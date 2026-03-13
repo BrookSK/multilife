@@ -23,7 +23,7 @@ $sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
         INNER JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.demand_id = d.id
         WHERE a.status IN ('agendado', 'pendente_formulario', 'realizado')
         AND a.first_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-        AND pa.status = 'approved'";
+        AND pa.status = 'admitted'";
 
 $appointments = $db->query($sql)->fetchAll();
 

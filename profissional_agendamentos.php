@@ -42,7 +42,7 @@ $appointmentsStmt = db()->prepare("
     WHERE pa.professional_user_id = ?
     AND YEAR(pa.created_at) = ?
     AND MONTH(pa.created_at) = ?
-    AND pa.status = 'approved'
+    AND pa.status = 'admitted'
     ORDER BY pa.created_at ASC
 ");
 $appointmentsStmt->execute([$userId, $currentYear, $currentMonth]);
