@@ -74,10 +74,8 @@ echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a href="/demands_list.php" class="btn">← Voltar para Captação</a>';
 echo '</div>';
 echo '</div>';
-echo '</section>';
 
-echo '<div class="card" style="margin-bottom:20px">';
-echo '<form method="get" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">';
+echo '<form method="get" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:20px">';
 echo '<div style="flex:1;min-width:200px">';
 echo '<label style="display:block;margin-bottom:6px;font-size:13px;font-weight:600">Buscar</label>';
 echo '<input type="text" name="q" value="' . h($q) . '" placeholder="Paciente, profissional, operadora..." class="input">';
@@ -97,7 +95,7 @@ if ($q !== '' || $status !== '') {
     echo '<a href="/authorization_list.php" class="btn">Limpar</a>';
 }
 echo '</form>';
-echo '</div>';
+echo '</section>';
 
 echo '<div class="kanbanScroll">';
 echo '<div class="kanbanRow">';

@@ -101,7 +101,6 @@ echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
-echo '</section>';
 
 echo '<style>';
 echo '.paFilters{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:18px}';
@@ -174,9 +173,7 @@ $labelStatus = static function (string $st): string {
     return 'Pendente';
 };
 
-echo '<div class="paFilters">';
-
-echo '<form method="get" action="/pre_admissao.php" class="paFilters">';
+echo '<form method="get" action="/pre_admissao.php" class="paFilters" style="margin-top:20px">';
 echo '<div class="paSearch">';
 echo '<span class="paSearchIcon" aria-hidden="true"></span>';
 echo '<input name="q" value="' . h($q) . '" placeholder="Buscar paciente...">';
@@ -197,8 +194,7 @@ echo '</select>';
 
 echo '<button class="btn" type="submit">Filtrar</button>';
 echo '</form>';
-
-echo '</div>';
+echo '</section>';
 
 echo '<div class="paList">';
 foreach ($rows as $r) {
