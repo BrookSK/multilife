@@ -18,7 +18,9 @@ if (!in_array($status, $allowedStatuses, true)) {
 $sql = 'SELECT ar.*, 
         d.title as demand_title, d.specialty as demand_specialty, d.location_city, d.location_state,
         u.name as professional_name,
-        p.full_name as patient_name
+        p.full_name as patient_name,
+        ar.demand_id,
+        ar.inbound_email_id
         FROM authorization_requests ar
         INNER JOIN demands d ON d.id = ar.demand_id
         INNER JOIN users u ON u.id = ar.professional_user_id
@@ -114,6 +116,8 @@ foreach ($columns as $col) {
     } else {
         foreach ($items as $item) {
             $authId = (int)$item['id'];
+            $demandId = (int)$item['demand_id'];
+            $emailId = !empty($item['inbound_email_id']) ? (int)$item['inbound_email_id'] : null;
             $demandTitle = h((string)$item['demand_title']);
             $professionalName = h((string)$item['professional_name']);
             $patientName = !empty($item['patient_name']) ? h((string)$item['patient_name']) : 'Paciente não vinculado';
@@ -136,7 +140,13 @@ foreach ($columns as $col) {
             
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle">' . $demandTitle . '</div>';
-            echo '<div style="font-size:11px;font-weight:800;color:hsl(var(--primary));background:hsla(var(--primary)/.1);padding:4px 8px;border-radius:6px">#' . $authId . '</div>';
+            echo '<div style="display:flex;gap:6px;align-items:center">';
+            echo '<div style="font-size:11px;font-weight:800;color:hsl(var(--primary));background:hsla(var(--primary)/.1);padding:4px 8px;border-radius:6px" title="ID da Autorização">#' . $authId . '</div>';
+            echo '<div style="font-size:11px;font-weight:700;color:hsl(var(--muted-foreground));background:hsla(var(--muted)/.3);padding:4px 8px;border-radius:6px" title="ID do Card de Captação">Card #' . $demandId . '</div>';
+            if ($emailId !== null) {
+                echo '<div style="font-size:11px;font-weight:700;color:hsl(var(--warning));background:hsla(var(--warning)/.1);padding:4px 8px;border-radius:6px" title="ID do E-mail de Resposta">Email #' . $emailId . '</div>';
+            }
+            echo '</div>';
             echo '</div>';
             
             echo '<div class="kanbanMeta">';
