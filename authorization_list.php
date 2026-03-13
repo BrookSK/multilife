@@ -65,7 +65,7 @@ foreach ($rows as $r) {
 }
 
 echo '<div class="pageHeader">';
-echo '<h1>🔐 Autorização de Propostas</h1>';
+echo '<h1>Autorização de Propostas</h1>';
 echo '<div class="pageHeaderActions">';
 echo '<a href="/demands_list.php" class="btn">← Voltar para Captação</a>';
 echo '</div>';

@@ -84,7 +84,7 @@ foreach ($rows as $r) {
     // Botão Login as User (apenas para admins)
     $currentUserId = auth_user_id();
     if ((int)$r['id'] !== $currentUserId) {
-        echo '<a class="btn" href="/login_as_user.php?user_id=' . (int)$r['id'] . '" style="background:#667eea;color:white" onclick="return confirm(\'Fazer login como ' . h((string)$r['name']) . '?\')">Login as User</a> ';
+        echo '<a class="btn" href="/login_as_user.php?user_id=' . (int)$r['id'] . '" style="background:hsl(var(--primary));color:white" onclick="return confirm(\'Fazer login como ' . h((string)$r['name']) . '?\')">Login as User</a> ';
     }
     
     echo '<form method="post" action="/users_delete_post.php" style="display:inline">';

@@ -115,6 +115,9 @@ body{margin:0;padding:0;overflow:hidden}
 .actions{display:flex;gap:12px;margin-top:24px;padding-top:24px;border-top:1px solid #e5e7eb}
 .btn{padding:10px 20px;border-radius:8px;font-weight:600;border:none;cursor:pointer;text-decoration:none;background:#14b8a6;color:#fff}
 .btn:hover{background:#0d9488;text-decoration:none}
+.fc .fc-button-primary{background:hsl(var(--primary)) !important;border-color:hsl(var(--primary)) !important}
+.fc .fc-button-primary:hover{background:hsl(var(--primary-dark)) !important;border-color:hsl(var(--primary-dark)) !important}
+.fc .fc-button-primary:not(:disabled):active,.fc .fc-button-primary:not(:disabled).fc-button-active{background:hsl(var(--primary-darker)) !important;border-color:hsl(var(--primary-darker)) !important}
 </style>
 
 <div class="container">
