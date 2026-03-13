@@ -198,7 +198,6 @@ function process_single_authorization(int $authId, int $emailId): array
             error_log("[PROCESS_SINGLE_AUTH] Nome: " . $patientData['full_name']);
             error_log("[PROCESS_SINGLE_AUTH] ID: " . $patientData['id']);
             
-            // Criar atendimento
             $startDate = (string)$request['start_date'];
             $startTime = (string)$request['start_time'];
             $endTime = (string)$request['end_time'];
@@ -294,20 +293,34 @@ function process_single_authorization(int $authId, int $emailId): array
             $rowsAffected = $updateDemandStmt->rowCount();
             error_log("[PROCESS_SINGLE_AUTH] ✓ Demanda movida para pre_admissao (rows affected: $rowsAffected)");
             
-            // Registrar histórico
+            // Registrar histórico com dados completos de auditoria
             $historyStmt = $db->prepare(
                 "INSERT INTO authorization_request_history 
                 (authorization_request_id, action, notes) 
                 VALUES (:auth_id, 'approved', :notes)"
             );
+            $auditNotesApproved = "APROVAÇÃO AUTOMÁTICA - IA\n"
+                . "Motivo: $reason\n"
+                . "E-mail ID: $emailId\n"
+                . "Patient ID: $patientId\n"
+                . "Demand ID: $demandId\n"
+                . "Assignment ID: $assignmentId\n"
+                . "Professional ID: $professionalUserId\n"
+                . "Valor Acordado: R$ $agreedValue\n"
+                . "Total Sessões: $totalSessions\n"
+                . "Timestamp: " . date('Y-m-d H:i:s') . "\n"
+                . "Processado por: Sistema Automático";
+            
             $historyStmt->execute([
                 'auth_id' => $authId,
-                'notes' => "Aprovado automaticamente pela IA. Motivo: $reason"
+                'notes' => $auditNotesApproved
             ]);
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Histórico de auditoria registrado");
             
             $db->commit();
             
             error_log("[PROCESS_SINGLE_AUTH] ✅ APROVAÇÃO PROCESSADA COM SUCESSO!");
+            error_log("[PROCESS_SINGLE_AUTH] === FIM AUDITORIA CRÍTICA ===");
             error_log("[PROCESS_SINGLE_AUTH] Atendimento #$assignmentId criado");
             error_log("[PROCESS_SINGLE_AUTH] Paciente #$patientId vinculado");
             
@@ -315,11 +328,33 @@ function process_single_authorization(int $authId, int $emailId): array
                 'success' => true,
                 'decision' => 'approved',
                 'assignment_id' => $assignmentId,
-                'patient_id' => $patientId
+                'patient_id' => $patientId,
+                'auth_id' => $authId,
+                'demand_id' => $demandId,
+                'email_id' => $emailId
             ];
             
         } else {
             error_log("[PROCESS_SINGLE_AUTH] ❌ PROCESSANDO NEGAÇÃO");
+            error_log("[PROCESS_SINGLE_AUTH] === AUDITORIA CRÍTICA: NEGAÇÃO ===");
+            error_log("[PROCESS_SINGLE_AUTH] Autorização ID: $authId");
+            error_log("[PROCESS_SINGLE_AUTH] Demanda ID: $demandId");
+            error_log("[PROCESS_SINGLE_AUTH] Patient ID: $patientId");
+            error_log("[PROCESS_SINGLE_AUTH] E-mail ID: $emailId");
+            error_log("[PROCESS_SINGLE_AUTH] Motivo: $reason");
+            error_log("[PROCESS_SINGLE_AUTH] Timestamp: " . date('Y-m-d H:i:s'));
+            
+            // VALIDAÇÃO CRÍTICA: Verificar se autorização ainda está aguardando
+            $verifyStmt = $db->prepare(
+                "SELECT status FROM authorization_requests WHERE id = :id"
+            );
+            $verifyStmt->execute(['id' => $authId]);
+            $currentStatus = $verifyStmt->fetchColumn();
+            
+            if ($currentStatus !== 'aguardando_autorizacao') {
+                error_log("[PROCESS_SINGLE_AUTH] ⚠️⚠️⚠️ ALERTA CRÍTICO: Tentativa de processar autorização com status '$currentStatus'");
+                throw new Exception("Autorização #$authId não está mais aguardando (status: $currentStatus). Possível duplicação de processamento.");
+            }
             
             // Atualizar autorização
             $updateAuthStmt = $db->prepare(
@@ -329,7 +364,8 @@ function process_single_authorization(int $authId, int $emailId): array
                      ai_analysis = :analysis,
                      denial_reason = :reason,
                      inbound_email_id = :email_id
-                 WHERE id = :id"
+                 WHERE id = :id
+                 AND status = 'aguardando_autorizacao'"
             );
             $updateAuthStmt->execute([
                 'received_at' => $receivedAt,
@@ -339,32 +375,55 @@ function process_single_authorization(int $authId, int $emailId): array
                 'id' => $authId
             ]);
             
+            $rowsAffected = $updateAuthStmt->rowCount();
+            if ($rowsAffected === 0) {
+                error_log("[PROCESS_SINGLE_AUTH] ⚠️⚠️⚠️ ERRO CRÍTICO: Nenhuma linha atualizada. Autorização pode ter sido processada simultaneamente.");
+                throw new Exception("Falha ao atualizar autorização #$authId. Possível processamento concorrente.");
+            }
+            
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Autorização atualizada (rows: $rowsAffected)");
+            
             // Atualizar demanda
             $updateDemandStmt = $db->prepare(
                 "UPDATE demands SET status = 'autorizacao_negada' WHERE id = :id"
             );
             $updateDemandStmt->execute(['id' => $demandId]);
+            $demandRowsAffected = $updateDemandStmt->rowCount();
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Demanda atualizada (rows: $demandRowsAffected)");
             
-            // Registrar histórico
+            // Registrar histórico com dados completos de auditoria
             $historyStmt = $db->prepare(
                 "INSERT INTO authorization_request_history 
                 (authorization_request_id, action, notes) 
                 VALUES (:auth_id, 'denied', :notes)"
             );
+            $auditNotes = "NEGAÇÃO AUTOMÁTICA - IA\n"
+                . "Motivo: $reason\n"
+                . "E-mail ID: $emailId\n"
+                . "Patient ID: $patientId\n"
+                . "Demand ID: $demandId\n"
+                . "Timestamp: " . date('Y-m-d H:i:s') . "\n"
+                . "Processado por: Sistema Automático";
+            
             $historyStmt->execute([
                 'auth_id' => $authId,
-                'notes' => "Negado automaticamente pela IA. Motivo: $reason"
+                'notes' => $auditNotes
             ]);
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Histórico de auditoria registrado");
             
             $db->commit();
             
             error_log("[PROCESS_SINGLE_AUTH] ❌ NEGAÇÃO PROCESSADA COM SUCESSO!");
-            error_log("[PROCESS_SINGLE_AUTH] Motivo: $reason");
+            error_log("[PROCESS_SINGLE_AUTH] === FIM AUDITORIA CRÍTICA ===");
             
             return [
                 'success' => true,
                 'decision' => 'denied',
-                'reason' => $reason
+                'reason' => $reason,
+                'auth_id' => $authId,
+                'demand_id' => $demandId,
+                'patient_id' => $patientId,
+                'email_id' => $emailId
             ];
         }
         

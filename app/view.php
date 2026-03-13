@@ -39,6 +39,7 @@ function view_header(string $title): void
             ['title' => 'Captação', 'path' => '/demands_list.php'],
             ['title' => 'Autorização', 'path' => '/authorization_list.php'],
             ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php'],
+            ['title' => 'Monitoramento', 'path' => '/monitoramento.php'],
             ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php'],
             ['title' => 'Pacientes', 'path' => '/patients_list.php'],
             ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional'],

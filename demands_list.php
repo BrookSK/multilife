@@ -19,7 +19,7 @@ $assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : ''
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
-$allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
+$allowedStatuses = ['','aguardando_captacao','tratamento_manual','em_captacao','autorizacao_negada','admitido','concluido','cancelado'];
 if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
@@ -92,6 +92,7 @@ $columns = [
     ['id' => 'aguardando_captacao', 'title' => 'Recebimento de E-mail', 'emoji' => '📥'],
     ['id' => 'tratamento_manual', 'title' => 'Tratamento Manual', 'emoji' => '📋'],
     ['id' => 'em_captacao', 'title' => 'Em Captação', 'emoji' => '🔗'],
+    ['id' => 'autorizacao_negada', 'title' => 'Negativas', 'emoji' => '❌'],
     ['id' => 'admitido', 'title' => 'Admitido', 'emoji' => '✅'],
     ['id' => 'concluido', 'title' => 'Concluídos', 'emoji' => '🎉'],
     ['id' => 'cancelado', 'title' => 'Cancelado', 'emoji' => '⛔'],
@@ -101,6 +102,7 @@ $byStatus = [
     'aguardando_captacao' => [],
     'tratamento_manual' => [],
     'em_captacao' => [],
+    'autorizacao_negada' => [],
     'admitido' => [],
     'concluido' => [],
     'cancelado' => [],

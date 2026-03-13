@@ -235,7 +235,8 @@ foreach ($emails as $e) {
     }
     
     // FALLBACK ADICIONAL: Se assunto indica resposta mas não encontrou autorização aguardando,
-    // buscar autorizações recentes (últimas 24h) do mesmo remetente que já foram processadas
+    // buscar autorizações recentes (últimas 24h) do mesmo remetente que AINDA estão aguardando
+    // NÃO processar autorizações já aprovadas ou negadas
     if (!$isAuthorizationResponse && $isReplySubject && $fromEmail !== '') {
         error_log("[EMAIL_EXTRACT] E-mail #$id - Assunto indica resposta, buscando autorizações recentes do remetente");
         
@@ -245,6 +246,7 @@ foreach ($emails as $e) {
              WHERE ar.operator_email = :email
              AND ar.sent_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
              AND ar.patient_id > 0
+             AND ar.status = 'aguardando_autorizacao'
              ORDER BY ar.sent_at DESC
              LIMIT 1"
         );
@@ -257,6 +259,8 @@ foreach ($emails as $e) {
             error_log("[EMAIL_EXTRACT] E-mail #$id ⚠️ IDENTIFICADO por ASSUNTO + REMETENTE RECENTE como resposta de autorização #$matchedAuthId");
             error_log("[EMAIL_EXTRACT]   Status da autorização: " . $recentAuth['status']);
             error_log("[EMAIL_EXTRACT]   Patient ID: " . $recentAuth['patient_id'] . " | Demand ID: " . $recentAuth['demand_id']);
+        } else {
+            error_log("[EMAIL_EXTRACT] E-mail #$id - Nenhuma autorização aguardando resposta encontrada para este remetente");
         }
     }
     
