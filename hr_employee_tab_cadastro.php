@@ -32,7 +32,11 @@ function previewPhoto(input) {
     if (input.files && input.files[0]) {
         const reader = new FileReader();
         reader.onload = function(e) {
-            document.getElementById("photoPreview").src = e.target.result;
+            const container = input.closest("form").querySelector("div[style*=\'border-radius:50%\']");
+            if (container) {
+                // Substituir conteúdo do container por uma imagem
+                container.innerHTML = \'<img id="photoPreview" src="\' + e.target.result + \'" alt="Foto" style="width:100%;height:100%;object-fit:cover">\';
+            }
         };
         reader.readAsDataURL(input.files[0]);
     }
