@@ -38,7 +38,7 @@ function process_single_authorization(int $authId, int $emailId): array
         
         // Buscar e-mail
         $emailStmt = $db->prepare(
-            "SELECT id, subject, body_text, body_html, from_email, received_at
+            "SELECT id, subject, body_text, body_html, from_address, received_at
              FROM inbound_emails
              WHERE id = :id"
         );
