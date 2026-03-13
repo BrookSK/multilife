@@ -122,7 +122,10 @@ body{margin:0;padding:0;overflow:hidden}
 
 <div class="container">
     <div class="header">
-        <h1 class="title">📅 Monitoramento de Atendimentos</h1>
+        <div style="flex:1">
+            <h1 class="title" style="margin:0">Monitoramento de Atendimentos</h1>
+            <div style="margin-top:6px;color:#6b7280;font-size:14px;line-height:1.6">Visualize e acompanhe todos os atendimentos em calendário</div>
+        </div>
         <div class="legend">
             <div class="legendItem">
                 <div class="legendColor" style="background:#f59e0b"></div>

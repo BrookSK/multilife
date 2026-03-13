@@ -65,7 +65,10 @@ foreach ($rows as $r) {
 }
 
 echo '<div class="pageHeader">';
-echo '<h1>Autorização de Propostas</h1>';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900">Autorização de Propostas</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Gerencie propostas enviadas às operadoras e acompanhe respostas</div>';
+echo '</div>';
 echo '<div class="pageHeaderActions">';
 echo '<a href="/demands_list.php" class="btn">← Voltar para Captação</a>';
 echo '</div>';

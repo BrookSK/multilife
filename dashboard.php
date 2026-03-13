@@ -11,6 +11,22 @@ view_header('Dashboard');
 
 $user = auth_user();
 
+// Determinar saudação baseada no horário
+$hora = (int)date('H');
+if ($hora >= 5 && $hora < 12) {
+    $saudacao = 'Bom dia';
+} elseif ($hora >= 12 && $hora < 18) {
+    $saudacao = 'Boa tarde';
+} else {
+    $saudacao = 'Boa noite';
+}
+
+// Exibir mensagem de boas-vindas
+echo '<div style="background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary-dark)));color:white;padding:20px 24px;margin-bottom:24px;border-radius:12px;box-shadow:var(--shadow-card)">';
+echo '<div style="font-size:20px;font-weight:700">' . h($saudacao) . ', Sr(a) ' . h($user['name'] ?? 'Usuário') . '</div>';
+echo '<div style="font-size:14px;opacity:0.9;margin-top:4px">Bem-vindo ao sistema MultiLife</div>';
+echo '</div>';
+
 $kpiAtendRealizados = 0;
 $kpiAtendRecusados = 0;
 $kpiCaptacoesAtivas = 0;
