@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS authorization_requests (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     demand_id INT UNSIGNED NOT NULL COMMENT 'Demanda original',
+    patient_id INT UNSIGNED NOT NULL COMMENT 'Paciente selecionado no formulário de proposta',
     professional_user_id INT UNSIGNED NOT NULL COMMENT 'Profissional selecionado',
     
     -- Dados da proposta
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS authorization_requests (
     
     -- Índices
     INDEX idx_demand_id (demand_id),
+    INDEX idx_patient_id (patient_id),
     INDEX idx_professional_user_id (professional_user_id),
     INDEX idx_status (status),
     INDEX idx_email_thread_id (email_thread_id),

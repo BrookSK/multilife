@@ -30,11 +30,14 @@ function process_single_authorization(int $authId, int $emailId): array
         }
         
         $demandId = (int)$request['demand_id'];
+        $patientId = (int)$request['patient_id'];
         $professionalUserId = (int)$request['professional_user_id'];
         $proposalValue = (float)$request['proposal_value'];
         $agreedValue = (float)$request['agreed_value'];
         $totalSessions = (int)$request['total_sessions'];
         $sessionsPerWeek = (int)$request['sessions_per_week'];
+        
+        error_log("[PROCESS_SINGLE_AUTH] Paciente ID da autorização: $patientId");
         
         // Buscar e-mail
         $emailStmt = $db->prepare(
@@ -152,31 +155,8 @@ function process_single_authorization(int $authId, int $emailId): array
                 return ['success' => false, 'error' => 'Demanda não encontrada'];
             }
             
-            // Buscar paciente vinculado à demanda via patient_assignments
-            // A demanda já deve ter um atendimento anterior ou o paciente foi criado no fluxo de captação
-            $patientId = null;
-            
-            error_log("[PROCESS_SINGLE_AUTH] Buscando paciente via patient_assignments para demanda #$demandId");
-            
-            $paStmt = $db->prepare(
-                "SELECT patient_id FROM patient_assignments WHERE demand_id = :did LIMIT 1"
-            );
-            $paStmt->execute(['did' => $demandId]);
-            $pa = $paStmt->fetch();
-            
-            if ($pa && $pa['patient_id']) {
-                $patientId = (int)$pa['patient_id'];
-                error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente encontrado via patient_assignments - ID: $patientId");
-            }
-            
-            if ($patientId === null) {
-                $db->rollBack();
-                error_log("[PROCESS_SINGLE_AUTH] ❌ Paciente não encontrado para demanda #$demandId");
-                error_log("[PROCESS_SINGLE_AUTH] A demanda deve ter um patient_assignment existente com patient_id");
-                return ['success' => false, 'error' => 'Paciente não encontrado. A demanda deve ter um paciente vinculado via atendimento anterior.'];
-            }
-            
-            // Verificar se paciente existe
+            // Verificar se paciente existe (patient_id já vem da autorização)
+            error_log("[PROCESS_SINGLE_AUTH] Verificando se paciente #$patientId existe");
             $verifyPatient = $db->prepare("SELECT id FROM patients WHERE id = :id AND deleted_at IS NULL");
             $verifyPatient->execute(['id' => $patientId]);
             if (!$verifyPatient->fetch()) {
@@ -184,6 +164,8 @@ function process_single_authorization(int $authId, int $emailId): array
                 error_log("[PROCESS_SINGLE_AUTH] ❌ Paciente #$patientId não existe ou foi deletado");
                 return ['success' => false, 'error' => 'Paciente não encontrado no sistema'];
             }
+            
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente #$patientId validado com sucesso");
             
             // Criar atendimento
             $startDate = (string)$request['start_date'];

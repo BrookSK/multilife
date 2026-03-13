@@ -266,12 +266,12 @@ try {
     error_log("Criando authorization_request...");
     $stmt = $db->prepare(
         'INSERT INTO authorization_requests 
-        (demand_id, professional_user_id, proposal_value, agreed_value, 
+        (demand_id, patient_id, professional_user_id, proposal_value, agreed_value, 
          start_date, start_time, end_time, frequency, frequency_details, 
          sessions_per_week, total_sessions, duration_weeks, operator_email, operator_name,
          status, created_by_user_id) 
         VALUES 
-        (:demand_id, :professional_user_id, :proposal_value, :agreed_value,
+        (:demand_id, :patient_id, :professional_user_id, :proposal_value, :agreed_value,
          :start_date, :start_time, :end_time, :frequency, :frequency_details,
          :sessions_per_week, :total_sessions, :duration_weeks, :operator_email, :operator_name,
          :status, :created_by_user_id)'
@@ -281,6 +281,7 @@ try {
     
     $stmt->execute([
         'demand_id' => $demandId,
+        'patient_id' => $patientId,
         'professional_user_id' => $professionalUserId,
         'proposal_value' => $proposalValue,
         'agreed_value' => $agreedValue,
