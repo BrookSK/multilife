@@ -285,11 +285,14 @@ function process_single_authorization(int $authId, int $emailId): array
                 'id' => $authId
             ]);
             
-            // Atualizar demanda
+            // Atualizar demanda para pre_admissao
+            error_log("[PROCESS_SINGLE_AUTH] Atualizando demanda #$demandId para pre_admissao");
             $updateDemandStmt = $db->prepare(
                 "UPDATE demands SET status = 'pre_admissao' WHERE id = :id"
             );
             $updateDemandStmt->execute(['id' => $demandId]);
+            $rowsAffected = $updateDemandStmt->rowCount();
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Demanda movida para pre_admissao (rows affected: $rowsAffected)");
             
             // Registrar histórico
             $historyStmt = $db->prepare(
