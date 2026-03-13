@@ -205,7 +205,7 @@ echo '</div>';
 
 // Card: Pendente
 echo '<div class="col3">';
-echo '<div style="padding:20px;background:linear-gradient(135deg,#dc2626,#ef4444);border-radius:12px;color:white">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--destructive)),hsl(var(--destructive)/.8));border-radius:12px;color:white">';
 echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">⏳ Pendente</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalPendente, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdPendente . ' registro(s)</div>';
@@ -214,7 +214,7 @@ echo '</div>';
 
 // Card: Pago
 echo '<div class="col3">';
-echo '<div style="padding:20px;background:linear-gradient(135deg,#10b981,#34d399);border-radius:12px;color:white">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
 echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">✅ Pago</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalPago, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdPago . ' registro(s)</div>';
@@ -224,7 +224,7 @@ echo '</div>';
 // Card: Taxa de Pagamento
 $taxaPagamento = $totalGeral > 0 ? ($totalPago / $totalGeral) * 100 : 0;
 echo '<div class="col3">';
-echo '<div style="padding:20px;background:linear-gradient(135deg,#6366f1,#818cf8);border-radius:12px;color:white">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--accent)),hsl(var(--accent)/.8));border-radius:12px;color:white">';
 echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">📈 Taxa de Pagamento</div>';
 echo '<div style="font-size:28px;font-weight:900">' . number_format($taxaPagamento, 1) . '%</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">Pago / Total</div>';
