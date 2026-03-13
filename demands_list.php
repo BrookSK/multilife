@@ -253,7 +253,6 @@ foreach ($columns as $col) {
     } else {
         foreach ($items as $idx => $r) {
             $pageIndex = floor($idx / $itemsPerPage);
-            $isVisible = $pageIndex === 0 ? '' : ' style="display:none"';
             $loc = trim((string)$r['location_city']);
             $uf = trim((string)$r['location_state']);
             $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
@@ -268,18 +267,32 @@ foreach ($columns as $col) {
                 $badgeCls = 'badgeDanger';
             }
             
+            // Construir estilos inline combinados
+            $styles = [];
+            
+            // Visibilidade baseada na página
+            // IMPORTANTE: pageIndex 0 = primeira página = VISÍVEL
+            // pageIndex > 0 = páginas seguintes = ESCONDIDO
+            if ($pageIndex !== 0) {
+                $styles[] = 'display:none';
+            }
+            
             // Borda vermelha em cards aguardando_captacao com mais de 10 minutos sem assumir
-            $cardStyle = '';
             if ($colId === 'aguardando_captacao' && !$r['assumed_by_user_id']) {
                 $createdTime = strtotime((string)$r['created_at']);
                 $now = time();
                 $minutesWaiting = ($now - $createdTime) / 60;
                 if ($minutesWaiting > 10) {
-                    $cardStyle = ' style="border:2px solid hsl(0,84%,60%);box-shadow:0 0 8px hsla(0,84%,60%,.3)"';
+                    $styles[] = 'border:2px solid hsl(0,84%,60%)';
+                    $styles[] = 'box-shadow:0 0 8px hsla(0,84%,60%,.3)';
                 }
             }
+            
+            $styleAttr = count($styles) > 0 ? ' style="' . implode(';', $styles) . '"' : '';
+            $visibilityDebug = $pageIndex === 0 ? 'visible' : 'hidden';
 
-            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '"' . $cardStyle . $isVisible . '>';
+            echo '<!-- Card idx=' . $idx . ' pageIndex=' . $pageIndex . ' visibility=' . $visibilityDebug . ' -->';
+            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '" data-visibility="' . $visibilityDebug . '"' . $styleAttr . '>';
             echo '<div class="kanbanCardBody">';
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle">' . h((string)$r['title']) . '</div>';
@@ -389,7 +402,7 @@ echo '<script>';
 echo '(function(){var fab=document.getElementById("newDemandFab");var ov=document.getElementById("newDemandOverlay");var m=document.getElementById("newDemandModal");var close=document.getElementById("newDemandClose");var cancel=document.getElementById("newDemandCancel");if(!fab||!ov||!m)return;var open=function(){ov.style.display="block";m.style.display="block";try{var i=m.querySelector("input[name=title]");if(i)i.focus();}catch(e){}};var shut=function(){ov.style.display="none";m.style.display="none";};fab.addEventListener("click",open);if(close)close.addEventListener("click",shut);if(cancel)cancel.addEventListener("click",shut);ov.addEventListener("click",shut);document.addEventListener("keydown",function(e){if(e.key==="Escape")shut();});})();';
 echo '</script>';
 
-echo '<script src="/demands_list_pagination.js"></script>';
+echo '<script src="/demands_list_pagination.js?v=' . time() . '"></script>';
 
 echo '<style>';
 echo '.kanbanPagination{display:flex;align-items:center;gap:8px;margin-right:12px}';
