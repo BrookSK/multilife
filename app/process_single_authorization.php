@@ -30,26 +30,33 @@ function process_single_authorization(int $authId, int $emailId): array
         }
         
         $demandId = (int)$request['demand_id'];
-        $patientId = (int)$request['patient_id'];
+        
+        // Tratar patient_id com cuidado (pode vir NULL do banco)
+        $patientIdRaw = $request['patient_id'] ?? null;
+        $patientId = $patientIdRaw !== null ? (int)$patientIdRaw : 0;
+        
         $professionalUserId = (int)$request['professional_user_id'];
         $proposalValue = (float)$request['proposal_value'];
         $agreedValue = (float)$request['agreed_value'];
         $totalSessions = (int)$request['total_sessions'];
         $sessionsPerWeek = (int)$request['sessions_per_week'];
         
-        error_log("[PROCESS_SINGLE_AUTH] === DADOS DA AUTORIZAÇÃO ===");
+        error_log("[PROCESS_SINGLE_AUTH] === DADOS DA AUTORIZAÇÃO #$authId ===");
         error_log("[PROCESS_SINGLE_AUTH] Demand ID: $demandId");
-        error_log("[PROCESS_SINGLE_AUTH] Patient ID: $patientId (CRÍTICO)");
+        error_log("[PROCESS_SINGLE_AUTH] Patient ID (raw): " . var_export($patientIdRaw, true));
+        error_log("[PROCESS_SINGLE_AUTH] Patient ID (int): $patientId");
         error_log("[PROCESS_SINGLE_AUTH] Professional User ID: $professionalUserId");
         error_log("[PROCESS_SINGLE_AUTH] Proposal Value: $proposalValue");
         error_log("[PROCESS_SINGLE_AUTH] Agreed Value: $agreedValue");
         error_log("[PROCESS_SINGLE_AUTH] Total Sessions: $totalSessions");
         
         if ($patientId <= 0) {
-            error_log("[PROCESS_SINGLE_AUTH] ❌❌❌ ERRO CRÍTICO: Patient ID inválido na autorização!");
-            error_log("[PROCESS_SINGLE_AUTH] Valor do patient_id: $patientId");
-            error_log("[PROCESS_SINGLE_AUTH] A coluna patient_id pode não existir na tabela ou não foi salva corretamente");
-            return ['success' => false, 'error' => 'Patient ID inválido na autorização. Verifique se a migration foi executada.'];
+            error_log("[PROCESS_SINGLE_AUTH] ❌❌❌ ERRO CRÍTICO: Patient ID inválido na autorização #$authId!");
+            error_log("[PROCESS_SINGLE_AUTH] Valor raw: " . var_export($patientIdRaw, true));
+            error_log("[PROCESS_SINGLE_AUTH] Valor convertido: $patientId");
+            error_log("[PROCESS_SINGLE_AUTH] Esta autorização foi criada antes da implementação de patient_id ou houve erro no salvamento");
+            error_log("[PROCESS_SINGLE_AUTH] SOLUÇÃO: Recrie a proposta ou cancele esta autorização");
+            return ['success' => false, 'error' => 'Patient ID inválido na autorização #' . $authId . '. Esta autorização foi criada antes da implementação. Por favor, recrie a proposta.'];
         }
         
         // Buscar e-mail

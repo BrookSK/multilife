@@ -77,12 +77,16 @@ try {
 $api = new OpenAiApi();
 
 // Verificar se é resposta de autorização antes de processar como nova demanda
+// IMPORTANTE: Identificação única por email_thread_id para garantir que cada resposta
+// seja vinculada à autorização correta, mesmo quando há múltiplas autorizações
+// para o mesmo paciente (ex: fisioterapia #14 e fonoaudiologia #16)
 $checkAuthResponse = $db->prepare(
-    "SELECT ar.id, ar.operator_email 
+    "SELECT ar.id, ar.operator_email, ar.email_thread_id, ar.demand_id, ar.patient_id
      FROM authorization_requests ar 
      WHERE ar.status = 'aguardando_autorizacao' 
      AND ar.sent_at IS NOT NULL 
-     AND ar.response_received_at IS NULL"
+     AND ar.response_received_at IS NULL
+     AND ar.patient_id > 0"
 );
 
 $okSet = "status = :st, processed_at = :pa, error_message = NULL";
@@ -127,6 +131,7 @@ foreach ($emails as $e) {
     if ($selectFromField !== null) {
         $fromEmail = (string)($e[$selectFromField] ?? '');
     }
+    $threadId = (string)($e['thread_id'] ?? '');
     $bodyText = (string)($e['body_text'] ?? '');
     $bodyHtml = (string)($e['body_html'] ?? '');
 
@@ -148,6 +153,7 @@ foreach ($emails as $e) {
     // Verificar se é resposta de autorização
     error_log("[EMAIL_EXTRACT] E-mail #$id - Verificando se é resposta de autorização");
     error_log("[EMAIL_EXTRACT] E-mail #$id - Remetente: $fromEmail");
+    error_log("[EMAIL_EXTRACT] E-mail #$id - Thread ID: $threadId");
     
     $checkAuthResponse->execute();
     $pendingAuths = $checkAuthResponse->fetchAll();
@@ -158,17 +164,38 @@ foreach ($emails as $e) {
     $matchedAuthId = null;
     
     foreach ($pendingAuths as $auth) {
+        $authThreadId = trim((string)($auth['email_thread_id'] ?? ''));
         $operatorEmail = strtolower(trim((string)$auth['operator_email']));
         $fromEmailLower = strtolower(trim($fromEmail));
         
-        error_log("[EMAIL_EXTRACT] E-mail #$id - Comparando: '$fromEmailLower' com operadora '$operatorEmail' (Auth #" . $auth['id'] . ")");
+        error_log("[EMAIL_EXTRACT] E-mail #$id - Comparando Auth #" . $auth['id'] . " (Patient: " . $auth['patient_id'] . ", Demand: " . $auth['demand_id'] . ")");
+        error_log("[EMAIL_EXTRACT]   Thread ID da auth: '$authThreadId'");
+        error_log("[EMAIL_EXTRACT]   Thread ID do email: '$threadId'");
+        error_log("[EMAIL_EXTRACT]   Operadora: '$operatorEmail' vs Remetente: '$fromEmailLower'");
         
-        // Verificar se o e-mail vem da operadora que está aguardando resposta
-        if ($operatorEmail !== '' && $fromEmailLower !== '' && $operatorEmail === $fromEmailLower) {
+        // PRIORIDADE 1: Identificação única por email_thread_id
+        // Garante que cada resposta seja vinculada à autorização correta
+        // Mesmo quando há múltiplas autorizações para o mesmo paciente
+        if ($threadId !== '' && $authThreadId !== '' && $threadId === $authThreadId) {
             $isAuthorizationResponse = true;
             $matchedAuthId = (int)$auth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id ✅ IDENTIFICADO como resposta de autorização #$matchedAuthId (de: $fromEmail)");
+            error_log("[EMAIL_EXTRACT] E-mail #$id ✅ IDENTIFICADO por THREAD_ID como resposta de autorização #$matchedAuthId");
+            error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
             break;
+        }
+        
+        // FALLBACK: Identificação por operadora (menos preciso, usado apenas se thread_id não disponível)
+        // IMPORTANTE: Pega a autorização mais recente para evitar conflitos
+        if ($operatorEmail !== '' && $fromEmailLower !== '' && $operatorEmail === $fromEmailLower) {
+            // Só usa fallback se ainda não encontrou por thread_id
+            if ($matchedAuthId === null) {
+                $isAuthorizationResponse = true;
+                $matchedAuthId = (int)$auth['id'];
+                error_log("[EMAIL_EXTRACT] E-mail #$id ⚠️ IDENTIFICADO por OPERADORA (fallback) como resposta de autorização #$matchedAuthId");
+                error_log("[EMAIL_EXTRACT]   ATENÇÃO: Identificação por operadora pode causar conflitos com múltiplas autorizações");
+                error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
+                // Não break aqui - continua procurando por thread_id match
+            }
         }
     }
     
