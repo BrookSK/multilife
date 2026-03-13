@@ -112,6 +112,26 @@ $rowsFaturamento = $stmtFat->fetchAll();
 // Combinar ambos os arrays
 $rows = array_merge($rows, $rowsFaturamento);
 
+// Calcular resumo financeiro
+$totalPendente = 0;
+$totalRecebido = 0;
+$qtdPendente = 0;
+$qtdRecebido = 0;
+
+foreach ($rows as $r) {
+    $valor = (float)$r['amount'];
+    if ((string)$r['status'] === 'pendente') {
+        $totalPendente += $valor;
+        $qtdPendente++;
+    } elseif ((string)$r['status'] === 'recebido') {
+        $totalRecebido += $valor;
+        $qtdRecebido++;
+    }
+}
+
+$totalGeral = $totalPendente + $totalRecebido;
+$qtdGeral = $qtdPendente + $qtdRecebido;
+
 view_header('Financeiro - Contas a Receber');
 
 echo '<div class="grid">';
@@ -171,6 +191,50 @@ echo '</form>';
 
 echo '</section>';
 
+// Dashboard de resumo financeiro
+echo '<section class="card col12">';
+echo '<div style="font-size:16px;font-weight:700;margin-bottom:16px">📊 Resumo Financeiro</div>';
+echo '<div class="grid">';
+
+// Card: Total Geral
+echo '<div class="col3">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.8));border-radius:12px;color:white">';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">💰 Total Geral</div>';
+echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalGeral, 2, ',', '.') . '</div>';
+echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdGeral . ' registro(s)</div>';
+echo '</div>';
+echo '</div>';
+
+// Card: Pendente
+echo '<div class="col3">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,#f59e0b,#fbbf24);border-radius:12px;color:white">';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">⏳ Pendente</div>';
+echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalPendente, 2, ',', '.') . '</div>';
+echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdPendente . ' registro(s)</div>';
+echo '</div>';
+echo '</div>';
+
+// Card: Recebido
+echo '<div class="col3">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,#10b981,#34d399);border-radius:12px;color:white">';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">✅ Recebido</div>';
+echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalRecebido, 2, ',', '.') . '</div>';
+echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdRecebido . ' registro(s)</div>';
+echo '</div>';
+echo '</div>';
+
+// Card: Taxa de Recebimento
+$taxaRecebimento = $totalGeral > 0 ? ($totalRecebido / $totalGeral) * 100 : 0;
+echo '<div class="col3">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,#6366f1,#818cf8);border-radius:12px;color:white">';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">📈 Taxa de Recebimento</div>';
+echo '<div style="font-size:28px;font-weight:900">' . number_format($taxaRecebimento, 1) . '%</div>';
+echo '<div style="font-size:12px;opacity:.8;margin-top:8px">Recebido / Total</div>';
+echo '</div>';
+echo '</div>';
+
+echo '</div>';
+echo '</section>';
 
 echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
