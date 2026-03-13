@@ -18,6 +18,18 @@ final class SmtpClient
         $this->username = trim((string)($username ?? admin_setting_get('smtp.out.username', '')));
         $this->password = (string)($password ?? admin_setting_get('smtp.out.password', ''));
 
+        // Auto-detectar SSL para porta 465
+        if ($this->port === 465 && ($this->encryption === '' || $this->encryption === 'none')) {
+            $this->encryption = 'ssl';
+            error_log("[SMTP] Auto-detectado SSL para porta 465");
+        }
+        
+        // Auto-detectar TLS para porta 587
+        if ($this->port === 587 && ($this->encryption === '' || $this->encryption === 'none')) {
+            $this->encryption = 'tls';
+            error_log("[SMTP] Auto-detectado TLS para porta 587");
+        }
+
         if ($this->host === '' || $this->port <= 0) {
             throw new RuntimeException('SMTP saída não configurado (host/port).');
         }
