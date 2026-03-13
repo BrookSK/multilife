@@ -252,7 +252,7 @@ foreach ($columns as $col) {
         echo '<div class="kanbanEmpty">Vazio</div>';
     } else {
         foreach ($items as $idx => $r) {
-            $pageIndex = floor($idx / $itemsPerPage);
+            $pageIndex = (int)floor($idx / $itemsPerPage);
             $loc = trim((string)$r['location_city']);
             $uf = trim((string)$r['location_state']);
             $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
@@ -267,32 +267,36 @@ foreach ($columns as $col) {
                 $badgeCls = 'badgeDanger';
             }
             
-            // Construir estilos inline combinados
-            $styles = [];
-            
-            // Visibilidade baseada na página
-            // IMPORTANTE: pageIndex 0 = primeira página = VISÍVEL
-            // pageIndex > 0 = páginas seguintes = ESCONDIDO
-            if ($pageIndex !== 0) {
-                $styles[] = 'display:none';
-            }
+            // Visibilidade: apenas esconder se NÃO for primeira página
+            $hideCard = ($pageIndex > 0);
             
             // Borda vermelha em cards aguardando_captacao com mais de 10 minutos sem assumir
+            $redBorder = false;
             if ($colId === 'aguardando_captacao' && !$r['assumed_by_user_id']) {
                 $createdTime = strtotime((string)$r['created_at']);
                 $now = time();
                 $minutesWaiting = ($now - $createdTime) / 60;
                 if ($minutesWaiting > 10) {
-                    $styles[] = 'border:2px solid hsl(0,84%,60%)';
-                    $styles[] = 'box-shadow:0 0 8px hsla(0,84%,60%,.3)';
+                    $redBorder = true;
                 }
             }
             
-            $styleAttr = count($styles) > 0 ? ' style="' . implode(';', $styles) . '"' : '';
-            $visibilityDebug = $pageIndex === 0 ? 'visible' : 'hidden';
+            // Construir atributo style
+            $styleAttr = '';
+            if ($hideCard || $redBorder) {
+                $styleParts = [];
+                if ($hideCard) {
+                    $styleParts[] = 'display:none';
+                }
+                if ($redBorder) {
+                    $styleParts[] = 'border:2px solid hsl(0,84%,60%)';
+                    $styleParts[] = 'box-shadow:0 0 8px hsla(0,84%,60%,.3)';
+                }
+                $styleAttr = ' style="' . implode(';', $styleParts) . '"';
+            }
 
-            echo '<!-- Card idx=' . $idx . ' pageIndex=' . $pageIndex . ' visibility=' . $visibilityDebug . ' -->';
-            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '" data-visibility="' . $visibilityDebug . '"' . $styleAttr . '>';
+            echo '<!-- Card idx=' . $idx . ' pageIndex=' . $pageIndex . ' hideCard=' . ($hideCard ? 'YES' : 'NO') . ' -->';
+            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '"' . $styleAttr . '>';
             echo '<div class="kanbanCardBody">';
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle">' . h((string)$r['title']) . '</div>';
