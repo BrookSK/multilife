@@ -11,8 +11,14 @@ echo '<div>';
 echo '<h3 style="font-size:18px;font-weight:700;margin-bottom:12px">Foto do Funcionário</h3>';
 echo '<div style="display:flex;gap:16px;align-items:center">';
 echo '<div style="width:100px;height:100px;border-radius:50%;overflow:hidden;border:2px solid hsl(var(--border))">';
-$currentPhoto = !$isNew && !empty($employee['photo_url']) ? h((string)$employee['photo_url']) : '/assets/default-avatar.png';
-echo '<img id="photoPreview" src="' . $currentPhoto . '" alt="Foto" style="width:100%;height:100%;object-fit:cover" onerror="this.src=\'/assets/default-avatar.png\'">';
+// Usar placeholder SVG inline quando não houver foto para evitar loop de requisições 404
+if (!$isNew && !empty($employee['photo_url'])) {
+    $currentPhoto = h((string)$employee['photo_url']);
+    echo '<img id="photoPreview" src="' . $currentPhoto . '" alt="Foto" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
+    echo '<div style="display:none;width:100%;height:100%;background:#e5e7eb;align-items:center;justify-content:center;font-size:40px;color:#9ca3af">👤</div>';
+} else {
+    echo '<div style="display:flex;width:100%;height:100%;background:#e5e7eb;align-items:center;justify-content:center;font-size:40px;color:#9ca3af">👤</div>';
+}
 echo '</div>';
 echo '<div>';
 echo '<label class="btn" style="cursor:pointer">Escolher Foto<input type="file" name="photo" accept="image/*" style="display:none" onchange="previewPhoto(this)"></label>';

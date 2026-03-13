@@ -52,10 +52,15 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">';
 
-// Foto
-$photoUrl = !$isNew && !empty($employee['photo_url']) ? h((string)$employee['photo_url']) : '/assets/default-avatar.png';
+// Foto - usar placeholder inline quando não houver foto para evitar loop de requisições 404
 echo '<div style="width:100px;height:100px;border-radius:50%;overflow:hidden;border:3px solid hsl(var(--primary));flex-shrink:0">';
-echo '<img src="' . $photoUrl . '" alt="Foto" style="width:100%;height:100%;object-fit:cover" onerror="this.src=\'/assets/default-avatar.png\'">';
+if (!$isNew && !empty($employee['photo_url'])) {
+    $photoUrl = h((string)$employee['photo_url']);
+    echo '<img src="' . $photoUrl . '" alt="Foto" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">';
+    echo '<div style="display:none;width:100%;height:100%;background:#e5e7eb;align-items:center;justify-content:center;font-size:48px;color:#9ca3af">👤</div>';
+} else {
+    echo '<div style="display:flex;width:100%;height:100%;background:#e5e7eb;align-items:center;justify-content:center;font-size:48px;color:#9ca3af">👤</div>';
+}
 echo '</div>';
 
 // Informações
