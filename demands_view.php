@@ -100,6 +100,14 @@ echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Lo
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-')) . '</span>';
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Responsável:</strong> ' . h($assumedBy) . '</span>';
 echo '</div>';
+
+// Faixa verde quando demanda assumida
+if ($d['assumed_by_user_id'] && $d['assumed_by_name']) {
+    echo '<div style="margin-top:12px;padding:12px 16px;background:hsl(var(--success));border-radius:8px;font-size:14px;font-weight:700;color:#fff;text-align:center;box-shadow:0 2px 4px hsla(var(--success)/.3)">';
+    echo '✓ Captação assumida por: ' . h($assumedBy);
+    echo '</div>';
+}
+
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
