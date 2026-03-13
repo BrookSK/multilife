@@ -8,12 +8,12 @@ rbac_require_permission('demands.manage');
 $db = db();
 
 // Buscar atendimentos com TODAS as informações
-$sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.session_quantity, a.created_at,
+$sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
         p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
         p.birth_date, p.cpf, p.address, p.city, p.state,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
-        pa.service_type, pa.payment_value, pa.start_date
+        pa.service_type, pa.payment_value, pa.start_date, pa.session_quantity
         FROM appointments a
         INNER JOIN patients p ON p.id = a.patient_id
         INNER JOIN users u ON u.id = a.professional_user_id
@@ -47,7 +47,7 @@ foreach ($appointments as $apt) {
             'professional_phone' => $apt['professional_phone'] ?? '',
             'professional_email' => $apt['professional_email'] ?? '',
             'status' => $apt['status'],
-            'value_per_session' => (float)$apt['value_per_session'],
+            'value_per_session' => (float)($apt['value_per_session'] ?? 0),
             'session_quantity' => (int)($apt['session_quantity'] ?? 0),
             'payment_value' => (float)($apt['payment_value'] ?? 0),
             'specialty' => $apt['specialty'] ?? '',
