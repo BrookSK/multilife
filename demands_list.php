@@ -322,7 +322,7 @@ foreach ($columns as $col) {
             // Faixa verde quando demanda assumida
             if ($r['assumed_by_user_id'] && $r['assumed_by_name']) {
                 echo '<div style="margin-top:8px;padding:10px;background:hsl(var(--success));border-radius:6px;font-size:12px;font-weight:700;color:#fff;text-align:center">';
-                echo '✓ Captação assumida por: ' . h($assumed);
+                echo '✓ Assumida por: ' . h($assumed);
                 echo '</div>';
             } else {
                 echo '<div class="kanbanMeta">' . h($assumed) . ' • ' . h((string)$r['created_at']) . '</div>';
