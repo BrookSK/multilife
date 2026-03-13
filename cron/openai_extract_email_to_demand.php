@@ -76,6 +76,15 @@ try {
 
 $api = new OpenAiApi();
 
+// Verificar se é resposta de autorização antes de processar como nova demanda
+$checkAuthResponse = $db->prepare(
+    "SELECT ar.id, ar.operator_email 
+     FROM authorization_requests ar 
+     WHERE ar.status = 'aguardando_autorizacao' 
+     AND ar.sent_at IS NOT NULL 
+     AND ar.response_received_at IS NULL"
+);
+
 $okSet = "status = :st, processed_at = :pa, error_message = NULL";
 if ($hasLinkedDemandId) {
     $okSet .= ", linked_demand_id = :did";
@@ -133,6 +142,35 @@ foreach ($emails as $e) {
             'pa' => date('Y-m-d H:i:s'),
             'id' => $id,
         ]);
+        continue;
+    }
+    
+    // Verificar se é resposta de autorização
+    $checkAuthResponse->execute();
+    $pendingAuths = $checkAuthResponse->fetchAll();
+    $isAuthorizationResponse = false;
+    
+    foreach ($pendingAuths as $auth) {
+        $operatorEmail = strtolower(trim((string)$auth['operator_email']));
+        $fromEmailLower = strtolower(trim($fromEmail));
+        
+        // Verificar se o e-mail vem da operadora que está aguardando resposta
+        if ($operatorEmail !== '' && $fromEmailLower !== '' && $operatorEmail === $fromEmailLower) {
+            $isAuthorizationResponse = true;
+            error_log("[EMAIL_EXTRACT] E-mail #$id identificado como resposta de autorização (de: $fromEmail)");
+            break;
+        }
+    }
+    
+    // Se for resposta de autorização, marcar como processado e pular
+    if ($isAuthorizationResponse) {
+        $updOk->execute([
+            'st' => 'processed',
+            'pa' => date('Y-m-d H:i:s'),
+            'id' => $id,
+        ]);
+        error_log("[EMAIL_EXTRACT] E-mail #$id marcado como 'processed' - será processado por process_authorization_responses.php");
+        $ok++;
         continue;
     }
 
