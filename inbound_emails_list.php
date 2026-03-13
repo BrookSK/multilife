@@ -149,8 +149,9 @@ foreach ($rows as $r) {
         echo '-';
     }
     echo '</td>';
-    echo '<td style="text-align:right">';
-    echo '<a class="btn" href="/inbound_emails_view.php?id=' . (int)$r['id'] . '">Ver</a>';
+    echo '<td style="text-align:right;white-space:nowrap">';
+    echo '<a class="btn" href="/inbound_emails_view.php?id=' . (int)$r['id'] . '">Ver</a> ';
+    echo '<a class="btn" href="/cron/openai_extract_email_to_demand.php?token=49$cpFu92&id=' . (int)$r['id'] . '&retry_errors=1" target="_blank" style="background:#10b981;color:white" title="Reprocessar este e-mail (incluindo erros)">🔄 Reprocessar</a>';
     echo '</td>';
     echo '</tr>';
 }
