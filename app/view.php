@@ -362,9 +362,8 @@ function view_header(string $title): void
             echo '</div>';
         }
         
-        echo '<header class="topbar">';
-        echo '<div class="topbarTitle">' . h($title) . '</div>';
-        echo '<div class="topbarActions">';
+        // Botões flutuantes no canto superior direito
+        echo '<div style="position:fixed;top:12px;right:20px;z-index:9999;display:flex;align-items:center;gap:14px">';
         
         // Ícone de histórico da página
         echo '<button class="notifBell" id="pageHistoryBtn" onclick="openPageHistory()" title="Histórico desta página">';
@@ -404,7 +403,6 @@ function view_header(string $title): void
         echo '</a>';
         
         echo '</div>';
-        echo '</header>';
         echo '<main class="wrap">';
     }
 
