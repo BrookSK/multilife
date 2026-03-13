@@ -24,7 +24,7 @@ $sql = 'SELECT ar.*,
         FROM authorization_requests ar
         INNER JOIN demands d ON d.id = ar.demand_id
         INNER JOIN users u ON u.id = ar.professional_user_id
-        LEFT JOIN patients p ON p.id = (SELECT patient_id FROM patient_assignments WHERE demand_id = d.id LIMIT 1)
+        LEFT JOIN patients p ON p.id = ar.patient_id
         WHERE ar.status IN ("aguardando_autorizacao", "autorizacao_negada")';
 
 $params = [];
