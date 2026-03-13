@@ -203,6 +203,8 @@ document.addEventListener('DOMContentLoaded', function() {
         height: '100%',
         contentHeight: 'auto',
         expandRows: true,
+        dayMaxEvents: 5,
+        moreLinkText: function(num) { return '+' + num; },
         events: events,
         eventClick: function(info) {
             const p = info.event.extendedProps;
