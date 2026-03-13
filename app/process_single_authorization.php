@@ -208,27 +208,26 @@ function process_single_authorization(int $authId, int $emailId): array
             
             $insAssignment = $db->prepare(
                 "INSERT INTO patient_assignments 
-                (patient_id, professional_user_id, specialty, service_description, 
-                 start_date, start_time, end_time, frequency, frequency_details, 
-                 sessions_per_week, total_sessions, duration_weeks, 
-                 agreed_value_per_session, proposal_value_per_session, status, created_at)
-                VALUES (:pid, :puid, :spec, :desc, :sd, :st, :et, :freq, :fd, :spw, :ts, :dw, :av, :pv, 'active', NOW())"
+                (demand_id, patient_id, professional_user_id, assigned_by_user_id,
+                 specialty, service_type, session_quantity, session_frequency, 
+                 payment_value, notes, status, created_at)
+                VALUES (:did, :pid, :puid, :abuid, :spec, :stype, :sq, :sfreq, :pv, :notes, 'approved', NOW())"
             );
+            
+            // Calcular valor total baseado em sessões
+            $paymentValue = $totalSessions > 0 ? ($agreedValue / $totalSessions) : $agreedValue;
+            
             $insAssignment->execute([
+                'did' => $demandId,
                 'pid' => $patientId,
                 'puid' => $professionalUserId,
+                'abuid' => 1, // Sistema automático
                 'spec' => (string)($demand['specialty'] ?? ''),
-                'desc' => (string)($demand['title'] ?? ''),
-                'sd' => $startDate,
-                'st' => $startTime,
-                'et' => $endTime,
-                'freq' => $frequency,
-                'fd' => $frequencyDetails !== '' ? $frequencyDetails : null,
-                'spw' => $sessionsPerWeek,
-                'ts' => $totalSessions,
-                'dw' => $durationWeeks,
-                'av' => $agreedValue,
-                'pv' => $proposalValue,
+                'stype' => (string)($demand['title'] ?? 'Atendimento'),
+                'sq' => $totalSessions,
+                'sfreq' => $frequency,
+                'pv' => $paymentValue,
+                'notes' => "Autorização aprovada automaticamente. Proposta: R$ " . number_format($proposalValue, 2, ',', '.') . " | Acordado: R$ " . number_format($agreedValue, 2, ',', '.')
             ]);
             $assignmentId = (int)$db->lastInsertId();
             error_log("[PROCESS_SINGLE_AUTH] ✓ Atendimento criado - ID: $assignmentId");
