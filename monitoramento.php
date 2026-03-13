@@ -7,8 +7,9 @@ rbac_require_permission('demands.manage');
 
 $db = db();
 
-// Buscar atendimentos aprovados (patient_assignments com status 'admitted')
-$sql = "SELECT pa.id, pa.admitted_at as first_at, pa.status, 
+// Buscar sessões agendadas de atendimentos aprovados
+$sql = "SELECT bdr.id, bdr.session_date as first_at, bdr.session_number, bdr.status as session_status,
+        pa.id as assignment_id, pa.status as assignment_status,
         COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.created_at,
         p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
         p.birth_date, p.cpf, 
@@ -17,21 +18,32 @@ $sql = "SELECT pa.id, pa.admitted_at as first_at, pa.status,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
         pa.service_type, pa.payment_value, pa.session_quantity
-        FROM patient_assignments pa
-        INNER JOIN patients p ON p.id = pa.patient_id
-        INNER JOIN users u ON u.id = pa.professional_user_id
+        FROM billing_document_requirements bdr
+        INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
+        INNER JOIN patients p ON p.id = bdr.patient_id
+        INNER JOIN users u ON u.id = bdr.professional_user_id
         LEFT JOIN demands d ON d.id = pa.demand_id
-        WHERE pa.status = 'admitted'
-        AND pa.admitted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+        WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval', 'completed')
+        AND bdr.session_date IS NOT NULL
+        AND bdr.session_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ORDER BY bdr.session_date ASC";
 
 $appointments = $db->query($sql)->fetchAll();
 
 $events = [];
 foreach ($appointments as $apt) {
-    $color = ['admitted'=>'#10b981','awaiting_documents'=>'#f59e0b','completed'=>'#6366f1'][(string)$apt['status']] ?? '#10b981';
+    // Cor baseada no status da sessão
+    $color = match((string)$apt['session_status']) {
+        'pending' => '#f59e0b',      // Laranja - aguardando
+        'uploaded' => '#3b82f6',     // Azul - documento enviado
+        'approved' => '#10b981',     // Verde - aprovado
+        'rejected' => '#dc2626',     // Vermelho - rejeitado
+        default => '#6366f1'         // Roxo - padrão
+    };
+    
     $events[] = [
         'id' => (int)$apt['id'],
-        'title' => $apt['patient_name'] . ' - ' . $apt['professional_name'],
+        'title' => $apt['patient_name'] . ' - ' . $apt['professional_name'] . ' (Sessão ' . $apt['session_number'] . ')',
         'start' => $apt['first_at'],
         'backgroundColor' => $color,
         'extendedProps' => [
