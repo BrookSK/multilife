@@ -1,5 +1,5 @@
 // Paginação do Kanban
-// Controla a navegação entre páginas de cards quando há mais de 10 cards em uma coluna
+// Controla a navegação entre páginas de cards quando há mais de 5 cards em uma coluna
 
 const kanbanPages = {};
 
@@ -14,7 +14,7 @@ function paginateKanban(columnId, direction) {
     if (!column) return;
     
     const totalItems = parseInt(column.dataset.totalItems || 0);
-    const itemsPerPage = parseInt(column.dataset.itemsPerPage || 10);
+    const itemsPerPage = parseInt(column.dataset.itemsPerPage || 5);
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     
     // Calcular nova página

@@ -222,13 +222,13 @@ foreach ($columns as $col) {
     }
 
     $totalItems = count($items);
-    $itemsPerPage = 10;
+    $itemsPerPage = 5;
     $needsPagination = $totalItems > $itemsPerPage;
     
     echo '<div class="kanbanCol" data-column-id="' . h($colId) . '" data-total-items="' . $totalItems . '" data-items-per-page="' . $itemsPerPage . '">';
     echo '<div class="kanbanColHead">';
     
-    // Setas de navegação (só aparecem se tiver mais de 10 cards)
+    // Setas de navegação (só aparecem se tiver mais de 5 cards)
     if ($needsPagination) {
         echo '<div class="kanbanPagination">';
         echo '<button class="kanbanPaginationBtn kanbanPaginationPrev" onclick="paginateKanban(\'' . h($colId) . '\', -1)" disabled>';
