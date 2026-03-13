@@ -196,7 +196,7 @@ echo '<div class="grid">';
 
 // Card: Total Geral
 echo '<div class="col3">';
-echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary)/.8));border-radius:12px;color:white">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
 echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">💰 Total Geral</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalGeral, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdGeral . ' registro(s)</div>';
@@ -205,7 +205,7 @@ echo '</div>';
 
 // Card: Pendente
 echo '<div class="col3">';
-echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--destructive)),hsl(var(--destructive)/.8));border-radius:12px;color:white">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
 echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">⏳ Pendente</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalPendente, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdPendente . ' registro(s)</div>';
@@ -224,7 +224,7 @@ echo '</div>';
 // Card: Taxa de Pagamento
 $taxaPagamento = $totalGeral > 0 ? ($totalPago / $totalGeral) * 100 : 0;
 echo '<div class="col3">';
-echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--accent)),hsl(var(--accent)/.8));border-radius:12px;color:white">';
+echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
 echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">📈 Taxa de Pagamento</div>';
 echo '<div style="font-size:28px;font-weight:900">' . number_format($taxaPagamento, 1) . '%</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">Pago / Total</div>';
