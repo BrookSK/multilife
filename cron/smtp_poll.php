@@ -73,6 +73,7 @@ $hasFromEmail = isset($cols['from_email']);
 $hasFromName = isset($cols['from_name']);
 $hasFromAddress = isset($cols['from_address']);
 $hasToAddress = isset($cols['to_address']);
+$hasInReplyTo = isset($cols['in_reply_to']);
 
 $insertColumns = [];
 $insertValues = [];
@@ -84,6 +85,11 @@ if ($hasMailboxKey) {
 
 $insertColumns[] = 'message_id';
 $insertValues[] = ':message_id';
+
+if ($hasInReplyTo) {
+    $insertColumns[] = 'in_reply_to';
+    $insertValues[] = ':in_reply_to';
+}
 
 if ($hasFromEmail) {
     $insertColumns[] = 'from_email';
@@ -175,13 +181,29 @@ try {
         $subject = '';
         $fromRaw = '';
         $dateRaw = '';
+        $inReplyTo = '';
 
         if ($ov) {
             $messageId = isset($ov->message_id) ? (string)$ov->message_id : '';
             $subject = isset($ov->subject) ? (string)$ov->subject : '';
             $fromRaw = isset($ov->from) ? (string)$ov->from : '';
             $dateRaw = isset($ov->date) ? (string)$ov->date : '';
+            $inReplyTo = isset($ov->in_reply_to) ? (string)$ov->in_reply_to : '';
         }
+        
+        // Se In-Reply-To não veio no overview, buscar nos headers completos
+        if ($inReplyTo === '') {
+            $uidInt = (int)$uid;
+            $headers = imap_fetchheader($imap, $uidInt, FT_UID);
+            if (is_string($headers) && $headers !== '') {
+                // Buscar header In-Reply-To
+                if (preg_match('/^In-Reply-To:\s*(.+)$/mi', $headers, $matches)) {
+                    $inReplyTo = trim($matches[1]);
+                }
+            }
+        }
+        
+        error_log("[SMTP_POLL] E-mail UID $uid - Message-ID: $messageId, In-Reply-To: $inReplyTo");
 
         $fromEmail = '';
         $fromName = '';
@@ -346,6 +368,10 @@ try {
 
             if ($hasMailboxKey) {
                 $insParams['mailbox_key'] = 'demands';
+            }
+            
+            if ($hasInReplyTo) {
+                $insParams['in_reply_to'] = $inReplyTo !== '' ? $inReplyTo : null;
             }
 
             if ($hasFromEmail) {
