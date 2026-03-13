@@ -10,7 +10,9 @@ $db = db();
 // Buscar atendimentos com TODAS as informações
 $sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
         p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
-        p.birth_date, p.cpf, p.address, p.city, p.state,
+        p.birth_date, p.cpf, 
+        CONCAT_WS(', ', p.address_street, p.address_number, p.address_complement, p.address_neighborhood) as patient_address,
+        p.address_city as patient_city, p.address_state as patient_state,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
         pa.service_type, pa.payment_value, pa.start_date, pa.session_quantity
@@ -39,9 +41,9 @@ foreach ($appointments as $apt) {
             'patient_email' => $apt['patient_email'] ?? '',
             'patient_birth_date' => $apt['birth_date'] ?? '',
             'patient_cpf' => $apt['cpf'] ?? '',
-            'patient_address' => $apt['address'] ?? '',
-            'patient_city' => $apt['city'] ?? '',
-            'patient_state' => $apt['state'] ?? '',
+            'patient_address' => $apt['patient_address'] ?? '',
+            'patient_city' => $apt['patient_city'] ?? '',
+            'patient_state' => $apt['patient_state'] ?? '',
             'professional_id' => (int)$apt['professional_id'],
             'professional_name' => $apt['professional_name'],
             'professional_phone' => $apt['professional_phone'] ?? '',
