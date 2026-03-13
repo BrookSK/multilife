@@ -7,8 +7,9 @@ rbac_require_permission('demands.manage');
 
 $db = db();
 
-// Buscar atendimentos com TODAS as informações
-$sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
+// Buscar atendimentos aprovados (patient_assignments com status 'admitted')
+$sql = "SELECT pa.id, pa.admitted_at as first_at, pa.status, 
+        COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.created_at,
         p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
         p.birth_date, p.cpf, 
         CONCAT_WS(', ', p.address_street, p.address_number, p.address_complement, p.address_neighborhood) as patient_address,
@@ -16,20 +17,18 @@ $sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
         pa.service_type, pa.payment_value, pa.session_quantity
-        FROM appointments a
-        INNER JOIN patients p ON p.id = a.patient_id
-        INNER JOIN users u ON u.id = a.professional_user_id
-        LEFT JOIN demands d ON d.id = a.demand_id
-        INNER JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.demand_id = d.id
-        WHERE a.status IN ('agendado', 'pendente_formulario', 'realizado')
-        AND a.first_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-        AND pa.status = 'admitted'";
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        INNER JOIN users u ON u.id = pa.professional_user_id
+        LEFT JOIN demands d ON d.id = pa.demand_id
+        WHERE pa.status = 'admitted'
+        AND pa.admitted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
 
 $appointments = $db->query($sql)->fetchAll();
 
 $events = [];
 foreach ($appointments as $apt) {
-    $color = ['agendado'=>'#10b981','pendente_formulario'=>'#f59e0b','realizado'=>'#6366f1'][(string)$apt['status']] ?? '#6366f1';
+    $color = ['admitted'=>'#10b981','awaiting_documents'=>'#f59e0b','completed'=>'#6366f1'][(string)$apt['status']] ?? '#10b981';
     $events[] = [
         'id' => (int)$apt['id'],
         'title' => $apt['patient_name'] . ' - ' . $apt['professional_name'],
