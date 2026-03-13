@@ -152,41 +152,28 @@ function process_single_authorization(int $authId, int $emailId): array
                 return ['success' => false, 'error' => 'Demanda não encontrada'];
             }
             
-            // Buscar paciente vinculado à autorização (vem do formulário de proposta)
-            // O patient_id já foi informado quando a proposta foi criada
+            // Buscar paciente vinculado à demanda via patient_assignments
+            // A demanda já deve ter um atendimento anterior ou o paciente foi criado no fluxo de captação
             $patientId = null;
             
-            // Buscar patient_id da autorização original (se foi salvo lá)
-            // Ou buscar do chat que originou a demanda
-            $chatStmt = $db->prepare(
-                "SELECT patient_id FROM chats WHERE demand_id = :did AND patient_id IS NOT NULL LIMIT 1"
+            error_log("[PROCESS_SINGLE_AUTH] Buscando paciente via patient_assignments para demanda #$demandId");
+            
+            $paStmt = $db->prepare(
+                "SELECT patient_id FROM patient_assignments WHERE demand_id = :did LIMIT 1"
             );
-            $chatStmt->execute(['did' => $demandId]);
-            $chat = $chatStmt->fetch();
+            $paStmt->execute(['did' => $demandId]);
+            $pa = $paStmt->fetch();
             
-            if ($chat && $chat['patient_id']) {
-                $patientId = (int)$chat['patient_id'];
-                error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente encontrado via chat - ID: $patientId");
-            }
-            
-            // Se não encontrou via chat, buscar via patient_assignments existentes da demanda
-            if ($patientId === null) {
-                $paStmt = $db->prepare(
-                    "SELECT patient_id FROM patient_assignments WHERE demand_id = :did LIMIT 1"
-                );
-                $paStmt->execute(['did' => $demandId]);
-                $pa = $paStmt->fetch();
-                
-                if ($pa && $pa['patient_id']) {
-                    $patientId = (int)$pa['patient_id'];
-                    error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente encontrado via patient_assignments - ID: $patientId");
-                }
+            if ($pa && $pa['patient_id']) {
+                $patientId = (int)$pa['patient_id'];
+                error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente encontrado via patient_assignments - ID: $patientId");
             }
             
             if ($patientId === null) {
                 $db->rollBack();
                 error_log("[PROCESS_SINGLE_AUTH] ❌ Paciente não encontrado para demanda #$demandId");
-                return ['success' => false, 'error' => 'Paciente não encontrado. A demanda deve ter um paciente vinculado via chat ou atendimento anterior.'];
+                error_log("[PROCESS_SINGLE_AUTH] A demanda deve ter um patient_assignment existente com patient_id");
+                return ['success' => false, 'error' => 'Paciente não encontrado. A demanda deve ter um paciente vinculado via atendimento anterior.'];
             }
             
             // Verificar se paciente existe
