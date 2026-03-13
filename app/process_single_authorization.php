@@ -152,39 +152,50 @@ function process_single_authorization(int $authId, int $emailId): array
                 return ['success' => false, 'error' => 'Demanda não encontrada'];
             }
             
-            // Buscar ou criar paciente
-            $patientName = trim((string)($demand['patient_name'] ?? ''));
-            $patientEmail = trim((string)($demand['patient_email'] ?? ''));
-            $patientPhone = trim((string)($demand['patient_phone'] ?? ''));
-            
+            // Buscar paciente vinculado à autorização (vem do formulário de proposta)
+            // O patient_id já foi informado quando a proposta foi criada
             $patientId = null;
-            if ($patientEmail !== '') {
-                $pStmt = $db->prepare("SELECT id FROM patients WHERE email = :e AND deleted_at IS NULL LIMIT 1");
-                $pStmt->execute(['e' => $patientEmail]);
-                $p = $pStmt->fetch();
-                if ($p) {
-                    $patientId = (int)$p['id'];
-                    error_log("[PROCESS_SINGLE_AUTH] Paciente existente encontrado: #$patientId");
-                }
+            
+            // Buscar patient_id da autorização original (se foi salvo lá)
+            // Ou buscar do chat que originou a demanda
+            $chatStmt = $db->prepare(
+                "SELECT patient_id FROM chats WHERE demand_id = :did AND patient_id IS NOT NULL LIMIT 1"
+            );
+            $chatStmt->execute(['did' => $demandId]);
+            $chat = $chatStmt->fetch();
+            
+            if ($chat && $chat['patient_id']) {
+                $patientId = (int)$chat['patient_id'];
+                error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente encontrado via chat - ID: $patientId");
             }
             
-            if ($patientId === null && $patientName !== '') {
-                $insPatient = $db->prepare(
-                    "INSERT INTO patients (full_name, email, whatsapp, created_at)
-                     VALUES (:n, :e, :p, NOW())"
+            // Se não encontrou via chat, buscar via patient_assignments existentes da demanda
+            if ($patientId === null) {
+                $paStmt = $db->prepare(
+                    "SELECT patient_id FROM patient_assignments WHERE demand_id = :did LIMIT 1"
                 );
-                $insPatient->execute([
-                    'n' => $patientName,
-                    'e' => $patientEmail !== '' ? $patientEmail : null,
-                    'p' => $patientPhone !== '' ? $patientPhone : null,
-                ]);
-                $patientId = (int)$db->lastInsertId();
-                error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente criado - ID: $patientId");
+                $paStmt->execute(['did' => $demandId]);
+                $pa = $paStmt->fetch();
+                
+                if ($pa && $pa['patient_id']) {
+                    $patientId = (int)$pa['patient_id'];
+                    error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente encontrado via patient_assignments - ID: $patientId");
+                }
             }
             
             if ($patientId === null) {
                 $db->rollBack();
-                return ['success' => false, 'error' => 'Não foi possível criar/encontrar paciente'];
+                error_log("[PROCESS_SINGLE_AUTH] ❌ Paciente não encontrado para demanda #$demandId");
+                return ['success' => false, 'error' => 'Paciente não encontrado. A demanda deve ter um paciente vinculado via chat ou atendimento anterior.'];
+            }
+            
+            // Verificar se paciente existe
+            $verifyPatient = $db->prepare("SELECT id FROM patients WHERE id = :id AND deleted_at IS NULL");
+            $verifyPatient->execute(['id' => $patientId]);
+            if (!$verifyPatient->fetch()) {
+                $db->rollBack();
+                error_log("[PROCESS_SINGLE_AUTH] ❌ Paciente #$patientId não existe ou foi deletado");
+                return ['success' => false, 'error' => 'Paciente não encontrado no sistema'];
             }
             
             // Criar atendimento
