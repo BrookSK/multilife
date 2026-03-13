@@ -6,6 +6,7 @@ require_once __DIR__ . '/_bootstrap.php';
 
 $idFilter = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $retryErrors = isset($_GET['retry_errors']) && ((string)$_GET['retry_errors'] === '1' || strtolower((string)$_GET['retry_errors']) === 'true');
+$forceReprocess = isset($_GET['force']) && ((string)$_GET['force'] === '1' || strtolower((string)$_GET['force']) === 'true');
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 if ($limit <= 0 || $limit > 100) {
@@ -36,15 +37,20 @@ $selectFromField = $hasFromEmail ? 'from_email' : ($hasFromAddress ? 'from_addre
 
 $db->beginTransaction();
 try {
-    $statusList = "'received','ai_pending'";
-    if ($retryErrors) {
-        $statusList .= ",'error'";
+    // Se force=1, ignora filtro de status (reprocessa qualquer e-mail)
+    if ($forceReprocess && $idFilter > 0) {
+        $whereClause = "WHERE id = :id";
+    } else {
+        $statusList = "'received','ai_pending'";
+        if ($retryErrors) {
+            $statusList .= ",'error'";
+        }
+        $whereClause = "WHERE status IN ($statusList)" . ($idFilter > 0 ? " AND id = :id" : '');
     }
 
     $stmt = $db->prepare(
         "SELECT * FROM inbound_emails\n"
-        . "WHERE status IN ($statusList)\n"
-        . ($idFilter > 0 ? "AND id = :id\n" : '')
+        . "$whereClause\n"
         . "ORDER BY received_at ASC, id ASC\n"
         . "LIMIT $limit\n"
         . "FOR UPDATE"
