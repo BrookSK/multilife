@@ -88,6 +88,20 @@ $rows = $stmt->fetchAll();
 
 view_header('Captação - Demandas');
 
+// Função para formatar labels de status
+function format_status_label(string $status): string {
+    $labels = [
+        'aguardando_captacao' => 'Aguardando Captação',
+        'tratamento_manual' => 'Tratamento Manual',
+        'em_captacao' => 'Em Captação',
+        'autorizacao_negada' => 'Autorização Negada',
+        'admitido' => 'Admitido',
+        'concluido' => 'Concluído',
+        'cancelado' => 'Cancelado',
+    ];
+    return $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
+}
+
 $columns = [
     ['id' => 'aguardando_captacao', 'title' => 'Recebimento de E-mail', 'emoji' => '📥'],
     ['id' => 'tratamento_manual', 'title' => 'Tratamento Manual', 'emoji' => '📋'],
@@ -330,7 +344,7 @@ foreach ($columns as $col) {
             
             // Badges de status, urgência e valor
             echo '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
-            echo '<span class="badge ' . h($badgeCls) . '">' . h((string)$r['status']) . '</span>';
+            echo '<span class="badge ' . h($badgeCls) . '">' . h(format_status_label((string)$r['status'])) . '</span>';
             
             // Badge de urgência
             $urgency = trim((string)($r['urgency'] ?? ''));

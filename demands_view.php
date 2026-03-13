@@ -58,6 +58,20 @@ $stmt = db()->prepare(
 $stmt->execute(['id' => $id]);
 $groupMessages = $stmt->fetchAll();
 
+// Função para formatar labels de status
+function format_status_label(string $status): string {
+    $labels = [
+        'aguardando_captacao' => 'Aguardando Captação',
+        'tratamento_manual' => 'Tratamento Manual',
+        'em_captacao' => 'Em Captação',
+        'autorizacao_negada' => 'Autorização Negada',
+        'admitido' => 'Admitido',
+        'concluido' => 'Concluído',
+        'cancelado' => 'Cancelado',
+    ];
+    return $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
+}
+
 $loc = trim((string)($d['location_city'] ?? ''));
 $uf = trim((string)($d['location_state'] ?? ''));
 $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
@@ -84,7 +98,7 @@ if ($st === 'admitido') {
 }
 
 echo '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
-echo '<span class="badge ' . h($badgeCls) . '">' . h($st) . '</span>';
+echo '<span class="badge ' . h($badgeCls) . '">' . h(format_status_label($st)) . '</span>';
 
 // Badge de urgência
 $urgency = trim((string)($d['urgency'] ?? ''));
@@ -145,7 +159,7 @@ echo '<select name="status" style="min-width:220px">';
 $allowed = ['aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 foreach ($allowed as $st) {
     $sel = ((string)$d['status'] === $st) ? ' selected' : '';
-    echo '<option value="' . h($st) . '"' . $sel . '>' . h($st) . '</option>';
+    echo '<option value="' . h($st) . '"' . $sel . '>' . h(format_status_label($st)) . '</option>';
 }
 echo '</select>';
 echo '<input name="note" placeholder="Observação (opcional)" style="min-width:240px;flex:1">';
