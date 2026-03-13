@@ -62,14 +62,16 @@ foreach ($pendingRequests as $request) {
         $sentAt = (string)$request['sent_at'];
         error_log("[AUTHORIZATION_RESPONSE] Proposta enviada em: $sentAt");
         
-        // Buscar por thread_id se disponível, senão por assunto e remetente
+        // Buscar e-mails não vinculados a outras autorizações
         $emailStmt = $db->prepare(
-            "SELECT id, subject, body_text, body_html, from_address, from_email, received_at, thread_id
-             FROM inbound_emails
-             WHERE (from_email = :op_email OR from_address LIKE :op_email_like)
-             AND received_at >= :sent_at
-             AND status IN ('received', 'ai_processed', 'processed')
-             ORDER BY received_at DESC
+            "SELECT ie.id, ie.subject, ie.body_text, ie.body_html, ie.from_address, ie.from_email, ie.received_at, ie.thread_id
+             FROM inbound_emails ie
+             LEFT JOIN authorization_requests ar_check ON ar_check.inbound_email_id = ie.id
+             WHERE (ie.from_email = :op_email OR ie.from_address LIKE :op_email_like)
+             AND ie.received_at >= :sent_at
+             AND ie.status IN ('received', 'ai_processed', 'processed')
+             AND ar_check.id IS NULL
+             ORDER BY ie.received_at ASC
              LIMIT 5"
         );
         $emailStmt->execute([
@@ -80,7 +82,14 @@ foreach ($pendingRequests as $request) {
         $responseEmails = $emailStmt->fetchAll();
         
         error_log("[AUTHORIZATION_RESPONSE] Buscando e-mails recebidos após $sentAt");
-        error_log("[AUTHORIZATION_RESPONSE] E-mails encontrados: " . count($responseEmails));
+        error_log("[AUTHORIZATION_RESPONSE] Operadora: $operatorEmail");
+        error_log("[AUTHORIZATION_RESPONSE] E-mails não vinculados encontrados: " . count($responseEmails));
+        
+        if (count($responseEmails) > 0) {
+            foreach ($responseEmails as $idx => $em) {
+                error_log("[AUTHORIZATION_RESPONSE]   E-mail #" . $em['id'] . " - " . $em['subject'] . " (" . $em['received_at'] . ")");
+            }
+        }
         
         if (count($responseEmails) === 0) {
             error_log("[AUTHORIZATION_RESPONSE] ⚠️ Nenhuma resposta encontrada ainda para autorização #$authId");
