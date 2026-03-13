@@ -149,6 +149,7 @@ foreach ($emails as $e) {
     $checkAuthResponse->execute();
     $pendingAuths = $checkAuthResponse->fetchAll();
     $isAuthorizationResponse = false;
+    $matchedAuthId = null;
     
     foreach ($pendingAuths as $auth) {
         $operatorEmail = strtolower(trim((string)$auth['operator_email']));
@@ -157,20 +158,45 @@ foreach ($emails as $e) {
         // Verificar se o e-mail vem da operadora que está aguardando resposta
         if ($operatorEmail !== '' && $fromEmailLower !== '' && $operatorEmail === $fromEmailLower) {
             $isAuthorizationResponse = true;
-            error_log("[EMAIL_EXTRACT] E-mail #$id identificado como resposta de autorização (de: $fromEmail)");
+            $matchedAuthId = (int)$auth['id'];
+            error_log("[EMAIL_EXTRACT] E-mail #$id identificado como resposta de autorização #$matchedAuthId (de: $fromEmail)");
             break;
         }
     }
     
-    // Se for resposta de autorização, marcar como processado e pular
-    if ($isAuthorizationResponse) {
-        $updOk->execute([
-            'st' => 'processed',
-            'pa' => date('Y-m-d H:i:s'),
-            'id' => $id,
-        ]);
-        error_log("[EMAIL_EXTRACT] E-mail #$id marcado como 'processed' - será processado por process_authorization_responses.php");
-        $ok++;
+    // Se for resposta de autorização, processar imediatamente
+    if ($isAuthorizationResponse && $matchedAuthId !== null) {
+        error_log("[EMAIL_EXTRACT] Processando resposta de autorização IMEDIATAMENTE");
+        
+        // Incluir função de processamento
+        require_once __DIR__ . '/../app/process_single_authorization.php';
+        
+        // Processar autorização
+        $result = process_single_authorization($matchedAuthId, $id);
+        
+        if ($result['success']) {
+            error_log("[EMAIL_EXTRACT] ✅ Autorização #$matchedAuthId processada com sucesso!");
+            error_log("[EMAIL_EXTRACT] Decisão: " . ($result['decision'] ?? 'unknown'));
+            
+            // Marcar e-mail como processado
+            $updOk->execute([
+                'st' => 'processed',
+                'pa' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]);
+            $ok++;
+        } else {
+            error_log("[EMAIL_EXTRACT] ❌ Erro ao processar autorização: " . ($result['error'] ?? 'unknown'));
+            
+            // Marcar como erro para tentar novamente depois
+            $updErr->execute([
+                'err' => 'Erro ao processar autorização: ' . ($result['error'] ?? 'unknown'),
+                'pa' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]);
+            $errors++;
+        }
+        
         continue;
     }
 
