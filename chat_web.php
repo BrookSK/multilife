@@ -1415,7 +1415,7 @@ echo '</script>';
 
 // CSS customizado para WhatsApp Web com 3 colunas
 echo '<style>';
-echo '.whatsapp-container{display:flex;height:calc(100vh - 64px);background:#f0f2f5;overflow:hidden}';
+echo '.whatsapp-container{display:flex;height:calc(100vh - 64px);background:#ffffff;overflow:hidden}';
 echo '.whatsapp-sidebar{width:380px;background:#fff;border-right:1px solid #d1d7db;display:flex;flex-direction:column}';
 echo '.whatsapp-header{padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-search{padding:8px 16px;background:#fff}';
