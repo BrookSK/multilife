@@ -155,15 +155,15 @@ echo '<div style="margin-top:20px;border-bottom:2px solid hsl(var(--border))">';
 echo '<div style="display:flex;gap:4px">';
 
 $tabs = [
-    'pendentes' => ['label' => 'Pendentes', 'icon' => '⏳'],
-    'historico' => ['label' => 'Histórico', 'icon' => '📋'],
+    'pendentes' => 'Pendentes',
+    'historico' => 'Histórico',
 ];
 
-foreach ($tabs as $tabKey => $tabInfo) {
+foreach ($tabs as $tabKey => $tabLabel) {
     $isActive = ($tab === $tabKey);
     $activeStyle = $isActive 
-        ? 'background:hsl(var(--primary));color:white;border-bottom:3px solid hsl(var(--primary))' 
-        : 'background:transparent;color:hsl(var(--foreground));border-bottom:3px solid transparent';
+        ? 'background:hsl(var(--primary));color:white;border-color:hsl(var(--primary))' 
+        : 'background:white;color:#667781;border-color:transparent';
     
     $queryParams = ['tab' => $tabKey];
     if ($q !== '') {
@@ -171,8 +171,8 @@ foreach ($tabs as $tabKey => $tabInfo) {
     }
     
     echo '<a href="/finance_receivable_list.php?' . http_build_query($queryParams) . '" ';
-    echo 'style="padding:12px 24px;text-decoration:none;font-weight:600;font-size:15px;transition:all 0.2s;' . $activeStyle . '">';
-    echo $tabInfo['icon'] . ' ' . h($tabInfo['label']);
+    echo 'style="padding:12px 24px;text-decoration:none;font-weight:600;border:2px solid;border-bottom:none;border-radius:8px 8px 0 0;' . $activeStyle . '">';
+    echo h($tabLabel);
     echo '</a>';
 }
 
@@ -193,13 +193,13 @@ echo '</section>';
 
 // Dashboard de resumo financeiro
 echo '<section class="card col12">';
-echo '<div style="font-size:16px;font-weight:700;margin-bottom:16px">📊 Resumo Financeiro</div>';
+echo '<div style="font-size:16px;font-weight:700;margin-bottom:16px">Resumo Financeiro</div>';
 echo '<div class="grid">';
 
 // Card: Total Geral
 echo '<div class="col3">';
 echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
-echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">💰 Total Geral</div>';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">Total Geral</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalGeral, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdGeral . ' registro(s)</div>';
 echo '</div>';
@@ -208,7 +208,7 @@ echo '</div>';
 // Card: Pendente
 echo '<div class="col3">';
 echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
-echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">⏳ Pendente</div>';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">Pendente</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalPendente, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdPendente . ' registro(s)</div>';
 echo '</div>';
@@ -217,7 +217,7 @@ echo '</div>';
 // Card: Recebido
 echo '<div class="col3">';
 echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
-echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">✅ Recebido</div>';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">Recebido</div>';
 echo '<div style="font-size:28px;font-weight:900">R$ ' . number_format($totalRecebido, 2, ',', '.') . '</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">' . $qtdRecebido . ' registro(s)</div>';
 echo '</div>';
@@ -227,7 +227,7 @@ echo '</div>';
 $taxaRecebimento = $totalGeral > 0 ? ($totalRecebido / $totalGeral) * 100 : 0;
 echo '<div class="col3">';
 echo '<div style="padding:20px;background:linear-gradient(135deg,hsl(var(--success)),hsl(var(--success)/.8));border-radius:12px;color:white">';
-echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">📈 Taxa de Recebimento</div>';
+echo '<div style="font-size:13px;opacity:.9;margin-bottom:8px">Taxa de Recebimento</div>';
 echo '<div style="font-size:28px;font-weight:900">' . number_format($taxaRecebimento, 1) . '%</div>';
 echo '<div style="font-size:12px;opacity:.8;margin-top:8px">Recebido / Total</div>';
 echo '</div>';
