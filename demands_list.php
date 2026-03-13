@@ -221,11 +221,29 @@ foreach ($columns as $col) {
         $items = array_slice($filtered, 0, 20);
     }
 
-    echo '<div class="kanbanCol">';
+    $totalItems = count($items);
+    $itemsPerPage = 10;
+    $needsPagination = $totalItems > $itemsPerPage;
+    
+    echo '<div class="kanbanCol" data-column-id="' . h($colId) . '" data-total-items="' . $totalItems . '" data-items-per-page="' . $itemsPerPage . '">';
     echo '<div class="kanbanColHead">';
+    
+    // Setas de navegação (só aparecem se tiver mais de 10 cards)
+    if ($needsPagination) {
+        echo '<div class="kanbanPagination">';
+        echo '<button class="kanbanPaginationBtn kanbanPaginationPrev" onclick="paginateKanban(\'' . h($colId) . '\', -1)" disabled>';
+        echo '◀';
+        echo '</button>';
+        echo '<span class="kanbanPaginationInfo"><span class="kanbanCurrentPage">1</span>/<span class="kanbanTotalPages">' . ceil($totalItems / $itemsPerPage) . '</span></span>';
+        echo '<button class="kanbanPaginationBtn kanbanPaginationNext" onclick="paginateKanban(\'' . h($colId) . '\', 1)">';
+        echo '▶';
+        echo '</button>';
+        echo '</div>';
+    }
+    
     echo '<span class="kanbanEmoji">' . h((string)$col['emoji']) . '</span>';
     echo '<div class="kanbanTitle">' . h((string)$col['title']) . '</div>';
-    echo '<div class="kanbanCount">' . (int)count($items) . '</div>';
+    echo '<div class="kanbanCount">' . (int)$totalItems . '</div>';
     echo '</div>';
 
     echo '<div class="kanbanLane">';
@@ -233,7 +251,9 @@ foreach ($columns as $col) {
     if (count($items) === 0) {
         echo '<div class="kanbanEmpty">Vazio</div>';
     } else {
-        foreach ($items as $r) {
+        foreach ($items as $idx => $r) {
+            $pageIndex = floor($idx / $itemsPerPage);
+            $isVisible = $pageIndex === 0 ? '' : ' style="display:none"';
             $loc = trim((string)$r['location_city']);
             $uf = trim((string)$r['location_state']);
             $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
@@ -259,7 +279,7 @@ foreach ($columns as $col) {
                 }
             }
 
-            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '"' . $cardStyle . '>';
+            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '"' . $cardStyle . $isVisible . '>';
             echo '<div class="kanbanCardBody">';
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle">' . h((string)$r['title']) . '</div>';
@@ -368,5 +388,16 @@ echo '</div>';
 echo '<script>';
 echo '(function(){var fab=document.getElementById("newDemandFab");var ov=document.getElementById("newDemandOverlay");var m=document.getElementById("newDemandModal");var close=document.getElementById("newDemandClose");var cancel=document.getElementById("newDemandCancel");if(!fab||!ov||!m)return;var open=function(){ov.style.display="block";m.style.display="block";try{var i=m.querySelector("input[name=title]");if(i)i.focus();}catch(e){}};var shut=function(){ov.style.display="none";m.style.display="none";};fab.addEventListener("click",open);if(close)close.addEventListener("click",shut);if(cancel)cancel.addEventListener("click",shut);ov.addEventListener("click",shut);document.addEventListener("keydown",function(e){if(e.key==="Escape")shut();});})();';
 echo '</script>';
+
+echo '<script src="/demands_list_pagination.js"></script>';
+
+echo '<style>';
+echo '.kanbanPagination{display:flex;align-items:center;gap:8px;margin-right:12px}';
+echo '.kanbanPaginationBtn{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:700;transition:all .2s}';
+echo '.kanbanPaginationBtn:hover:not(:disabled){background:hsl(var(--primary)/.9);transform:scale(1.05)}';
+echo '.kanbanPaginationBtn:disabled{opacity:.3;cursor:not-allowed}';
+echo '.kanbanPaginationInfo{font-size:13px;font-weight:600;color:hsl(var(--foreground));min-width:40px;text-align:center}';
+echo '.kanbanColHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}';
+echo '</style>';
 
 view_footer();
