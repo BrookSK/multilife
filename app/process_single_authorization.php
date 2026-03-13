@@ -155,6 +155,19 @@ function process_single_authorization(int $authId, int $emailId): array
         error_log("[PROCESS_SINGLE_AUTH] Decisão: $decision (confiança: $confidence)");
         error_log("[PROCESS_SINGLE_AUTH] Motivo: $reason");
         
+        // Normalizar decisão para 'approved' ou 'denied'
+        $normalizedDecision = $decision;
+        if (in_array($decision, ['denied', 'rejected', 'negado', 'recusado', 'nao aprovado', 'não aprovado'], true)) {
+            $normalizedDecision = 'denied';
+            error_log("[PROCESS_SINGLE_AUTH] Decisão normalizada: '$decision' -> 'denied'");
+        } elseif (in_array($decision, ['approved', 'aprovado', 'autorizado'], true)) {
+            $normalizedDecision = 'approved';
+            error_log("[PROCESS_SINGLE_AUTH] Decisão normalizada: '$decision' -> 'approved'");
+        } else {
+            error_log("[PROCESS_SINGLE_AUTH] ⚠️ Decisão não reconhecida: '$decision'");
+            return ['success' => false, 'error' => "Decisão não reconhecida: $decision"];
+        }
+        
         if ($confidence < 0.7) {
             error_log("[PROCESS_SINGLE_AUTH] Confiança baixa ($confidence < 0.7), ignorando");
             return ['success' => false, 'error' => 'Confiança baixa'];
@@ -162,7 +175,7 @@ function process_single_authorization(int $authId, int $emailId): array
         
         $db->beginTransaction();
         
-        if ($decision === 'approved') {
+        if ($normalizedDecision === 'approved') {
             error_log("[PROCESS_SINGLE_AUTH] ✅ PROCESSANDO APROVAÇÃO");
             
             // Buscar dados da demanda
