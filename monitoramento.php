@@ -88,6 +88,9 @@ body{margin:0;padding:0;overflow:hidden}
 .legendColor{width:14px;height:14px;border-radius:3px}
 .calendar{flex:1;background:#fff;padding:16px;overflow:hidden;min-height:0}
 #calendar{height:100%;width:100%}
+.fc .fc-daygrid-day{min-height:120px !important}
+.fc .fc-daygrid-day-frame{min-height:120px !important}
+.fc .fc-scrollgrid-sync-table{height:100% !important}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center}
 .modal.open{display:flex}
 .modalContent{background:#fff;border-radius:16px;padding:32px;max-width:900px;width:90%;max-height:90vh;overflow-y:auto}
