@@ -96,8 +96,10 @@ body{margin:0;padding:0;overflow:hidden}
 .fc-event{white-space:normal !important;overflow:visible !important;margin-bottom:3px !important;padding:6px 8px !important;border-radius:6px !important;box-shadow:0 1px 3px rgba(0,0,0,0.15) !important;border:none !important;font-size:11px !important;font-weight:600 !important}
 .fc-daygrid-more-link{background:hsl(var(--success)) !important;color:white !important;padding:6px 8px !important;border-radius:4px !important;font-size:10px !important;font-weight:700 !important;text-decoration:none !important;display:block !important;text-align:center !important;margin-top:2px !important;box-shadow:0 1px 2px rgba(0,0,0,0.1) !important;width:100% !important}
 .fc-daygrid-more-link:hover{background:hsl(var(--success)/.9) !important;transform:scale(1.01) !important}
-.fc-popover{z-index:10000 !important;box-shadow:0 4px 20px rgba(0,0,0,0.3) !important;border-radius:8px !important}
+.fc-popover{z-index:10000 !important;box-shadow:0 4px 20px rgba(0,0,0,0.3) !important;border-radius:12px !important;background:white !important;border:3px solid hsl(var(--success)) !important;overflow:hidden !important}
 .fc-popover::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);z-index:-1}
+.fc-popover-header{background:hsl(var(--success)) !important;color:white !important;padding:12px 16px !important;font-weight:700 !important}
+.fc-popover-body{background:white !important;padding:12px !important}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center}
 .modal.open{display:flex}
 .modalContent{background:#fff;border-radius:16px;padding:32px;max-width:900px;width:90%;max-height:90vh;overflow-y:auto}
