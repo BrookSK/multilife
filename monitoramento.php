@@ -80,10 +80,13 @@ view_header('Monitoramento de Atendimentos');
 <style>
 body{margin:0;padding:0;overflow:hidden}
 .container{padding:0;margin:0;width:100vw;height:100vh;display:flex;flex-direction:column}
-.header{padding:20px 24px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0}
-.title{font-size:28px;font-weight:800;margin:0}
-.calendar{flex:1;background:#fff;padding:20px;overflow:auto}
-#calendar{height:100%}
+.header{padding:12px 20px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.title{font-size:22px;font-weight:800;margin:0}
+.legend{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.legendItem{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+.legendColor{width:16px;height:16px;border-radius:4px}
+.calendar{flex:1;background:#fff;padding:16px;overflow:hidden}
+#calendar{height:100%;width:100%}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center}
 .modal.open{display:flex}
 .modalContent{background:#fff;border-radius:16px;padding:32px;max-width:900px;width:90%;max-height:90vh;overflow-y:auto}
@@ -103,7 +106,25 @@ body{margin:0;padding:0;overflow:hidden}
 
 <div class="container">
     <div class="header">
-        <h1 class="title">Monitoramento de Atendimentos</h1>
+        <h1 class="title">📅 Monitoramento de Atendimentos</h1>
+        <div class="legend">
+            <div class="legendItem">
+                <div class="legendColor" style="background:#f59e0b"></div>
+                <span>Pendente</span>
+            </div>
+            <div class="legendItem">
+                <div class="legendColor" style="background:#3b82f6"></div>
+                <span>Documento Enviado</span>
+            </div>
+            <div class="legendItem">
+                <div class="legendColor" style="background:#10b981"></div>
+                <span>Aprovado</span>
+            </div>
+            <div class="legendItem">
+                <div class="legendColor" style="background:#dc2626"></div>
+                <span>Rejeitado</span>
+            </div>
+        </div>
     </div>
     <div class="calendar"><div id="calendar"></div></div>
 </div>
