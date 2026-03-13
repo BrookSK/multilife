@@ -1497,7 +1497,7 @@ if (!empty($debugLogs)) {
     echo '</div>';
 }
 
-echo '<div style="padding:12px 16px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+echo '<div style="padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
 echo '<button onclick="syncEvolution()" id="syncBtn" class="whatsapp-sync-btn">';
 echo '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="syncIcon"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>';
