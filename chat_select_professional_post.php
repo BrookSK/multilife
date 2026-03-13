@@ -107,6 +107,23 @@ if (!in_array($frequency, $allowedFreq, true)) {
 $db = db();
 
 // ============================================================================
+// VALIDAÇÃO CRÍTICA: PATIENT_ID
+// ============================================================================
+error_log("=== VALIDAÇÃO CRÍTICA: PATIENT_ID ===");
+error_log("Patient ID recebido do formulário: " . var_export($patientId, true));
+error_log("Tipo do Patient ID: " . gettype($patientId));
+
+if ($patientId <= 0) {
+    error_log("❌ ERRO CRÍTICO: Patient ID inválido ou não informado");
+    error_log("Valor recebido: $patientId");
+    flash_set('error', 'Paciente não selecionado. Por favor, selecione um paciente válido.');
+    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
+    exit;
+}
+
+error_log("✓ Patient ID validado: $patientId (tipo: " . gettype($patientId) . ")");
+
+// ============================================================================
 // BUSCAR DADOS NO BANCO
 // ============================================================================
 error_log("=== BUSCANDO DADOS NO BANCO ===");
@@ -118,26 +135,29 @@ $stmt->execute(['id' => $demandId]);
 $demand = $stmt->fetch();
 
 if (!$demand) {
-    error_log("ERRO: Demanda não encontrada - ID: $demandId");
+    error_log("❌ ERRO: Demanda não encontrada - ID: $demandId");
     flash_set('error', 'Demanda não encontrada.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
 error_log("✓ Demanda encontrada: " . $demand['title'] . " (Status: " . $demand['status'] . ")");
 
-// Buscar dados do paciente
+// Buscar dados do paciente (VALIDAÇÃO CRÍTICA)
+error_log("=== VALIDAÇÃO CRÍTICA: VERIFICANDO SE PACIENTE EXISTE NO BANCO ===");
 error_log("Buscando paciente ID: $patientId");
 $stmt = $db->prepare('SELECT id, full_name, email, phone_primary, whatsapp FROM patients WHERE id = :id AND deleted_at IS NULL');
 $stmt->execute(['id' => $patientId]);
 $patient = $stmt->fetch();
 
 if (!$patient) {
-    error_log("ERRO: Paciente não encontrado - ID: $patientId");
-    flash_set('error', 'Paciente não encontrado.');
+    error_log("❌ ERRO CRÍTICO: Paciente #$patientId NÃO EXISTE no banco de dados");
+    error_log("Query executada: SELECT id, full_name FROM patients WHERE id = $patientId AND deleted_at IS NULL");
+    error_log("Resultado: NULL (paciente não encontrado ou foi deletado)");
+    flash_set('error', 'Paciente não encontrado no sistema. Por favor, verifique se o paciente está cadastrado.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
     exit;
 }
-error_log("✓ Paciente encontrado: " . $patient['full_name']);
+error_log("✓ Paciente VALIDADO e ENCONTRADO no banco: " . $patient['full_name'] . " (ID: " . $patient['id'] . ")");
 
 // Buscar dados do profissional
 error_log("Buscando profissional ID: $professionalUserId");
@@ -279,6 +299,14 @@ try {
     
     $operatorName = explode('@', $operatorEmail)[0];
     
+    error_log("=== SALVANDO AUTHORIZATION_REQUEST ===");
+    error_log("Dados a serem salvos:");
+    error_log("  - demand_id: $demandId");
+    error_log("  - patient_id: $patientId (CRÍTICO)");
+    error_log("  - professional_user_id: $professionalUserId");
+    error_log("  - proposal_value: $proposalValue");
+    error_log("  - agreed_value: $agreedValue");
+    
     $stmt->execute([
         'demand_id' => $demandId,
         'patient_id' => $patientId,
@@ -301,6 +329,21 @@ try {
     
     $authRequestId = (int)$db->lastInsertId();
     error_log("✓ Authorization request criado - ID: $authRequestId");
+    error_log("✓ Patient ID salvo na autorização: $patientId");
+    
+    // Verificar se patient_id foi realmente salvo
+    $verifyStmt = $db->prepare("SELECT patient_id FROM authorization_requests WHERE id = :id");
+    $verifyStmt->execute(['id' => $authRequestId]);
+    $verifyResult = $verifyStmt->fetch();
+    $savedPatientId = $verifyResult ? (int)$verifyResult['patient_id'] : 0;
+    
+    if ($savedPatientId === $patientId) {
+        error_log("✓✓✓ CONFIRMADO: Patient ID $patientId foi salvo corretamente na autorização #$authRequestId");
+    } else {
+        error_log("❌❌❌ ERRO: Patient ID NÃO foi salvo corretamente!");
+        error_log("Esperado: $patientId | Salvo: $savedPatientId");
+        throw new Exception("Erro ao salvar patient_id na autorização");
+    }
     
     // Atualizar status da demanda
     error_log("Atualizando status da demanda...");

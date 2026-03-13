@@ -37,7 +37,20 @@ function process_single_authorization(int $authId, int $emailId): array
         $totalSessions = (int)$request['total_sessions'];
         $sessionsPerWeek = (int)$request['sessions_per_week'];
         
-        error_log("[PROCESS_SINGLE_AUTH] Paciente ID da autorização: $patientId");
+        error_log("[PROCESS_SINGLE_AUTH] === DADOS DA AUTORIZAÇÃO ===");
+        error_log("[PROCESS_SINGLE_AUTH] Demand ID: $demandId");
+        error_log("[PROCESS_SINGLE_AUTH] Patient ID: $patientId (CRÍTICO)");
+        error_log("[PROCESS_SINGLE_AUTH] Professional User ID: $professionalUserId");
+        error_log("[PROCESS_SINGLE_AUTH] Proposal Value: $proposalValue");
+        error_log("[PROCESS_SINGLE_AUTH] Agreed Value: $agreedValue");
+        error_log("[PROCESS_SINGLE_AUTH] Total Sessions: $totalSessions");
+        
+        if ($patientId <= 0) {
+            error_log("[PROCESS_SINGLE_AUTH] ❌❌❌ ERRO CRÍTICO: Patient ID inválido na autorização!");
+            error_log("[PROCESS_SINGLE_AUTH] Valor do patient_id: $patientId");
+            error_log("[PROCESS_SINGLE_AUTH] A coluna patient_id pode não existir na tabela ou não foi salva corretamente");
+            return ['success' => false, 'error' => 'Patient ID inválido na autorização. Verifique se a migration foi executada.'];
+        }
         
         // Buscar e-mail
         $emailStmt = $db->prepare(
@@ -156,16 +169,27 @@ function process_single_authorization(int $authId, int $emailId): array
             }
             
             // Verificar se paciente existe (patient_id já vem da autorização)
-            error_log("[PROCESS_SINGLE_AUTH] Verificando se paciente #$patientId existe");
-            $verifyPatient = $db->prepare("SELECT id FROM patients WHERE id = :id AND deleted_at IS NULL");
+            error_log("[PROCESS_SINGLE_AUTH] === VALIDAÇÃO CRÍTICA: VERIFICANDO PACIENTE NO BANCO ===");
+            error_log("[PROCESS_SINGLE_AUTH] Buscando paciente ID: $patientId");
+            error_log("[PROCESS_SINGLE_AUTH] Query: SELECT id, full_name FROM patients WHERE id = $patientId AND deleted_at IS NULL");
+            
+            $verifyPatient = $db->prepare("SELECT id, full_name FROM patients WHERE id = :id AND deleted_at IS NULL");
             $verifyPatient->execute(['id' => $patientId]);
-            if (!$verifyPatient->fetch()) {
+            $patientData = $verifyPatient->fetch();
+            
+            if (!$patientData) {
                 $db->rollBack();
-                error_log("[PROCESS_SINGLE_AUTH] ❌ Paciente #$patientId não existe ou foi deletado");
+                error_log("[PROCESS_SINGLE_AUTH] ❌❌❌ ERRO CRÍTICO: Paciente #$patientId NÃO EXISTE no banco de dados");
+                error_log("[PROCESS_SINGLE_AUTH] Possíveis causas:");
+                error_log("[PROCESS_SINGLE_AUTH]   1. Paciente foi deletado (deleted_at IS NOT NULL)");
+                error_log("[PROCESS_SINGLE_AUTH]   2. ID do paciente está incorreto");
+                error_log("[PROCESS_SINGLE_AUTH]   3. Paciente nunca foi cadastrado");
                 return ['success' => false, 'error' => 'Paciente não encontrado no sistema'];
             }
             
-            error_log("[PROCESS_SINGLE_AUTH] ✓ Paciente #$patientId validado com sucesso");
+            error_log("[PROCESS_SINGLE_AUTH] ✓✓✓ Paciente VALIDADO com sucesso!");
+            error_log("[PROCESS_SINGLE_AUTH] Nome: " . $patientData['full_name']);
+            error_log("[PROCESS_SINGLE_AUTH] ID: " . $patientData['id']);
             
             // Criar atendimento
             $startDate = (string)$request['start_date'];
