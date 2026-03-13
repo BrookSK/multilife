@@ -19,6 +19,7 @@ if ($currentYear < 2020 || $currentYear > 2030) {
 }
 
 // Buscar agendamentos do profissional (via patient_assignments)
+// Apenas agendamentos aprovados na pré-admissão
 $appointmentsStmt = db()->prepare("
     SELECT 
         pa.id,
@@ -41,6 +42,7 @@ $appointmentsStmt = db()->prepare("
     WHERE pa.professional_user_id = ?
     AND YEAR(pa.created_at) = ?
     AND MONTH(pa.created_at) = ?
+    AND pa.status = 'approved'
     ORDER BY pa.created_at ASC
 ");
 $appointmentsStmt->execute([$userId, $currentYear, $currentMonth]);

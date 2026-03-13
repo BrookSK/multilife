@@ -20,9 +20,10 @@ $sql = "SELECT a.id, a.first_at, a.status, a.value_per_session, a.created_at,
         INNER JOIN patients p ON p.id = a.patient_id
         INNER JOIN users u ON u.id = a.professional_user_id
         LEFT JOIN demands d ON d.id = a.demand_id
-        LEFT JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.demand_id = d.id
+        INNER JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.demand_id = d.id
         WHERE a.status IN ('agendado', 'pendente_formulario', 'realizado')
-        AND a.first_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+        AND a.first_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        AND pa.status = 'approved'";
 
 $appointments = $db->query($sql)->fetchAll();
 
