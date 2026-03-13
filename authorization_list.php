@@ -64,15 +64,17 @@ foreach ($rows as $r) {
     }
 }
 
-echo '<div class="pageHeader">';
+echo '<section class="card col12">';
+echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Autorização de Propostas</div>';
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Gerencie propostas enviadas às operadoras e acompanhe respostas</div>';
 echo '</div>';
-echo '<div class="pageHeaderActions">';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a href="/demands_list.php" class="btn">← Voltar para Captação</a>';
 echo '</div>';
 echo '</div>';
+echo '</section>';
 
 echo '<div class="card" style="margin-bottom:20px">';
 echo '<form method="get" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">';
