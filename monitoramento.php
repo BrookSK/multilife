@@ -194,6 +194,9 @@ document.addEventListener('DOMContentLoaded', function() {
         initialView: 'dayGridMonth',
         locale: 'pt-br',
         headerToolbar: {left:'prev,next today',center:'title',right:'dayGridMonth,timeGridWeek'},
+        height: '100%',
+        contentHeight: 'auto',
+        expandRows: true,
         events: events,
         eventClick: function(info) {
             const p = info.event.extendedProps;
