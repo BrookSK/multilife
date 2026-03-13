@@ -494,21 +494,23 @@ try {
         error_log("From: $fromEmail ($fromName)");
         error_log("To: $operatorEmail");
         
-        $smtp->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $emailBody);
+        $messageId = $smtp->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $emailBody);
         error_log("✓ E-mail enviado com sucesso");
+        error_log("✓ Message-ID: $messageId");
         
-        // Atualizar registro com data de envio e prazo de resposta
+        // Atualizar registro com data de envio, prazo de resposta e Message-ID para rastreamento
         $sentAt = date('Y-m-d H:i:s');
         $responseDeadline = date('Y-m-d H:i:s', strtotime('+5 minutes'));
         
         $stmt = $db->prepare(
             'UPDATE authorization_requests 
-             SET sent_at = :sent, response_deadline = :deadline 
+             SET sent_at = :sent, response_deadline = :deadline, sent_message_id = :msg_id
              WHERE id = :id'
         );
         $stmt->execute([
             'sent' => $sentAt,
             'deadline' => $responseDeadline,
+            'msg_id' => $messageId,
             'id' => $authRequestId
         ]);
         

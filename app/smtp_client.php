@@ -131,7 +131,7 @@ final class SmtpClient
         }
     }
 
-    public function send(string $fromEmail, string $fromName, string $toEmail, string $subject, string $bodyText): void
+    public function send(string $fromEmail, string $fromName, string $toEmail, string $subject, string $bodyText): string
     {
         $fromEmail = trim($fromEmail);
         $toEmail = trim($toEmail);
@@ -141,6 +141,10 @@ final class SmtpClient
 
         error_log("[SMTP] Enviando e-mail de $fromEmail para $toEmail");
         error_log("[SMTP] Assunto: $subject");
+        
+        // Gerar Message-ID único para rastreamento
+        $messageId = '<' . uniqid('multilife-', true) . '@' . gethostname() . '>';
+        error_log("[SMTP] Message-ID gerado: $messageId");
         
         $fp = $this->connect();
         try {
@@ -165,6 +169,8 @@ final class SmtpClient
             $headers[] = 'From: ' . $fromHeader;
             $headers[] = 'To: <' . $toEmail . '>';
             $headers[] = 'Subject: ' . $this->encodeHeader($subject);
+            $headers[] = 'Message-ID: ' . $messageId;
+            $headers[] = 'Date: ' . date('r');
             $headers[] = 'MIME-Version: 1.0';
             $headers[] = 'Content-Type: text/plain; charset=UTF-8';
             $headers[] = 'Content-Transfer-Encoding: 8bit';
@@ -181,6 +187,8 @@ final class SmtpClient
             $this->write($fp, 'QUIT');
             $this->expect($fp, [221, 250]);
             error_log("[SMTP] Conexão encerrada com sucesso");
+            
+            return $messageId;
         } finally {
             fclose($fp);
         }
