@@ -656,17 +656,124 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp') {
-        // Redirecionar para página de gerenciamento de eventos WhatsApp
+        // Incluir conteúdo de gerenciamento de eventos WhatsApp diretamente
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Eventos WhatsApp</div>';
+        
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo '<strong>📱 Sistema de Eventos WhatsApp</strong><br>';
+        echo 'Gerencie mensagens automáticas baseadas em eventos do sistema.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Templates configuráveis para profissionais e pacientes<br>';
+        echo '• Variáveis dinâmicas (nome, data, links, etc)<br>';
+        echo '• Anexos de arquivos (PDF, imagens, documentos)<br>';
+        echo '• Links adicionais personalizados<br>';
+        echo '• Log completo de envios para auditoria<br>';
+        echo '• Ativar/desativar eventos individualmente';
+        echo '</div>';
+        echo '</div>';
+        
+        // Buscar eventos WhatsApp
+        $stmtEvents = db()->query("
+            SELECT 
+                id,
+                name,
+                system_event,
+                status,
+                send_to_professional,
+                send_to_patient,
+                created_at
+            FROM whatsapp_events
+            ORDER BY name ASC
+        ");
+        $whatsappEvents = $stmtEvents->fetchAll();
+        
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">';
+        echo '<a class="btn btnPrimary" href="/admin_whatsapp_events_edit.php">+ Criar Evento</a>';
+        echo '</div>';
+        
+        if (empty($whatsappEvents)) {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:16px">📭</div>';
+            echo '<div style="font-size:16px;color:hsl(var(--muted-foreground));margin-bottom:16px">Nenhum evento configurado</div>';
+            echo '<a class="btn btnPrimary" href="/admin_whatsapp_events_edit.php">Criar primeiro evento</a>';
+            echo '</div>';
+        } else {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead>';
+            echo '<tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Evento</th>';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Evento do Sistema</th>';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Destinatário</th>';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Status</th>';
+            echo '<th style="padding:12px;text-align:right;font-weight:600">Ações</th>';
+            echo '</tr>';
+            echo '</thead>';
+            echo '<tbody>';
+            
+            foreach ($whatsappEvents as $evt) {
+                $sendToProfessional = (bool)$evt['send_to_professional'];
+                $sendToPatient = (bool)$evt['send_to_patient'];
+                
+                $recipientType = 'Nenhum';
+                $recipientBadge = 'background:#6c757d;color:white';
+                
+                if ($sendToProfessional && $sendToPatient) {
+                    $recipientType = 'Ambos';
+                    $recipientBadge = 'background:#0dcaf0;color:white';
+                } elseif ($sendToProfessional) {
+                    $recipientType = 'Profissional';
+                    $recipientBadge = 'background:#0d6efd;color:white';
+                } elseif ($sendToPatient) {
+                    $recipientType = 'Paciente';
+                    $recipientBadge = 'background:#198754;color:white';
+                }
+                
+                $statusBadge = $evt['status'] === 'active' 
+                    ? '<span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;background:#198754;color:white">Ativo</span>'
+                    : '<span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;background:#6c757d;color:white">Inativo</span>';
+                
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px"><strong>' . h($evt['name']) . '</strong></td>';
+                echo '<td style="padding:12px"><code style="background:hsl(var(--muted));padding:2px 6px;border-radius:4px;font-size:12px">' . h($evt['system_event']) . '</code></td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;' . $recipientBadge . '">' . h($recipientType) . '</span></td>';
+                echo '<td style="padding:12px">' . $statusBadge . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<a class="btn btnSmall" href="/admin_whatsapp_events_edit.php?id=' . (int)$evt['id'] . '">Editar</a> ';
+                echo '<button class="btn btnSmall btnDanger" onclick="deleteWhatsAppEvent(' . (int)$evt['id'] . ', \'' . h($evt['name']) . '\')">Excluir</button>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody>';
+            echo '</table>';
+            echo '</div>';
+        }
+        
         echo '<script>';
-        echo 'window.location.href = "/admin_whatsapp_events.php";';
+        echo 'function deleteWhatsAppEvent(eventId, eventName) {';
+        echo '  if (!confirm("Tem certeza que deseja excluir o evento \\"" + eventName + "\\"?\\n\\nEsta ação não pode ser desfeita.")) return;';
+        echo '  fetch("/admin_whatsapp_events_delete_post.php", {';
+        echo '    method: "POST",';
+        echo '    headers: {"Content-Type": "application/x-www-form-urlencoded"},';
+        echo '    body: "id=" + eventId';
+        echo '  })';
+        echo '  .then(response => response.json())';
+        echo '  .then(data => {';
+        echo '    if (data.success) {';
+        echo '      window.location.reload();';
+        echo '    } else {';
+        echo '      alert("Erro ao excluir evento: " + (data.error || "Erro desconhecido"));';
+        echo '    }';
+        echo '  })';
+        echo '  .catch(error => {';
+        echo '    alert("Erro ao excluir evento: " + error.message);';
+        echo '  });';
+        echo '}';
         echo '</script>';
         
-        echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Redirecionando...</div>';
-        echo '<div style="padding:20px;text-align:center">';
-        echo '<div style="font-size:16px;margin-bottom:16px">Redirecionando para gerenciamento de templates WhatsApp...</div>';
-        echo '<a class="btn btnPrimary" href="/admin_whatsapp_events.php">Clique aqui se não for redirecionado automaticamente</a>';
-        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'E-mail') {
         // Aba especial de E-mail com gerenciamento de eventos
