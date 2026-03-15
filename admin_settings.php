@@ -111,7 +111,6 @@ echo '.configTab svg{width:16px;height:16px;flex-shrink:0}';
 echo '.configPanel{display:none}';
 echo '.configPanel.isActive{display:block}';
 echo '</style>';
-echo '<form method="post" action="/admin_settings_post.php">';
 
 $sections = [
     'Aparência' => [
@@ -184,7 +183,6 @@ $sections = [
     ],
 ];
 
-echo '</form>';
 echo '<div class="configTabs">';
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
@@ -196,6 +194,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
     $idx++;
 }
 echo '</div>';
+
 echo '<form method="post" action="/admin_settings_post.php">';
 
 $idx = 0;
