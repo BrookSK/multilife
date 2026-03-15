@@ -1663,64 +1663,69 @@ echo '</form>';
 
 echo '</section>';
 
-echo '<script>';
-echo '(function(){';
-echo '  console.log("Inicializando navegação das abas...");';
-echo '  const tabs = document.querySelectorAll(".configTab");';
-echo '  console.log("Tabs encontradas:", tabs.length);';
-echo '  const panels = document.querySelectorAll(".configPanel");';
-echo '  console.log("Painéis encontrados:", panels.length);';
-echo '  ';
-echo '  tabs.forEach(function(tab, index){';
-echo '    console.log("Tab " + index + ":", tab.getAttribute("data-tab"));';
-echo '    tab.addEventListener("click", function(e){';
-echo '      e.preventDefault();';
-echo '      e.stopPropagation();';
-echo '      console.log("=== CLIQUE NA TAB ===");';
-echo '      console.log("Tab clicada:", this.getAttribute("data-tab"));';
-echo '      const targetId = this.getAttribute("data-tab");';
-echo '      const targetPanel = document.getElementById(targetId);';
-echo '      console.log("Painel alvo encontrado:", targetPanel ? "SIM" : "NÃO");';
-echo '      ';
-echo '      tabs.forEach(function(t){ t.classList.remove("isActive"); });';
-echo '      panels.forEach(function(p){ p.classList.remove("isActive"); });';
-echo '      ';
-echo '      this.classList.add("isActive");';
-echo '      if(targetPanel){';
-echo '        targetPanel.classList.add("isActive");';
-echo '        console.log("Painel ativado:", targetId);';
-echo '      } else {';
-echo '        console.error("Painel não encontrado:", targetId);';
-echo '      }';
-echo '    });';
-echo '  });';
-echo '  ';
-echo '  console.log("Navegação das abas configurada com sucesso!");';
-echo '})();';
-echo 'function togglePassword(fieldId){';
-echo '  const field = document.getElementById(fieldId);';
-echo '  const button = field.nextElementSibling;';
-echo '  if(field.type === "password"){';
-echo '    field.type = "text";';
-echo '    button.textContent = "Ocultar";';
-echo '  } else {';
-echo '    field.type = "password";';
-echo '    button.textContent = "Revelar";';
-echo '  }';
-echo '}';
-echo 'function toggleAccordion(header){';
-echo '  const content = header.nextElementSibling;';
-echo '  const isOpen = header.classList.contains("isOpen");';
-echo '  if(isOpen){';
-echo '    header.classList.remove("isOpen");';
-echo '    content.classList.remove("isOpen");';
-echo '  }else{';
-echo '    header.classList.add("isOpen");';
-echo '    content.classList.add("isOpen");';
-echo '  }';
-echo '}';
-echo '</script>';
+?>
+<script>
+console.log("=== SCRIPT CARREGADO ===");
+(function(){
+  console.log("Inicializando navegação das abas...");
+  var tabs = document.querySelectorAll(".configTab");
+  console.log("Tabs encontradas:", tabs.length);
+  var panels = document.querySelectorAll(".configPanel");
+  console.log("Painéis encontrados:", panels.length);
+  
+  tabs.forEach(function(tab, index){
+    console.log("Tab " + index + ":", tab.getAttribute("data-tab"));
+    tab.addEventListener("click", function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("=== CLIQUE NA TAB ===");
+      console.log("Tab clicada:", this.getAttribute("data-tab"));
+      var targetId = this.getAttribute("data-tab");
+      var targetPanel = document.getElementById(targetId);
+      console.log("Painel alvo encontrado:", targetPanel ? "SIM" : "NÃO");
+      
+      tabs.forEach(function(t){ t.classList.remove("isActive"); });
+      panels.forEach(function(p){ p.classList.remove("isActive"); });
+      
+      this.classList.add("isActive");
+      if(targetPanel){
+        targetPanel.classList.add("isActive");
+        console.log("Painel ativado:", targetId);
+      } else {
+        console.error("Painel não encontrado:", targetId);
+      }
+    });
+  });
+  
+  console.log("Navegação das abas configurada com sucesso!");
+})();
 
+function togglePassword(fieldId){
+  var field = document.getElementById(fieldId);
+  var button = field.nextElementSibling;
+  if(field.type === "password"){
+    field.type = "text";
+    button.textContent = "Ocultar";
+  } else {
+    field.type = "password";
+    button.textContent = "Revelar";
+  }
+}
+
+function toggleAccordion(header){
+  var content = header.nextElementSibling;
+  var isOpen = header.classList.contains("isOpen");
+  if(isOpen){
+    header.classList.remove("isOpen");
+    content.classList.remove("isOpen");
+  }else{
+    header.classList.add("isOpen");
+    content.classList.add("isOpen");
+  }
+}
+</script>
+
+<?php
 echo '</div>';
 
 view_footer();
