@@ -1665,13 +1665,16 @@ echo '</section>';
 
 ?>
 <script>
+alert("JavaScript carregado!");
 console.log("=== SCRIPT CARREGADO ===");
 (function(){
   console.log("Inicializando navegação das abas...");
   var tabs = document.querySelectorAll(".configTab");
   console.log("Tabs encontradas:", tabs.length);
+  alert("Tabs encontradas: " + tabs.length);
   var panels = document.querySelectorAll(".configPanel");
   console.log("Painéis encontrados:", panels.length);
+  alert("Painéis encontrados: " + panels.length);
   
   tabs.forEach(function(tab, index){
     console.log("Tab " + index + ":", tab.getAttribute("data-tab"));
