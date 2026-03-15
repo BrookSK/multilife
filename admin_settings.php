@@ -1589,7 +1589,18 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<label>Link Manager (Opcional)<input name="settings[evolution.manager_url]" value="' . h($settings['evolution.manager_url'] ?? '') . '" placeholder="http://31.97.83.150:8080/manager/"><span class="helpText">URL do painel de gerenciamento (opcional)</span></label>';
         
-        echo '<label>Token (API Key)<input type="password" name="settings[evolution.api_key]" value="" placeholder="Cole o token da Evolution API aqui"><span class="helpText">Deixe vazio para manter o valor atual. Token de autenticação da API.</span></label>';
+        $apiKeyVal = $settings['evolution.api_key'] ?? '';
+        $hasApiKey = !empty($apiKeyVal);
+        $maskedApiKey = $hasApiKey ? str_repeat('•', 32) : '';
+        echo '<label>Token (API Key)';
+        echo '<div style="position:relative">';
+        echo '<input type="password" id="field_evolution_api_key_special" name="settings[evolution.api_key]" value="' . h($apiKeyVal) . '" placeholder="' . ($hasApiKey ? $maskedApiKey : 'Cole o token da Evolution API aqui') . '" style="padding-right:80px">';
+        if ($hasApiKey) {
+            echo '<button type="button" onclick="togglePassword(\'field_evolution_api_key_special\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:hsl(var(--primary));color:white;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Revelar</button>';
+        }
+        echo '</div>';
+        echo '<span class="helpText">Deixe vazio para manter o valor atual. Token de autenticação da API.</span>';
+        echo '</label>';
         
         echo '<label>Nome da Instância Padrão<input name="settings[evolution.instance]" value="' . h($instanceVal) . '" placeholder="multilife"><span class="helpText">Nome da instância WhatsApp padrão</span></label>';
         
@@ -1873,7 +1884,19 @@ foreach ($sections as $sectionTitle => $sectionData) {
             $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';
             
             if ($isSensitive) {
-                echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
+                $hasValue = !empty($val);
+                $maskedValue = $hasValue ? str_repeat('•', 32) : '';
+                $fieldId = 'field_' . str_replace('.', '_', $key);
+                
+                echo '<label>' . h($label);
+                echo '<div style="position:relative">';
+                echo '<input type="password" id="' . $fieldId . '" name="settings[' . h($key) . ']" value="' . h($val) . '" placeholder="' . ($hasValue ? $maskedValue : '(vazio - preencha para alterar)') . '" style="padding-right:80px">';
+                if ($hasValue) {
+                    echo '<button type="button" onclick="togglePassword(\'' . $fieldId . '\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:hsl(var(--primary));color:white;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Revelar</button>';
+                }
+                echo '</div>';
+                echo '<span class="helpText">Deixe vazio para manter o valor atual</span>';
+                echo '</label>';
             } elseif ($isTemplate) {
                 echo '<label>' . h($label) . '<textarea name="settings[' . h($key) . ']" rows="4" placeholder="(configure)">' . h($val) . '</textarea></label>';
             } else {
@@ -1904,6 +1927,17 @@ echo '    this.classList.add("isActive");';
 echo '    document.getElementById(targetId).classList.add("isActive");';
 echo '  });';
 echo '});';
+echo 'function togglePassword(fieldId){';
+echo '  const field = document.getElementById(fieldId);';
+echo '  const button = field.nextElementSibling;';
+echo '  if(field.type === "password"){';
+echo '    field.type = "text";';
+echo '    button.textContent = "Ocultar";';
+echo '  } else {';
+echo '    field.type = "password";';
+echo '    button.textContent = "Revelar";';
+echo '  }';
+echo '}';
 echo 'function toggleAccordion(header){';
 echo '  const content = header.nextElementSibling;';
 echo '  const isOpen = header.classList.contains("isOpen");';
