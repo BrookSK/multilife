@@ -1669,28 +1669,15 @@ view_footer();
 ?>
 
 <script>
-alert("JavaScript carregado!");
-console.log("=== SCRIPT CARREGADO ===");
 (function(){
-  console.log("Inicializando navegação das abas...");
   var tabs = document.querySelectorAll(".configTab");
-  console.log("Tabs encontradas:", tabs.length);
-  alert("Tabs encontradas: " + tabs.length);
   var panels = document.querySelectorAll(".configPanel");
-  console.log("Painéis encontrados:", panels.length);
-  alert("Painéis encontrados: " + panels.length);
   
-  tabs.forEach(function(tab, index){
-    console.log("Tab " + index + ":", tab.getAttribute("data-tab"));
+  tabs.forEach(function(tab){
     tab.addEventListener("click", function(e){
       e.preventDefault();
-      e.stopPropagation();
-      alert("Clicou na tab: " + this.getAttribute("data-tab"));
-      console.log("=== CLIQUE NA TAB ===");
-      console.log("Tab clicada:", this.getAttribute("data-tab"));
       var targetId = this.getAttribute("data-tab");
       var targetPanel = document.getElementById(targetId);
-      console.log("Painel alvo encontrado:", targetPanel ? "SIM" : "NÃO");
       
       tabs.forEach(function(t){ t.classList.remove("isActive"); });
       panels.forEach(function(p){ p.classList.remove("isActive"); });
@@ -1698,14 +1685,9 @@ console.log("=== SCRIPT CARREGADO ===");
       this.classList.add("isActive");
       if(targetPanel){
         targetPanel.classList.add("isActive");
-        console.log("Painel ativado:", targetId);
-      } else {
-        console.error("Painel não encontrado:", targetId);
       }
     });
   });
-  
-  console.log("Navegação das abas configurada com sucesso!");
 })();
 
 function togglePassword(fieldId){
