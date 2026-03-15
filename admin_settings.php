@@ -906,7 +906,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '});';
         echo '</script>';
         
-        echo '</div>'
+        echo '</div>';
     } elseif ($sectionTitle === 'Funções') {
         // Aba especial de Funções (Roles)
         echo '<div class="formSection">';
