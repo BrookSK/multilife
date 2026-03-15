@@ -445,11 +445,12 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo '</div>';
         } else {
             echo '<div style="margin-bottom:16px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">';
-            echo 'Escaneie o QR Code com o WhatsApp para conectar a instância <strong>' . h($instanceNameQR) . '</strong>.';
+            echo 'Clique no botão abaixo para gerar o QR Code e conectar a instância <strong>' . h($instanceNameQR) . '</strong>.';
             echo '</div>';
             
             echo '<div style="text-align:center;padding:20px">';
-            echo '<div id="qrcode-container" style="display:inline-block;padding:20px;background:white;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1)">';
+            echo '<button class="btn btnPrimary" onclick="loadQRCode()" style="margin-bottom:20px">Gerar QR Code</button>';
+            echo '<div id="qrcode-container" style="display:inline-block;padding:20px;background:white;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1);display:none">';
             echo '<div style="color:#666;padding:40px">Carregando QR Code...</div>';
             echo '</div>';
             echo '<div id="status-message" style="margin-top:20px;font-size:14px;color:hsl(var(--muted-foreground))"></div>';
@@ -458,6 +459,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo '<script>';
             echo 'let checkInterval;';
             echo 'function loadQRCode(){';
+            echo '  document.getElementById("qrcode-container").style.display = "inline-block";';
             echo '  console.log("Iniciando carregamento do QR Code...");';
             echo '  fetch("/evolution_proxy.php?action=connect&instance=' . urlencode($instanceNameQR) . '")';
             echo '  .then(r => {';
@@ -518,7 +520,6 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo 'function startStatusCheck(){';
             echo '  checkInterval = setInterval(checkStatus, 3000);';
             echo '}';
-            echo 'loadQRCode();';
             echo '</script>';
         }
         
@@ -1662,8 +1663,11 @@ echo '</div>';
 echo '</form>';
 
 echo '</section>';
+echo '</div>';
 
+view_footer();
 ?>
+
 <script>
 alert("JavaScript carregado!");
 console.log("=== SCRIPT CARREGADO ===");
@@ -1681,6 +1685,7 @@ console.log("=== SCRIPT CARREGADO ===");
     tab.addEventListener("click", function(e){
       e.preventDefault();
       e.stopPropagation();
+      alert("Clicou na tab: " + this.getAttribute("data-tab"));
       console.log("=== CLIQUE NA TAB ===");
       console.log("Tab clicada:", this.getAttribute("data-tab"));
       var targetId = this.getAttribute("data-tab");
@@ -1726,9 +1731,4 @@ function toggleAccordion(header){
     content.classList.add("isOpen");
   }
 }
-</script>
-
-<?php
-echo '</div>';
-
-view_footer();
+</script><?php
