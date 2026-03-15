@@ -7,8 +7,6 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp.manage');
 
-header('Content-Type: application/json; charset=utf-8');
-
 try {
     $eventId = isset($_POST['id']) ? (int)$_POST['id'] : null;
     $name = trim($_POST['name'] ?? '');
@@ -151,11 +149,9 @@ try {
     
     db()->commit();
     
-    echo json_encode([
-        'success' => true,
-        'event_id' => $eventId,
-        'redirect' => '/admin_whatsapp_events.php'
-    ]);
+    flash_set('success', 'Evento salvo com sucesso!');
+    header('Location: /admin_settings.php');
+    exit;
     
 } catch (Exception $e) {
     if (db()->inTransaction()) {
@@ -163,8 +159,12 @@ try {
     }
     
     error_log("[WHATSAPP_EVENT_SAVE] Erro: " . $e->getMessage());
-    echo json_encode([
-        'success' => false,
-        'error' => $e->getMessage()
-    ]);
+    flash_set('error', 'Erro ao salvar evento: ' . $e->getMessage());
+    
+    $redirectUrl = isset($_POST['id']) && $_POST['id'] 
+        ? '/admin_whatsapp_events_edit.php?id=' . (int)$_POST['id']
+        : '/admin_whatsapp_events_edit.php';
+    
+    header('Location: ' . $redirectUrl);
+    exit;
 }

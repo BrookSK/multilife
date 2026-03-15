@@ -776,9 +776,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
     } elseif ($sectionTitle === 'E-mail') {
-        // Aba especial de E-mail com gerenciamento de eventos
+        // Incluir conteúdo de gerenciamento de eventos de E-mail diretamente
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Configurações de E-mail</div>';
+        echo '<div class="formSectionTitle">Eventos de E-mail</div>';
         
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
@@ -794,25 +794,107 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         echo '</div>';
         
+        // Buscar eventos de E-mail
+        $stmtEmailEvents = db()->query("
+            SELECT 
+                id,
+                name,
+                system_event,
+                status,
+                send_to_professional,
+                send_to_patient,
+                created_at
+            FROM email_events
+            ORDER BY name ASC
+        ");
+        $emailEvents = $stmtEmailEvents->fetchAll();
+        
         echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">';
-        echo '<a class="btn btnPrimary" href="/admin_email_events.php" style="font-size:16px;padding:12px 24px">📧 Gerenciar Eventos de E-mail</a>';
+        echo '<a class="btn btnPrimary" href="/admin_email_events_edit.php">+ Criar Evento</a>';
         echo '</div>';
         
-        echo '<div style="padding:12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:20px">';
-        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
-        echo '<strong>⚠️ Migração de Templates Hardcoded:</strong><br>';
-        echo 'Os templates abaixo são antigos que ainda estão no código.<br>';
-        echo 'Recomendamos migrar para o novo sistema de eventos para facilitar a edição sem alterar código.';
-        echo '</div>';
-        echo '</div>';
+        if (empty($emailEvents)) {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:16px">📧</div>';
+            echo '<div style="font-size:16px;color:hsl(var(--muted-foreground));margin-bottom:16px">Nenhum evento configurado</div>';
+            echo '<a class="btn btnPrimary" href="/admin_email_events_edit.php">Criar primeiro evento</a>';
+            echo '</div>';
+        } else {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead>';
+            echo '<tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Evento</th>';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Evento do Sistema</th>';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Destinatário</th>';
+            echo '<th style="padding:12px;text-align:left;font-weight:600">Status</th>';
+            echo '<th style="padding:12px;text-align:right;font-weight:600">Ações</th>';
+            echo '</tr>';
+            echo '</thead>';
+            echo '<tbody>';
+            
+            foreach ($emailEvents as $evt) {
+                $sendToProfessional = (bool)$evt['send_to_professional'];
+                $sendToPatient = (bool)$evt['send_to_patient'];
+                
+                $recipientType = 'Nenhum';
+                $recipientBadge = 'background:#6c757d;color:white';
+                
+                if ($sendToProfessional && $sendToPatient) {
+                    $recipientType = 'Ambos';
+                    $recipientBadge = 'background:#0dcaf0;color:white';
+                } elseif ($sendToProfessional) {
+                    $recipientType = 'Profissional';
+                    $recipientBadge = 'background:#0d6efd;color:white';
+                } elseif ($sendToPatient) {
+                    $recipientType = 'Paciente';
+                    $recipientBadge = 'background:#198754;color:white';
+                }
+                
+                $statusBadge = $evt['status'] === 'active' 
+                    ? '<span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;background:#198754;color:white">Ativo</span>'
+                    : '<span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;background:#6c757d;color:white">Inativo</span>';
+                
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px"><strong>' . h($evt['name']) . '</strong></td>';
+                echo '<td style="padding:12px"><code style="background:hsl(var(--muted));padding:2px 6px;border-radius:4px;font-size:12px">' . h($evt['system_event']) . '</code></td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;' . $recipientBadge . '">' . h($recipientType) . '</span></td>';
+                echo '<td style="padding:12px">' . $statusBadge . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<a class="btn btnSmall" href="/admin_email_events_edit.php?id=' . (int)$evt['id'] . '">Editar</a> ';
+                echo '<button class="btn btnSmall btnDanger" onclick="deleteEmailEvent(' . (int)$evt['id'] . ', \'' . h($evt['name']) . '\')">Excluir</button>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody>';
+            echo '</table>';
+            echo '</div>';
+        }
         
-        echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Templates Legados (Hardcoded)</div>';
-        echo '<div style="display:grid;gap:12px">';
+        echo '<script>';
+        echo 'function deleteEmailEvent(eventId, eventName) {';
+        echo '  if (!confirm("Tem certeza que deseja excluir o evento \\"" + eventName + "\\"?\\n\\nEsta ação não pode ser desfeita.")) return;';
+        echo '  fetch("/admin_email_events_delete_post.php", {';
+        echo '    method: "POST",';
+        echo '    headers: {"Content-Type": "application/x-www-form-urlencoded"},';
+        echo '    body: "id=" + eventId';
+        echo '  })';
+        echo '  .then(response => response.json())';
+        echo '  .then(data => {';
+        echo '    if (data.success) {';
+        echo '      window.location.reload();';
+        echo '    } else {';
+        echo '      alert("Erro ao excluir evento: " + (data.error || "Erro desconhecido"));';
+        echo '    }';
+        echo '  })';
+        echo '  .catch(error => {';
+        echo '    alert("Erro ao excluir evento: " + error.message);';
+        echo '  });';
+        echo '}';
+        echo '</script>';
         
-        foreach ($sectionData['keys'] as $key) {
-            if (!isset($fields[$key])) continue;
-            $label = $fields[$key];
+        echo '</div>';
             $val = $settings[$key] ?? '';
             $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'evolution.api_key', 'zapsign.api_token'], true);
             $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';

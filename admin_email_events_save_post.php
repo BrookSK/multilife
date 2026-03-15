@@ -7,7 +7,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
 
-header('Content-Type: application/json; charset=utf-8');
+// Removido header JSON para permitir redirecionamento
 
 try {
     $eventId = isset($_POST['id']) ? (int)$_POST['id'] : null;
@@ -171,7 +171,8 @@ try {
     
     db()->commit();
     
-    header('Location: /admin_email_events.php');
+    flash_set('success', 'Evento salvo com sucesso!');
+    header('Location: /admin_settings.php');
     exit;
     
 } catch (Exception $e) {
@@ -180,8 +181,12 @@ try {
     }
     
     error_log("[EMAIL_EVENT_SAVE] Erro: " . $e->getMessage());
-    echo json_encode([
-        'success' => false,
-        'error' => $e->getMessage()
-    ]);
+    flash_set('error', 'Erro ao salvar evento: ' . $e->getMessage());
+    
+    $redirectUrl = isset($_POST['id']) && $_POST['id'] 
+        ? '/admin_email_events_edit.php?id=' . (int)$_POST['id']
+        : '/admin_email_events_edit.php';
+    
+    header('Location: ' . $redirectUrl);
+    exit;
 }
