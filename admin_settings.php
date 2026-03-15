@@ -184,6 +184,7 @@ $sections = [
     ],
 ];
 
+echo '</form>';
 echo '<div class="configTabs">';
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
@@ -195,6 +196,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
     $idx++;
 }
 echo '</div>';
+echo '<form method="post" action="/admin_settings_post.php">';
 
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
