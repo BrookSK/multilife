@@ -103,22 +103,15 @@ $fields = array_merge($fields, $fieldsAdded);
 
 echo '<section class="card col12">';
 echo '<style>';
-echo '.configContainer{display:grid;grid-template-columns:280px 1fr;gap:20px;min-height:600px}';
-echo '@media(max-width:1024px){.configContainer{grid-template-columns:1fr}}';
-echo '.configSidebar{background:hsl(var(--muted));border-radius:8px;padding:12px;max-height:calc(100vh - 200px);overflow-y:auto;position:sticky;top:20px}';
-echo '@media(max-width:1024px){.configSidebar{position:static;max-height:none;overflow-y:visible}}';
-echo '.configTabs{display:flex;flex-direction:column;gap:4px}';
-echo '.configTab{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:6px;background:transparent;border:none;cursor:pointer;font-size:14px;font-weight:600;color:hsl(var(--muted-foreground));transition:all .15s ease;text-align:left;width:100%}';
-echo '.configTab:hover{background:hsla(var(--primary)/.1);color:hsl(var(--foreground))}';
-echo '.configTab.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 2px 4px rgba(0,0,0,.15)}';
-echo '.configTab svg{width:18px;height:18px;flex-shrink:0}';
-echo '.configContent{background:white;border-radius:8px;padding:20px;min-height:400px}';
+echo '.configTabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;border-bottom:2px solid hsl(var(--border));padding-bottom:8px}';
+echo '.configTab{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px 8px 0 0;background:transparent;border:none;cursor:pointer;font-size:14px;font-weight:600;color:hsl(var(--muted-foreground));transition:all .15s ease}';
+echo '.configTab:hover{background:hsla(var(--primary)/.05);color:hsl(var(--foreground))}';
+echo '.configTab.isActive{background:hsl(var(--primary));color:hsl(var(--primary-foreground));box-shadow:0 2px 4px rgba(0,0,0,.1)}';
+echo '.configTab svg{width:16px;height:16px;flex-shrink:0}';
 echo '.configPanel{display:none}';
 echo '.configPanel.isActive{display:block}';
 echo '</style>';
 echo '<form method="post" action="/admin_settings_post.php">';
-echo '<div class="configContainer">';
-echo '<div class="configSidebar">';
 
 $sections = [
     'Aparência' => [
@@ -222,9 +215,6 @@ foreach ($sections as $sectionTitle => $sectionData) {
     $idx++;
 }
 echo '</div>';
-echo '</div>';
-
-echo '<div class="configContent">';
 
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
@@ -1899,10 +1889,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
     $idx++;
 }
 
-echo '</div>';
-echo '</div>';
-
-echo '<div style="display:flex;justify-content:flex-end;margin-top:20px;padding:0 20px">';
+echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
 echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
 echo '</div>';
 echo '</form>';
