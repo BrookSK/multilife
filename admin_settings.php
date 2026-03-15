@@ -337,8 +337,6 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
     } elseif ($sectionTitle === 'Funções') {
-        echo '</form>'; // Fecha formulário principal para evitar aninhamento
-        
         // Aba Funções - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Gerenciamento de Funções (Roles)</div>';
@@ -364,25 +362,25 @@ foreach ($sections as $sectionTitle => $sectionData) {
         $rowsRoles = $stmtRoles->fetchAll();
         
         // Formulário de busca
-        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
         echo '<input name="q_roles" value="' . h($qRoles) . '" placeholder="Buscar por nome ou slug" style="flex:1;min-width:220px">';
-        echo '<button class="btn" type="submit">Buscar</button>';
-        echo '</form>';
+        echo '<button class="btn" type="submit" formmethod="get" formaction="/admin_settings.php">Buscar</button>';
+        echo '</div>';
         
         // Formulário de criar nova função
         echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Nova Função</div>';
         
-        echo '<form method="post" action="/roles_create_post.php" style="display:grid;gap:12px">';
+        echo '<div style="display:grid;gap:12px">';
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
         echo '<label>Nome da Função *<input name="name" required placeholder="ex: Financeiro"></label>';
         echo '<label>Slug (identificador) *<input name="slug" required placeholder="ex: financeiro" pattern="[a-z0-9_-]+" title="Apenas letras minúsculas, números, hífen e underscore"></label>';
         echo '</div>';
         echo '<label>Descrição (opcional)<textarea name="description" rows="2" placeholder="Descrição da função"></textarea></label>';
         echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
-        echo '<button class="btn btnPrimary" type="submit">Criar Função</button>';
+        echo '<button class="btn btnPrimary" type="submit" formaction="/roles_create_post.php">Criar Função</button>';
         echo '</div>';
-        echo '</form>';
+        echo '</div>';
         echo '</div>';
         
         // Listagem de funções
@@ -431,9 +429,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
         echo '</div>';
-        echo '<form method="post" action="/admin_settings_post.php">'; // Reabre formulário principal
     } elseif ($sectionTitle === 'WhatsApp Instâncias') {
-        echo '</form>'; // Fecha formulário principal
         
         // Aba WhatsApp Instâncias - QR Code para Conexão
         echo '<div class="formSection">';
@@ -527,9 +523,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '</div>';
-        echo '<form method="post" action="/admin_settings_post.php">'; // Reabre formulário principal
     } elseif ($sectionTitle === 'WhatsApp Console') {
-        echo '</form>'; // Fecha formulário principal
         // Aba WhatsApp Console - Logs de Mensagens e Arquivos
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Logs de Mensagens e Arquivos WhatsApp</div>';
@@ -629,9 +623,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '</div>';
-        echo '<form method="post" action="/admin_settings_post.php">'; // Reabre formulário principal
     } elseif ($sectionTitle === 'Jobs') {
-        echo '</form>'; // Fecha formulário principal
         // Aba Jobs - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Fila de Jobs de Integração</div>';
