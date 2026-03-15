@@ -6,7 +6,32 @@
 -- EVENTOS WHATSAPP
 -- ============================================================================
 
--- 1. Onboarding de Profissional
+-- 1. Candidatura - Aprovada
+INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, created_at) VALUES
+(
+    'Candidatura - Aprovada',
+    'professional_application_approved',
+    'active',
+    1,
+    0,
+    'Olá {name}! 👋
+
+🎉 *Parabéns! Sua candidatura foi aprovada!*
+
+Você agora faz parte da equipe MultiLife Care.
+
+🔐 *Defina sua senha de acesso:*
+{password_setup_link}
+
+📧 *Seu e-mail de acesso:* {email}
+
+Após definir sua senha, você poderá acessar o sistema e começar a trabalhar conosco.
+
+Bem-vindo(a) à equipe! 💙',
+    NOW()
+);
+
+-- 2. Onboarding de Profissional
 INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, created_at) VALUES
 (
     'Onboarding - Profissional Aprovado',
@@ -33,7 +58,7 @@ Bem-vindo(a) à equipe! 💙',
     NOW()
 );
 
--- 2. Candidatura - Precisa de Mais Informações
+-- 3. Candidatura - Precisa de Mais Informações
 INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, created_at) VALUES
 (
     'Candidatura - Complemento de Informações',
@@ -77,7 +102,7 @@ Desejamos sucesso em sua carreira! 💙',
     NOW()
 );
 
--- 4. Documentos - Lembrete de Vencimento
+-- 5. Documentos - Lembrete de Vencimento
 INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, created_at) VALUES
 (
     'Documentos - Lembrete de Vencimento',
@@ -167,7 +192,7 @@ Até breve! 💙',
     NOW()
 );
 
--- 8. Captação - Notificação de Nova Demanda
+-- 9. Captação - Notificação de Nova Demanda
 INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, created_at) VALUES
 (
     'Captação - Nova Demanda Disponível',
@@ -193,7 +218,64 @@ Acesse o sistema para mais detalhes e assumir a demanda.',
 -- EVENTOS E-MAIL
 -- ============================================================================
 
--- 1. Onboarding de Profissional
+-- 1. Candidatura - Aprovada
+INSERT INTO email_events (name, system_event, status, send_to_professional, send_to_patient, subject_professional, template_professional_html, created_at) VALUES
+(
+    'Candidatura - Aprovada',
+    'professional_application_approved',
+    'active',
+    1,
+    0,
+    'Parabéns! Sua candidatura foi aprovada - MultiLife Care',
+    '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #059669; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+        .success-box { background: #d1fae5; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #059669; }
+        .button { display: inline-block; padding: 14px 28px; background: #059669; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: 600; font-size: 16px; }
+        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Parabéns, {name}!</h1>
+            <p>Sua candidatura foi aprovada</p>
+        </div>
+        
+        <div class="content">
+            <p>Você agora faz parte da equipe <strong>MultiLife Care</strong>!</p>
+            
+            <div class="success-box">
+                <h3>🔐 Próximo Passo: Defina sua Senha</h3>
+                <p><strong>E-mail de acesso:</strong> {email}</p>
+                <p>Clique no botão abaixo para criar sua senha de acesso ao sistema:</p>
+            </div>
+            
+            <p style="text-align: center;">
+                <a href="{password_setup_link}" class="button">Definir Minha Senha</a>
+            </p>
+            
+            <p><strong>⚠️ Importante:</strong> Este link é válido por 48 horas. Após definir sua senha, você terá acesso completo ao sistema.</p>
+            
+            <p>Bem-vindo(a) à equipe! 💙</p>
+        </div>
+        
+        <div class="footer">
+            <p>© 2026 MultiLife Care - Sistema de Gestão de Atendimentos</p>
+        </div>
+    </div>
+</body>
+</html>',
+    NOW()
+);
+
+-- 2. Onboarding de Profissional
 INSERT INTO email_events (name, system_event, status, send_to_professional, send_to_patient, subject_professional, template_professional_html, created_at) VALUES
 (
     'Onboarding - Profissional Aprovado',
@@ -352,7 +434,7 @@ INSERT INTO email_events (name, system_event, status, send_to_professional, send
     NOW()
 );
 
--- 4. Documentos - Lembrete
+-- 5. Documentos - Lembrete
 INSERT INTO email_events (name, system_event, status, send_to_professional, send_to_patient, subject_professional, template_professional_html, created_at) VALUES
 (
     'Documentos - Lembrete de Vencimento',

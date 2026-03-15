@@ -163,6 +163,34 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>',
         'keys' => ['_roles_manage_']
     ],
+    'WhatsApp Instâncias' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
+        'keys' => ['_whatsapp_instances_']
+    ],
+    'WhatsApp Console' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+        'keys' => ['_whatsapp_console_']
+    ],
+    'Credenciais APIs' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+        'keys' => ['_credentials_apis_']
+    ],
+    'Mínimos' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        'keys' => ['_minimums_']
+    ],
+    'Autorizações' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>',
+        'keys' => ['_authorizations_']
+    ],
+    'Jobs' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+        'keys' => ['_jobs_']
+    ],
+    'Logs Técnicos' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
+        'keys' => ['_logs_technical_']
+    ],
     'Ajuda' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
         'keys' => ['_help_']
@@ -322,6 +350,83 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '💡 <strong>Dica:</strong> Os centros de custo são usados para organizar e categorizar receitas e despesas. Clique em "Gerenciar Centros de Custo" para adicionar, editar ou desativar.';
         echo '</div>';
         
+        echo '</div>';
+    } elseif ($sectionTitle === 'WhatsApp Instâncias') {
+        // Aba com iframe para WhatsApp Instâncias
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">WhatsApp Instâncias</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Gerencie instâncias WhatsApp conectadas ao sistema via Evolution API.';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/admin_whatsapp_instances.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'WhatsApp Console') {
+        // Aba com iframe para WhatsApp Console
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">WhatsApp Console</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Console para testes e comandos diretos da API WhatsApp.';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/admin_whatsapp_console.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Credenciais APIs') {
+        // Aba com iframe para Credenciais APIs
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Credenciais APIs</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Gerencie todas as credenciais de APIs externas (Evolution, OpenAI, ZapSign, etc).';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/admin_integrations.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Mínimos') {
+        // Aba com iframe para Mínimos
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Valores Mínimos por Especialidade</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Configure valores mínimos de atendimento por especialidade.';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/specialty_minimums_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Autorizações') {
+        // Aba com iframe para Autorizações
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Autorizações de Valores</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Gerencie autorizações de valores de atendimento.';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/appointment_value_authorizations_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Jobs') {
+        // Aba com iframe para Jobs
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Fila de Jobs de Integração</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Visualize e gerencie jobs enfileirados de integrações.';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/integration_jobs_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Logs Técnicos') {
+        // Aba com iframe para Logs Técnicos
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Logs Técnicos de Integrações</div>';
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Visualize logs de todas as integrações (WhatsApp, OpenAI, ZapSign, etc).';
+        echo '</div>';
+        echo '</div>';
+        echo '<iframe src="/tech_logs_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
         echo '</div>';
     } elseif ($sectionTitle === 'Ajuda') {
         // Aba especial de Ajuda
@@ -530,44 +635,278 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'ZapSign') {
-        // Aba especial de ZapSign com gerenciamento completo
+        // Incluir conteúdo completo de configuração e console ZapSign
+        
+        // Buscar configuração atual
+        $stmtZapConfig = db()->query('SELECT * FROM zapsign_config LIMIT 1');
+        $zapConfig = $stmtZapConfig->fetch();
+        
+        if (!$zapConfig) {
+            db()->exec("INSERT INTO zapsign_config (api_token, sandbox_mode) VALUES ('', 1)");
+            $zapConfig = db()->query('SELECT * FROM zapsign_config LIMIT 1')->fetch();
+        }
+        
+        // Buscar templates
+        $zapTemplates = db()->query('SELECT * FROM zapsign_contract_templates ORDER BY name ASC')->fetchAll();
+        
+        // Seção 1: Configuração da API
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Configurações ZapSign</div>';
+        echo '<div class="formSectionTitle">🔑 Configuração da API ZapSign</div>';
+        
+        echo '<form method="post" action="/zapsign_config_save_post.php" style="display:grid;gap:16px;max-width:800px">';
+        
+        echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px">';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">Credenciais da API</h3>';
+        
+        echo '<label>Token da API ZapSign *<input name="api_token" required value="' . h((string)$zapConfig['api_token']) . '" placeholder="Cole aqui o token da API do ZapSign" style="font-family:monospace"></label>';
+        
+        echo '<div style="margin-top:12px">';
+        echo '<label style="display:flex;align-items:center;gap:12px;cursor:pointer">';
+        $checked = $zapConfig['sandbox_mode'] ? ' checked' : '';
+        echo '<input type="checkbox" name="sandbox_mode" value="1"' . $checked . ' style="width:18px;height:18px">';
+        echo '<div>';
+        echo '<div style="font-weight:600">Modo Sandbox (Teste)</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:2px">Ative para testar sem enviar documentos reais</div>';
+        echo '</div>';
+        echo '</label>';
+        echo '</div>';
+        
+        echo '<div style="margin-top:16px;padding:12px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px">';
+        echo '<div style="font-size:13px;color:#92400e">';
+        echo '<strong>� Como obter o Token:</strong><br>';
+        echo '1. Acesse <a href="https://app.zapsign.com.br" target="_blank" style="color:#b45309;text-decoration:underline">app.zapsign.com.br</a><br>';
+        echo '2. Vá em Configurações → API<br>';
+        echo '3. Copie o Token de API';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '</div>';
+        
+        echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px">';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🔔 Webhook (Recomendado)</h3>';
+        
+        $webhookUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/zapsign_webhook.php';
+        echo '<label>URL do Webhook<input name="webhook_url" value="' . h($webhookUrl) . '" readonly style="font-family:monospace;background:#f0f0f0"></label>';
+        
+        echo '<div style="margin-top:12px;padding:12px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:4px">';
+        echo '<div style="font-size:13px;color:#1e40af;line-height:1.6">';
+        echo '<strong>🔄 Acompanhamento Automático:</strong><br>';
+        echo '• O sistema receberá notificações automáticas do ZapSign<br>';
+        echo '• Status dos contratos será atualizado em tempo real<br>';
+        echo '• Você será notificado quando um contrato for assinado<br>';
+        echo '• Histórico do funcionário será atualizado automaticamente';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '</div>';
+        
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">💾 Salvar Configurações</button>';
+        echo '</div>';
+        
+        echo '</form>';
+        echo '</div>';
+        
+        // Seção 2: Templates de Contratos
+        echo '<div class="formSection" style="margin-top:20px">';
+        echo '<div class="formSectionTitle">📄 Templates de Contratos</div>';
+        
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+        echo '<div style="color:hsl(var(--muted-foreground));font-size:14px">Gerencie os modelos de contratos para cada tipo de vínculo.</div>';
+        echo '<button class="btn btnPrimary" onclick="showZapTemplateModal(0)">+ Novo Template</button>';
+        echo '</div>';
+        
+        if (count($zapTemplates) > 0) {
+            echo '<div style="display:grid;gap:12px">';
+            
+            foreach ($zapTemplates as $tpl) {
+                $typeLabels = [
+                    'clt' => 'CLT',
+                    'pj' => 'PJ',
+                    'estagio' => 'Estágio',
+                    'temporario' => 'Temporário',
+                    'autonomo' => 'Autônomo',
+                    'outro' => 'Outro'
+                ];
+                $typeLabel = $typeLabels[$tpl['template_type']] ?? $tpl['template_type'];
+                
+                $statusBadge = $tpl['is_active'] 
+                    ? '<span style="padding:4px 10px;background:#10b981;color:#fff;border-radius:4px;font-size:12px;font-weight:600">ATIVO</span>'
+                    : '<span style="padding:4px 10px;background:#6b7280;color:#fff;border-radius:4px;font-size:12px;font-weight:600">INATIVO</span>';
+                
+                echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+                echo '<div style="display:flex;justify-content:space-between;align-items:start;gap:16px">';
+                echo '<div style="flex:1">';
+                echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+                echo '<div style="font-weight:700;font-size:16px">' . h((string)$tpl['name']) . '</div>';
+                echo '<span style="padding:2px 8px;background:hsl(var(--primary));color:#fff;border-radius:4px;font-size:11px;font-weight:600">' . $typeLabel . '</span>';
+                echo $statusBadge;
+                echo '</div>';
+                
+                if (!empty($tpl['description'])) {
+                    echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;margin-bottom:8px">' . h((string)$tpl['description']) . '</div>';
+                }
+                
+                if (!empty($tpl['zapsign_template_token'])) {
+                    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));font-family:monospace">Token: ' . h((string)$tpl['zapsign_template_token']) . '</div>';
+                }
+                
+                echo '</div>';
+                echo '<div style="display:flex;gap:8px">';
+                echo '<button class="btn btnSmall" onclick="showZapTemplateModal(' . (int)$tpl['id'] . ')">Editar</button>';
+                echo '<form method="post" action="/zapsign_template_delete_post.php" style="display:inline" onsubmit="return confirm(\'Excluir este template?\')"><input type="hidden" name="template_id" value="' . (int)$tpl['id'] . '"><button class="btn btnSmall btnDanger" type="submit">Excluir</button></form>';
+                echo '</div>';
+                echo '</div>';
+                echo '</div>';
+            }
+            
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:12px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">📄</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum template cadastrado</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Adicione templates de contratos para cada tipo de vínculo.</div>';
+            echo '</div>';
+        }
+        
+        echo '</div>';
+        
+        // Seção 3: Console ZapSign
+        echo '<div class="formSection" style="margin-top:20px">';
+        echo '<div class="formSectionTitle">🔧 Console ZapSign</div>';
         
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>📝 ZapSign - Assinatura Digital de Contratos</strong><br>';
-        echo 'Configure a integração com ZapSign para enviar contratos de funcionários para assinatura digital.<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Token da API ZapSign<br>';
-        echo '• Modo Sandbox para testes<br>';
-        echo '• Webhook para notificações automáticas<br>';
-        echo '• Gestão de templates de contratos (CLT, PJ, Estágio, etc)<br>';
-        echo '• Upload de PDFs personalizados<br>';
-        echo '• Envio automático de contratos para funcionários<br>';
-        echo '• Rastreamento de status (Pendente, Assinado, Expirado)<br>';
-        echo '• Download de PDFs assinados';
+        echo 'Criar e detalhar documentos diretamente via API. Toda chamada gera log em Logs TI (provider=zapsign).';
         echo '</div>';
         echo '</div>';
         
-        echo '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">';
-        echo '<a class="btn btnPrimary" href="/zapsign_config.php" style="font-size:16px;padding:12px 24px">⚙️ Configurar ZapSign</a>';
+        // Criar documento
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Documento (POST /api/v1/docs/)</div>';
+        
+        echo '<form method="post" action="/admin_zapsign_create_doc_post.php" style="display:grid;gap:12px">';
+        
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>Nome *<input name="name" required maxlength="255" placeholder="Contrato"></label>';
+        echo '<label>Lang<input name="lang" value="pt-br" placeholder="pt-br"></label>';
         echo '</div>';
         
-        echo '<div style="padding:12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:8px;margin-top:16px">';
-        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
-        echo '<strong>Como usar:</strong><br>';
-        echo '1. Clique em "Configurar ZapSign" acima<br>';
-        echo '2. Cole o Token da API do ZapSign<br>';
-        echo '3. Crie templates de contratos para cada tipo de vínculo<br>';
-        echo '4. No perfil do funcionário, clique em "Gerar Contrato"<br>';
-        echo '5. Selecione o template e envie para assinatura<br>';
-        echo '6. Acompanhe o status e baixe o PDF assinado';
+        echo '<div style="font-weight:600;margin-top:8px">Arquivo</div>';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>url_pdf (opcional)<input name="url_pdf" placeholder="https://...pdf"></label>';
+        echo '<label>url_docx (opcional)<input name="url_docx" placeholder="https://...docx"></label>';
         echo '</div>';
+        echo '<label>markdown_text (opcional)<textarea name="markdown_text" rows="4" placeholder="# Título\n\nConteúdo..."></textarea></label>';
+        
+        echo '<div style="font-weight:600;margin-top:8px">Signatários (mínimo 1)</div>';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>Signer 1 - Nome *<input name="signer1_name" required placeholder="Fulano"></label>';
+        echo '<label>Signer 1 - E-mail *<input type="email" name="signer1_email" required placeholder="fulano@email.com"></label>';
+        echo '<label>Signer 2 - Nome (opcional)<input name="signer2_name" placeholder="Ciclano"></label>';
+        echo '<label>Signer 2 - E-mail (opcional)<input type="email" name="signer2_email" placeholder="ciclano@email.com"></label>';
+        echo '</div>';
+        
+        echo '<label style="display:flex;align-items:center;gap:10px;padding:12px">';
+        echo '<input type="checkbox" name="disable_signer_emails" value="1"> Desabilitar e-mails automáticos do ZapSign';
+        echo '</label>';
+        
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">Criar Documento</button>';
+        echo '</div>';
+        
+        echo '</form>';
+        echo '</div>';
+        
+        // Detalhar documento
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Detalhar Documento (GET /api/v1/docs/{doc_token}/)</div>';
+        
+        echo '<form method="post" action="/admin_zapsign_detail_doc_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input name="doc_token" required placeholder="doc_token" style="flex:1;min-width:280px">';
+        echo '<button class="btn" type="submit">Detalhar</button>';
+        echo '</form>';
+        
         echo '</div>';
         
         echo '</div>';
+        
+        // Modal para criar/editar template
+        echo '<div id="zapTemplateModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">';
+        echo '<div class="card" style="max-width:700px;width:90%;max-height:90vh;overflow-y:auto">';
+        echo '<h3 style="font-size:20px;font-weight:700;margin-bottom:16px" id="zapTemplateModalTitle">Novo Template</h3>';
+        
+        echo '<form method="post" action="/zapsign_template_save_post.php" enctype="multipart/form-data" style="display:grid;gap:12px">';
+        echo '<input type="hidden" name="template_id" id="zapTemplateId" value="0">';
+        
+        echo '<label>Nome do Template *<input name="name" id="zapTemplateName" required maxlength="160" placeholder="Ex: Contrato CLT Padrão"></label>';
+        
+        echo '<label>Tipo de Contrato *<select name="template_type" id="zapTemplateType" required>';
+        echo '<option value="">Selecione...</option>';
+        echo '<option value="clt">CLT</option>';
+        echo '<option value="pj">PJ (Pessoa Jurídica)</option>';
+        echo '<option value="estagio">Estágio</option>';
+        echo '<option value="temporario">Temporário</option>';
+        echo '<option value="autonomo">Autônomo</option>';
+        echo '<option value="outro">Outro</option>';
+        echo '</select></label>';
+        
+        echo '<label>Descrição<textarea name="description" id="zapTemplateDescription" rows="3" placeholder="Descreva quando usar este template"></textarea></label>';
+        
+        echo '<label>Token do Template ZapSign (Opcional)<input name="zapsign_template_token" id="zapTemplateToken" maxlength="255" placeholder="Cole o token do template criado no ZapSign" style="font-family:monospace"></label>';
+        
+        echo '<label>Upload de PDF (Opcional)<input type="file" name="pdf_file" accept=".pdf"></label>';
+        
+        echo '<label style="display:flex;align-items:center;gap:12px;cursor:pointer">';
+        echo '<input type="checkbox" name="is_active" id="zapTemplateIsActive" value="1" checked style="width:18px;height:18px">';
+        echo '<span>Template Ativo</span>';
+        echo '</label>';
+        
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">';
+        echo '<button type="button" class="btn" onclick="closeZapTemplateModal()">Cancelar</button>';
+        echo '<button type="submit" class="btn btnPrimary">Salvar Template</button>';
         echo '</div>';
+        
+        echo '</form>';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '<script>';
+        echo 'const zapTemplatesData = ' . json_encode($zapTemplates) . ';';
+        echo 'function showZapTemplateModal(id) {';
+        echo '  const modal = document.getElementById("zapTemplateModal");';
+        echo '  const title = document.getElementById("zapTemplateModalTitle");';
+        echo '  if (id === 0) {';
+        echo '    title.textContent = "Novo Template";';
+        echo '    document.getElementById("zapTemplateId").value = "0";';
+        echo '    document.getElementById("zapTemplateName").value = "";';
+        echo '    document.getElementById("zapTemplateType").value = "";';
+        echo '    document.getElementById("zapTemplateDescription").value = "";';
+        echo '    document.getElementById("zapTemplateToken").value = "";';
+        echo '    document.getElementById("zapTemplateIsActive").checked = true;';
+        echo '  } else {';
+        echo '    const tpl = zapTemplatesData.find(t => t.id == id);';
+        echo '    if (tpl) {';
+        echo '      title.textContent = "Editar Template";';
+        echo '      document.getElementById("zapTemplateId").value = tpl.id;';
+        echo '      document.getElementById("zapTemplateName").value = tpl.name;';
+        echo '      document.getElementById("zapTemplateType").value = tpl.template_type;';
+        echo '      document.getElementById("zapTemplateDescription").value = tpl.description || "";';
+        echo '      document.getElementById("zapTemplateToken").value = tpl.zapsign_template_token || "";';
+        echo '      document.getElementById("zapTemplateIsActive").checked = tpl.is_active == 1;';
+        echo '    }';
+        echo '  }';
+        echo '  modal.style.display = "flex";';
+        echo '}';
+        echo 'function closeZapTemplateModal() {';
+        echo '  document.getElementById("zapTemplateModal").style.display = "none";';
+        echo '}';
+        echo 'document.getElementById("zapTemplateModal").addEventListener("click", function(e) {';
+        echo '  if (e.target === this) closeZapTemplateModal();';
+        echo '});';
+        echo '</script>';
+        
+        echo '</div>'
     } elseif ($sectionTitle === 'Funções') {
         // Aba especial de Funções (Roles)
         echo '<div class="formSection">';

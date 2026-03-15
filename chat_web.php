@@ -2493,7 +2493,7 @@ function cadastrarProfissional() {
     const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "");
     
     // Redirecionar para página de cadastro de profissional com dados pré-preenchidos
-    const url = "/professional_applications_create.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
+    const url = "/apply_professional.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
     window.open(url, "_blank");
 }
 
