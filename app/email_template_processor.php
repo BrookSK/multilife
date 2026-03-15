@@ -1,0 +1,245 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Processador de Templates de E-mail HTML
+ * Busca, processa variáveis e envia e-mails personalizados
+ */
+
+/**
+ * Buscar template por tipo de evento e operadora
+ */
+function email_get_template(string $eventType, ?int $healthInsurerId = null): ?array
+{
+    $sql = 'SELECT id, name, subject, body_html, body_plain 
+            FROM email_templates 
+            WHERE event_type = :event AND is_active = 1';
+    
+    $params = ['event' => $eventType];
+    
+    if ($healthInsurerId !== null) {
+        $sql .= ' AND health_insurer_id = :insurer_id';
+        $params['insurer_id'] = $healthInsurerId;
+    } else {
+        $sql .= ' AND health_insurer_id IS NULL';
+    }
+    
+    $sql .= ' LIMIT 1';
+    
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $template = $stmt->fetch();
+    
+    return $template ?: null;
+}
+
+/**
+ * Processar variáveis no template (HTML e texto)
+ */
+function email_process_variables(string $content, array $variables): string
+{
+    $processed = $content;
+    
+    foreach ($variables as $key => $value) {
+        $placeholder = '{' . $key . '}';
+        $processed = str_replace($placeholder, (string)$value, $processed);
+    }
+    
+    return $processed;
+}
+
+/**
+ * Enviar e-mail com template
+ * 
+ * @param string $toEmail E-mail do destinatário
+ * @param string $eventType Tipo de evento (proposal_send, proposal_resend)
+ * @param array $variables Variáveis para substituir no template
+ * @param int|null $healthInsurerId ID da operadora (opcional)
+ * @return array ['success' => bool, 'message' => string, 'template_id' => int|null]
+ */
+function email_send_with_template(
+    string $toEmail,
+    string $eventType,
+    array $variables,
+    ?int $healthInsurerId = null
+): array {
+    // 1. Buscar template
+    $template = email_get_template($eventType, $healthInsurerId);
+    
+    if (!$template) {
+        return [
+            'success' => false,
+            'message' => 'Template não encontrado para evento: ' . $eventType,
+            'template_id' => null
+        ];
+    }
+    
+    $templateId = (int)$template['id'];
+    
+    // 2. Processar variáveis no assunto
+    $subject = email_process_variables($template['subject'], $variables);
+    
+    // 3. Processar variáveis no corpo HTML
+    $bodyHtml = email_process_variables($template['body_html'], $variables);
+    
+    // 4. Processar variáveis no corpo texto (fallback)
+    $bodyPlain = $template['body_plain'] 
+        ? email_process_variables($template['body_plain'], $variables)
+        : strip_tags($bodyHtml);
+    
+    // 5. Enviar e-mail
+    try {
+        $smtp = new SmtpClient();
+        $fromEmail = admin_setting_get('smtp.out.from_email', 'noreply@multilife.com.br');
+        $fromName = admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+        
+        // SmtpClient suporta HTML se body começar com <!DOCTYPE ou <html
+        $messageId = $smtp->send($fromEmail, $fromName, $toEmail, $subject, $bodyHtml);
+        
+        return [
+            'success' => true,
+            'message' => 'E-mail enviado com sucesso',
+            'template_id' => $templateId,
+            'message_id' => $messageId
+        ];
+        
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => 'Erro ao enviar e-mail: ' . $e->getMessage(),
+            'template_id' => $templateId
+        ];
+    }
+}
+
+/**
+ * Listar todos os tipos de evento disponíveis
+ */
+function email_get_available_event_types(): array
+{
+    return [
+        'proposal_send' => 'Envio de Proposta',
+        'proposal_resend' => 'Reenvio de Proposta',
+        'authorization_approved' => 'Autorização Aprovada',
+        'authorization_denied' => 'Autorização Negada',
+        'appointment_reminder' => 'Lembrete de Agendamento',
+        'document_request' => 'Solicitação de Documentos'
+    ];
+}
+
+/**
+ * Obter variáveis disponíveis por tipo de evento
+ */
+function email_get_available_variables(string $eventType): array
+{
+    $common = [
+        'patient_name' => 'Nome do paciente',
+        'patient_email' => 'E-mail do paciente',
+        'patient_phone' => 'Telefone do paciente',
+        'professional_name' => 'Nome do profissional',
+        'professional_email' => 'E-mail do profissional',
+        'professional_phone' => 'Telefone do profissional',
+        'professional_council' => 'Registro profissional (ex: CRP 12345/SP)',
+        'specialty' => 'Especialidade',
+        'location' => 'Localização (cidade/estado)',
+    ];
+    
+    $eventSpecific = match($eventType) {
+        'proposal_send', 'proposal_resend' => [
+            'service_name' => 'Nome do serviço',
+            'start_date' => 'Data de início (formatada)',
+            'start_time' => 'Horário de início',
+            'end_time' => 'Horário de término',
+            'frequency_text' => 'Frequência (Semanal, Diário, etc)',
+            'sessions_per_week' => 'Sessões por semana',
+            'duration_weeks' => 'Duração em semanas',
+            'total_sessions' => 'Total de sessões',
+            'value_per_session' => 'Valor por sessão (formatado)',
+            'total_value' => 'Valor total (formatado)',
+            'session_schedule' => 'Cronograma de sessões (HTML table rows)',
+            'notes_section' => 'Seção de observações (HTML completo ou vazio)',
+        ],
+        'proposal_resend' => [
+            'resend_notes' => 'Justificativa do reenvio',
+            'previous_value_per_session' => 'Valor anterior por sessão',
+            'previous_total_value' => 'Valor total anterior',
+        ],
+        'authorization_approved', 'authorization_denied' => [
+            'authorization_number' => 'Número da autorização',
+            'response_date' => 'Data da resposta',
+            'operator_notes' => 'Observações da operadora',
+        ],
+        'appointment_reminder' => [
+            'appointment_date' => 'Data do agendamento',
+            'appointment_time' => 'Horário do agendamento',
+            'days_until' => 'Dias até o agendamento',
+        ],
+        'document_request' => [
+            'documents_list' => 'Lista de documentos solicitados',
+            'deadline_date' => 'Prazo para envio',
+        ],
+        default => []
+    };
+    
+    return array_merge($common, $eventSpecific);
+}
+
+/**
+ * Gerar HTML de cronograma de sessões
+ */
+function email_generate_session_schedule(array $sessionDates): string
+{
+    if (empty($sessionDates)) {
+        return '<tr><td colspan="2">Nenhuma sessão agendada</td></tr>';
+    }
+    
+    $html = '';
+    foreach ($sessionDates as $index => $session) {
+        $sessionNumber = $index + 1;
+        $formatted = $session['formatted'] ?? $session['date'] . ' às ' . $session['start_time'];
+        $html .= "<tr><td>Sessão {$sessionNumber}</td><td>{$formatted}</td></tr>\n";
+    }
+    
+    return $html;
+}
+
+/**
+ * Gerar HTML de seção de observações
+ */
+function email_generate_notes_section(string $notes): string
+{
+    if (trim($notes) === '') {
+        return '';
+    }
+    
+    return '
+    <div class="section">
+        <div class="section-title">📝 Observações</div>
+        <p style="line-height: 1.8;">' . nl2br(htmlspecialchars($notes)) . '</p>
+    </div>';
+}
+
+/**
+ * Formatar valor monetário
+ */
+function email_format_currency(float $value): string
+{
+    return number_format($value, 2, ',', '.');
+}
+
+/**
+ * Formatar data
+ */
+function email_format_date(string $date): string
+{
+    return date('d/m/Y', strtotime($date));
+}
+
+/**
+ * Formatar horário
+ */
+function email_format_time(string $time): string
+{
+    return substr($time, 0, 5);
+}

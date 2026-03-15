@@ -9,11 +9,11 @@ rbac_require_permission('chat.manage');
 
 $uid = (int)auth_user_id();
 
-$status = isset($_GET['status']) ? (string)$_GET['status'] : 'open';
+$status = isset($_GET['status']) ? (string)$_GET['status'] : 'waiting';
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 
-if (!in_array($status, ['open', 'closed'], true)) {
-    $status = 'open';
+if (!in_array($status, ['waiting', 'active', 'resolved'], true)) {
+    $status = 'waiting';
 }
 
 $sql = 'SELECT c.id, c.external_phone, c.contact_kind, c.status, c.assigned_user_id, c.last_message_at, c.last_message_preview, c.created_at,
@@ -51,14 +51,32 @@ echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="get" action="/chat_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-echo '<select name="status" style="min-width:240px">';
-echo '<option value="open"' . ($status === 'open' ? ' selected' : '') . '>Abertas</option>';
-echo '<option value="closed"' . ($status === 'closed' ? ' selected' : '') . '>Histórico (Finalizadas)</option>';
-echo '</select>';
+echo '<div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+
+// Abas de status
+echo '<div style="display:flex;gap:6px;padding:4px;background:hsl(var(--muted));border-radius:8px">';
+$statusTabs = [
+    'waiting' => '⏳ Aguardando',
+    'active' => '💬 Ativa',
+    'resolved' => '✅ Resolvidos'
+];
+foreach ($statusTabs as $key => $label) {
+    $activeClass = $status === $key ? ' style="background:hsl(var(--primary));color:#fff;font-weight:700"' : '';
+    echo '<a href="/chat_list.php?status=' . $key . ($q !== '' ? '&q=' . urlencode($q) : '') . '" class="btn btnSmall"' . $activeClass . '>' . h($label) . '</a>';
+}
+echo '</div>';
+
+// Busca
+echo '<form method="get" action="/chat_list.php" style="display:flex;gap:10px;flex:1">';
+echo '<input type="hidden" name="status" value="' . h($status) . '">';
 echo '<input name="q" value="' . h($q) . '" placeholder="Buscar por telefone ou mensagem" style="flex:1;min-width:240px">';
-echo '<button class="btn" type="submit">Filtrar</button>';
+echo '<button class="btn" type="submit">Buscar</button>';
+if ($q !== '') {
+    echo '<a class="btn" href="/chat_list.php?status=' . h($status) . '">Limpar</a>';
+}
 echo '</form>';
+
+echo '</div>';
 
 echo '</section>';
 

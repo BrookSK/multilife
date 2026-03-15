@@ -61,23 +61,46 @@ echo '<div style="display:flex;align-items:flex-end;justify-content:space-betwee
 echo '<div>';
 echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">Conversa</div>';
 echo '<div style="font-size:22px;font-weight:900">#' . (int)$c['id'] . ' — ' . h((string)$c['external_phone']) . '</div>';
+$chatStatus = (string)$c['status'];
+$statusLabels = [
+    'waiting' => ['label' => '⏳ Aguardando', 'class' => 'badgeWarning'],
+    'active' => ['label' => '💬 Ativa', 'class' => 'badgeSuccess'],
+    'resolved' => ['label' => '✅ Resolvido', 'class' => 'badgeMuted']
+];
+$statusInfo = $statusLabels[$chatStatus] ?? ['label' => h($chatStatus), 'class' => ''];
+
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">';
-echo '<strong>Status:</strong> ' . h((string)$c['status']) . ' &nbsp; <strong>Responsável:</strong> ' . h($assigned) . ' &nbsp; <strong>Tipo:</strong> ' . h((string)$c['contact_kind']);
+echo '<strong>Status:</strong> <span class="badge ' . $statusInfo['class'] . '">' . $statusInfo['label'] . '</span> &nbsp; ';
+echo '<strong>Responsável:</strong> ' . h($assigned) . ' &nbsp; <strong>Tipo:</strong> ' . h((string)$c['contact_kind']);
 echo '</div>';
 echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/chat_list.php">Voltar</a>';
+echo '<a class="btn" href="/chat_list.php?status=' . h($chatStatus) . '">Voltar</a>';
 
-echo '<form method="post" action="/chat_finalize_post.php" style="display:inline">';
-echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
-echo '<button class="btn" type="submit">Finalizar</button>';
-echo '</form>';
+// Botão Aceitar (apenas se status = waiting)
+if ($chatStatus === 'waiting') {
+    echo '<form method="post" action="/chat_accept_post.php" style="display:inline">';
+    echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
+    echo '<button class="btn btnPrimary" type="submit">✓ Aceitar Chat</button>';
+    echo '</form>';
+}
 
-echo '<form method="post" action="/chat_reopen_post.php" style="display:inline">';
-echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
-echo '<button class="btn" type="submit">Reabrir</button>';
-echo '</form>';
+// Botão Finalizar (apenas se status = active)
+if ($chatStatus === 'active') {
+    echo '<form method="post" action="/chat_finalize_post.php" style="display:inline">';
+    echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
+    echo '<button class="btn btnSuccess" type="submit">✓ Finalizar Chat</button>';
+    echo '</form>';
+}
+
+// Botão Reabrir (apenas se status = resolved)
+if ($chatStatus === 'resolved') {
+    echo '<form method="post" action="/chat_reopen_post.php" style="display:inline">';
+    echo '<input type="hidden" name="id" value="' . (int)$c['id'] . '">';
+    echo '<button class="btn" type="submit">↻ Reabrir</button>';
+    echo '</form>';
+}
 
 echo '</div>';
 echo '</div>';

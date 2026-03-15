@@ -386,13 +386,16 @@ try {
     error_log("✓ Transação commitada com sucesso");
     
     // ============================================================================
-    // ENVIAR E-MAIL PARA OPERADORA
+    // ENVIAR E-MAIL PARA OPERADORA COM TEMPLATE HTML
     // ============================================================================
-    error_log("=== PREPARANDO E-MAIL ===");
+    error_log("=== PREPARANDO E-MAIL COM TEMPLATE ===");
     
-    // Preparar e enviar e-mail para a operadora
+    require_once __DIR__ . '/app/email_template_processor.php';
+    
+    // Preparar variáveis para o template
     $totalProposal = $proposalValue * $totalSessions;
     $location = trim(($demand['location_city'] ?? '') . '/' . ($demand['location_state'] ?? ''));
+    $patientPhone = $patient['whatsapp'] ?? $patient['phone_primary'] ?? '';
     
     $frequencyText = match($frequency) {
         'single' => 'Atendimento único',
@@ -404,98 +407,65 @@ try {
         default => 'Semanal'
     };
     
-    $emailSubject = "Proposta de Atendimento - {$patient['full_name']} - {$specialtyName}";
-    
-    $emailBody = "Prezado(a),\n\n";
-    $emailBody .= "Segue proposta de atendimento domiciliar:\n\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "DADOS DO PACIENTE\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Nome: {$patient['full_name']}\n";
-    if (!empty($patient['email'])) $emailBody .= "E-mail: {$patient['email']}\n";
-    $patientPhone = $patient['whatsapp'] ?? $patient['phone_primary'] ?? '';
-    if (!empty($patientPhone)) $emailBody .= "Telefone: {$patientPhone}\n";
-    if (!empty($location)) $emailBody .= "Localização: {$location}\n";
-    $emailBody .= "\n";
-    
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "PROFISSIONAL DESIGNADO\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Nome: {$professional['name']}\n";
-    $emailBody .= "Especialidade: {$specialtyName}\n";
-    $emailBody .= "Serviço: {$serviceName}\n";
+    $professionalCouncilFull = '';
     if (!empty($professionalCouncil)) {
-        $emailBody .= "Registro: {$professionalCouncil}";
-        if (!empty($professionalCouncilState)) $emailBody .= "/{$professionalCouncilState}";
-        $emailBody .= "\n";
-    }
-    if (!empty($professional['email'])) $emailBody .= "E-mail: {$professional['email']}\n";
-    if (!empty($professional['phone'])) $emailBody .= "Telefone: {$professional['phone']}\n";
-    $emailBody .= "\n";
-    
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "AGENDAMENTO PROPOSTO\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Data de Início: " . date('d/m/Y', strtotime($startDate)) . "\n";
-    $emailBody .= "Horário: " . substr($startTime, 0, 5) . " às " . substr($endTime, 0, 5) . "\n";
-    $emailBody .= "Frequência: {$frequencyText}\n";
-    $emailBody .= "Sessões por Semana: {$sessionsPerWeek}x\n";
-    $emailBody .= "Duração: {$durationWeeks} semanas\n";
-    $emailBody .= "Total de Sessões: {$totalSessions}\n";
-    $emailBody .= "\n";
-    
-    // Adicionar cronograma de sessões
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "CRONOGRAMA DE SESSÕES PREVISTAS\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    
-    foreach ($sessionDates as $index => $session) {
-        $sessionNumber = $index + 1;
-        $emailBody .= "Sessão {$sessionNumber}: {$session['formatted']}\n";
-    }
-    $emailBody .= "\n";
-    
-    if (!empty($frequencyDetails)) {
-        $emailBody .= "Detalhes: {$frequencyDetails}\n";
-    }
-    $emailBody .= "\n";
-    
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "VALORES\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Valor por Sessão: R$ " . number_format($proposalValue, 2, ',', '.') . "\n";
-    $emailBody .= "Total de Sessões: {$totalSessions}\n";
-    $emailBody .= "VALOR TOTAL DA PROPOSTA: R$ " . number_format($totalProposal, 2, ',', '.') . "\n";
-    $emailBody .= "\n";
-    
-    if (!empty($notes)) {
-        $emailBody .= "═══════════════════════════════════════════════════════\n";
-        $emailBody .= "OBSERVAÇÕES\n";
-        $emailBody .= "═══════════════════════════════════════════════════════\n";
-        $emailBody .= "{$notes}\n\n";
+        $professionalCouncilFull = $professionalCouncil;
+        if (!empty($professionalCouncilState)) {
+            $professionalCouncilFull .= '/' . $professionalCouncilState;
+        }
     }
     
-    $emailBody .= "═══════════════════════════════════════════════════════\n\n";
-    $emailBody .= "Aguardamos retorno com a autorização ou eventuais ajustes necessários.\n\n";
-    $emailBody .= "Atenciosamente,\n";
-    $emailBody .= "MultiLife Care\n";
-    $emailBody .= "Sistema de Gestão de Atendimentos\n";
+    // Gerar cronograma de sessões em HTML
+    $sessionScheduleHtml = email_generate_session_schedule($sessionDates);
     
-    // Enviar e-mail
+    // Gerar seção de observações em HTML
+    $notesSection = email_generate_notes_section($notes);
+    
+    $variables = [
+        'patient_name' => $patient['full_name'],
+        'patient_email' => $patient['email'] ?? '',
+        'patient_phone' => $patientPhone,
+        'professional_name' => $professional['name'],
+        'professional_email' => $professional['email'] ?? '',
+        'professional_phone' => $professional['phone'] ?? '',
+        'professional_council' => $professionalCouncilFull,
+        'specialty' => $specialtyName,
+        'service_name' => $serviceName,
+        'location' => $location,
+        'start_date' => email_format_date($startDate),
+        'start_time' => email_format_time($startTime),
+        'end_time' => email_format_time($endTime),
+        'frequency_text' => $frequencyText,
+        'sessions_per_week' => (string)$sessionsPerWeek,
+        'duration_weeks' => (string)$durationWeeks,
+        'total_sessions' => (string)$totalSessions,
+        'value_per_session' => email_format_currency($proposalValue),
+        'total_value' => email_format_currency($totalProposal),
+        'session_schedule' => $sessionScheduleHtml,
+        'notes_section' => $notesSection,
+    ];
+    
     error_log("Destinatário: $operatorEmail");
-    error_log("Assunto: $emailSubject");
+    error_log("Usando template HTML para envio de proposta");
     
     try {
-        error_log("Iniciando envio de e-mail...");
-        $smtp = new SmtpClient();
-        $fromEmail = admin_setting_get('smtp.out.from_email', 'noreply@multilife.com.br');
-        $fromName = admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+        error_log("Iniciando envio de e-mail com template...");
         
-        error_log("From: $fromEmail ($fromName)");
-        error_log("To: $operatorEmail");
+        // Buscar operadora do paciente para template específico
+        $stmt = $db->prepare('SELECT health_insurer_id FROM patients WHERE id = :pid');
+        $stmt->execute(['pid' => $patientId]);
+        $patientData = $stmt->fetch();
+        $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        $messageId = $smtp->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $emailBody);
-        error_log("✓ E-mail enviado com sucesso");
+        // Enviar com template
+        $emailResult = email_send_with_template($operatorEmail, 'proposal_send', $variables, $healthInsurerId);
+        
+        if (!$emailResult['success']) {
+            throw new Exception($emailResult['message']);
+        }
+        
+        $messageId = $emailResult['message_id'] ?? '';
+        error_log("✓ E-mail enviado com sucesso usando template #" . $emailResult['template_id']);
         error_log("✓ Message-ID: $messageId");
         
         // Atualizar registro com data de envio, prazo de resposta e Message-ID para rastreamento

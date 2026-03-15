@@ -128,7 +128,9 @@ try {
     
     $db->commit();
     
-    // Preparar e enviar e-mail
+    // Preparar e enviar e-mail com template HTML
+    require_once __DIR__ . '/app/email_template_processor.php';
+    
     $totalSessions = (int)$auth['total_sessions'];
     $totalProposal = $newProposalValue * $totalSessions;
     $location = trim(($auth['location_city'] ?? '') . '/' . ($auth['location_state'] ?? ''));
@@ -152,73 +154,57 @@ try {
     $professionalCouncil = $profDetails ? (string)$profDetails['council_number'] : '';
     $professionalCouncilState = $profDetails ? (string)$profDetails['council_state'] : '';
     
-    $emailSubject = "REENVIO - Proposta de Atendimento - {$auth['patient_name']} - {$auth['demand_specialty']}";
-    
-    $emailBody = "Prezado(a),\n\n";
-    $emailBody .= "Segue REENVIO de proposta de atendimento domiciliar com valores ajustados:\n\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "JUSTIFICATIVA DO REENVIO\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "$resendNotes\n\n";
-    
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "DADOS DO PACIENTE\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Nome: {$auth['patient_name']}\n";
-    if (!empty($auth['patient_email'])) $emailBody .= "E-mail: {$auth['patient_email']}\n";
-    if (!empty($auth['patient_phone'])) $emailBody .= "Telefone: {$auth['patient_phone']}\n";
-    if (!empty($location)) $emailBody .= "Localização: {$location}\n";
-    $emailBody .= "\n";
-    
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "PROFISSIONAL DESIGNADO\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Nome: {$auth['professional_name']}\n";
-    $emailBody .= "Especialidade: {$professionalSpecialty}\n";
+    $professionalCouncilFull = '';
     if (!empty($professionalCouncil)) {
-        $emailBody .= "Registro: {$professionalCouncil}";
-        if (!empty($professionalCouncilState)) $emailBody .= "/{$professionalCouncilState}";
-        $emailBody .= "\n";
+        $professionalCouncilFull = $professionalCouncil;
+        if (!empty($professionalCouncilState)) {
+            $professionalCouncilFull .= '/' . $professionalCouncilState;
+        }
     }
-    if (!empty($auth['professional_email'])) $emailBody .= "E-mail: {$auth['professional_email']}\n";
-    if (!empty($auth['professional_phone'])) $emailBody .= "Telefone: {$auth['professional_phone']}\n";
-    $emailBody .= "\n";
     
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "DADOS DO ATENDIMENTO PROPOSTO\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "Data de Início: " . date('d/m/Y', strtotime((string)$auth['start_date'])) . "\n";
-    $emailBody .= "Horário: {$auth['start_time']} às {$auth['end_time']}\n";
-    $emailBody .= "Frequência: {$frequencyText}\n";
-    $emailBody .= "Duração: {$auth['duration_weeks']} semanas\n";
-    $emailBody .= "Total de Sessões: {$totalSessions}\n";
-    $emailBody .= "\n";
-    
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
-    $emailBody .= "VALORES AJUSTADOS\n";
-    $emailBody .= "═══════════════════════════════════════════════════════\n";
+    // Calcular valores anteriores
     $previousProposal = (float)$auth['proposal_value'];
     $previousTotal = $previousProposal * $totalSessions;
-    $emailBody .= "Valor Anterior por Sessão: R$ " . number_format($previousProposal, 2, ',', '.') . "\n";
-    $emailBody .= "Total Anterior: R$ " . number_format($previousTotal, 2, ',', '.') . "\n\n";
-    $emailBody .= "NOVO Valor por Sessão: R$ " . number_format($newProposalValue, 2, ',', '.') . "\n";
-    $emailBody .= "Total de Sessões: {$totalSessions}\n";
-    $emailBody .= "NOVO VALOR TOTAL DA PROPOSTA: R$ " . number_format($totalProposal, 2, ',', '.') . "\n";
-    $emailBody .= "\n";
     
-    $emailBody .= "═══════════════════════════════════════════════════════\n\n";
-    $emailBody .= "Aguardamos retorno com a autorização ou eventuais ajustes necessários.\n\n";
-    $emailBody .= "Atenciosamente,\n";
-    $emailBody .= "MultiLife Care\n";
-    $emailBody .= "Sistema de Gestão de Atendimentos\n";
+    // Preparar variáveis para o template
+    $variables = [
+        'patient_name' => $auth['patient_name'],
+        'patient_email' => $auth['patient_email'] ?? '',
+        'patient_phone' => $auth['patient_phone'] ?? '',
+        'professional_name' => $auth['professional_name'],
+        'professional_email' => $auth['professional_email'] ?? '',
+        'professional_phone' => $auth['professional_phone'] ?? '',
+        'professional_council' => $professionalCouncilFull,
+        'specialty' => $professionalSpecialty,
+        'location' => $location,
+        'start_date' => email_format_date((string)$auth['start_date']),
+        'start_time' => email_format_time((string)$auth['start_time']),
+        'end_time' => email_format_time((string)$auth['end_time']),
+        'frequency_text' => $frequencyText,
+        'duration_weeks' => (string)$auth['duration_weeks'],
+        'total_sessions' => (string)$totalSessions,
+        'value_per_session' => email_format_currency($newProposalValue),
+        'total_value' => email_format_currency($totalProposal),
+        'previous_value_per_session' => email_format_currency($previousProposal),
+        'previous_total_value' => email_format_currency($previousTotal),
+        'resend_notes' => $resendNotes,
+    ];
     
-    // Enviar e-mail
+    // Enviar e-mail com template
     try {
-        $smtp = new SmtpClient();
-        $fromEmail = admin_setting_get('smtp.out.from_email', 'noreply@multilife.com.br');
-        $fromName = admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+        // Buscar operadora do paciente para template específico
+        $stmt = $db->prepare('SELECT health_insurer_id FROM patients WHERE full_name = :name LIMIT 1');
+        $stmt->execute(['name' => $auth['patient_name']]);
+        $patientData = $stmt->fetch();
+        $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        $smtp->send($fromEmail, $fromName, (string)$auth['operator_email'], $emailSubject, $emailBody);
+        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId);
+        
+        if (!$emailResult['success']) {
+            throw new Exception($emailResult['message']);
+        }
+        
+        $messageId = $emailResult['message_id'] ?? '';
         
         // Atualizar registro com data de envio e prazo de resposta
         $sentAt = date('Y-m-d H:i:s');

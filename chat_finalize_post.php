@@ -19,8 +19,14 @@ if (!$c) {
     exit;
 }
 
-if ((string)$c['status'] === 'closed') {
+if ((string)$c['status'] === 'resolved') {
     flash_set('success', 'Conversa já estava finalizada.');
+    header('Location: /chat_view.php?id=' . $id);
+    exit;
+}
+
+if ((string)$c['status'] !== 'active') {
+    flash_set('error', 'Apenas conversas ativas podem ser finalizadas.');
     header('Location: /chat_view.php?id=' . $id);
     exit;
 }
@@ -28,17 +34,18 @@ if ((string)$c['status'] === 'closed') {
 $db = db();
 $db->beginTransaction();
 try {
-    $stmt = $db->prepare('UPDATE chat_conversations SET status = \'closed\' WHERE id = :id');
-    $stmt->execute(['id' => $id]);
+    $stmt = $db->prepare('UPDATE chat_conversations SET status = :status WHERE id = :id');
+    $stmt->execute(['id' => $id, 'status' => 'resolved']);
 
-    $stmt = $db->prepare('INSERT INTO chat_events (conversation_id, event_type, from_user_id, to_user_id, note) VALUES (:cid, :type, :from, NULL, NULL)');
+    $stmt = $db->prepare('INSERT INTO chat_events (conversation_id, event_type, from_user_id, to_user_id, note) VALUES (:cid, :type, :from, NULL, :note)');
     $stmt->execute([
         'cid' => $id,
         'type' => 'finalize',
         'from' => auth_user_id(),
+        'note' => 'Chat finalizado e movido para Resolvidos'
     ]);
 
-    audit_log('update', 'chat_finalize', (string)$id, ['status' => 'open'], ['status' => 'closed']);
+    audit_log('update', 'chat_finalize', (string)$id, ['status' => 'active'], ['status' => 'resolved']);
 
     $db->commit();
 } catch (Throwable $e) {
@@ -47,5 +54,5 @@ try {
 }
 
 flash_set('success', 'Conversa finalizada.');
-header('Location: /chat_list.php?status=closed');
+header('Location: /chat_list.php?status=resolved');
 exit;

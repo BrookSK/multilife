@@ -26,7 +26,9 @@ if (!$c) {
     exit;
 }
 
-if ((string)$c['status'] !== 'open') {
+$currentStatus = (string)$c['status'];
+
+if ($currentStatus === 'resolved') {
     flash_set('error', 'Conversa finalizada. Reabra para enviar mensagens.');
     header('Location: /chat_view.php?id=' . $id);
     exit;
@@ -44,8 +46,24 @@ try {
     ]);
 
     $preview = mb_strimwidth($body, 0, 250, '...');
-    $stmt = $db->prepare('UPDATE chat_conversations SET last_message_at = NOW(), last_message_preview = :p WHERE id = :id');
-    $stmt->execute(['p' => $preview, 'id' => $id]);
+    
+    // Se status é waiting, mudar para active ao enviar primeira mensagem
+    if ($currentStatus === 'waiting') {
+        $stmt = $db->prepare('UPDATE chat_conversations SET status = :status, assigned_user_id = :uid, last_message_at = NOW(), last_message_preview = :p WHERE id = :id');
+        $stmt->execute(['status' => 'active', 'uid' => auth_user_id(), 'p' => $preview, 'id' => $id]);
+        
+        // Registrar evento de aceite automático
+        $stmt = $db->prepare('INSERT INTO chat_events (conversation_id, event_type, to_user_id, note) VALUES (:cid, :type, :uid, :note)');
+        $stmt->execute([
+            'cid' => $id,
+            'type' => 'assign',
+            'uid' => auth_user_id(),
+            'note' => 'Chat aceito automaticamente ao enviar mensagem'
+        ]);
+    } else {
+        $stmt = $db->prepare('UPDATE chat_conversations SET last_message_at = NOW(), last_message_preview = :p WHERE id = :id');
+        $stmt->execute(['p' => $preview, 'id' => $id]);
+    }
 
     $stmt = $db->prepare(
         "UPDATE pending_items\n"

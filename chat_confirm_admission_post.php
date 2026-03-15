@@ -261,17 +261,54 @@ try {
         ]);
     }
 
-    // Jobs de notificação (serão executados via CRON runner)
+    // Enviar template WhatsApp de confirmação de pré-admissão
+    require_once __DIR__ . '/app/whatsapp_template_processor.php';
+    
+    // Buscar operadora do paciente
+    $stmt = $db->prepare('SELECT health_insurer_id FROM patients WHERE id = :pid');
+    $stmt->execute(['pid' => $patientId]);
+    $patientData = $stmt->fetch();
+    $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
+    
+    // Buscar nome do profissional
+    $stmt = $db->prepare('SELECT name FROM users WHERE id = :uid');
+    $stmt->execute(['uid' => $professionalUserId]);
+    $profData = $stmt->fetch();
+    $professionalName = $profData ? (string)$profData['name'] : 'Profissional';
+    
+    // Preparar variáveis para o template
+    $variables = [
+        'patient_name' => (string)$patient['full_name'],
+        'professional_name' => $professionalName,
+        'specialty' => $specialty,
+        'date' => date('d/m/Y', strtotime($firstAtDb)),
+        'time' => date('H:i', strtotime($firstAtDb)),
+        'location' => 'A definir',
+        'value' => 'R$ ' . number_format((float)$valuePerSession, 2, ',', '.'),
+        'health_insurer' => $healthInsurerId ? 'Convênio' : 'Particular',
+        'documents_list' => ''
+    ];
+    
+    // Enviar template
+    $phone = (string)$chat['external_phone'];
+    $templateResult = whatsapp_send_template($phone, 'pre_admission_confirmation', $variables, $healthInsurerId);
+    
+    if ($templateResult['success']) {
+        error_log('[ADMISSION] Template WhatsApp enviado com sucesso: ' . $templateResult['message']);
+    } else {
+        error_log('[ADMISSION] Erro ao enviar template WhatsApp: ' . $templateResult['message']);
+    }
+    
+    // Jobs de notificação por e-mail (serão executados via CRON runner)
     $payload = [
         'appointment_id' => $appointmentId,
         'patient_id' => $patientId,
         'professional_user_id' => $professionalUserId,
         'first_at' => $firstAtDb,
         'patient_email' => (string)($patient['email'] ?? ''),
-        'patient_phone' => (string)($chat['external_phone'] ?? ''),
+        'patient_phone' => $phone,
     ];
 
-    integration_job_enqueue('evolution', 'patient_notify_appointment', $payload, null);
     integration_job_enqueue('smtp', 'send_email_confirmation', $payload, null);
 
     // Pendência operacional visível

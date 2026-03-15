@@ -2440,6 +2440,80 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Função para salvar informações de captação
+function saveCaptureInfo() {
+    const chatId = window.chatId || "";
+    const captureStatus = document.getElementById("captureStatus")?.value || "";
+    const captureType = document.getElementById("captureType")?.value || "";
+    const captureNotes = document.getElementById("captureNotes")?.value || "";
+    
+    if (!chatId) {
+        alert("Erro: Chat não identificado");
+        return;
+    }
+    
+    // Preparar dados
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("status", captureStatus);
+    formData.append("type", captureType);
+    formData.append("notes", captureNotes);
+    
+    // Enviar para servidor
+    fetch("/chat_save_capture_info.php", {
+        method: "POST",
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert("✅ Informações salvas com sucesso!");
+        } else {
+            alert("❌ Erro ao salvar: " + (data.error || "Erro desconhecido"));
+        }
+    })
+    .catch(error => {
+        console.error("Erro ao salvar informações:", error);
+        alert("❌ Erro ao salvar informações. Tente novamente.");
+    });
+}
+
+// Função para cadastrar profissional
+function cadastrarProfissional() {
+    const chatId = window.chatId || "";
+    const chatName = window.chatName || "";
+    
+    if (!chatId) {
+        alert("Erro: Chat não identificado");
+        return;
+    }
+    
+    // Extrair telefone do chat ID (remover @s.whatsapp.net)
+    const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "");
+    
+    // Redirecionar para página de cadastro de profissional com dados pré-preenchidos
+    const url = "/professional_applications_create.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
+    window.open(url, "_blank");
+}
+
+// Função para cadastrar paciente
+function cadastrarPaciente() {
+    const chatId = window.chatId || "";
+    const chatName = window.chatName || "";
+    
+    if (!chatId) {
+        alert("Erro: Chat não identificado");
+        return;
+    }
+    
+    // Extrair telefone do chat ID (remover @s.whatsapp.net)
+    const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "");
+    
+    // Redirecionar para página de cadastro de paciente com dados pré-preenchidos
+    const url = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
+    window.open(url, "_blank");
+}
 ';
 echo '</script>';
 
