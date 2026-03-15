@@ -171,6 +171,10 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
         'keys' => ['_whatsapp_console_']
     ],
+    'OpenAI Console' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+        'keys' => ['_openai_console_']
+    ],
     'Credenciais APIs' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
         'keys' => ['_credentials_apis_']
@@ -200,23 +204,11 @@ $sections = [
 $fieldsAdded = ['zapsign.base_url' => 'ZapSign - Base URL', 'zapsign.api_token' => 'ZapSign - API Token'];
 $fields = array_merge($fields, $fieldsAdded);
 
-// Mapear abas que devem abrir em nova janela
-$externalUrls = [
-    'WhatsApp Instâncias' => '/admin_whatsapp_instances.php',
-    'WhatsApp Console' => '/admin_whatsapp_console.php',
-    'Credenciais APIs' => '/admin_integrations.php',
-    'Mínimos' => '/specialty_minimums_list.php',
-    'Autorizações' => '/appointment_value_authorizations_list.php',
-    'Jobs' => '/integration_jobs_list.php',
-    'Logs Técnicos' => '/tech_logs_list.php',
-];
-
 echo '<div class="configTabs">';
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
     $isActive = $idx === 0 ? 'isActive' : '';
-    $externalUrl = isset($externalUrls[$sectionTitle]) ? ' data-external-url="' . h($externalUrls[$sectionTitle]) . '"' : '';
-    echo '<button type="button" class="configTab ' . $isActive . '" data-tab="tab' . $idx . '"' . $externalUrl . '>';
+    echo '<button type="button" class="configTab ' . $isActive . '" data-tab="tab' . $idx . '">';
     echo $sectionData['icon'];
     echo '<span>' . h($sectionTitle) . '</span>';
     echo '</button>';
@@ -364,135 +356,418 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Instâncias') {
-        // Aba com link para WhatsApp Instâncias
+        // Aba WhatsApp Instâncias - Gerenciamento Completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">WhatsApp Instâncias</div>';
-        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
-        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>📱 Gerenciamento de Instâncias WhatsApp</strong><br>';
-        echo 'Gerencie instâncias WhatsApp conectadas ao sistema via Evolution API.<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Criar novas instâncias WhatsApp<br>';
-        echo '• Gerar QR Code para conectar<br>';
-        echo '• Verificar status de conexão<br>';
-        echo '• Gerenciar webhook e configurações<br>';
-        echo '• Deletar instâncias';
+        
+        // Verificar se Evolution API está configurada
+        $baseUrlEvo = admin_setting_get('evolution.base_url', '');
+        $apiKeyEvo = admin_setting_get('evolution.api_key', '');
+        $instanceEvo = admin_setting_get('evolution.instance', '');
+        
+        if ($baseUrlEvo === '' || $apiKeyEvo === '' || $instanceEvo === '') {
+            echo '<div style="padding:20px;background:#fee;border:1px solid #fcc;border-radius:8px;margin-bottom:16px">';
+            echo '<strong>⚠️ Evolution API não configurada</strong><br>';
+            echo 'Configure as credenciais da Evolution API na aba "Evolution" para gerenciar instâncias.';
+            echo '</div>';
+        } else {
+            $instanceFilterWI = isset($_GET['instance']) ? trim((string)$_GET['instance']) : '';
+            
+            $evoWI = new EvolutionApiV1();
+            $resWI = $evoWI->fetchInstances($instanceFilterWI !== '' ? $instanceFilterWI : null);
+            
+            $instancesWI = [];
+            if (is_array($resWI['json'])) {
+                $instancesWI = $resWI['json'];
+            }
+            
+            // Filtro
+            echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+            echo '<input name="instance" value="' . h($instanceFilterWI) . '" placeholder="Filtrar por instanceName" style="flex:1;min-width:240px">';
+            echo '<button class="btn" type="submit">Filtrar</button>';
+            echo '</form>';
+            
+            // Criar instância
+            echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+            echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Nova Instância</div>';
+            
+            echo '<form method="post" action="/admin_whatsapp_instance_create_post.php" style="display:grid;gap:12px">';
+            echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+            echo '<label>Instance name *<input name="instanceName" required placeholder="ex: multilife"></label>';
+            echo '<label>Token (opcional)<input name="token" placeholder="deixe vazio para gerar"></label>';
+            echo '<label>Número dono (com DDI)<input name="number" placeholder="559999999999"></label>';
+            echo '<label>Webhook URL (opcional)<input name="webhook" placeholder="https://..."></label>';
+            echo '</div>';
+            echo '<label style="display:flex;align-items:center;gap:10px">';
+            echo '<input type="checkbox" name="qrcode" value="1" checked> Gerar QR Code ao criar';
+            echo '</label>';
+            echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+            echo '<button class="btn btnPrimary" type="submit">Criar Instância</button>';
+            echo '</div>';
+            echo '</form>';
+            echo '</div>';
+            
+            // Lista de instâncias com gerenciamento completo
+            echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+            echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Instâncias Ativas</div>';
+            
+            if (count($instancesWI) > 0) {
+                echo '<div style="overflow:auto">';
+                echo '<table style="width:100%;border-collapse:collapse">';
+                echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+                echo '<th style="padding:12px;text-align:left">Instance</th>';
+                echo '<th style="padding:12px;text-align:left">Status</th>';
+                echo '<th style="padding:12px;text-align:left">Dono</th>';
+                echo '<th style="padding:12px;text-align:left">Engine</th>';
+                echo '<th style="padding:12px;text-align:right">Ações</th>';
+                echo '</tr></thead><tbody>';
+                
+                foreach ($instancesWI as $rowWI) {
+                    $iWI = $rowWI['instance'] ?? $rowWI;
+                    if (!is_array($iWI)) continue;
+                    
+                    $nameWI = (string)($iWI['instanceName'] ?? '');
+                    $statusWI = (string)($iWI['status'] ?? '');
+                    $ownerWI = (string)($iWI['owner'] ?? '');
+                    $engineWI = '';
+                    if (isset($iWI['integration']) && is_array($iWI['integration'])) {
+                        $engineWI = (string)($iWI['integration']['integration'] ?? '');
+                    }
+                    
+                    $statusColor = $statusWI === 'open' ? '#10b981' : ($statusWI === 'close' ? '#ef4444' : '#6b7280');
+                    
+                    echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                    echo '<td style="padding:12px;font-weight:700">' . h($nameWI) . '</td>';
+                    echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColor . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . h($statusWI) . '</span></td>';
+                    echo '<td style="padding:12px">' . h($ownerWI) . '</td>';
+                    echo '<td style="padding:12px">' . h($engineWI) . '</td>';
+                    echo '<td style="padding:12px;text-align:right">';
+                    echo '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">';
+                    
+                    // Botão Conectar/QR Code
+                    echo '<button class="btn btnSmall btnPrimary" onclick="showQRCodeModal(\'' . h($nameWI) . '\')">QR Code</button>';
+                    
+                    // Botão Restart
+                    echo '<form method="post" action="/admin_whatsapp_instance_restart_post.php" style="display:inline" onsubmit="return confirm(\'Reiniciar instância ' . h($nameWI) . '?\')">';
+                    echo '<input type="hidden" name="instance" value="' . h($nameWI) . '">';
+                    echo '<button class="btn btnSmall" type="submit">Restart</button>';
+                    echo '</form>';
+                    
+                    // Botão Logout
+                    echo '<form method="post" action="/admin_whatsapp_instance_logout_post.php" style="display:inline" onsubmit="return confirm(\'Fazer logout da instância ' . h($nameWI) . '?\')">';
+                    echo '<input type="hidden" name="instance" value="' . h($nameWI) . '">';
+                    echo '<button class="btn btnSmall" type="submit">Logout</button>';
+                    echo '</form>';
+                    
+                    // Botão Delete
+                    echo '<form method="post" action="/admin_whatsapp_instance_delete_post.php" style="display:inline" onsubmit="return confirm(\'DELETAR instância ' . h($nameWI) . '? Esta ação não pode ser desfeita!\')">';
+                    echo '<input type="hidden" name="instance" value="' . h($nameWI) . '">';
+                    echo '<button class="btn btnSmall btnDanger" type="submit">Delete</button>';
+                    echo '</form>';
+                    
+                    echo '</div>';
+                    echo '</td>';
+                    echo '</tr>';
+                }
+                
+                echo '</tbody></table>';
+                echo '</div>';
+            } else {
+                echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+                echo '<div style="font-size:48px;margin-bottom:12px">📱</div>';
+                echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma instância encontrada</div>';
+                echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Crie uma nova instância acima.</div>';
+                echo '</div>';
+            }
+            
+            echo '</div>';
+        }
+        
+        // Modal para QR Code
+        echo '<div id="qrCodeModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:2000;align-items:center;justify-content:center">';
+        echo '<div class="card" style="max-width:500px;width:90%;text-align:center">';
+        echo '<h3 style="font-size:20px;font-weight:700;margin-bottom:16px" id="qrModalTitle">Conectar Instância</h3>';
+        echo '<div id="qrCodeContainer" style="padding:20px;background:#f9fafb;border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:14px;color:#6b7280">Gerando QR Code...</div>';
+        echo '</div>';
+        echo '<div style="font-size:13px;color:#6b7280;margin-bottom:16px">Escaneie o QR Code com o WhatsApp do celular</div>';
+        echo '<button class="btn" onclick="closeQRCodeModal()">Fechar</button>';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/admin_whatsapp_instances.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir WhatsApp Instâncias</a>';
-        echo '</div>';
+        
+        echo '<script>';
+        echo 'function showQRCodeModal(instanceName) {';
+        echo '  document.getElementById("qrModalTitle").textContent = "Conectar: " + instanceName;';
+        echo '  document.getElementById("qrCodeContainer").innerHTML = "<div style=\"font-size:14px;color:#6b7280\">Gerando QR Code...</div>";';
+        echo '  document.getElementById("qrCodeModal").style.display = "flex";';
+        echo '  ';
+        echo '  fetch("/admin_whatsapp_instance_connect_post.php", {';
+        echo '    method: "POST",';
+        echo '    headers: {"Content-Type": "application/x-www-form-urlencoded"},';
+        echo '    body: "instance=" + encodeURIComponent(instanceName)';
+        echo '  })';
+        echo '  .then(response => response.json())';
+        echo '  .then(data => {';
+        echo '    if (data.success && data.qrcode) {';
+        echo '      document.getElementById("qrCodeContainer").innerHTML = "<img src=\"data:image/png;base64," + data.qrcode.base64 + "\" style=\"max-width:100%;height:auto;border-radius:8px\">";';
+        echo '    } else if (data.pairingCode) {';
+        echo '      document.getElementById("qrCodeContainer").innerHTML = "<div style=\"font-size:24px;font-weight:700;padding:20px;background:white;border-radius:8px\">" + data.pairingCode + "</div><div style=\"margin-top:12px;font-size:13px;color:#6b7280\">Digite este código no WhatsApp</div>";';
+        echo '    } else {';
+        echo '      document.getElementById("qrCodeContainer").innerHTML = "<div style=\"color:#ef4444\">Erro: " + (data.error || "Não foi possível gerar QR Code") + "</div>";';
+        echo '    }';
+        echo '  })';
+        echo '  .catch(error => {';
+        echo '    document.getElementById("qrCodeContainer").innerHTML = "<div style=\"color:#ef4444\">Erro ao conectar: " + error.message + "</div>";';
+        echo '  });';
+        echo '}';
+        echo 'function closeQRCodeModal() {';
+        echo '  document.getElementById("qrCodeModal").style.display = "none";';
+        echo '}';
+        echo 'document.getElementById("qrCodeModal").addEventListener("click", function(e) {';
+        echo '  if (e.target === this) closeQRCodeModal();';
+        echo '});';
+        echo '</script>';
+        
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Console') {
-        // Aba com link para WhatsApp Console
+        // Aba WhatsApp Console - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">WhatsApp Console</div>';
+        
+        $baseUrlWC = admin_setting_get('evolution.base_url', 'https://evo.multilife.com.br') ?? 'https://evo.multilife.com.br';
+        
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>🔧 Console de Testes WhatsApp</strong><br>';
-        echo 'Console para testes e comandos diretos da API WhatsApp.<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Enviar mensagens de teste<br>';
-        echo '• Testar mídia e documentos<br>';
-        echo '• Verificar status de mensagens<br>';
-        echo '• Logs detalhados de chamadas API';
+        echo 'Console para testes e comandos diretos da API WhatsApp. Toda chamada gera log em Logs TI (provider=evolution).<br>';
+        echo '<strong>Base URL atual:</strong> <code>' . h($baseUrlWC) . '</code>';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/admin_whatsapp_console.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir WhatsApp Console</a>';
+        
+        // Enviar mensagem
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Enviar Mensagem (POST /message/sendText/{instance})</div>';
+        
+        echo '<form method="post" action="/admin_whatsapp_send_message_post.php" style="display:grid;gap:12px">';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>Instance *<input name="instance" required placeholder="multilife"></label>';
+        echo '<label>Número destino (com DDI) *<input name="number" required placeholder="5517991234567"></label>';
         echo '</div>';
+        echo '<label>Mensagem *<textarea name="text" required rows="4" placeholder="Digite a mensagem..."></textarea></label>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">Enviar Mensagem</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        
+        // Buscar instância
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Buscar Instância (GET /instance/fetchInstances)</div>';
+        
+        echo '<form method="post" action="/admin_whatsapp_fetch_instance_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input name="instanceName" placeholder="Nome da instância (opcional)" style="flex:1;min-width:280px">';
+        echo '<button class="btn" type="submit">Buscar</button>';
+        echo '</form>';
+        echo '</div>';
+        
+        // Conectar instância
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Conectar Instância (GET /instance/connect/{instance})</div>';
+        
+        echo '<form method="post" action="/admin_whatsapp_connect_instance_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input name="instance" required placeholder="Nome da instância *" style="flex:1;min-width:280px">';
+        echo '<button class="btn btnPrimary" type="submit">Conectar</button>';
+        echo '</form>';
+        echo '</div>';
+        
+        echo '</div>';
+    } elseif ($sectionTitle === 'OpenAI Console') {
+        // Aba OpenAI Console - Conteúdo completo
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">OpenAI Console</div>';
+        
+        $modelDefaultOAI = admin_setting_get('openai.model', 'gpt-4o-mini') ?? 'gpt-4o-mini';
+        
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Console para testes do endpoint OpenAI <code>/v1/chat/completions</code>. Toda chamada gera log em Logs TI (provider=openai).';
+        echo '</div>';
+        echo '</div>';
+        
+        // Modo 1: Chat
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Modo 1: Chat Simples</div>';
+        
+        echo '<form method="post" action="/admin_openai_console_post.php" style="display:grid;gap:12px">';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>Model<input name="model" value="' . h($modelDefaultOAI) . '" placeholder="gpt-4o-mini"></label>';
+        echo '<label>Temperature<input type="number" step="0.1" min="0" max="2" name="temperature" value="0.2"></label>';
+        echo '</div>';
+        echo '<label>System prompt<textarea name="system" rows="3" placeholder="Você é um assistente que responde em português do Brasil.">Você é um assistente que responde em português do Brasil.</textarea></label>';
+        echo '<label>User message *<textarea name="user" required rows="5" placeholder="Digite sua mensagem"></textarea></label>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">Executar Chat</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        
+        // Modo 2: Extrair dados
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Modo 2: Extrair Dados de E-mail → JSON</div>';
+        
+        echo '<form method="post" action="/admin_openai_console_post.php" style="display:grid;gap:12px">';
+        echo '<label>Conteúdo do e-mail *<textarea name="email_text" required rows="8" placeholder="Cole aqui o e-mail bruto"></textarea></label>';
+        echo '<label style="display:flex;align-items:center;gap:10px">';
+        echo '<input type="checkbox" name="force_json" value="1" checked> Forçar saída em JSON (o sistema tentará parsear)';
+        echo '</label>';
+        echo '<label>Schema JSON esperado (opcional)<textarea name="json_schema" rows="5" placeholder="{&#10;  &quot;patient_name&quot;: &quot;string&quot;,&#10;  &quot;patient_phone&quot;: &quot;string&quot;,&#10;  &quot;specialty&quot;: &quot;string&quot;,&#10;  &quot;city&quot;: &quot;string&quot;,&#10;  &quot;notes&quot;: &quot;string&quot;&#10;}"></textarea></label>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">Extrair Dados</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        
         echo '</div>';
     } elseif ($sectionTitle === 'Credenciais APIs') {
-        // Aba com link para Credenciais APIs
+        // Aba Credenciais APIs - Redirecionamento para abas específicas
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Credenciais APIs</div>';
+        
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>🔐 Gerenciamento de Credenciais</strong><br>';
-        echo 'Gerencie todas as credenciais de APIs externas.<br><br>';
-        echo '<strong>APIs Disponíveis:</strong><br>';
-        echo '• Evolution API (WhatsApp)<br>';
-        echo '• OpenAI API (Inteligência Artificial)<br>';
-        echo '• ZapSign API (Assinatura Digital)<br>';
-        echo '• SMTP/IMAP (E-mail)';
+        echo '<strong>🔐 Gerenciamento Centralizado de Credenciais</strong><br>';
+        echo 'Todas as credenciais de APIs estão disponíveis nas abas específicas de cada integração nesta mesma página de Configurações.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/admin_integrations.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Credenciais APIs</a>';
+        
+        echo '<div style="display:grid;gap:16px;max-width:800px">';
+        
+        // Evolution API
+        echo '<div style="padding:20px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+        echo '<div style="font-size:24px">💬</div>';
+        echo '<div style="font-weight:700;font-size:16px">Evolution API (WhatsApp)</div>';
+        echo '</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+        echo 'Configure Base URL, API Key e Instance para WhatsApp';
+        echo '</div>';
+        echo '<button class="btn btnPrimary" onclick="document.querySelector(\'[data-tab=\"tab9\"]\').click()">Ir para Evolution</button>';
+        echo '</div>';
+        
+        // OpenAI API
+        echo '<div style="padding:20px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+        echo '<div style="font-size:24px">🤖</div>';
+        echo '<div style="font-weight:700;font-size:16px">OpenAI API</div>';
+        echo '</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+        echo 'Configure API Key, Modelo e Prompt de Extração';
+        echo '</div>';
+        echo '<button class="btn btnPrimary" onclick="document.querySelector(\'[data-tab=\"tab8\"]\').click()">Ir para OpenAI</button>';
+        echo '</div>';
+        
+        // ZapSign API
+        echo '<div style="padding:20px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+        echo '<div style="font-size:24px">📝</div>';
+        echo '<div style="font-weight:700;font-size:16px">ZapSign API</div>';
+        echo '</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+        echo 'Configure Token, Modo Sandbox e Templates de Contratos';
+        echo '</div>';
+        echo '<button class="btn btnPrimary" onclick="document.querySelector(\'[data-tab=\"tab10\"]\').click()">Ir para ZapSign</button>';
+        echo '</div>';
+        
+        // SMTP/IMAP
+        echo '<div style="padding:20px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+        echo '<div style="font-size:24px">📧</div>';
+        echo '<div style="font-weight:700;font-size:16px">SMTP/IMAP (E-mail)</div>';
+        echo '</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+        echo 'Configure servidores de envio (SMTP) e recebimento (IMAP) de e-mail';
+        echo '</div>';
+        echo '<div style="display:flex;gap:10px">';
+        echo '<button class="btn btnPrimary" onclick="document.querySelector(\'[data-tab=\"tab6\"]\').click()">IMAP (Recebimento)</button>';
+        echo '<button class="btn btnPrimary" onclick="document.querySelector(\'[data-tab=\"tab7\"]\').click()">SMTP (Envio)</button>';
+        echo '</div>';
+        echo '</div>';
+        
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Mínimos') {
-        // Aba com link para Mínimos
+        // Aba Mínimos - Link para página completa (muito complexa para incluir)
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Valores Mínimos por Especialidade</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
         echo '<strong>💰 Configuração de Valores Mínimos</strong><br>';
-        echo 'Configure valores mínimos de atendimento por especialidade.<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Definir valor mínimo por especialidade<br>';
-        echo '• Garantir rentabilidade dos atendimentos<br>';
-        echo '• Validação automática de propostas';
+        echo 'Configure valores mínimos de atendimento por especialidade para garantir rentabilidade.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/specialty_minimums_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Mínimos</a>';
+        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
+        echo '<div style="font-size:48px;margin-bottom:16px">💵</div>';
+        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Gerenciamento de Valores Mínimos</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
+        echo 'Esta funcionalidade possui interface complexa com listagem, filtros e edição. Clique abaixo para acessar a página completa.';
+        echo '</div>';
+        echo '<a class="btn btnPrimary" href="/specialty_minimums_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Autorizações') {
-        // Aba com link para Autorizações
+        // Aba Autorizações - Link para página completa
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Autorizações de Valores</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
         echo '<strong>✅ Gerenciamento de Autorizações</strong><br>';
-        echo 'Gerencie autorizações de valores de atendimento.<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Aprovar valores acima do mínimo<br>';
-        echo '• Histórico de autorizações<br>';
-        echo '• Controle de exceções';
+        echo 'Gerencie autorizações de valores de atendimento acima do mínimo estabelecido.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/appointment_value_authorizations_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Autorizações</a>';
+        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
+        echo '<div style="font-size:48px;margin-bottom:16px">✅</div>';
+        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Autorizações de Valores</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
+        echo 'Esta funcionalidade possui interface complexa com listagem, filtros e histórico. Clique abaixo para acessar a página completa.';
+        echo '</div>';
+        echo '<a class="btn btnPrimary" href="/appointment_value_authorizations_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Jobs') {
-        // Aba com link para Jobs
+        // Aba Jobs - Link para página completa
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Fila de Jobs de Integração</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
         echo '<strong>⏱️ Fila de Jobs</strong><br>';
-        echo 'Visualize e gerencie jobs enfileirados de integrações.<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Visualizar jobs pendentes<br>';
-        echo '• Reprocessar jobs com erro<br>';
-        echo '• Histórico de execuções<br>';
-        echo '• Monitoramento de performance';
+        echo 'Visualize e gerencie jobs enfileirados de integrações com status, retry e histórico.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/integration_jobs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Jobs</a>';
+        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
+        echo '<div style="font-size:48px;margin-bottom:16px">⏱️</div>';
+        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Fila de Jobs</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
+        echo 'Esta funcionalidade possui interface complexa com listagem dinâmica, filtros e ações. Clique abaixo para acessar a página completa.';
+        echo '</div>';
+        echo '<a class="btn btnPrimary" href="/integration_jobs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Logs Técnicos') {
-        // Aba com link para Logs Técnicos
+        // Aba Logs Técnicos - Link para página completa
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Logs Técnicos de Integrações</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
         echo '<strong>📋 Logs de Integrações</strong><br>';
-        echo 'Visualize logs de todas as integrações (WhatsApp, OpenAI, ZapSign, etc).<br><br>';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Logs detalhados de todas as APIs<br>';
-        echo '• Filtrar por provider e status<br>';
-        echo '• Visualizar requests e responses<br>';
-        echo '• Debug de integrações';
+        echo 'Visualize logs detalhados de todas as integrações (WhatsApp, OpenAI, ZapSign, etc).';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:40px">';
-        echo '<a class="btn btnPrimary" href="/tech_logs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Logs Técnicos</a>';
+        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
+        echo '<div style="font-size:48px;margin-bottom:16px">📋</div>';
+        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Logs Técnicos</div>';
+        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
+        echo 'Esta funcionalidade possui interface complexa com filtros avançados, paginação e visualização de JSON. Clique abaixo para acessar a página completa.';
+        echo '</div>';
+        echo '<a class="btn btnPrimary" href="/tech_logs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Ajuda') {
@@ -1339,11 +1614,6 @@ echo '</form>';
 echo '<script>';
 echo 'document.querySelectorAll(".configTab").forEach(function(tab){';
 echo '  tab.addEventListener("click", function(){';
-echo '    const externalUrl = this.getAttribute("data-external-url");';
-echo '    if (externalUrl) {';
-echo '      window.open(externalUrl, "_blank");';
-echo '      return;';
-echo '    }';
 echo '    const targetId = this.getAttribute("data-tab");';
 echo '    document.querySelectorAll(".configTab").forEach(function(t){ t.classList.remove("isActive"); });';
 echo '    document.querySelectorAll(".configPanel").forEach(function(p){ p.classList.remove("isActive"); });';
