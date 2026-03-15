@@ -55,10 +55,29 @@ $res = $evo->createInstanceBasic($payload);
 
 if ((int)$res['status'] < 200 || (int)$res['status'] >= 300) {
     flash_set('error', 'Falha ao criar instância.');
-    header('Location: /admin_whatsapp_instances.php');
+    header('Location: /admin_settings.php');
     exit;
 }
 
-flash_set('success', 'Instância criada.');
-header('Location: /admin_whatsapp_instance_view.php?instance=' . urlencode($instanceName));
+// Salvar instância no banco de dados
+$userId = auth_user_id();
+$stmt = db()->prepare('
+    INSERT INTO whatsapp_instances (instance_name, token, owner_number, webhook_url, created_by)
+    VALUES (:instance_name, :token, :owner_number, :webhook_url, :created_by)
+    ON DUPLICATE KEY UPDATE
+        token = VALUES(token),
+        owner_number = VALUES(owner_number),
+        webhook_url = VALUES(webhook_url),
+        updated_at = CURRENT_TIMESTAMP
+');
+$stmt->execute([
+    'instance_name' => $instanceName,
+    'token' => $token !== '' ? $token : null,
+    'owner_number' => $number !== '' ? $number : null,
+    'webhook_url' => $webhook !== '' ? $webhook : null,
+    'created_by' => $userId
+]);
+
+flash_set('success', 'Instância criada e salva no sistema.');
+header('Location: /admin_settings.php');
 exit;

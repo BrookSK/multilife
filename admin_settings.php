@@ -444,31 +444,53 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo 'Configure as credenciais da Evolution API na aba "Evolution" para gerenciar instâncias.';
             echo '</div>';
         } else {
-            $instanceFilterWI = isset($_GET['instance']) ? trim((string)$_GET['instance']) : '';
+            // Buscar instâncias salvas no banco de dados
+            $filterInstanceWI = isset($_GET['filter_instance']) ? trim((string)$_GET['filter_instance']) : '';
             
-            $evoWI = new EvolutionApiV1();
-            $resWI = $evoWI->fetchInstances($instanceFilterWI !== '' ? $instanceFilterWI : null);
+            $sqlInstWI = 'SELECT id, instance_name, owner_number, status, created_at FROM whatsapp_instances WHERE status = :status';
+            $paramsInstWI = ['status' => 'active'];
             
-            $instancesWI = [];
-            if (is_array($resWI['json'])) {
-                $instancesWI = $resWI['json'];
+            if ($filterInstanceWI !== '') {
+                $sqlInstWI .= ' AND instance_name LIKE :filter';
+                $paramsInstWI['filter'] = '%' . $filterInstanceWI . '%';
             }
             
-            // Filtro
+            $sqlInstWI .= ' ORDER BY created_at DESC';
+            
+            $stmtInstWI = db()->prepare($sqlInstWI);
+            $stmtInstWI->execute($paramsInstWI);
+            $dbInstancesWI = $stmtInstWI->fetchAll();
+            
+            // Buscar status das instâncias na Evolution API
+            $evoWI = new EvolutionApiV1();
+            $resWI = $evoWI->fetchInstances();
+            
+            $evolutionInstancesWI = [];
+            if (is_array($resWI['json'])) {
+                foreach ($resWI['json'] as $inst) {
+                    $instData = $inst['instance'] ?? $inst;
+                    if (is_array($instData)) {
+                        $instName = (string)($instData['instanceName'] ?? '');
+                        $evolutionInstancesWI[$instName] = $instData;
+                    }
+                }
+            }
+            
+            // Filtro de busca
             echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
-            echo '<input name="instance" value="' . h($instanceFilterWI) . '" placeholder="Filtrar por instanceName" style="flex:1;min-width:240px">';
-            echo '<button class="btn" type="submit">Filtrar</button>';
+            echo '<input name="filter_instance" value="' . h($filterInstanceWI) . '" placeholder="Filtrar por nome da instância" style="flex:1;min-width:240px">';
+            echo '<button class="btn" type="submit">Buscar</button>';
             echo '</form>';
             
-            // Criar instância
+            // Formulário de criar instância
             echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
             echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Nova Instância</div>';
             
             echo '<form method="post" action="/admin_whatsapp_instance_create_post.php" style="display:grid;gap:12px">';
             echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-            echo '<label>Instance name *<input name="instanceName" required placeholder="ex: multilife"></label>';
+            echo '<label>Nome da Instância *<input name="instanceName" required placeholder="ex: multilife"></label>';
             echo '<label>Token (opcional)<input name="token" placeholder="deixe vazio para gerar"></label>';
-            echo '<label>Número dono (com DDI)<input name="number" placeholder="559999999999"></label>';
+            echo '<label>Número dono (com DDI)<input name="number" placeholder="5517991234567"></label>';
             echo '<label>Webhook URL (opcional)<input name="webhook" placeholder="https://..."></label>';
             echo '</div>';
             echo '<label style="display:flex;align-items:center;gap:10px">';
@@ -480,62 +502,71 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo '</form>';
             echo '</div>';
             
-            // Lista de instâncias com gerenciamento completo
+            // Lista de instâncias
             echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
-            echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Instâncias Ativas</div>';
+            echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Instâncias do Sistema</div>';
             
-            if (count($instancesWI) > 0) {
+            if (count($dbInstancesWI) > 0) {
                 echo '<div style="overflow:auto">';
                 echo '<table style="width:100%;border-collapse:collapse">';
                 echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
-                echo '<th style="padding:12px;text-align:left">Instance</th>';
-                echo '<th style="padding:12px;text-align:left">Status</th>';
+                echo '<th style="padding:12px;text-align:left">Instância</th>';
+                echo '<th style="padding:12px;text-align:left">Status Conexão</th>';
                 echo '<th style="padding:12px;text-align:left">Dono</th>';
-                echo '<th style="padding:12px;text-align:left">Engine</th>';
+                echo '<th style="padding:12px;text-align:left">Criado</th>';
                 echo '<th style="padding:12px;text-align:right">Ações</th>';
                 echo '</tr></thead><tbody>';
                 
-                foreach ($instancesWI as $rowWI) {
-                    $iWI = $rowWI['instance'] ?? $rowWI;
-                    if (!is_array($iWI)) continue;
+                foreach ($dbInstancesWI as $dbInst) {
+                    $instName = (string)$dbInst['instance_name'];
+                    $ownerNumber = (string)($dbInst['owner_number'] ?? '');
+                    $createdAt = (string)$dbInst['created_at'];
                     
-                    $nameWI = (string)($iWI['instanceName'] ?? '');
-                    $statusWI = (string)($iWI['status'] ?? '');
-                    $ownerWI = (string)($iWI['owner'] ?? '');
-                    $engineWI = '';
-                    if (isset($iWI['integration']) && is_array($iWI['integration'])) {
-                        $engineWI = (string)($iWI['integration']['integration'] ?? '');
+                    // Buscar status na Evolution API
+                    $evoStatus = 'unknown';
+                    $isConnected = false;
+                    if (isset($evolutionInstancesWI[$instName])) {
+                        $evoData = $evolutionInstancesWI[$instName];
+                        $evoStatus = (string)($evoData['status'] ?? 'unknown');
+                        $isConnected = $evoStatus === 'open';
                     }
                     
-                    $statusColor = $statusWI === 'open' ? '#10b981' : ($statusWI === 'close' ? '#ef4444' : '#6b7280');
+                    $statusColor = $isConnected ? '#10b981' : '#ef4444';
+                    $statusText = $isConnected ? 'Conectado' : 'Desconectado';
                     
                     echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
-                    echo '<td style="padding:12px;font-weight:700">' . h($nameWI) . '</td>';
-                    echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColor . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . h($statusWI) . '</span></td>';
-                    echo '<td style="padding:12px">' . h($ownerWI) . '</td>';
-                    echo '<td style="padding:12px">' . h($engineWI) . '</td>';
+                    echo '<td style="padding:12px;font-weight:700">' . h($instName) . '</td>';
+                    echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColor . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . $statusText . '</span></td>';
+                    echo '<td style="padding:12px">' . h($ownerNumber ?: '-') . '</td>';
+                    echo '<td style="padding:12px;font-size:13px">' . h($createdAt) . '</td>';
                     echo '<td style="padding:12px;text-align:right">';
                     echo '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">';
                     
-                    // Botão Conectar/QR Code
-                    echo '<button class="btn btnSmall btnPrimary" onclick="showQRCodeModal(\'' . h($nameWI) . '\')">QR Code</button>';
+                    // Botão Conectar (só se desconectado)
+                    if (!$isConnected) {
+                        echo '<button class="btn btnSmall btnPrimary" onclick="showQRCodeModal(\'' . h($instName) . '\')">Conectar</button>';
+                    } else {
+                        echo '<span style="padding:4px 8px;background:#10b981;color:white;border-radius:4px;font-size:11px">✓ Conectado</span>';
+                    }
                     
                     // Botão Restart
-                    echo '<form method="post" action="/admin_whatsapp_instance_restart_post.php" style="display:inline" onsubmit="return confirm(\'Reiniciar instância ' . h($nameWI) . '?\')">';
-                    echo '<input type="hidden" name="instance" value="' . h($nameWI) . '">';
+                    echo '<form method="post" action="/admin_whatsapp_instance_restart_post.php" style="display:inline" onsubmit="return confirm(\'Reiniciar instância ' . h($instName) . '?\')">';
+                    echo '<input type="hidden" name="instance" value="' . h($instName) . '">';
                     echo '<button class="btn btnSmall" type="submit">Restart</button>';
                     echo '</form>';
                     
                     // Botão Logout
-                    echo '<form method="post" action="/admin_whatsapp_instance_logout_post.php" style="display:inline" onsubmit="return confirm(\'Fazer logout da instância ' . h($nameWI) . '?\')">';
-                    echo '<input type="hidden" name="instance" value="' . h($nameWI) . '">';
-                    echo '<button class="btn btnSmall" type="submit">Logout</button>';
-                    echo '</form>';
+                    if ($isConnected) {
+                        echo '<form method="post" action="/admin_whatsapp_instance_logout_post.php" style="display:inline" onsubmit="return confirm(\'Fazer logout da instância ' . h($instName) . '?\')">';
+                        echo '<input type="hidden" name="instance" value="' . h($instName) . '">';
+                        echo '<button class="btn btnSmall" type="submit">Logout</button>';
+                        echo '</form>';
+                    }
                     
-                    // Botão Delete
-                    echo '<form method="post" action="/admin_whatsapp_instance_delete_post.php" style="display:inline" onsubmit="return confirm(\'DELETAR instância ' . h($nameWI) . '? Esta ação não pode ser desfeita!\')">';
-                    echo '<input type="hidden" name="instance" value="' . h($nameWI) . '">';
-                    echo '<button class="btn btnSmall btnDanger" type="submit">Delete</button>';
+                    // Botão Inativar
+                    echo '<form method="post" action="/admin_whatsapp_instance_deactivate_post.php" style="display:inline" onsubmit="return confirm(\'Inativar instância ' . h($instName) . '?\')">';
+                    echo '<input type="hidden" name="id" value="' . (int)$dbInst['id'] . '">';
+                    echo '<button class="btn btnSmall btnDanger" type="submit">Inativar</button>';
                     echo '</form>';
                     
                     echo '</div>';
@@ -548,8 +579,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
             } else {
                 echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
                 echo '<div style="font-size:48px;margin-bottom:12px">📱</div>';
-                echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma instância encontrada</div>';
-                echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Crie uma nova instância acima.</div>';
+                echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma instância cadastrada</div>';
+                echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Crie uma nova instância acima para começar.</div>';
                 echo '</div>';
             }
             

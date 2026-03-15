@@ -12,8 +12,8 @@ $baseUrl = admin_setting_get('evolution.base_url', '');
 $apiKey = admin_setting_get('evolution.api_key', '');
 
 if ($baseUrl === '' || $apiKey === '') {
-    flash_set('error', 'Evolution API não configurada. Configure em Configurações.');
-    header('Location: /admin_settings.php');
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'error' => 'Evolution API não configurada']);
     exit;
 }
 
@@ -21,8 +21,8 @@ $instance = trim((string)($_POST['instance'] ?? ''));
 $number = trim((string)($_POST['number'] ?? ''));
 
 if ($instance === '') {
-    flash_set('error', 'Instance inválida.');
-    header('Location: /admin_whatsapp_instances.php');
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'error' => 'Instance inválida']);
     exit;
 }
 
@@ -38,6 +38,19 @@ if (is_array($res['json'])) {
     $count = (string)($res['json']['count'] ?? '');
 }
 
+// Retornar JSON
+header('Content-Type: application/json');
+echo json_encode([
+    'success' => true,
+    'pairingCode' => $pairingCode,
+    'qrcode' => [
+        'base64' => $code
+    ],
+    'count' => $count
+]);
+exit;
+
+// Código HTML abaixo mantido para compatibilidade com chamadas diretas (não AJAX)
 view_header('QR / Pairing');
 
 echo '<div class="grid">';
