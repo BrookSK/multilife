@@ -335,6 +335,99 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         
         echo '</div>';
+    } elseif ($sectionTitle === 'Funções') {
+        // Aba Funções - Conteúdo completo
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Gerenciamento de Funções (Roles)</div>';
+        
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Funções definem o que cada usuário pode acessar no sistema. Cada função tem um conjunto de permissões específicas.';
+        echo '</div>';
+        echo '</div>';
+        
+        $qRoles = isset($_GET['q_roles']) ? trim((string)$_GET['q_roles']) : '';
+        
+        $sqlRoles = 'SELECT id, name, slug, created_at FROM roles';
+        $paramsRoles = [];
+        if ($qRoles !== '') {
+            $sqlRoles .= ' WHERE name LIKE :q OR slug LIKE :q';
+            $paramsRoles['q'] = '%' . $qRoles . '%';
+        }
+        $sqlRoles .= ' ORDER BY id DESC';
+        
+        $stmtRoles = db()->prepare($sqlRoles);
+        $stmtRoles->execute($paramsRoles);
+        $rowsRoles = $stmtRoles->fetchAll();
+        
+        // Formulário de busca
+        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input name="q_roles" value="' . h($qRoles) . '" placeholder="Buscar por nome ou slug" style="flex:1;min-width:220px">';
+        echo '<button class="btn" type="submit">Buscar</button>';
+        echo '</form>';
+        
+        // Formulário de criar nova função
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Nova Função</div>';
+        
+        echo '<form method="post" action="/roles_create_post.php" style="display:grid;gap:12px">';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>Nome da Função *<input name="name" required placeholder="ex: Financeiro"></label>';
+        echo '<label>Slug (identificador) *<input name="slug" required placeholder="ex: financeiro" pattern="[a-z0-9_-]+" title="Apenas letras minúsculas, números, hífen e underscore"></label>';
+        echo '</div>';
+        echo '<label>Descrição (opcional)<textarea name="description" rows="2" placeholder="Descrição da função"></textarea></label>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">Criar Função</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        
+        // Listagem de funções
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Funções Cadastradas</div>';
+        
+        if (count($rowsRoles) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">ID</th>';
+            echo '<th style="padding:12px;text-align:left">Nome</th>';
+            echo '<th style="padding:12px;text-align:left">Slug</th>';
+            echo '<th style="padding:12px;text-align:left">Criado</th>';
+            echo '<th style="padding:12px;text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($rowsRoles as $rRole) {
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px">' . (int)$rRole['id'] . '</td>';
+                echo '<td style="padding:12px;font-weight:700">' . h((string)$rRole['name']) . '</td>';
+                echo '<td style="padding:12px"><code>' . h((string)$rRole['slug']) . '</code></td>';
+                echo '<td style="padding:12px;font-size:13px">' . h((string)$rRole['created_at']) . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">';
+                echo '<a class="btn btnSmall" href="/roles_edit.php?id=' . (int)$rRole['id'] . '" target="_blank">Editar</a> ';
+                echo '<a class="btn btnSmall btnPrimary" href="/roles_permissions_edit.php?id=' . (int)$rRole['id'] . '" target="_blank">Permissões</a> ';
+                echo '<form method="post" action="/roles_delete_post.php" style="display:inline" onsubmit="return confirm(\'Excluir função ' . h((string)$rRole['name']) . '?\')">';
+                echo '<input type="hidden" name="id" value="' . (int)$rRole['id'] . '">';
+                echo '<button class="btn btnSmall btnDanger" type="submit">Excluir</button>';
+                echo '</form>';
+                echo '</div>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">👥</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma função encontrada</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Crie uma nova função acima.</div>';
+            echo '</div>';
+        }
+        
+        echo '</div>';
+        echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Instâncias') {
         // Aba WhatsApp Instâncias - Gerenciamento Completo
         echo '<div class="formSection">';
