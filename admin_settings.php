@@ -583,15 +583,66 @@ foreach ($sections as $sectionTitle => $sectionData) {
     } elseif ($sectionTitle === 'OpenAI Console') {
         // Aba OpenAI Console - Conteúdo completo
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">OpenAI Console</div>';
+        echo '<div class="formSectionTitle">OpenAI Console & Prompts</div>';
         
         $modelDefaultOAI = admin_setting_get('openai.model', 'gpt-4o-mini') ?? 'gpt-4o-mini';
+        $extractPrompt = admin_setting_get('openai.extract_prompt', '') ?? '';
         
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Console para testes do endpoint OpenAI <code>/v1/chat/completions</code>. Toda chamada gera log em Logs TI (provider=openai).';
+        echo 'Configure os prompts utilizados pelo sistema e teste o endpoint OpenAI <code>/v1/chat/completions</code>. Toda chamada gera log em Logs TI (provider=openai).';
         echo '</div>';
         echo '</div>';
+        
+        // Seção de Configuração de Prompts
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px;background:#f9fafb">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">⚙️ Configuração de Prompts do Sistema</div>';
+        
+        echo '<form method="post" action="/admin_settings_post.php" style="display:grid;gap:16px">';
+        
+        // Prompt de Extração de E-mail
+        echo '<div style="padding:14px;background:white;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:600;margin-bottom:8px;color:hsl(var(--primary))">📧 Prompt de Extração de E-mail → Demanda</div>';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:8px">Usado pelo CRON para extrair dados de e-mails recebidos e criar demandas automaticamente.</div>';
+        echo '<label>Prompt de Extração<textarea name="settings[openai.extract_prompt]" rows="6" placeholder="Extraia as seguintes informações do e-mail...">' . h($extractPrompt) . '</textarea></label>';
+        echo '<div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:4px">';
+        echo '<strong>Variáveis disponíveis:</strong> {email_subject}, {email_body}, {email_from}';
+        echo '</div>';
+        echo '</div>';
+        
+        // Configurações Gerais OpenAI
+        echo '<div style="padding:14px;background:white;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:600;margin-bottom:8px;color:hsl(var(--primary))">🤖 Configurações Gerais OpenAI</div>';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        
+        $baseUrlOAI = admin_setting_get('openai.base_url', 'https://api.openai.com') ?? 'https://api.openai.com';
+        $apiKeyOAI = admin_setting_get('openai.api_key', '') ?? '';
+        $modelOAI = admin_setting_get('openai.model', 'gpt-4o-mini') ?? 'gpt-4o-mini';
+        
+        echo '<label>Base URL<input name="settings[openai.base_url]" value="' . h($baseUrlOAI) . '" placeholder="https://api.openai.com"></label>';
+        echo '<label>Model<input name="settings[openai.model]" value="' . h($modelOAI) . '" placeholder="gpt-4o-mini"></label>';
+        echo '</div>';
+        
+        $hasApiKeyOAI = !empty($apiKeyOAI);
+        $maskedApiKeyOAI = $hasApiKeyOAI ? str_repeat('•', 32) : '';
+        echo '<label>API Key';
+        echo '<div style="position:relative">';
+        echo '<input type="password" id="field_openai_api_key_console" name="settings[openai.api_key]" value="' . h($apiKeyOAI) . '" placeholder="' . ($hasApiKeyOAI ? $maskedApiKeyOAI : 'Cole sua API Key aqui') . '" style="padding-right:80px">';
+        if ($hasApiKeyOAI) {
+            echo '<button type="button" onclick="togglePassword(\'field_openai_api_key_console\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:hsl(var(--primary));color:white;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Revelar</button>';
+        }
+        echo '</div>';
+        echo '</label>';
+        echo '</div>';
+        
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">💾 Salvar Configurações</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '</div>';
+        
+        // Seção de Testes
+        echo '<div style="font-weight:700;font-size:18px;margin:24px 0 16px 0;padding-bottom:8px;border-bottom:2px solid hsl(var(--border))">🧪 Testes e Console</div>';
         
         // Modo 1: Chat
         echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
@@ -1533,35 +1584,95 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
     } elseif ($sectionTitle === 'Funções') {
-        // Aba especial de Funções (Roles)
+        // Aba Funções - Conteúdo completo
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Gerenciamento de Funções</div>';
-        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div class="formSectionTitle">Gerenciamento de Funções (Roles)</div>';
+        
+        echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>ℹ️ Sobre Funções:</strong><br>';
-        echo '• Funções definem o que cada usuário pode acessar no sistema<br>';
-        echo '• Cada função tem um conjunto de permissões específicas<br>';
-        echo '• Ao criar um funcionário no RH, você deve atribuir uma função<br>';
-        echo '• Exemplos: Admin, Financeiro, Captador, TI, Profissional';
+        echo 'Funções definem o que cada usuário pode acessar no sistema. Cada função tem um conjunto de permissões específicas.';
         echo '</div>';
         echo '</div>';
         
-        echo '<div style="display:grid;gap:12px">';
+        $qRoles = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
         
-        echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-        echo '<a class="btn btnPrimary" href="/roles_list.php">Gerenciar Funções</a>';
-        echo '<a class="btn" href="/roles_create.php">+ Nova Função</a>';
+        $sqlRoles = 'SELECT id, name, slug, created_at FROM roles';
+        $paramsRoles = [];
+        if ($qRoles !== '') {
+            $sqlRoles .= ' WHERE name LIKE :q OR slug LIKE :q';
+            $paramsRoles['q'] = '%' . $qRoles . '%';
+        }
+        $sqlRoles .= ' ORDER BY id DESC';
+        
+        $stmtRoles = db()->prepare($sqlRoles);
+        $stmtRoles->execute($paramsRoles);
+        $rowsRoles = $stmtRoles->fetchAll();
+        
+        // Formulário de busca
+        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input name="q" value="' . h($qRoles) . '" placeholder="Buscar por nome ou slug" style="flex:1;min-width:220px">';
+        echo '<button class="btn" type="submit">Buscar</button>';
+        echo '</form>';
+        
+        // Formulário de criar nova função
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Nova Função</div>';
+        
+        echo '<form method="post" action="/roles_create_post.php" style="display:grid;gap:12px">';
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        echo '<label>Nome da Função *<input name="name" required placeholder="ex: Financeiro"></label>';
+        echo '<label>Slug (identificador) *<input name="slug" required placeholder="ex: financeiro" pattern="[a-z0-9_-]+" title="Apenas letras minúsculas, números, hífen e underscore"></label>';
+        echo '</div>';
+        echo '<label>Descrição (opcional)<textarea name="description" rows="2" placeholder="Descrição da função"></textarea></label>';
+        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
+        echo '<button class="btn btnPrimary" type="submit">Criar Função</button>';
+        echo '</div>';
+        echo '</form>';
         echo '</div>';
         
-        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px">';
-        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
-        echo '<strong>Funcionalidades:</strong><br>';
-        echo '• Criar, editar e excluir funções<br>';
-        echo '• Definir permissões para cada função<br>';
-        echo '• Visualizar quais usuários têm cada função<br>';
-        echo '• Atribuir funções aos funcionários do RH';
-        echo '</div>';
-        echo '</div>';
+        // Listagem de funções
+        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Funções Cadastradas</div>';
+        
+        if (count($rowsRoles) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">ID</th>';
+            echo '<th style="padding:12px;text-align:left">Nome</th>';
+            echo '<th style="padding:12px;text-align:left">Slug</th>';
+            echo '<th style="padding:12px;text-align:left">Criado</th>';
+            echo '<th style="padding:12px;text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($rowsRoles as $rRole) {
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px">' . (int)$rRole['id'] . '</td>';
+                echo '<td style="padding:12px;font-weight:700">' . h((string)$rRole['name']) . '</td>';
+                echo '<td style="padding:12px"><code>' . h((string)$rRole['slug']) . '</code></td>';
+                echo '<td style="padding:12px;font-size:13px">' . h((string)$rRole['created_at']) . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">';
+                echo '<a class="btn btnSmall" href="/roles_edit.php?id=' . (int)$rRole['id'] . '" target="_blank">Editar</a> ';
+                echo '<a class="btn btnSmall btnPrimary" href="/roles_permissions_edit.php?id=' . (int)$rRole['id'] . '" target="_blank">Permissões</a> ';
+                echo '<form method="post" action="/roles_delete_post.php" style="display:inline" onsubmit="return confirm(\'Excluir função ' . h((string)$rRole['name']) . '?\')">';
+                echo '<input type="hidden" name="id" value="' . (int)$rRole['id'] . '">';
+                echo '<button class="btn btnSmall btnDanger" type="submit">Excluir</button>';
+                echo '</form>';
+                echo '</div>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">👥</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma função encontrada</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Crie uma nova função acima.</div>';
+            echo '</div>';
+        }
         
         echo '</div>';
         echo '</div>';
