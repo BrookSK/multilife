@@ -574,9 +574,13 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         $sqlLogs .= ' ORDER BY id DESC LIMIT 100';
         
-        $stmtLogs = db()->prepare($sqlLogs);
-        $stmtLogs->execute($paramsLogs);
-        $logsWC = $stmtLogs->fetchAll();
+        try {
+            $stmtLogs = db()->prepare($sqlLogs);
+            $stmtLogs->execute($paramsLogs);
+            $logsWC = $stmtLogs->fetchAll();
+        } catch (PDOException $e) {
+            $logsWC = [];
+        }
         
         if (count($logsWC) > 0) {
             echo '<div style="overflow:auto">';
