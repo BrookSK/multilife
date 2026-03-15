@@ -200,11 +200,23 @@ $sections = [
 $fieldsAdded = ['zapsign.base_url' => 'ZapSign - Base URL', 'zapsign.api_token' => 'ZapSign - API Token'];
 $fields = array_merge($fields, $fieldsAdded);
 
+// Mapear abas que devem abrir em nova janela
+$externalUrls = [
+    'WhatsApp Instâncias' => '/admin_whatsapp_instances.php',
+    'WhatsApp Console' => '/admin_whatsapp_console.php',
+    'Credenciais APIs' => '/admin_integrations.php',
+    'Mínimos' => '/specialty_minimums_list.php',
+    'Autorizações' => '/appointment_value_authorizations_list.php',
+    'Jobs' => '/integration_jobs_list.php',
+    'Logs Técnicos' => '/tech_logs_list.php',
+];
+
 echo '<div class="configTabs">';
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
     $isActive = $idx === 0 ? 'isActive' : '';
-    echo '<button type="button" class="configTab ' . $isActive . '" data-tab="tab' . $idx . '">';
+    $externalUrl = isset($externalUrls[$sectionTitle]) ? ' data-external-url="' . h($externalUrls[$sectionTitle]) . '"' : '';
+    echo '<button type="button" class="configTab ' . $isActive . '" data-tab="tab' . $idx . '"' . $externalUrl . '>';
     echo $sectionData['icon'];
     echo '<span>' . h($sectionTitle) . '</span>';
     echo '</button>';
@@ -1327,6 +1339,11 @@ echo '</form>';
 echo '<script>';
 echo 'document.querySelectorAll(".configTab").forEach(function(tab){';
 echo '  tab.addEventListener("click", function(){';
+echo '    const externalUrl = this.getAttribute("data-external-url");';
+echo '    if (externalUrl) {';
+echo '      window.open(externalUrl, "_blank");';
+echo '      return;';
+echo '    }';
 echo '    const targetId = this.getAttribute("data-tab");';
 echo '    document.querySelectorAll(".configTab").forEach(function(t){ t.classList.remove("isActive"); });';
 echo '    document.querySelectorAll(".configPanel").forEach(function(p){ p.classList.remove("isActive"); });';
