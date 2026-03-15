@@ -215,6 +215,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
     $idx++;
 }
 echo '</div>';
+echo '</div>';
+
+echo '<div class="configContent">';
 
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
@@ -695,80 +698,363 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Mínimos') {
-        // Aba Mínimos - Link para página completa (muito complexa para incluir)
+        // Aba Mínimos - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Valores Mínimos por Especialidade</div>';
+        
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>💰 Configuração de Valores Mínimos</strong><br>';
-        echo 'Configure valores mínimos de atendimento por especialidade para garantir rentabilidade.';
+        echo 'Usado para bloquear agendamentos abaixo do mínimo e solicitar autorização do Admin.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
-        echo '<div style="font-size:48px;margin-bottom:16px">💵</div>';
-        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Gerenciamento de Valores Mínimos</div>';
-        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
-        echo 'Esta funcionalidade possui interface complexa com listagem, filtros e edição. Clique abaixo para acessar a página completa.';
+        
+        $qMin = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+        
+        $sqlMin = 'SELECT id, specialty, minimum_value, status, created_at FROM specialty_minimums';
+        $paramsMin = [];
+        if ($qMin !== '') {
+            $sqlMin .= ' WHERE specialty LIKE :q';
+            $paramsMin['q'] = '%' . $qMin . '%';
+        }
+        $sqlMin .= ' ORDER BY specialty ASC';
+        
+        $stmtMin = db()->prepare($sqlMin);
+        $stmtMin->execute($paramsMin);
+        $rowsMin = $stmtMin->fetchAll();
+        
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+        echo '<form method="get" action="/admin_settings.php" style="display:flex;gap:10px;flex:1">';
+        echo '<input name="q" value="' . h($qMin) . '" placeholder="Buscar especialidade" style="flex:1;min-width:260px">';
+        echo '<button class="btn" type="submit">Buscar</button>';
+        echo '</form>';
+        echo '<a class="btn btnPrimary" href="/specialty_minimums_create.php" target="_blank" style="margin-left:10px">+ Novo</a>';
         echo '</div>';
-        echo '<a class="btn btnPrimary" href="/specialty_minimums_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
-        echo '</div>';
+        
+        if (count($rowsMin) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">Especialidade</th>';
+            echo '<th style="padding:12px;text-align:left">Mínimo</th>';
+            echo '<th style="padding:12px;text-align:left">Status</th>';
+            echo '<th style="padding:12px;text-align:left">Criado</th>';
+            echo '<th style="padding:12px;text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($rowsMin as $rMin) {
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px;font-weight:700">' . h((string)$rMin['specialty']) . '</td>';
+                echo '<td style="padding:12px">R$ ' . h((string)$rMin['minimum_value']) . '</td>';
+                echo '<td style="padding:12px">' . h((string)$rMin['status']) . '</td>';
+                echo '<td style="padding:12px;font-size:13px">' . h((string)$rMin['created_at']) . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<a class="btn btnSmall" href="/specialty_minimums_edit.php?id=' . (int)$rMin['id'] . '" target="_blank">Editar</a> ';
+                echo '<form method="post" action="/specialty_minimums_delete_post.php" style="display:inline" onsubmit="return confirm(\'Inativar este mínimo?\')">';
+                echo '<input type="hidden" name="id" value="' . (int)$rMin['id'] . '">';
+                echo '<button class="btn btnSmall" type="submit">Inativar</button>';
+                echo '</form>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">💵</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum valor mínimo cadastrado</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:16px">Adicione valores mínimos para cada especialidade.</div>';
+            echo '<a class="btn btnPrimary" href="/specialty_minimums_create.php" target="_blank">+ Novo Mínimo</a>';
+            echo '</div>';
+        }
+        
         echo '</div>';
     } elseif ($sectionTitle === 'Autorizações') {
-        // Aba Autorizações - Link para página completa
+        // Aba Autorizações - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Autorizações de Valores</div>';
+        
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>✅ Gerenciamento de Autorizações</strong><br>';
-        echo 'Gerencie autorizações de valores de atendimento acima do mínimo estabelecido.';
+        echo 'Solicitações quando o valor por sessão está abaixo do mínimo por especialidade.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
-        echo '<div style="font-size:48px;margin-bottom:16px">✅</div>';
-        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Autorizações de Valores</div>';
-        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
-        echo 'Esta funcionalidade possui interface complexa com listagem, filtros e histórico. Clique abaixo para acessar a página completa.';
-        echo '</div>';
-        echo '<a class="btn btnPrimary" href="/appointment_value_authorizations_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
-        echo '</div>';
+        
+        $statusAuth = isset($_GET['status']) ? (string)$_GET['status'] : 'pending';
+        if (!in_array($statusAuth, ['pending','approved','rejected','all'], true)) {
+            $statusAuth = 'pending';
+        }
+        
+        $sqlAuth = 'SELECT a.*, u.name AS requested_by_name, ur.name AS reviewed_by_name
+                FROM appointment_value_authorizations a
+                LEFT JOIN users u ON u.id = a.requested_by_user_id
+                LEFT JOIN users ur ON ur.id = a.reviewed_by_user_id
+                WHERE 1=1';
+        $paramsAuth = [];
+        
+        if ($statusAuth !== 'all') {
+            $sqlAuth .= ' AND a.status = :st';
+            $paramsAuth['st'] = $statusAuth;
+        }
+        
+        $sqlAuth .= ' ORDER BY a.requested_at DESC, a.id DESC LIMIT 300';
+        
+        $stmtAuth = db()->prepare($sqlAuth);
+        $stmtAuth->execute($paramsAuth);
+        $rowsAuth = $stmtAuth->fetchAll();
+        
+        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<select name="status" style="min-width:220px">';
+        foreach (['pending' => 'Pendentes', 'approved' => 'Aprovadas', 'rejected' => 'Rejeitadas', 'all' => 'Todas'] as $kAuth => $labAuth) {
+            echo '<option value="' . h($kAuth) . '"' . ($statusAuth === $kAuth ? ' selected' : '') . '>' . h($labAuth) . '</option>';
+        }
+        echo '</select>';
+        echo '<button class="btn" type="submit">Filtrar</button>';
+        echo '</form>';
+        
+        if (count($rowsAuth) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">ID</th>';
+            echo '<th style="padding:12px;text-align:left">Status</th>';
+            echo '<th style="padding:12px;text-align:left">Especialidade</th>';
+            echo '<th style="padding:12px;text-align:left">Solicitado</th>';
+            echo '<th style="padding:12px;text-align:left">Mínimo</th>';
+            echo '<th style="padding:12px;text-align:left">Paciente</th>';
+            echo '<th style="padding:12px;text-align:left">Profissional</th>';
+            echo '<th style="padding:12px;text-align:left">1º atendimento</th>';
+            echo '<th style="padding:12px;text-align:left">Solicitado por</th>';
+            echo '<th style="padding:12px;text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($rowsAuth as $rAuth) {
+                $statusColorAuth = $rAuth['status'] === 'approved' ? '#10b981' : ($rAuth['status'] === 'rejected' ? '#ef4444' : '#f59e0b');
+                
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px">' . (int)$rAuth['id'] . '</td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColorAuth . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . h((string)$rAuth['status']) . '</span></td>';
+                echo '<td style="padding:12px">' . h((string)$rAuth['specialty']) . '</td>';
+                echo '<td style="padding:12px">R$ ' . h((string)$rAuth['requested_value']) . '</td>';
+                echo '<td style="padding:12px">R$ ' . h((string)$rAuth['minimum_value']) . '</td>';
+                echo '<td style="padding:12px">#' . (int)$rAuth['patient_id'] . '</td>';
+                echo '<td style="padding:12px">#' . (int)$rAuth['professional_user_id'] . '</td>';
+                echo '<td style="padding:12px;font-size:13px">' . h((string)$rAuth['first_at']) . '</td>';
+                echo '<td style="padding:12px">' . h((string)($rAuth['requested_by_name'] ?? '-')) . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<a class="btn btnSmall" href="/appointment_value_authorizations_view.php?id=' . (int)$rAuth['id'] . '" target="_blank">Ver</a>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">✅</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma autorização encontrada</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Altere o filtro para ver outras autorizações.</div>';
+            echo '</div>';
+        }
+        
         echo '</div>';
     } elseif ($sectionTitle === 'Jobs') {
-        // Aba Jobs - Link para página completa
+        // Aba Jobs - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Fila de Jobs de Integração</div>';
+        
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>⏱️ Fila de Jobs</strong><br>';
-        echo 'Visualize e gerencie jobs enfileirados de integrações com status, retry e histórico.';
+        echo 'Fila para retentativas (até 3x) e reprocessamento manual.';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
-        echo '<div style="font-size:48px;margin-bottom:16px">⏱️</div>';
-        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Fila de Jobs</div>';
-        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
-        echo 'Esta funcionalidade possui interface complexa com listagem dinâmica, filtros e ações. Clique abaixo para acessar a página completa.';
-        echo '</div>';
-        echo '<a class="btn btnPrimary" href="/integration_jobs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
-        echo '</div>';
+        
+        $statusJobs = isset($_GET['status']) ? (string)$_GET['status'] : 'pending';
+        $providerJobs = isset($_GET['provider']) ? trim((string)$_GET['provider']) : '';
+        
+        $allowedJobs = ['pending','running','success','error','dead',''];
+        if (!in_array($statusJobs, $allowedJobs, true)) {
+            $statusJobs = 'pending';
+        }
+        
+        $sqlJobs = 'SELECT id, provider, action, status, attempts, max_attempts, next_run_at, last_run_at, last_error, created_at
+                FROM integration_jobs
+                WHERE 1=1';
+        $paramsJobs = [];
+        
+        if ($statusJobs !== '') {
+            $sqlJobs .= ' AND status = :s';
+            $paramsJobs['s'] = $statusJobs;
+        }
+        
+        if ($providerJobs !== '') {
+            $sqlJobs .= ' AND provider LIKE :p';
+            $paramsJobs['p'] = '%' . $providerJobs . '%';
+        }
+        
+        $sqlJobs .= ' ORDER BY id DESC LIMIT 500';
+        
+        $stmtJobs = db()->prepare($sqlJobs);
+        $stmtJobs->execute($paramsJobs);
+        $rowsJobs = $stmtJobs->fetchAll();
+        
+        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<select name="status" style="min-width:220px">';
+        $labelsJobs = [
+            '' => 'Todos',
+            'pending' => 'pending',
+            'running' => 'running',
+            'success' => 'success',
+            'error' => 'error',
+            'dead' => 'dead',
+        ];
+        foreach ($labelsJobs as $kJobs => $labelJobs) {
+            $selJobs = ($statusJobs === $kJobs) ? ' selected' : '';
+            echo '<option value="' . h($kJobs) . '"' . $selJobs . '>' . h($labelJobs) . '</option>';
+        }
+        echo '</select>';
+        echo '<input name="provider" value="' . h($providerJobs) . '" placeholder="Provider" style="flex:1;min-width:220px">';
+        echo '<button class="btn" type="submit">Filtrar</button>';
+        echo '</form>';
+        
+        if (count($rowsJobs) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">ID</th>';
+            echo '<th style="padding:12px;text-align:left">Provider</th>';
+            echo '<th style="padding:12px;text-align:left">Ação</th>';
+            echo '<th style="padding:12px;text-align:left">Status</th>';
+            echo '<th style="padding:12px;text-align:left">Tentativas</th>';
+            echo '<th style="padding:12px;text-align:left">Próx. execução</th>';
+            echo '<th style="padding:12px;text-align:left">Erro</th>';
+            echo '<th style="padding:12px;text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($rowsJobs as $rJobs) {
+                $statusColorJobs = $rJobs['status'] === 'success' ? '#10b981' : ($rJobs['status'] === 'error' || $rJobs['status'] === 'dead' ? '#ef4444' : ($rJobs['status'] === 'running' ? '#3b82f6' : '#f59e0b'));
+                
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px">' . (int)$rJobs['id'] . '</td>';
+                echo '<td style="padding:12px;font-weight:700">' . h((string)$rJobs['provider']) . '</td>';
+                echo '<td style="padding:12px">' . h((string)$rJobs['action']) . '</td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColorJobs . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . h((string)$rJobs['status']) . '</span></td>';
+                echo '<td style="padding:12px">' . h((string)$rJobs['attempts']) . '/' . h((string)$rJobs['max_attempts']) . '</td>';
+                echo '<td style="padding:12px;font-size:13px">' . h((string)($rJobs['next_run_at'] ?? '')) . '</td>';
+                echo '<td style="padding:12px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">' . h(mb_strimwidth((string)($rJobs['last_error'] ?? ''), 0, 80, '...')) . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<a class="btn btnSmall" href="/integration_jobs_view.php?id=' . (int)$rJobs['id'] . '" target="_blank">Abrir</a> ';
+                echo '<form method="post" action="/integration_jobs_run_post.php" style="display:inline">';
+                echo '<input type="hidden" name="id" value="' . (int)$rJobs['id'] . '">';
+                echo '<button class="btn btnSmall btnPrimary" type="submit">Rodar</button>';
+                echo '</form>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">⏱️</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum job encontrado</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Altere o filtro para ver outros jobs.</div>';
+            echo '</div>';
+        }
+        
         echo '</div>';
     } elseif ($sectionTitle === 'Logs Técnicos') {
-        // Aba Logs Técnicos - Link para página completa
+        // Aba Logs Técnicos - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Logs Técnicos de Integrações</div>';
+        
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>📋 Logs de Integrações</strong><br>';
-        echo 'Visualize logs detalhados de todas as integrações (WhatsApp, OpenAI, ZapSign, etc).';
+        echo 'Integrações (OpenAI/Evolution/ZapSign/SMTP/Webhooks).';
         echo '</div>';
         echo '</div>';
-        echo '<div style="text-align:center;padding:60px;background:hsl(var(--muted));border-radius:8px">';
-        echo '<div style="font-size:48px;margin-bottom:16px">📋</div>';
-        echo '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Logs Técnicos</div>';
-        echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px;max-width:500px;margin-left:auto;margin-right:auto">';
-        echo 'Esta funcionalidade possui interface complexa com filtros avançados, paginação e visualização de JSON. Clique abaixo para acessar a página completa.';
-        echo '</div>';
-        echo '<a class="btn btnPrimary" href="/tech_logs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Página Completa</a>';
-        echo '</div>';
+        
+        $providerLogs = isset($_GET['provider']) ? trim((string)$_GET['provider']) : '';
+        $statusLogs = isset($_GET['status']) ? (string)$_GET['status'] : '';
+        
+        if (!in_array($statusLogs, ['', 'success', 'error'], true)) {
+            $statusLogs = '';
+        }
+        
+        $sqlLogs = 'SELECT id, provider, action, status, http_status, error_message, attempts, created_at
+                FROM integration_logs
+                WHERE 1=1';
+        $paramsLogs = [];
+        
+        if ($providerLogs !== '') {
+            $sqlLogs .= ' AND provider LIKE :p';
+            $paramsLogs['p'] = '%' . $providerLogs . '%';
+        }
+        
+        if ($statusLogs !== '') {
+            $sqlLogs .= ' AND status = :s';
+            $paramsLogs['s'] = $statusLogs;
+        }
+        
+        $sqlLogs .= ' ORDER BY id DESC LIMIT 500';
+        
+        $stmtLogs = db()->prepare($sqlLogs);
+        $stmtLogs->execute($paramsLogs);
+        $rowsLogs = $stmtLogs->fetchAll();
+        
+        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input name="provider" value="' . h($providerLogs) . '" placeholder="Provider" style="flex:1;min-width:220px">';
+        echo '<select name="status" style="min-width:200px">';
+        echo '<option value=""' . ($statusLogs === '' ? ' selected' : '') . '>Todos</option>';
+        echo '<option value="success"' . ($statusLogs === 'success' ? ' selected' : '') . '>success</option>';
+        echo '<option value="error"' . ($statusLogs === 'error' ? ' selected' : '') . '>error</option>';
+        echo '</select>';
+        echo '<button class="btn" type="submit">Filtrar</button>';
+        echo '</form>';
+        
+        if (count($rowsLogs) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">ID</th>';
+            echo '<th style="padding:12px;text-align:left">Provider</th>';
+            echo '<th style="padding:12px;text-align:left">Ação</th>';
+            echo '<th style="padding:12px;text-align:left">Status</th>';
+            echo '<th style="padding:12px;text-align:left">HTTP</th>';
+            echo '<th style="padding:12px;text-align:left">Tentativas</th>';
+            echo '<th style="padding:12px;text-align:left">Erro</th>';
+            echo '<th style="padding:12px;text-align:left">Quando</th>';
+            echo '<th style="padding:12px;text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($rowsLogs as $rLogs) {
+                $statusColorLogs = $rLogs['status'] === 'success' ? '#10b981' : '#ef4444';
+                
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px">' . (int)$rLogs['id'] . '</td>';
+                echo '<td style="padding:12px;font-weight:700">' . h((string)$rLogs['provider']) . '</td>';
+                echo '<td style="padding:12px">' . h((string)$rLogs['action']) . '</td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColorLogs . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . h((string)$rLogs['status']) . '</span></td>';
+                echo '<td style="padding:12px">' . h((string)($rLogs['http_status'] ?? '')) . '</td>';
+                echo '<td style="padding:12px">' . h((string)$rLogs['attempts']) . '</td>';
+                echo '<td style="padding:12px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">' . h(mb_strimwidth((string)($rLogs['error_message'] ?? ''), 0, 80, '...')) . '</td>';
+                echo '<td style="padding:12px;font-size:13px">' . h((string)$rLogs['created_at']) . '</td>';
+                echo '<td style="padding:12px;text-align:right">';
+                echo '<a class="btn btnSmall" href="/tech_logs_view.php?id=' . (int)$rLogs['id'] . '" target="_blank">Abrir</a>';
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">📋</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum log encontrado</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Altere o filtro para ver outros logs.</div>';
+            echo '</div>';
+        }
+        
         echo '</div>';
     } elseif ($sectionTitle === 'Ajuda') {
         // Aba especial de Ajuda
@@ -1606,7 +1892,10 @@ foreach ($sections as $sectionTitle => $sectionData) {
     $idx++;
 }
 
-echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
+echo '</div>';
+echo '</div>';
+
+echo '<div style="display:flex;justify-content:flex-end;margin-top:20px;padding:0 20px">';
 echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
 echo '</div>';
 echo '</form>';
