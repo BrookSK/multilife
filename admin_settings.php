@@ -895,22 +895,6 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</script>';
         
         echo '</div>';
-            $val = $settings[$key] ?? '';
-            $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'evolution.api_key', 'zapsign.api_token'], true);
-            $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';
-            
-            if ($isSensitive) {
-                echo '<label>' . h($label) . '<input type="password" name="settings[' . h($key) . ']" value="" placeholder="(mantém se vazio)"><span class="helpText">Deixe vazio para manter o valor atual</span></label>';
-            } elseif ($isTemplate) {
-                echo '<label>' . h($label) . '<textarea name="settings[' . h($key) . ']" rows="4" placeholder="(configure)">' . h($val) . '</textarea></label>';
-            } else {
-                echo '<label>' . h($label) . '<input name="settings[' . h($key) . ']" value="' . h($val) . '"></label>';
-            }
-        }
-        
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
     } else {
         // Abas normais de configuração
         echo '<div class="formSection">';
