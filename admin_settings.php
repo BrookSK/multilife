@@ -337,6 +337,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
     } elseif ($sectionTitle === 'Funções') {
+        echo '</form>'; // Fecha formulário principal para evitar aninhamento
+        
         // Aba Funções - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Gerenciamento de Funções (Roles)</div>';
@@ -429,7 +431,10 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
         echo '</div>';
+        echo '<form method="post" action="/admin_settings_post.php">'; // Reabre formulário principal
     } elseif ($sectionTitle === 'WhatsApp Instâncias') {
+        echo '</form>'; // Fecha formulário principal
+        
         // Aba WhatsApp Instâncias - QR Code para Conexão
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Conectar WhatsApp</div>';
@@ -522,7 +527,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '</div>';
+        echo '<form method="post" action="/admin_settings_post.php">'; // Reabre formulário principal
     } elseif ($sectionTitle === 'WhatsApp Console') {
+        echo '</form>'; // Fecha formulário principal
         // Aba WhatsApp Console - Logs de Mensagens e Arquivos
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Logs de Mensagens e Arquivos WhatsApp</div>';
@@ -622,7 +629,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '</div>';
+        echo '<form method="post" action="/admin_settings_post.php">'; // Reabre formulário principal
     } elseif ($sectionTitle === 'Jobs') {
+        echo '</form>'; // Fecha formulário principal
         // Aba Jobs - Conteúdo completo
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Fila de Jobs de Integração</div>';
