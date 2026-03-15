@@ -429,259 +429,196 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Instâncias') {
-        // Aba WhatsApp Instâncias - Gerenciamento Completo
+        // Aba WhatsApp Instâncias - QR Code para Conexão
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">WhatsApp Instâncias</div>';
+        echo '<div class="formSectionTitle">Conectar WhatsApp</div>';
         
-        // Verificar se Evolution API está configurada
-        $baseUrlEvo = admin_setting_get('evolution.base_url', '');
-        $apiKeyEvo = admin_setting_get('evolution.api_key', '');
-        $instanceEvo = admin_setting_get('evolution.instance', '');
+        $instanceNameQR = admin_setting_get('evolution.instance', '');
+        $baseUrlQR = admin_setting_get('evolution.base_url', '');
+        $apiKeyQR = admin_setting_get('evolution.api_key', '');
         
-        if ($baseUrlEvo === '' || $apiKeyEvo === '' || $instanceEvo === '') {
-            echo '<div style="padding:20px;background:#fee;border:1px solid #fcc;border-radius:8px;margin-bottom:16px">';
-            echo '<strong>⚠️ Evolution API não configurada</strong><br>';
-            echo 'Configure as credenciais da Evolution API na aba "Evolution" para gerenciar instâncias.';
+        if (empty($baseUrlQR) || empty($apiKeyQR) || empty($instanceNameQR)) {
+            echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">';
+            echo 'Configure as credenciais da Evolution API e a instância padrão na aba "Evolution" primeiro.';
             echo '</div>';
         } else {
-            // Buscar instâncias salvas no banco de dados
-            $filterInstanceWI = isset($_GET['filter_instance']) ? trim((string)$_GET['filter_instance']) : '';
-            
-            $sqlInstWI = 'SELECT id, instance_name, owner_number, status, created_at FROM whatsapp_instances WHERE status = :status';
-            $paramsInstWI = ['status' => 'active'];
-            
-            if ($filterInstanceWI !== '') {
-                $sqlInstWI .= ' AND instance_name LIKE :filter';
-                $paramsInstWI['filter'] = '%' . $filterInstanceWI . '%';
-            }
-            
-            $sqlInstWI .= ' ORDER BY created_at DESC';
-            
-            $stmtInstWI = db()->prepare($sqlInstWI);
-            $stmtInstWI->execute($paramsInstWI);
-            $dbInstancesWI = $stmtInstWI->fetchAll();
-            
-            // Buscar status das instâncias na Evolution API
-            $evoWI = new EvolutionApiV1();
-            $resWI = $evoWI->fetchInstances();
-            
-            $evolutionInstancesWI = [];
-            if (is_array($resWI['json'])) {
-                foreach ($resWI['json'] as $inst) {
-                    $instData = $inst['instance'] ?? $inst;
-                    if (is_array($instData)) {
-                        $instName = (string)($instData['instanceName'] ?? '');
-                        $evolutionInstancesWI[$instName] = $instData;
-                    }
-                }
-            }
-            
-            // Filtro de busca
-            echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
-            echo '<input name="filter_instance" value="' . h($filterInstanceWI) . '" placeholder="Filtrar por nome da instância" style="flex:1;min-width:240px">';
-            echo '<button class="btn" type="submit">Buscar</button>';
-            echo '</form>';
-            
-            // Formulário de criar instância
-            echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
-            echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Nova Instância</div>';
-            
-            echo '<form method="post" action="/admin_whatsapp_instance_create_post.php" style="display:grid;gap:12px">';
-            echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-            echo '<label>Nome da Instância *<input name="instanceName" required placeholder="ex: multilife"></label>';
-            echo '<label>Token (opcional)<input name="token" placeholder="deixe vazio para gerar"></label>';
-            echo '<label>Número dono (com DDI)<input name="number" placeholder="5517991234567"></label>';
-            echo '<label>Webhook URL (opcional)<input name="webhook" placeholder="https://..."></label>';
-            echo '</div>';
-            echo '<label style="display:flex;align-items:center;gap:10px">';
-            echo '<input type="checkbox" name="qrcode" value="1" checked> Gerar QR Code ao criar';
-            echo '</label>';
-            echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
-            echo '<button class="btn btnPrimary" type="submit">Criar Instância</button>';
-            echo '</div>';
-            echo '</form>';
+            echo '<div style="margin-bottom:16px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">';
+            echo 'Escaneie o QR Code com o WhatsApp para conectar a instância <strong>' . h($instanceNameQR) . '</strong>.';
             echo '</div>';
             
-            // Lista de instâncias
-            echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
-            echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Instâncias do Sistema</div>';
-            
-            if (count($dbInstancesWI) > 0) {
-                echo '<div style="overflow:auto">';
-                echo '<table style="width:100%;border-collapse:collapse">';
-                echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
-                echo '<th style="padding:12px;text-align:left">Instância</th>';
-                echo '<th style="padding:12px;text-align:left">Status Conexão</th>';
-                echo '<th style="padding:12px;text-align:left">Dono</th>';
-                echo '<th style="padding:12px;text-align:left">Criado</th>';
-                echo '<th style="padding:12px;text-align:right">Ações</th>';
-                echo '</tr></thead><tbody>';
-                
-                foreach ($dbInstancesWI as $dbInst) {
-                    $instName = (string)$dbInst['instance_name'];
-                    $ownerNumber = (string)($dbInst['owner_number'] ?? '');
-                    $createdAt = (string)$dbInst['created_at'];
-                    
-                    // Buscar status na Evolution API
-                    $evoStatus = 'unknown';
-                    $isConnected = false;
-                    if (isset($evolutionInstancesWI[$instName])) {
-                        $evoData = $evolutionInstancesWI[$instName];
-                        $evoStatus = (string)($evoData['status'] ?? 'unknown');
-                        $isConnected = $evoStatus === 'open';
-                    }
-                    
-                    $statusColor = $isConnected ? '#10b981' : '#ef4444';
-                    $statusText = $isConnected ? 'Conectado' : 'Desconectado';
-                    
-                    echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
-                    echo '<td style="padding:12px;font-weight:700">' . h($instName) . '</td>';
-                    echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColor . ';color:white;border-radius:4px;font-size:12px;font-weight:600">' . $statusText . '</span></td>';
-                    echo '<td style="padding:12px">' . h($ownerNumber ?: '-') . '</td>';
-                    echo '<td style="padding:12px;font-size:13px">' . h($createdAt) . '</td>';
-                    echo '<td style="padding:12px;text-align:right">';
-                    echo '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">';
-                    
-                    // Botão Conectar (só se desconectado)
-                    if (!$isConnected) {
-                        echo '<button class="btn btnSmall btnPrimary" onclick="showQRCodeModal(\'' . h($instName) . '\')">Conectar</button>';
-                    } else {
-                        echo '<span style="padding:4px 8px;background:#10b981;color:white;border-radius:4px;font-size:11px">✓ Conectado</span>';
-                    }
-                    
-                    // Botão Restart
-                    echo '<form method="post" action="/admin_whatsapp_instance_restart_post.php" style="display:inline" onsubmit="return confirm(\'Reiniciar instância ' . h($instName) . '?\')">';
-                    echo '<input type="hidden" name="instance" value="' . h($instName) . '">';
-                    echo '<button class="btn btnSmall" type="submit">Restart</button>';
-                    echo '</form>';
-                    
-                    // Botão Logout
-                    if ($isConnected) {
-                        echo '<form method="post" action="/admin_whatsapp_instance_logout_post.php" style="display:inline" onsubmit="return confirm(\'Fazer logout da instância ' . h($instName) . '?\')">';
-                        echo '<input type="hidden" name="instance" value="' . h($instName) . '">';
-                        echo '<button class="btn btnSmall" type="submit">Logout</button>';
-                        echo '</form>';
-                    }
-                    
-                    // Botão Inativar
-                    echo '<form method="post" action="/admin_whatsapp_instance_deactivate_post.php" style="display:inline" onsubmit="return confirm(\'Inativar instância ' . h($instName) . '?\')">';
-                    echo '<input type="hidden" name="id" value="' . (int)$dbInst['id'] . '">';
-                    echo '<button class="btn btnSmall btnDanger" type="submit">Inativar</button>';
-                    echo '</form>';
-                    
-                    echo '</div>';
-                    echo '</td>';
-                    echo '</tr>';
-                }
-                
-                echo '</tbody></table>';
-                echo '</div>';
-            } else {
-                echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
-                echo '<div style="font-size:48px;margin-bottom:12px">📱</div>';
-                echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma instância cadastrada</div>';
-                echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Crie uma nova instância acima para começar.</div>';
-                echo '</div>';
-            }
-            
+            echo '<div style="text-align:center;padding:20px">';
+            echo '<div id="qrcode-container" style="display:inline-block;padding:20px;background:white;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1)">';
+            echo '<div style="color:#666;padding:40px">Carregando QR Code...</div>';
             echo '</div>';
+            echo '<div id="status-message" style="margin-top:20px;font-size:14px;color:hsl(var(--muted-foreground))"></div>';
+            echo '</div>';
+            
+            echo '<script>';
+            echo 'let checkInterval;';
+            echo 'function loadQRCode(){';
+            echo '  console.log("Iniciando carregamento do QR Code...");';
+            echo '  fetch("/evolution_proxy.php?action=connect&instance=' . urlencode($instanceNameQR) . '")';
+            echo '  .then(r => {';
+            echo '    console.log("Resposta recebida, status:", r.status);';
+            echo '    return r.json();';
+            echo '  })';
+            echo '  .then(data => {';
+            echo '    console.log("Dados recebidos:", data);';
+            echo '    const container = document.getElementById("qrcode-container");';
+            echo '    if(data.instance && data.instance.state === "open"){';
+            echo '      console.log("Instância já está conectada!");';
+            echo '      container.innerHTML = \'<div style="color:hsl(142,76%,36%);padding:40px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:16px;font-size:18px;font-weight:700">WhatsApp Conectado!</div></div>\';';
+            echo '      document.getElementById("status-message").innerHTML = \'<span style="color:hsl(142,76%,36%);font-weight:600">A instância "\' + data.instance.instanceName + \'" já está conectada e ativa.</span>\';';
+            echo '      return;';
+            echo '    }';
+            echo '    if(data.base64){';
+            echo '      console.log("QR Code base64 encontrado");';
+            echo '      container.innerHTML = \'<img src="\' + data.base64 + \'" alt="QR Code" style="max-width:300px;width:100%">\';';
+            echo '      document.getElementById("status-message").innerHTML = "Escaneie o QR Code com seu WhatsApp";';
+            echo '      startStatusCheck();';
+            echo '    } else if(data.qrcode && data.qrcode.base64){';
+            echo '      console.log("QR Code em data.qrcode.base64");';
+            echo '      container.innerHTML = \'<img src="\' + data.qrcode.base64 + \'" alt="QR Code" style="max-width:300px;width:100%">\';';
+            echo '      document.getElementById("status-message").innerHTML = "Escaneie o QR Code com seu WhatsApp";';
+            echo '      startStatusCheck();';
+            echo '    } else if(data.qrcode && data.qrcode.code){';
+            echo '      console.log("QR Code em data.qrcode.code");';
+            echo '      container.innerHTML = \'<img src="\' + data.qrcode.code + \'" alt="QR Code" style="max-width:300px;width:100%">\';';
+            echo '      document.getElementById("status-message").innerHTML = "Escaneie o QR Code com seu WhatsApp";';
+            echo '      startStatusCheck();';
+            echo '    } else if(data.error){';
+            echo '      console.error("Erro da API:", data.error);';
+            echo '      let errorMsg = data.error;';
+            echo '      if(data.url) errorMsg += "<br><small>URL: " + data.url + "</small>";';
+            echo '      if(data.response) errorMsg += "<br><small>Resposta: " + data.response + "</small>";';
+            echo '      container.innerHTML = \'<div style="color:red;padding:20px">\' + errorMsg + \'</div>\';';
+            echo '    } else {';
+            echo '      console.error("Resposta inesperada:", data);';
+            echo '      container.innerHTML = \'<div style="color:orange;padding:20px">Resposta da API em formato inesperado.<br><small>Verifique o console para detalhes.</small></div>\';';
+            echo '    }';
+            echo '  })';
+            echo '  .catch(e => {';
+            echo '    console.error("Erro ao carregar QR Code:", e);';
+            echo '    document.getElementById("qrcode-container").innerHTML = \'<div style="color:red;padding:20px">Erro ao carregar QR Code: \' + e.message + \'</div>\';';
+            echo '  });';
+            echo '}';
+            echo 'function checkStatus(){';
+            echo '  fetch("/evolution_proxy.php?action=status&instance=' . urlencode($instanceNameQR) . '")';
+            echo '  .then(r => r.json())';
+            echo '  .then(data => {';
+            echo '    if(data.state === "open"){';
+            echo '      clearInterval(checkInterval);';
+            echo '      document.getElementById("status-message").innerHTML = \'<span style="color:hsl(142,76%,36%);font-weight:600">✓ Conectado com sucesso!</span>\';';
+            echo '      setTimeout(() => location.reload(), 2000);';
+            echo '    }';
+            echo '  });';
+            echo '}';
+            echo 'function startStatusCheck(){';
+            echo '  checkInterval = setInterval(checkStatus, 3000);';
+            echo '}';
+            echo 'loadQRCode();';
+            echo '</script>';
         }
-        
-        // Modal para QR Code
-        echo '<div id="qrCodeModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:2000;align-items:center;justify-content:center">';
-        echo '<div class="card" style="max-width:500px;width:90%;text-align:center">';
-        echo '<h3 style="font-size:20px;font-weight:700;margin-bottom:16px" id="qrModalTitle">Conectar Instância</h3>';
-        echo '<div id="qrCodeContainer" style="padding:20px;background:#f9fafb;border-radius:8px;margin-bottom:16px">';
-        echo '<div style="font-size:14px;color:#6b7280">Gerando QR Code...</div>';
-        echo '</div>';
-        echo '<div style="font-size:13px;color:#6b7280;margin-bottom:16px">Escaneie o QR Code com o WhatsApp do celular</div>';
-        echo '<button class="btn" onclick="closeQRCodeModal()">Fechar</button>';
-        echo '</div>';
-        echo '</div>';
-        
-        echo '<script>';
-        echo 'function showQRCodeModal(instanceName) {';
-        echo '  document.getElementById("qrModalTitle").textContent = "Conectar: " + instanceName;';
-        echo '  document.getElementById("qrCodeContainer").innerHTML = "<div style=\"font-size:14px;color:#6b7280\">Gerando QR Code...</div>";';
-        echo '  document.getElementById("qrCodeModal").style.display = "flex";';
-        echo '  ';
-        echo '  fetch("/admin_whatsapp_instance_connect_post.php", {';
-        echo '    method: "POST",';
-        echo '    headers: {"Content-Type": "application/x-www-form-urlencoded"},';
-        echo '    body: "instance=" + encodeURIComponent(instanceName)';
-        echo '  })';
-        echo '  .then(response => response.json())';
-        echo '  .then(data => {';
-        echo '    if (data.success && data.qrcode) {';
-        echo '      document.getElementById("qrCodeContainer").innerHTML = "<img src=\"data:image/png;base64," + data.qrcode.base64 + "\" style=\"max-width:100%;height:auto;border-radius:8px\">";';
-        echo '    } else if (data.pairingCode) {';
-        echo '      document.getElementById("qrCodeContainer").innerHTML = "<div style=\"font-size:24px;font-weight:700;padding:20px;background:white;border-radius:8px\">" + data.pairingCode + "</div><div style=\"margin-top:12px;font-size:13px;color:#6b7280\">Digite este código no WhatsApp</div>";';
-        echo '    } else {';
-        echo '      document.getElementById("qrCodeContainer").innerHTML = "<div style=\"color:#ef4444\">Erro: " + (data.error || "Não foi possível gerar QR Code") + "</div>";';
-        echo '    }';
-        echo '  })';
-        echo '  .catch(error => {';
-        echo '    document.getElementById("qrCodeContainer").innerHTML = "<div style=\"color:#ef4444\">Erro ao conectar: " + error.message + "</div>";';
-        echo '  });';
-        echo '}';
-        echo 'function closeQRCodeModal() {';
-        echo '  document.getElementById("qrCodeModal").style.display = "none";';
-        echo '}';
-        echo 'document.getElementById("qrCodeModal").addEventListener("click", function(e) {';
-        echo '  if (e.target === this) closeQRCodeModal();';
-        echo '});';
-        echo '</script>';
         
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Console') {
-        // Aba WhatsApp Console - Conteúdo completo
+        // Aba WhatsApp Console - Logs de Mensagens e Arquivos
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">WhatsApp Console</div>';
-        
-        $baseUrlWC = admin_setting_get('evolution.base_url', 'https://evo.multilife.com.br') ?? 'https://evo.multilife.com.br';
+        echo '<div class="formSectionTitle">Logs de Mensagens e Arquivos WhatsApp</div>';
         
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Console para testes e comandos diretos da API WhatsApp. Toda chamada gera log em Logs TI (provider=evolution).<br>';
-        echo '<strong>Base URL atual:</strong> <code>' . h($baseUrlWC) . '</code>';
+        echo 'Registro completo de todas as movimentações de mensagens e arquivos via Evolution API (GET e POST).';
         echo '</div>';
         echo '</div>';
         
-        // Enviar mensagem
-        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
-        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Enviar Mensagem (POST /message/sendText/{instance})</div>';
+        // Filtros
+        $filterMethod = isset($_GET['method']) ? trim((string)$_GET['method']) : '';
+        $filterAction = isset($_GET['action']) ? trim((string)$_GET['action']) : '';
+        $filterDate = isset($_GET['date']) ? trim((string)$_GET['date']) : '';
         
-        echo '<form method="post" action="/admin_whatsapp_send_message_post.php" style="display:grid;gap:12px">';
-        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>Instance *<input name="instance" required placeholder="multilife"></label>';
-        echo '<label>Número destino (com DDI) *<input name="number" required placeholder="5517991234567"></label>';
-        echo '</div>';
-        echo '<label>Mensagem *<textarea name="text" required rows="4" placeholder="Digite a mensagem..."></textarea></label>';
-        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
-        echo '<button class="btn btnPrimary" type="submit">Enviar Mensagem</button>';
-        echo '</div>';
+        echo '<form method="get" action="/admin_settings.php" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<select name="method" style="min-width:120px">';
+        echo '<option value="">Todos Métodos</option>';
+        echo '<option value="GET"' . ($filterMethod === 'GET' ? ' selected' : '') . '>GET</option>';
+        echo '<option value="POST"' . ($filterMethod === 'POST' ? ' selected' : '') . '>POST</option>';
+        echo '</select>';
+        echo '<input name="action" value="' . h($filterAction) . '" placeholder="Ação (ex: sendText, sendMedia)" style="flex:1;min-width:200px">';
+        echo '<input type="date" name="date" value="' . h($filterDate) . '" style="min-width:150px">';
+        echo '<button class="btn" type="submit">Filtrar</button>';
         echo '</form>';
-        echo '</div>';
         
-        // Buscar instância
-        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
-        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Buscar Instância (GET /instance/fetchInstances)</div>';
+        // Buscar logs
+        $sqlLogs = 'SELECT id, method, url, request_body, response_body, status_code, created_at 
+                    FROM tech_logs 
+                    WHERE provider = :provider';
+        $paramsLogs = ['provider' => 'evolution'];
         
-        echo '<form method="post" action="/admin_whatsapp_fetch_instance_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
-        echo '<input name="instanceName" placeholder="Nome da instância (opcional)" style="flex:1;min-width:280px">';
-        echo '<button class="btn" type="submit">Buscar</button>';
-        echo '</form>';
-        echo '</div>';
+        if ($filterMethod !== '') {
+            $sqlLogs .= ' AND method = :method';
+            $paramsLogs['method'] = $filterMethod;
+        }
         
-        // Conectar instância
-        echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
-        echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Conectar Instância (GET /instance/connect/{instance})</div>';
+        if ($filterAction !== '') {
+            $sqlLogs .= ' AND url LIKE :action';
+            $paramsLogs['action'] = '%' . $filterAction . '%';
+        }
         
-        echo '<form method="post" action="/admin_whatsapp_connect_instance_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
-        echo '<input name="instance" required placeholder="Nome da instância *" style="flex:1;min-width:280px">';
-        echo '<button class="btn btnPrimary" type="submit">Conectar</button>';
-        echo '</form>';
-        echo '</div>';
+        if ($filterDate !== '') {
+            $sqlLogs .= ' AND DATE(created_at) = :date';
+            $paramsLogs['date'] = $filterDate;
+        }
+        
+        $sqlLogs .= ' ORDER BY id DESC LIMIT 100';
+        
+        $stmtLogs = db()->prepare($sqlLogs);
+        $stmtLogs->execute($paramsLogs);
+        $logsWC = $stmtLogs->fetchAll();
+        
+        if (count($logsWC) > 0) {
+            echo '<div style="overflow:auto">';
+            echo '<table style="width:100%;border-collapse:collapse">';
+            echo '<thead><tr style="background:hsl(var(--muted));border-bottom:2px solid hsl(var(--border))">';
+            echo '<th style="padding:12px;text-align:left">ID</th>';
+            echo '<th style="padding:12px;text-align:left">Método</th>';
+            echo '<th style="padding:12px;text-align:left">URL/Ação</th>';
+            echo '<th style="padding:12px;text-align:left">Status</th>';
+            echo '<th style="padding:12px;text-align:left">Request</th>';
+            echo '<th style="padding:12px;text-align:left">Response</th>';
+            echo '<th style="padding:12px;text-align:left">Data/Hora</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($logsWC as $log) {
+                $statusColor = ((int)$log['status_code'] >= 200 && (int)$log['status_code'] < 300) ? '#10b981' : '#ef4444';
+                
+                echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+                echo '<td style="padding:12px">' . (int)$log['id'] . '</td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;background:#3b82f6;color:white;border-radius:4px;font-size:11px;font-weight:600">' . h((string)$log['method']) . '</span></td>';
+                echo '<td style="padding:12px;font-size:12px;max-width:250px;overflow:hidden;text-overflow:ellipsis">' . h((string)$log['url']) . '</td>';
+                echo '<td style="padding:12px"><span style="padding:4px 8px;background:' . $statusColor . ';color:white;border-radius:4px;font-size:11px;font-weight:600">' . h((string)$log['status_code']) . '</span></td>';
+                echo '<td style="padding:12px;font-size:11px;max-width:200px">';
+                echo '<details><summary style="cursor:pointer;color:hsl(var(--primary))">Ver Request</summary>';
+                echo '<pre style="margin-top:8px;padding:8px;background:#f9fafb;border-radius:4px;font-size:10px;overflow:auto;max-height:200px">' . h((string)$log['request_body']) . '</pre>';
+                echo '</details>';
+                echo '</td>';
+                echo '<td style="padding:12px;font-size:11px;max-width:200px">';
+                echo '<details><summary style="cursor:pointer;color:hsl(var(--primary))">Ver Response</summary>';
+                echo '<pre style="margin-top:8px;padding:8px;background:#f9fafb;border-radius:4px;font-size:10px;overflow:auto;max-height:200px">' . h((string)$log['response_body']) . '</pre>';
+                echo '</details>';
+                echo '</td>';
+                echo '<td style="padding:12px;font-size:12px">' . h((string)$log['created_at']) . '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        } else {
+            echo '<div style="text-align:center;padding:40px;background:hsl(var(--muted));border-radius:8px">';
+            echo '<div style="font-size:48px;margin-bottom:12px">📋</div>';
+            echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum log encontrado</div>';
+            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Os logs de mensagens e arquivos aparecerão aqui.</div>';
+            echo '</div>';
+        }
         
         echo '</div>';
     } elseif ($sectionTitle === 'Jobs') {
