@@ -352,81 +352,136 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Instâncias') {
-        // Aba com iframe para WhatsApp Instâncias
+        // Aba com link para WhatsApp Instâncias
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">WhatsApp Instâncias</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Gerencie instâncias WhatsApp conectadas ao sistema via Evolution API.';
+        echo '<strong>📱 Gerenciamento de Instâncias WhatsApp</strong><br>';
+        echo 'Gerencie instâncias WhatsApp conectadas ao sistema via Evolution API.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Criar novas instâncias WhatsApp<br>';
+        echo '• Gerar QR Code para conectar<br>';
+        echo '• Verificar status de conexão<br>';
+        echo '• Gerenciar webhook e configurações<br>';
+        echo '• Deletar instâncias';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/admin_whatsapp_instances.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/admin_whatsapp_instances.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir WhatsApp Instâncias</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Console') {
-        // Aba com iframe para WhatsApp Console
+        // Aba com link para WhatsApp Console
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">WhatsApp Console</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Console para testes e comandos diretos da API WhatsApp.';
+        echo '<strong>🔧 Console de Testes WhatsApp</strong><br>';
+        echo 'Console para testes e comandos diretos da API WhatsApp.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Enviar mensagens de teste<br>';
+        echo '• Testar mídia e documentos<br>';
+        echo '• Verificar status de mensagens<br>';
+        echo '• Logs detalhados de chamadas API';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/admin_whatsapp_console.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/admin_whatsapp_console.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir WhatsApp Console</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Credenciais APIs') {
-        // Aba com iframe para Credenciais APIs
+        // Aba com link para Credenciais APIs
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Credenciais APIs</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Gerencie todas as credenciais de APIs externas (Evolution, OpenAI, ZapSign, etc).';
+        echo '<strong>🔐 Gerenciamento de Credenciais</strong><br>';
+        echo 'Gerencie todas as credenciais de APIs externas.<br><br>';
+        echo '<strong>APIs Disponíveis:</strong><br>';
+        echo '• Evolution API (WhatsApp)<br>';
+        echo '• OpenAI API (Inteligência Artificial)<br>';
+        echo '• ZapSign API (Assinatura Digital)<br>';
+        echo '• SMTP/IMAP (E-mail)';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/admin_integrations.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/admin_integrations.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Credenciais APIs</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Mínimos') {
-        // Aba com iframe para Mínimos
+        // Aba com link para Mínimos
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Valores Mínimos por Especialidade</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Configure valores mínimos de atendimento por especialidade.';
+        echo '<strong>💰 Configuração de Valores Mínimos</strong><br>';
+        echo 'Configure valores mínimos de atendimento por especialidade.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Definir valor mínimo por especialidade<br>';
+        echo '• Garantir rentabilidade dos atendimentos<br>';
+        echo '• Validação automática de propostas';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/specialty_minimums_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/specialty_minimums_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Mínimos</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Autorizações') {
-        // Aba com iframe para Autorizações
+        // Aba com link para Autorizações
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Autorizações de Valores</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Gerencie autorizações de valores de atendimento.';
+        echo '<strong>✅ Gerenciamento de Autorizações</strong><br>';
+        echo 'Gerencie autorizações de valores de atendimento.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Aprovar valores acima do mínimo<br>';
+        echo '• Histórico de autorizações<br>';
+        echo '• Controle de exceções';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/appointment_value_authorizations_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/appointment_value_authorizations_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Autorizações</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Jobs') {
-        // Aba com iframe para Jobs
+        // Aba com link para Jobs
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Fila de Jobs de Integração</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Visualize e gerencie jobs enfileirados de integrações.';
+        echo '<strong>⏱️ Fila de Jobs</strong><br>';
+        echo 'Visualize e gerencie jobs enfileirados de integrações.<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Visualizar jobs pendentes<br>';
+        echo '• Reprocessar jobs com erro<br>';
+        echo '• Histórico de execuções<br>';
+        echo '• Monitoramento de performance';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/integration_jobs_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/integration_jobs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Jobs</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Logs Técnicos') {
-        // Aba com iframe para Logs Técnicos
+        // Aba com link para Logs Técnicos
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Logs Técnicos de Integrações</div>';
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Visualize logs de todas as integrações (WhatsApp, OpenAI, ZapSign, etc).';
+        echo '<strong>📋 Logs de Integrações</strong><br>';
+        echo 'Visualize logs de todas as integrações (WhatsApp, OpenAI, ZapSign, etc).<br><br>';
+        echo '<strong>Funcionalidades:</strong><br>';
+        echo '• Logs detalhados de todas as APIs<br>';
+        echo '• Filtrar por provider e status<br>';
+        echo '• Visualizar requests e responses<br>';
+        echo '• Debug de integrações';
         echo '</div>';
         echo '</div>';
-        echo '<iframe src="/tech_logs_list.php" style="width:100%;height:800px;border:1px solid hsl(var(--border));border-radius:8px" frameborder="0"></iframe>';
+        echo '<div style="text-align:center;padding:40px">';
+        echo '<a class="btn btnPrimary" href="/tech_logs_list.php" target="_blank" style="font-size:16px;padding:14px 28px">🚀 Abrir Logs Técnicos</a>';
+        echo '</div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Ajuda') {
         // Aba especial de Ajuda
