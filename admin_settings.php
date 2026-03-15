@@ -1661,13 +1661,16 @@ echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</butto
 echo '</div>';
 echo '</form>';
 
+echo '</section>';
+
 echo '<script>';
-echo 'document.addEventListener("DOMContentLoaded", function(){';
-echo '  console.log("DOM carregado - Inicializando navegação das abas...");';
+echo '(function(){';
+echo '  console.log("Inicializando navegação das abas...");';
 echo '  const tabs = document.querySelectorAll(".configTab");';
 echo '  console.log("Tabs encontradas:", tabs.length);';
 echo '  const panels = document.querySelectorAll(".configPanel");';
 echo '  console.log("Painéis encontrados:", panels.length);';
+echo '  ';
 echo '  tabs.forEach(function(tab, index){';
 echo '    console.log("Tab " + index + ":", tab.getAttribute("data-tab"));';
 echo '    tab.addEventListener("click", function(e){';
@@ -1678,8 +1681,10 @@ echo '      console.log("Tab clicada:", this.getAttribute("data-tab"));';
 echo '      const targetId = this.getAttribute("data-tab");';
 echo '      const targetPanel = document.getElementById(targetId);';
 echo '      console.log("Painel alvo encontrado:", targetPanel ? "SIM" : "NÃO");';
+echo '      ';
 echo '      tabs.forEach(function(t){ t.classList.remove("isActive"); });';
 echo '      panels.forEach(function(p){ p.classList.remove("isActive"); });';
+echo '      ';
 echo '      this.classList.add("isActive");';
 echo '      if(targetPanel){';
 echo '        targetPanel.classList.add("isActive");';
@@ -1689,8 +1694,9 @@ echo '        console.error("Painel não encontrado:", targetId);';
 echo '      }';
 echo '    });';
 echo '  });';
+echo '  ';
 echo '  console.log("Navegação das abas configurada com sucesso!");';
-echo '});';
+echo '})();';
 echo 'function togglePassword(fieldId){';
 echo '  const field = document.getElementById(fieldId);';
 echo '  const button = field.nextElementSibling;';
@@ -1714,8 +1720,6 @@ echo '    content.classList.add("isOpen");';
 echo '  }';
 echo '}';
 echo '</script>';
-
-echo '</section>';
 
 echo '</div>';
 
