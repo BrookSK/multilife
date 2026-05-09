@@ -195,7 +195,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
 }
 echo '</div>';
 
-echo '<form method="post" action="/admin_settings_post.php">';
+echo '<form method="post" action="/admin_settings_post.php" id="mainSettingsForm">';
 
 $idx = 0;
 foreach ($sections as $sectionTitle => $sectionData) {
@@ -408,10 +408,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
                 echo '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">';
                 echo '<a class="btn btnSmall" href="/roles_edit.php?id=' . (int)$rRole['id'] . '" target="_blank">Editar</a> ';
                 echo '<a class="btn btnSmall btnPrimary" href="/roles_permissions_edit.php?id=' . (int)$rRole['id'] . '" target="_blank">Permissões</a> ';
-                echo '<form method="post" action="/roles_delete_post.php" style="display:inline" onsubmit="return confirm(\'Excluir função ' . h((string)$rRole['name']) . '?\')">';
-                echo '<input type="hidden" name="id" value="' . (int)$rRole['id'] . '">';
-                echo '<button class="btn btnSmall btnDanger" type="submit">Excluir</button>';
-                echo '</form>';
+                echo '<button class="btn btnSmall btnDanger" type="button" onclick="if(confirm(\'Excluir função ' . h((string)$rRole['name']) . '?\')){ var f=document.createElement(\'form\');f.method=\'post\';f.action=\'/roles_delete_post.php\';var i=document.createElement(\'input\');i.type=\'hidden\';i.name=\'id\';i.value=\'' . (int)$rRole['id'] . '\';f.appendChild(i);document.body.appendChild(f);f.submit(); }">Excluir</button>';
                 echo '</div>';
                 echo '</td>';
                 echo '</tr>';
@@ -714,10 +711,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
                 echo '<td style="padding:12px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">' . h(mb_strimwidth((string)($rJobs['last_error'] ?? ''), 0, 80, '...')) . '</td>';
                 echo '<td style="padding:12px;text-align:right">';
                 echo '<a class="btn btnSmall" href="/integration_jobs_view.php?id=' . (int)$rJobs['id'] . '" target="_blank">Abrir</a> ';
-                echo '<form method="post" action="/integration_jobs_run_post.php" style="display:inline">';
-                echo '<input type="hidden" name="id" value="' . (int)$rJobs['id'] . '">';
-                echo '<button class="btn btnSmall btnPrimary" type="submit">Rodar</button>';
-                echo '</form>';
+                echo '<button class="btn btnSmall btnPrimary" type="button" onclick="var f=document.createElement(\'form\');f.method=\'post\';f.action=\'/integration_jobs_run_post.php\';var i=document.createElement(\'input\');i.type=\'hidden\';i.name=\'id\';i.value=\'' . (int)$rJobs['id'] . '\';f.appendChild(i);document.body.appendChild(f);f.submit();">Rodar</button>';
                 echo '</td>';
                 echo '</tr>';
             }
@@ -1051,17 +1045,17 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">🔑 Configuração da API ZapSign</div>';
         
-        echo '<form method="post" action="/zapsign_config_save_post.php" style="display:grid;gap:16px;max-width:800px">';
+        echo '<div id="zapsignConfigForm" style="display:grid;gap:16px;max-width:800px">';
         
         echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px">';
         echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">Credenciais da API</h3>';
         
-        echo '<label>Token da API ZapSign *<input name="api_token" value="' . h((string)$zapConfig['api_token']) . '" placeholder="Cole aqui o token da API do ZapSign" style="font-family:monospace"></label>';
+        echo '<label>Token da API ZapSign *<input id="zap_api_token" value="' . h((string)$zapConfig['api_token']) . '" placeholder="Cole aqui o token da API do ZapSign" style="font-family:monospace"></label>';
         
         echo '<div style="margin-top:12px">';
         echo '<label style="display:flex;align-items:center;gap:12px;cursor:pointer">';
         $checked = $zapConfig['sandbox_mode'] ? ' checked' : '';
-        echo '<input type="checkbox" name="sandbox_mode" value="1"' . $checked . ' style="width:18px;height:18px">';
+        echo '<input type="checkbox" id="zap_sandbox_mode" value="1"' . $checked . ' style="width:18px;height:18px">';
         echo '<div>';
         echo '<div style="font-weight:600">Modo Sandbox (Teste)</div>';
         echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:2px">Ative para testar sem enviar documentos reais</div>';
@@ -1071,7 +1065,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="margin-top:16px;padding:12px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px">';
         echo '<div style="font-size:13px;color:#92400e">';
-        echo '<strong>� Como obter o Token:</strong><br>';
+        echo '<strong>💡 Como obter o Token:</strong><br>';
         echo '1. Acesse <a href="https://app.zapsign.com.br" target="_blank" style="color:#b45309;text-decoration:underline">app.zapsign.com.br</a><br>';
         echo '2. Vá em Configurações → API<br>';
         echo '3. Copie o Token de API';
@@ -1084,7 +1078,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🔔 Webhook (Recomendado)</h3>';
         
         $webhookUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/zapsign_webhook.php';
-        echo '<label>URL do Webhook<input name="webhook_url" value="' . h($webhookUrl) . '" readonly style="font-family:monospace;background:#f0f0f0"></label>';
+        echo '<label>URL do Webhook<input value="' . h($webhookUrl) . '" readonly style="font-family:monospace;background:#f0f0f0"></label>';
         
         echo '<div style="margin-top:12px;padding:12px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:4px">';
         echo '<div style="font-size:13px;color:#1e40af;line-height:1.6">';
@@ -1099,10 +1093,10 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         
         echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
-        echo '<button class="btn btnPrimary" type="submit">💾 Salvar Configurações</button>';
+        echo '<button class="btn btnPrimary" type="button" onclick="submitZapSignConfig()">💾 Salvar Configurações</button>';
         echo '</div>';
         
-        echo '</form>';
+        echo '</div>';
         echo '</div>';
         
         // Seção 2: Templates de Contratos
@@ -1152,7 +1146,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
                 echo '</div>';
                 echo '<div style="display:flex;gap:8px">';
                 echo '<button class="btn btnSmall" onclick="showZapTemplateModal(' . (int)$tpl['id'] . ')">Editar</button>';
-                echo '<form method="post" action="/zapsign_template_delete_post.php" style="display:inline" onsubmit="return confirm(\'Excluir este template?\')"><input type="hidden" name="template_id" value="' . (int)$tpl['id'] . '"><button class="btn btnSmall btnDanger" type="submit">Excluir</button></form>';
+                echo '<form method="post" action="/zapsign_template_delete_post.php" style="display:inline" onsubmit="return confirm(\'Excluir este template?\')"><input type="hidden" name="template_id" value="' . (int)$tpl['id'] . '"><button class="btn btnSmall btnDanger" type="submit" formaction="/zapsign_template_delete_post.php">Excluir</button></form>';
                 echo '</div>';
                 echo '</div>';
                 echo '</div>';
@@ -1183,47 +1177,47 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Criar Documento (POST /api/v1/docs/)</div>';
         
-        echo '<form method="post" action="/admin_zapsign_create_doc_post.php" style="display:grid;gap:12px">';
+        echo '<div id="zapsignCreateDocForm" style="display:grid;gap:12px">';
         
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>Nome *<input name="name" maxlength="255" placeholder="Contrato"></label>';
-        echo '<label>Lang<input name="lang" value="pt-br" placeholder="pt-br"></label>';
+        echo '<label>Nome *<input id="zap_doc_name" maxlength="255" placeholder="Contrato"></label>';
+        echo '<label>Lang<input id="zap_doc_lang" value="pt-br" placeholder="pt-br"></label>';
         echo '</div>';
         
         echo '<div style="font-weight:600;margin-top:8px">Arquivo</div>';
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>url_pdf (opcional)<input name="url_pdf" placeholder="https://...pdf"></label>';
-        echo '<label>url_docx (opcional)<input name="url_docx" placeholder="https://...docx"></label>';
+        echo '<label>url_pdf (opcional)<input id="zap_doc_url_pdf" placeholder="https://...pdf"></label>';
+        echo '<label>url_docx (opcional)<input id="zap_doc_url_docx" placeholder="https://...docx"></label>';
         echo '</div>';
-        echo '<label>markdown_text (opcional)<textarea name="markdown_text" rows="4" placeholder="# Título\n\nConteúdo..."></textarea></label>';
+        echo '<label>markdown_text (opcional)<textarea id="zap_doc_markdown" rows="4" placeholder="# Título\n\nConteúdo..."></textarea></label>';
         
         echo '<div style="font-weight:600;margin-top:8px">Signatários (mínimo 1)</div>';
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>Signer 1 - Nome *<input name="signer1_name" placeholder="Fulano"></label>';
-        echo '<label>Signer 1 - E-mail *<input type="email" name="signer1_email" placeholder="fulano@email.com"></label>';
-        echo '<label>Signer 2 - Nome (opcional)<input name="signer2_name" placeholder="Ciclano"></label>';
-        echo '<label>Signer 2 - E-mail (opcional)<input type="email" name="signer2_email" placeholder="ciclano@email.com"></label>';
+        echo '<label>Signer 1 - Nome *<input id="zap_doc_signer1_name" placeholder="Fulano"></label>';
+        echo '<label>Signer 1 - E-mail *<input type="email" id="zap_doc_signer1_email" placeholder="fulano@email.com"></label>';
+        echo '<label>Signer 2 - Nome (opcional)<input id="zap_doc_signer2_name" placeholder="Ciclano"></label>';
+        echo '<label>Signer 2 - E-mail (opcional)<input type="email" id="zap_doc_signer2_email" placeholder="ciclano@email.com"></label>';
         echo '</div>';
         
         echo '<label style="display:flex;align-items:center;gap:10px;padding:12px">';
-        echo '<input type="checkbox" name="disable_signer_emails" value="1"> Desabilitar e-mails automáticos do ZapSign';
+        echo '<input type="checkbox" id="zap_doc_disable_emails" value="1"> Desabilitar e-mails automáticos do ZapSign';
         echo '</label>';
         
         echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
-        echo '<button class="btn btnPrimary" type="submit">Criar Documento</button>';
+        echo '<button class="btn btnPrimary" type="button" onclick="submitZapSignCreateDoc()">Criar Documento</button>';
         echo '</div>';
         
-        echo '</form>';
+        echo '</div>';
         echo '</div>';
         
         // Detalhar documento
         echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:8px">';
         echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Detalhar Documento (GET /api/v1/docs/{doc_token}/)</div>';
         
-        echo '<form method="post" action="/admin_zapsign_detail_doc_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
-        echo '<input name="doc_token" placeholder="doc_token" style="flex:1;min-width:280px">';
-        echo '<button class="btn" type="submit">Detalhar</button>';
-        echo '</form>';
+        echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<input id="zap_doc_token_detail" placeholder="doc_token" style="flex:1;min-width:280px">';
+        echo '<button class="btn" type="button" onclick="submitZapSignDetailDoc()">Detalhar</button>';
+        echo '</div>';
         
         echo '</div>';
         
@@ -1234,7 +1228,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div class="card" style="max-width:700px;width:90%;max-height:90vh;overflow-y:auto">';
         echo '<h3 style="font-size:20px;font-weight:700;margin-bottom:16px" id="zapTemplateModalTitle">Novo Template</h3>';
         
-        echo '<form method="post" action="/zapsign_template_save_post.php" enctype="multipart/form-data" style="display:grid;gap:12px">';
+        echo '<form method="post" action="/zapsign_template_save_post.php" enctype="multipart/form-data" style="display:grid;gap:12px" id="zapTemplateForm" target="_self">';
         echo '<input type="hidden" name="template_id" id="zapTemplateId" value="0">';
         
         echo '<label>Nome do Template *<input name="name" id="zapTemplateName" maxlength="160" placeholder="Ex: Contrato CLT Padrão"></label>';
@@ -1262,7 +1256,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">';
         echo '<button type="button" class="btn" onclick="closeZapTemplateModal()">Cancelar</button>';
-        echo '<button type="submit" class="btn btnPrimary">Salvar Template</button>';
+        echo '<button type="submit" class="btn btnPrimary" formaction="/zapsign_template_save_post.php">Salvar Template</button>';
         echo '</div>';
         
         echo '</form>';
@@ -1378,6 +1372,11 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         
         echo '</div>';
+        echo '</div>';
+        
+        // Botão salvar dentro da aba Evolution (antes de forms aninhados quebrarem o form principal)
+        echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
+        echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp') {
         // Incluir conteúdo de gerenciamento de eventos WhatsApp diretamente
@@ -1662,7 +1661,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
 }
 
 echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
-echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
+echo '<button class="btn btnPrimary" type="button" onclick="document.getElementById(\'mainSettingsForm\').submit()">Salvar Configurações</button>';
 echo '</div>';
 echo '</form>';
 
@@ -1716,5 +1715,91 @@ function toggleAccordion(header){
     header.classList.add("isOpen");
     content.classList.add("isOpen");
   }
+}
+
+function submitZapSignConfig(){
+  var form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/zapsign_config_save_post.php';
+  
+  var token = document.getElementById('zap_api_token');
+  if(token){
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'api_token';
+    input.value = token.value;
+    form.appendChild(input);
+  }
+  
+  var sandbox = document.getElementById('zap_sandbox_mode');
+  if(sandbox && sandbox.checked){
+    var input2 = document.createElement('input');
+    input2.type = 'hidden';
+    input2.name = 'sandbox_mode';
+    input2.value = '1';
+    form.appendChild(input2);
+  }
+  
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function submitZapSignCreateDoc(){
+  var form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/admin_zapsign_create_doc_post.php';
+  
+  var fields = {
+    'name': 'zap_doc_name',
+    'lang': 'zap_doc_lang',
+    'url_pdf': 'zap_doc_url_pdf',
+    'url_docx': 'zap_doc_url_docx',
+    'markdown_text': 'zap_doc_markdown',
+    'signer1_name': 'zap_doc_signer1_name',
+    'signer1_email': 'zap_doc_signer1_email',
+    'signer2_name': 'zap_doc_signer2_name',
+    'signer2_email': 'zap_doc_signer2_email'
+  };
+  
+  for(var name in fields){
+    var el = document.getElementById(fields[name]);
+    if(el && el.value){
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = el.value;
+      form.appendChild(input);
+    }
+  }
+  
+  var disableEmails = document.getElementById('zap_doc_disable_emails');
+  if(disableEmails && disableEmails.checked){
+    var input3 = document.createElement('input');
+    input3.type = 'hidden';
+    input3.name = 'disable_signer_emails';
+    input3.value = '1';
+    form.appendChild(input3);
+  }
+  
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function submitZapSignDetailDoc(){
+  var form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/admin_zapsign_detail_doc_post.php';
+  
+  var token = document.getElementById('zap_doc_token_detail');
+  if(token && token.value){
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'doc_token';
+    input.value = token.value;
+    form.appendChild(input);
+  }
+  
+  document.body.appendChild(form);
+  form.submit();
 }
 </script><?php

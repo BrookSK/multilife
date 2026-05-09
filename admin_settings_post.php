@@ -24,7 +24,7 @@ try {
             continue;
         }
 
-        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password'], true) && $val === '') {
+        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'evolution.api_key'], true) && $val === '') {
             continue;
         }
         $stmt->execute(['k' => $key, 'v' => $val, 'uid' => auth_user_id()]);
