@@ -373,8 +373,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="display:grid;gap:12px">';
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>Nome da Função *<input name="name" required placeholder="ex: Financeiro"></label>';
-        echo '<label>Slug (identificador) *<input name="slug" required placeholder="ex: financeiro" pattern="[a-z0-9_-]+" title="Apenas letras minúsculas, números, hífen e underscore"></label>';
+        echo '<label>Nome da Função *<input name="name" placeholder="ex: Financeiro"></label>';
+        echo '<label>Slug (identificador) *<input name="slug" placeholder="ex: financeiro" pattern="[a-z0-9_-]+" title="Apenas letras minúsculas, números, hífen e underscore"></label>';
         echo '</div>';
         echo '<label>Descrição (opcional)<textarea name="description" rows="2" placeholder="Descrição da função"></textarea></label>';
         echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
@@ -1056,7 +1056,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px">';
         echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">Credenciais da API</h3>';
         
-        echo '<label>Token da API ZapSign *<input name="api_token" required value="' . h((string)$zapConfig['api_token']) . '" placeholder="Cole aqui o token da API do ZapSign" style="font-family:monospace"></label>';
+        echo '<label>Token da API ZapSign *<input name="api_token" value="' . h((string)$zapConfig['api_token']) . '" placeholder="Cole aqui o token da API do ZapSign" style="font-family:monospace"></label>';
         
         echo '<div style="margin-top:12px">';
         echo '<label style="display:flex;align-items:center;gap:12px;cursor:pointer">';
@@ -1186,7 +1186,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<form method="post" action="/admin_zapsign_create_doc_post.php" style="display:grid;gap:12px">';
         
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>Nome *<input name="name" required maxlength="255" placeholder="Contrato"></label>';
+        echo '<label>Nome *<input name="name" maxlength="255" placeholder="Contrato"></label>';
         echo '<label>Lang<input name="lang" value="pt-br" placeholder="pt-br"></label>';
         echo '</div>';
         
@@ -1199,8 +1199,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="font-weight:600;margin-top:8px">Signatários (mínimo 1)</div>';
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-        echo '<label>Signer 1 - Nome *<input name="signer1_name" required placeholder="Fulano"></label>';
-        echo '<label>Signer 1 - E-mail *<input type="email" name="signer1_email" required placeholder="fulano@email.com"></label>';
+        echo '<label>Signer 1 - Nome *<input name="signer1_name" placeholder="Fulano"></label>';
+        echo '<label>Signer 1 - E-mail *<input type="email" name="signer1_email" placeholder="fulano@email.com"></label>';
         echo '<label>Signer 2 - Nome (opcional)<input name="signer2_name" placeholder="Ciclano"></label>';
         echo '<label>Signer 2 - E-mail (opcional)<input type="email" name="signer2_email" placeholder="ciclano@email.com"></label>';
         echo '</div>';
@@ -1221,7 +1221,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div style="font-weight:700;font-size:16px;margin-bottom:12px">Detalhar Documento (GET /api/v1/docs/{doc_token}/)</div>';
         
         echo '<form method="post" action="/admin_zapsign_detail_doc_post.php" style="display:flex;gap:10px;flex-wrap:wrap">';
-        echo '<input name="doc_token" required placeholder="doc_token" style="flex:1;min-width:280px">';
+        echo '<input name="doc_token" placeholder="doc_token" style="flex:1;min-width:280px">';
         echo '<button class="btn" type="submit">Detalhar</button>';
         echo '</form>';
         
@@ -1237,9 +1237,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<form method="post" action="/zapsign_template_save_post.php" enctype="multipart/form-data" style="display:grid;gap:12px">';
         echo '<input type="hidden" name="template_id" id="zapTemplateId" value="0">';
         
-        echo '<label>Nome do Template *<input name="name" id="zapTemplateName" required maxlength="160" placeholder="Ex: Contrato CLT Padrão"></label>';
+        echo '<label>Nome do Template *<input name="name" id="zapTemplateName" maxlength="160" placeholder="Ex: Contrato CLT Padrão"></label>';
         
-        echo '<label>Tipo de Contrato *<select name="template_type" id="zapTemplateType" required>';
+        echo '<label>Tipo de Contrato *<select name="template_type" id="zapTemplateType">';
         echo '<option value="">Selecione...</option>';
         echo '<option value="clt">CLT</option>';
         echo '<option value="pj">PJ (Pessoa Jurídica)</option>';
@@ -1334,7 +1334,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         $apiKeyVal = $settings['evolution.api_key'] ?? '';
         $instanceVal = $settings['evolution.instance'] ?? '';
         
-        echo '<label>Base URL<input name="settings[evolution.base_url]" value="' . h($baseUrlVal) . '" placeholder="http://31.97.83.150:8080" required><span class="helpText">URL base da Evolution API (sem barra no final)</span></label>';
+        echo '<label>Base URL<input name="settings[evolution.base_url]" value="' . h($baseUrlVal) . '" placeholder="http://31.97.83.150:8080"><span class="helpText">URL base da Evolution API (sem barra no final)</span></label>';
         
         echo '<label>Link Manager (Opcional)<input name="settings[evolution.manager_url]" value="' . h($settings['evolution.manager_url'] ?? '') . '" placeholder="http://31.97.83.150:8080/manager/"><span class="helpText">URL do painel de gerenciamento (opcional)</span></label>';
         
