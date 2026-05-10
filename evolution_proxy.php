@@ -52,7 +52,21 @@ try {
     curl_close($ch);
     
     if ($httpCode === 200) {
-        echo $response;
+        // Para ação de status, normalizar a resposta para incluir 'state' no nível raiz
+        if ($action === 'status') {
+            $decoded = json_decode($response, true);
+            if (is_array($decoded)) {
+                // Se a resposta tem instance.state, extrair para o nível raiz
+                if (isset($decoded['instance']['state'])) {
+                    $decoded['state'] = $decoded['instance']['state'];
+                }
+                echo json_encode($decoded);
+            } else {
+                echo $response;
+            }
+        } else {
+            echo $response;
+        }
     } else {
         // Debug detalhado
         $errorData = [

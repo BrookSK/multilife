@@ -114,12 +114,20 @@ function checkStatus(){
   fetch("/evolution_proxy.php?action=status&instance=<?= urlencode($instanceName) ?>")
   .then(r => r.json())
   .then(data => {
-    if(data.state === "open"){
+    console.log("Status check:", JSON.stringify(data));
+    var state = null;
+    if(data.state) state = data.state;
+    else if(data.instance && data.instance.state) state = data.instance.state;
+    else if(data.instanceState) state = data.instanceState;
+    
+    if(state === "open" || state === "connected"){
       clearInterval(checkInterval);
+      document.getElementById("qrcode-container").innerHTML = `<div style="color:hsl(142,76%,36%);padding:40px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:16px;font-size:18px;font-weight:700">WhatsApp Conectado!</div></div>`;
       document.getElementById("status-message").innerHTML = `<span style="color:hsl(142,76%,36%);font-weight:600">✓ Conectado com sucesso!</span>`;
-      setTimeout(() => window.location.href = "/evolution_instances.php", 2000);
+      setTimeout(() => window.location.href = "/evolution_instances.php", 3000);
     }
-  });
+  })
+  .catch(e => console.error("Erro ao verificar status:", e));
 }
 
 function startStatusCheck(){
