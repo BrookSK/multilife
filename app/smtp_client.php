@@ -172,7 +172,14 @@ final class SmtpClient
             $headers[] = 'Message-ID: ' . $messageId;
             $headers[] = 'Date: ' . date('r');
             $headers[] = 'MIME-Version: 1.0';
-            $headers[] = 'Content-Type: text/plain; charset=UTF-8';
+            
+            // Detectar se o corpo é HTML
+            $isHtml = stripos($bodyText, '<html') !== false || stripos($bodyText, '<!DOCTYPE') !== false || stripos($bodyText, '<div') !== false;
+            if ($isHtml) {
+                $headers[] = 'Content-Type: text/html; charset=UTF-8';
+            } else {
+                $headers[] = 'Content-Type: text/plain; charset=UTF-8';
+            }
             $headers[] = 'Content-Transfer-Encoding: 8bit';
 
             $data = implode("\r\n", $headers) . "\r\n\r\n" . $bodyText;
