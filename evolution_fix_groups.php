@@ -33,10 +33,14 @@ echo "Resposta: $resp\n\n";
 echo "=== ATUALIZANDO SETTINGS (groups_ignore = false) ===\n";
 $url2 = $baseUrl . '/settings/set/' . urlencode($instanceName);
 $payload2 = json_encode([
+    'reject_call' => false,
+    'msg_call' => '',
     'groups_ignore' => false,
     'always_online' => true,
     'read_messages' => false,
     'read_status' => false,
+    'sync_full_history' => false,
+    'wavoipToken' => '',
 ]);
 
 $ch2 = curl_init($url2);
