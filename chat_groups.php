@@ -107,23 +107,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $participantPhone = trim($_POST['participant_phone'] ?? '');
         
         if (!empty($groupJid) && !empty($participantPhone)) {
-            // Formatar número
+            // Formatar número - apenas dígitos
             $participantPhone = preg_replace('/[^0-9]/', '', $participantPhone);
-            if (!str_contains($participantPhone, '@')) {
-                $participantPhone .= '@s.whatsapp.net';
-            }
             
-            // Adicionar via API
-            $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName);
+            // Adicionar via API (PUT com groupJid como query param)
+            $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
             $payload = json_encode([
-                'groupJid' => $groupJid,
                 'action' => 'add',
                 'participants' => [$participantPhone]
             ]);
             
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'apikey: ' . $apiKey,
@@ -148,16 +144,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $participantJid = trim($_POST['participant_jid'] ?? '');
         
         if (!empty($groupJid) && !empty($participantJid)) {
-            $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName);
+            // Extrair apenas o número (remover @s.whatsapp.net se presente)
+            $participantNumber = preg_replace('/[^0-9]/', '', explode('@', $participantJid)[0]);
+            
+            $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
             $payload = json_encode([
-                'groupJid' => $groupJid,
                 'action' => 'remove',
-                'participants' => [$participantJid]
+                'participants' => [$participantNumber]
             ]);
             
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'apikey: ' . $apiKey,
