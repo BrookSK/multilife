@@ -26,9 +26,8 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 try {
     // Buscar grupos da Evolution API - tentar múltiplos formatos de endpoint
     $endpoints = [
-        $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false',
-        $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getMembers=false',
         $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName),
+        $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false',
     ];
     
     $response = '';
@@ -63,6 +62,45 @@ try {
         $httpCode = $code;
         $curlError = $err;
         $groupsUrl = $url;
+    }
+    
+    // Se todos falharam, tentar buscar instâncias disponíveis para sugerir o nome correto
+    if ($httpCode !== 200) {
+        $instancesUrl = $baseUrl . '/instance/fetchInstances';
+        $ch = curl_init($instancesUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $instancesResp = curl_exec($ch);
+        curl_close($ch);
+        
+        $availableInstances = [];
+        if ($instancesResp) {
+            $instData = json_decode($instancesResp, true);
+            if (is_array($instData)) {
+                foreach ($instData as $inst) {
+                    $instName = $inst['instance']['instanceName'] ?? ($inst['instanceName'] ?? ($inst['name'] ?? ''));
+                    if ($instName !== '') {
+                        $availableInstances[] = $instName;
+                    }
+                }
+            }
+        }
+        
+        $hint = '';
+        if (!empty($availableInstances)) {
+            $hint = ' Instâncias disponíveis: ' . implode(', ', $availableInstances) . '. Instância configurada: "' . $instanceName . '"';
+        }
+        
+        $errMsg = 'Erro ao buscar grupos. HTTP Code: ' . $httpCode . '.' . $hint;
+        echo json_encode([
+            'success' => false,
+            'error' => $errMsg,
+            'http_code' => $httpCode,
+        ]);
+        exit;
     }
     
     if ($httpCode === 0) {
