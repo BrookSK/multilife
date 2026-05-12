@@ -422,6 +422,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ");
                         $stmt->execute([$groupJid, $groupName, $specialty, $location]);
                         
+                        // Também salvar na tabela whatsapp_groups para captação
+                        try {
+                            $stmtWg = db()->prepare(
+                                'INSERT INTO whatsapp_groups (name, evolution_group_jid, contacts_count, specialty, state, status) VALUES (:n, :jid, 1, :sp, :st, \'active\') ON DUPLICATE KEY UPDATE name = VALUES(name), specialty = VALUES(specialty), state = VALUES(state)'
+                            );
+                            $stmtWg->execute([
+                                'n' => $groupName,
+                                'jid' => $groupJid,
+                                'sp' => $specialty,
+                                'st' => $location,
+                            ]);
+                        } catch (Exception $eWg) {
+                            error_log("Erro ao salvar grupo em whatsapp_groups: " . $eWg->getMessage());
+                        }
+                        
                         audit_log('create', 'chat_groups', $groupJid, null, ['group_name' => $groupName, 'specialty' => $specialty, 'region' => $location]);
                         $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
                         $debugConsole[] = 'console.log("✅ GRUPO CRIADO - Nome: ' . addslashes($groupName) . ' | JID: ' . addslashes($groupJid) . '")';
