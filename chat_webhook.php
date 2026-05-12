@@ -579,12 +579,19 @@ if ($event === 'messages.upsert') {
 
         // Permitir salvar mídia mesmo sem texto (só verificar se tem remoteJid válido)
         $hasContent = !empty($messageText) || $messageType !== 'text';
+        $isGroup = strpos($remoteJid, '@g.us') !== false;
 
-        if (!$fromMe && !empty($remoteJid) && $hasContent
-            && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg) {
+        // Salvar mensagem se:
+        // - Não é fromMe (mensagem recebida de outro contato)
+        // - OU é de grupo (mensagens em grupo são sempre relevantes, inclusive as próprias)
+        $shouldSave = (!$fromMe || $isGroup) && !empty($remoteJid) && $hasContent
+            && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg;
+
+        if ($shouldSave) {
             try {
-                saveMessage($remoteJid, $messageText, 0, $timestamp, $mediaData);
-                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' text='" . substr($messageText,0,50) . "'");
+                $fromMeInt = $fromMe ? 1 : 0;
+                saveMessage($remoteJid, $messageText, $fromMeInt, $timestamp, $mediaData);
+                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' fromMe=$fromMeInt text='" . substr($messageText,0,50) . "'");
             } catch (Exception $e) {
                 error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
             }
