@@ -35,6 +35,7 @@ require_once __DIR__ . '/evolution_api_v1.php';
 require_once __DIR__ . '/openai_api.php';
 require_once __DIR__ . '/zapsign_api.php';
 require_once __DIR__ . '/smtp_client.php';
+require_once __DIR__ . '/notification_guard.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/rbac.php';
 require_once __DIR__ . '/view.php';

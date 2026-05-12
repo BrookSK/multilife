@@ -92,6 +92,23 @@ foreach ($jobs as $j) {
                 throw new RuntimeException('appointment_id/patient_id ausentes.');
             }
 
+            // Verificar se paciente pode receber notificações
+            $guardResult = notification_guard_check_patient($patientId);
+            if (!$guardResult['allowed']) {
+                // Marcar como sucesso (não deve retentar) mas logar o bloqueio
+                $updRun->execute([
+                    'status' => 'success',
+                    'attempts' => $attempts,
+                    'last_error' => 'BLOQUEADO: ' . $guardResult['reason'],
+                    'next_run_at' => null,
+                    'last_run_at' => $runAt,
+                    'id' => $id,
+                ]);
+                $success++;
+                integration_log($provider, 'job ' . $action, 'success', null, $payload, ['blocked' => true, 'reason' => $guardResult['reason']], null, $attempts);
+                continue;
+            }
+
             $stmt = db()->prepare(
                 'SELECT a.id, a.first_at, p.full_name AS patient_name, p.whatsapp, p.phone_primary, p.phone_secondary, u.name AS professional_name\n'
                 . 'FROM appointments a\n'
@@ -189,6 +206,25 @@ foreach ($jobs as $j) {
             $row = $stmt->fetch();
             if (!$row) {
                 throw new RuntimeException('Documentação não encontrada.');
+            }
+
+            // Verificar se profissional está ativo
+            $profUserId = (int)($row['professional_user_id'] ?? 0);
+            if ($profUserId > 0) {
+                $guardResult = notification_guard_check_professional($profUserId);
+                if (!$guardResult['allowed']) {
+                    $updRun->execute([
+                        'status' => 'success',
+                        'attempts' => $attempts,
+                        'last_error' => 'BLOQUEADO: ' . $guardResult['reason'],
+                        'next_run_at' => null,
+                        'last_run_at' => $runAt,
+                        'id' => $id,
+                    ]);
+                    $success++;
+                    integration_log($provider, 'job ' . $action, 'success', null, $payload, ['blocked' => true, 'reason' => $guardResult['reason']], null, $attempts);
+                    continue;
+                }
             }
 
             $phone = (string)($row['phone'] ?? '');
@@ -803,6 +839,7 @@ foreach ($jobs as $j) {
         $failed++;
         integration_log($provider, 'job ' . $action, 'error', null, $payload, null, $err, $attempts);
         continue;
+    }
 }
 
 echo 'OK: success=' . $success . ' failed=' . $failed . ' dead=' . $dead . "\n";

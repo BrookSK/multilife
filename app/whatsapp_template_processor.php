@@ -76,8 +76,23 @@ function whatsapp_send_template(
     string $phone, 
     string $event, 
     array $variables, 
-    ?int $healthInsurerId = null
+    ?int $healthInsurerId = null,
+    ?int $patientId = null
 ): array {
+    // 0. Verificar se paciente pode receber notificações
+    if ($patientId !== null && $patientId > 0) {
+        $guardResult = notification_guard_check_patient($patientId);
+        if (!$guardResult['allowed']) {
+            error_log("[WHATSAPP_TEMPLATE] Bloqueado envio para paciente #$patientId: " . $guardResult['reason']);
+            return [
+                'success' => false,
+                'message' => 'Envio bloqueado: ' . $guardResult['reason'],
+                'template_id' => null,
+                'blocked' => true
+            ];
+        }
+    }
+
     // 1. Buscar template
     $template = whatsapp_get_template($event, $healthInsurerId);
     

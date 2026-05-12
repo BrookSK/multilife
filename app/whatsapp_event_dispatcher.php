@@ -45,34 +45,56 @@ class WhatsAppEventDispatcher
             
             // Enviar para profissional
             if ($event['send_to_professional'] && !empty($data['professional_phone'])) {
-                $message = $this->processTemplate($event['template_professional'], $data);
-                $result = $this->sendMessage(
-                    $data['professional_phone'],
-                    $message,
-                    $event['id'],
-                    'professional',
-                    $data['professional_name'] ?? ''
-                );
-                $results['professional'] = $result;
+                // Verificar se profissional está ativo
+                $professionalId = (int)($data['professional_id'] ?? 0);
+                $guardResult = $professionalId > 0 ? notification_guard_check_professional($professionalId) : ['allowed' => true, 'reason' => null];
                 
-                // Enviar arquivos anexos
-                $this->sendEventFiles($event['id'], 'professional', $data['professional_phone']);
+                if (!$guardResult['allowed']) {
+                    error_log("[WHATSAPP_DISPATCHER] Bloqueado envio para profissional: " . $guardResult['reason']);
+                    $results['professional'] = ['success' => false, 'error' => $guardResult['reason'], 'blocked' => true];
+                } else {
+                    $message = $this->processTemplate($event['template_professional'], $data);
+                    $result = $this->sendMessage(
+                        $data['professional_phone'],
+                        $message,
+                        $event['id'],
+                        'professional',
+                        $data['professional_name'] ?? ''
+                    );
+                    $results['professional'] = $result;
+                    
+                    // Enviar arquivos anexos
+                    $this->sendEventFiles($event['id'], 'professional', $data['professional_phone']);
+                }
             }
             
             // Enviar para paciente
             if ($event['send_to_patient'] && !empty($data['patient_phone'])) {
-                $message = $this->processTemplate($event['template_patient'], $data);
-                $result = $this->sendMessage(
-                    $data['patient_phone'],
-                    $message,
-                    $event['id'],
-                    'patient',
-                    $data['patient_name'] ?? ''
-                );
-                $results['patient'] = $result;
+                // Verificar se paciente pode receber notificações
+                $patientId = (int)($data['patient_id'] ?? 0);
+                if ($patientId > 0) {
+                    $guardResult = notification_guard_check_patient($patientId);
+                } else {
+                    $guardResult = notification_guard_check_patient_by_phone($data['patient_phone']);
+                }
                 
-                // Enviar arquivos anexos
-                $this->sendEventFiles($event['id'], 'patient', $data['patient_phone']);
+                if (!$guardResult['allowed']) {
+                    error_log("[WHATSAPP_DISPATCHER] Bloqueado envio para paciente: " . $guardResult['reason']);
+                    $results['patient'] = ['success' => false, 'error' => $guardResult['reason'], 'blocked' => true];
+                } else {
+                    $message = $this->processTemplate($event['template_patient'], $data);
+                    $result = $this->sendMessage(
+                        $data['patient_phone'],
+                        $message,
+                        $event['id'],
+                        'patient',
+                        $data['patient_name'] ?? ''
+                    );
+                    $results['patient'] = $result;
+                    
+                    // Enviar arquivos anexos
+                    $this->sendEventFiles($event['id'], 'patient', $data['patient_phone']);
+                }
             }
             
             return ['success' => true, 'results' => $results];
