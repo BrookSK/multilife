@@ -39,6 +39,30 @@ try {
     $curlError = curl_error($ch);
     curl_close($ch);
     
+    // Se falhou com getParticipants, tentar com getMembers (versões diferentes da API)
+    if ($httpCode !== 200) {
+        $groupsUrl2 = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getMembers=false';
+        $ch2 = curl_init($groupsUrl2);
+        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch2, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch2, CURLOPT_CONNECTTIMEOUT, 10);
+        
+        $response2 = curl_exec($ch2);
+        $httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+        $curlError2 = curl_error($ch2);
+        curl_close($ch2);
+        
+        if ($httpCode2 === 200) {
+            $response = $response2;
+            $httpCode = $httpCode2;
+            $curlError = $curlError2;
+            $groupsUrl = $groupsUrl2;
+        }
+    }
+    
     if ($httpCode === 0) {
         error_log("Erro de conexão ao buscar grupos - URL: $groupsUrl - cURL Error: $curlError");
         echo json_encode([
@@ -66,8 +90,27 @@ try {
     $groupsData = json_decode($response, true);
     
     if (!is_array($groupsData)) {
-        echo json_encode(['success' => false, 'error' => 'Resposta inválida da API']);
-        exit;
+        // Pode ser que a resposta esteja encapsulada em outro formato
+        // Tentar extrair de formatos alternativos da Evolution API v2
+        if (is_string($response)) {
+            $decoded = json_decode($response, true);
+            if (is_array($decoded) && isset($decoded['data']) && is_array($decoded['data'])) {
+                $groupsData = $decoded['data'];
+            } elseif (is_array($decoded) && isset($decoded['groups']) && is_array($decoded['groups'])) {
+                $groupsData = $decoded['groups'];
+            }
+        }
+        
+        if (!is_array($groupsData)) {
+            error_log("[CHAT_SYNC] Resposta inválida da API. HTTP: $httpCode. Response (primeiros 500 chars): " . substr((string)$response, 0, 500));
+            echo json_encode([
+                'success' => false, 
+                'error' => 'Resposta inválida da API. Verifique os logs para detalhes.',
+                'http_code' => $httpCode,
+                'response_preview' => substr((string)$response, 0, 200)
+            ]);
+            exit;
+        }
     }
     
     // Criar tabela se não existir
