@@ -244,6 +244,31 @@ function process_single_authorization(int $authId, int $emailId): array
             $assignmentId = (int)$db->lastInsertId();
             error_log("[PROCESS_SINGLE_AUTH] ✓ Atendimento criado - ID: $assignmentId");
             
+            // Disparar evento WhatsApp attendance_assigned
+            try {
+                $profStmt = $db->prepare('SELECT name, phone FROM users WHERE id = :id');
+                $profStmt->execute(['id' => $professionalUserId]);
+                $profData = $profStmt->fetch();
+                
+                $patStmt = $db->prepare('SELECT full_name, whatsapp, phone_primary FROM patients WHERE id = :id');
+                $patStmt->execute(['id' => $patientId]);
+                $patData = $patStmt->fetch();
+                
+                $dispatcher = new WhatsAppEventDispatcher();
+                $dispatcher->dispatch('attendance_assigned', [
+                    'professional_id' => $professionalUserId,
+                    'professional_name' => $profData['name'] ?? '',
+                    'professional_phone' => preg_replace('/\D+/', '', (string)($profData['phone'] ?? '')),
+                    'patient_id' => $patientId,
+                    'patient_name' => $patData['full_name'] ?? '',
+                    'patient_phone' => preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? '')),
+                    'attendance_id' => (string)$assignmentId,
+                    'attendance_date' => date('d/m/Y'),
+                ]);
+            } catch (Throwable $evtErr) {
+                error_log('[PROCESS_SINGLE_AUTH] Erro ao disparar evento: ' . $evtErr->getMessage());
+            }
+            
             // Criar lançamentos financeiros
             $totalReceita = $proposalValue * $totalSessions;
             $totalDespesa = $agreedValue * $totalSessions;
