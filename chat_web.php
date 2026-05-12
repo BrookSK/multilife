@@ -2524,6 +2524,13 @@ echo '</script>';
   var form = document.getElementById("sendMessageForm");
   if(!form) return;
   
+  // URL fixa para envio (sem parâmetros extras como success=1)
+  var phoneInput = form.querySelector("input[name=phone_number]");
+  var chatId = phoneInput ? phoneInput.value : "";
+  var isGroup = chatId.indexOf("@g.us") > -1;
+  var typeParam = isGroup ? "&type=grupos" : "";
+  var sendUrl = "/chat_web.php?chat=" + encodeURIComponent(chatId) + typeParam;
+  
   form.addEventListener("submit", function(e){
     e.preventDefault();
     
@@ -2546,18 +2553,28 @@ echo '</script>';
       chatArea.scrollTop = chatArea.scrollHeight;
     }
     
+    // Limpar campo imediatamente
+    textarea.value = "";
+    textarea.style.height = "auto";
+    
     // Enviar via AJAX
     var formData = new FormData(form);
-    fetch(form.action, {
+    formData.set("message", message);
+    
+    fetch(sendUrl, {
       method: "POST",
       headers: {"X-Requested-With": "XMLHttpRequest"},
       body: formData
     })
-    .then(function(r){ return r.json(); })
+    .then(function(r){
+      var contentType = r.headers.get("content-type") || "";
+      if(contentType.indexOf("application/json") === -1){
+        throw new Error("Servidor retornou HTML em vez de JSON. Status: " + r.status);
+      }
+      return r.json();
+    })
     .then(function(data){
       if(data.success){
-        textarea.value = "";
-        textarea.style.height = "auto";
         if(msgDiv){
           var timeEl = msgDiv.querySelector(".whatsapp-time");
           if(timeEl) timeEl.innerHTML = timeEl.innerHTML.replace("✓","✓✓");
@@ -2568,12 +2585,13 @@ echo '</script>';
       }
     })
     .catch(function(err){
-      if(msgDiv && chatArea) chatArea.removeChild(msgDiv);
-      alert("Erro de conexão: " + err.message);
+      // Não remover a mensagem se o erro for de parsing - a mensagem pode ter sido enviada
+      console.error("Erro no envio:", err.message);
     })
     .finally(function(){
       sendBtn.disabled = false;
       sendBtn.style.opacity = "1";
+      textarea.focus();
     });
   });
   
