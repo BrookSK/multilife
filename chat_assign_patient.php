@@ -153,6 +153,23 @@ try {
     
     $assignmentId = (int)$db->lastInsertId();
     
+    // Disparar evento WhatsApp attendance_assigned
+    try {
+        $dispatcher = new WhatsAppEventDispatcher();
+        $dispatcher->dispatch('attendance_assigned', [
+            'professional_id' => $professionalUserId,
+            'professional_name' => $professionalName,
+            'professional_phone' => preg_replace('/\D+/', '', $professionalJid),
+            'patient_id' => $patientId,
+            'patient_name' => $patientName,
+            'patient_phone' => '',
+            'attendance_id' => (string)$assignmentId,
+            'attendance_date' => date('d/m/Y'),
+        ]);
+    } catch (Throwable $evtErr) {
+        error_log('[DISPATCH_EVENT] Erro ao disparar attendance_assigned: ' . $evtErr->getMessage());
+    }
+    
     // Buscar mensagem padrão das configurações
     $settingStmt = $db->prepare("SELECT setting_value FROM operational_settings WHERE setting_key = 'assignment_message_template'");
     $settingStmt->execute();
