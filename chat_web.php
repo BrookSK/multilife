@@ -1821,17 +1821,20 @@ if (empty($selectedChat)) {
                     echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
                 }
             } elseif ($messageType === 'document' && !empty($mediaUrl)) {
-                echo '<!-- DEBUG DOCUMENT: URL=' . h($mediaUrl) . ' -->';
-                echo '<div style="display:flex;align-items:center;gap:12px;padding:8px;background:hsl(var(--muted));border-radius:8px">';
-                echo '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
-                echo '<div style="flex:1">';
-                echo '<div style="font-weight:600">' . h($msg['mediaFilename'] ?? 'Documento') . '</div>';
-                if (!empty($msg['media_size'])) {
-                    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground))">' . number_format($msg['media_size'] / 1024, 1) . ' KB</div>';
-                }
+                $docFilename = $msg['mediaFilename'] ?? 'Documento';
+                $docSize = !empty($msg['media_size']) ? number_format($msg['media_size'] / 1024, 1) . ' KB' : 'PDF';
+                echo '<a href="' . h($mediaUrl) . '" download style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
+                echo '<div style="width:40px;height:40px;border-radius:8px;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
+                echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
                 echo '</div>';
-                echo '<a href="' . h($mediaUrl) . '" download class="btn" style="padding:8px 12px;font-size:12px">Download</a>';
+                echo '<div style="flex:1;min-width:0;overflow:hidden">';
+                echo '<div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . h($docFilename) . '</div>';
+                echo '<div style="font-size:11px;color:#667781;margin-top:2px">' . h($docSize) . '</div>';
                 echo '</div>';
+                echo '<div style="flex-shrink:0;color:#667781">';
+                echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+                echo '</div>';
+                echo '</a>';
             } else {
                 echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
             }
