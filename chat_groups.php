@@ -144,13 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $participantJid = trim($_POST['participant_jid'] ?? '');
         
         if (!empty($groupJid) && !empty($participantJid)) {
-            // Extrair apenas o número (remover @s.whatsapp.net se presente)
-            $participantNumber = preg_replace('/[^0-9]/', '', explode('@', $participantJid)[0]);
-            
             $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
             $payload = json_encode([
                 'action' => 'remove',
-                'participants' => [$participantNumber]
+                'participants' => [$participantJid]
             ]);
             
             $ch = curl_init($url);
@@ -383,14 +380,17 @@ echo '    if(data.error){ container.innerHTML = \'<div style="color:red;padding:
 echo '    if(!data.participants || data.participants.length === 0){ container.innerHTML = \'<div style="padding:12px;color:#64748b">Nenhum membro encontrado</div>\'; return; }';
 echo '    var html = "";';
 echo '    data.participants.forEach(function(p){';
-echo '      var phone = p.id ? p.id.replace("@s.whatsapp.net","") : "?";';
+echo '      var rawId = p.id || "?";';
+echo '      var isLid = rawId.indexOf("@lid") > -1;';
+echo '      var phone = rawId.replace("@s.whatsapp.net","").replace("@lid","");';
+echo '      var displayName = p.name || p.pushName || "";';
 echo '      var isAdmin = p.admin === "admin" || p.admin === "superadmin";';
 echo '      var badge = isAdmin ? \'<span style="margin-left:6px;padding:2px 6px;background:#00a884;color:white;border-radius:4px;font-size:10px">ADMIN</span>\' : "";';
+echo '      var lidBadge = isLid ? \'<span style="margin-left:6px;padding:2px 6px;background:#f59e0b;color:white;border-radius:4px;font-size:10px">LID</span>\' : "";';
+echo '      var nameDisplay = displayName ? \'<div style="font-weight:600;font-size:13px">\' + displayName + \'</div><div style="font-size:11px;color:#64748b">\' + phone + \'</div>\' : \'<div style="font-weight:600;font-size:13px">\' + phone + \'</div>\';';
 echo '      html += \'<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px">\';';
-echo '      html += \'<div><span style="font-weight:600;font-size:13px">\' + phone + \'</span>\' + badge + \'</div>\';';
-echo '      if(!isAdmin){';
-echo '        html += \'<button type="button" class="btn" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fca5a5" onclick="removeMember(\\x27\' + groupJid + \'\\x27, \\x27\' + p.id + \'\\x27, \\x27\' + modalId + \'\\x27)">Remover</button>\';';
-echo '      }';
+echo '      html += \'<div>\' + nameDisplay + badge + lidBadge + \'</div>\';';
+echo '      html += \'<button type="button" class="btn" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fca5a5" onclick="removeMember(\\x27\' + groupJid + \'\\x27, \\x27\' + rawId + \'\\x27, \\x27\' + modalId + \'\\x27)">Remover</button>\';';
 echo '      html += \'</div>\';';
 echo '    });';
 echo '    container.innerHTML = html;';
@@ -400,10 +400,13 @@ echo '}';
 
 echo 'function removeMember(groupJid, participantJid, modalId){';
 echo '  if(!confirm("Remover este participante do grupo?")) return;';
+echo '  var formData = new FormData();';
+echo '  formData.append("action", "remove_participant");';
+echo '  formData.append("group_jid", groupJid);';
+echo '  formData.append("participant_jid", participantJid);';
 echo '  fetch("/chat_groups.php", {';
 echo '    method: "POST",';
-echo '    headers: {"Content-Type": "application/x-www-form-urlencoded"},';
-echo '    body: "action=remove_participant&group_jid=" + encodeURIComponent(groupJid) + "&participant_jid=" + encodeURIComponent(participantJid)';
+echo '    body: formData';
 echo '  })';
 echo '  .then(function(){ loadMembers(modalId, groupJid); })';
 echo '  .catch(function(e){ alert("Erro ao remover: " + e.message); });';
