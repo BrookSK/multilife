@@ -24,43 +24,45 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 }
 
 try {
-    // Buscar grupos da Evolution API
-    $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
-    $ch = curl_init($groupsUrl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    // Buscar grupos da Evolution API - tentar múltiplos formatos de endpoint
+    $endpoints = [
+        $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false',
+        $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getMembers=false',
+        $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName),
+    ];
     
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
+    $response = '';
+    $httpCode = 0;
+    $curlError = '';
+    $groupsUrl = '';
     
-    // Se falhou com getParticipants, tentar com getMembers (versões diferentes da API)
-    if ($httpCode !== 200) {
-        $groupsUrl2 = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getMembers=false';
-        $ch2 = curl_init($groupsUrl2);
-        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch2, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch2, CURLOPT_CONNECTTIMEOUT, 10);
+    foreach ($endpoints as $url) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
         
-        $response2 = curl_exec($ch2);
-        $httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-        $curlError2 = curl_error($ch2);
-        curl_close($ch2);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
         
-        if ($httpCode2 === 200) {
-            $response = $response2;
-            $httpCode = $httpCode2;
-            $curlError = $curlError2;
-            $groupsUrl = $groupsUrl2;
+        if ($code === 200 && !empty($resp) && $resp !== '[]' && $resp !== 'null' && $resp !== '""') {
+            $response = $resp;
+            $httpCode = $code;
+            $curlError = $err;
+            $groupsUrl = $url;
+            break;
         }
+        
+        // Guardar último resultado mesmo se vazio
+        $response = $resp;
+        $httpCode = $code;
+        $curlError = $err;
+        $groupsUrl = $url;
     }
     
     if ($httpCode === 0) {
@@ -84,6 +86,12 @@ try {
             'http_code'  => $httpCode,
             'curl_error' => $curlError,
         ]);
+        exit;
+    }
+    
+    // Se resposta vazia, considerar como "sem grupos"
+    if (empty($response) || $response === '[]' || $response === 'null' || $response === '""') {
+        echo json_encode(['success' => true, 'count' => 0, 'message' => 'Nenhum grupo encontrado na instância']);
         exit;
     }
     
