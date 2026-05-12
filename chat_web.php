@@ -2517,9 +2517,4 @@ function cadastrarPaciente() {
 ';
 echo '</script>';
 
-// Script para envio de mensagens via AJAX (arquivo externo para evitar problemas de escape)
-?>
-<script src="/chat_ajax_send.js"></script>
-<?php
-
 view_footer();

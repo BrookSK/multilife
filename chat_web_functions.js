@@ -632,8 +632,65 @@ document.addEventListener('DOMContentLoaded', function() {
       if (selectedMediaFile && selectedMediaType) {
         await sendMediaMessage();
       } else {
-        // Envio normal de texto
-        this.submit();
+        // Envio via AJAX (sem recarregar página)
+        const textarea = sendForm.querySelector('textarea[name=message]');
+        const message = textarea ? textarea.value.trim() : '';
+        if (!message) return;
+        
+        const phoneInput = sendForm.querySelector('input[name=phone_number]');
+        const chatId = phoneInput ? phoneInput.value : '';
+        const isGroup = chatId.indexOf('@g.us') > -1;
+        const typeParam = isGroup ? '&type=grupos' : '';
+        const sendUrl = '/chat_web.php?chat=' + encodeURIComponent(chatId) + typeParam;
+        
+        const sendBtn = sendForm.querySelector('button[type=submit]');
+        if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
+        
+        // Mostrar mensagem otimista
+        const chatArea = document.querySelector('.whatsapp-messages');
+        let msgDiv = null;
+        if (chatArea) {
+          msgDiv = document.createElement('div');
+          msgDiv.className = 'whatsapp-message sent';
+          msgDiv.innerHTML = '<div class="whatsapp-bubble sent"><div class="whatsapp-text">' + message.replace(/\n/g,'<br>') + '</div><div class="whatsapp-time">' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' \u2713</div></div>';
+          chatArea.appendChild(msgDiv);
+          chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        // Limpar campo
+        textarea.value = '';
+        textarea.style.height = 'auto';
+        
+        // Enviar via fetch
+        const formData = new FormData(sendForm);
+        formData.set('message', message);
+        
+        try {
+          const resp = await fetch(sendUrl, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            body: formData
+          });
+          const contentType = resp.headers.get('content-type') || '';
+          if (contentType.indexOf('application/json') > -1) {
+            const data = await resp.json();
+            if (data.success) {
+              if (msgDiv) {
+                const timeEl = msgDiv.querySelector('.whatsapp-time');
+                if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('\u2713','\u2713\u2713');
+              }
+            } else {
+              if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
+              alert('Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
+            }
+          }
+          // Se não é JSON, mensagem provavelmente foi enviada (servidor redirecionou)
+        } catch (err) {
+          console.error('Erro no envio:', err);
+        } finally {
+          if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = '1'; }
+          if (textarea) textarea.focus();
+        }
       }
     });
   }
