@@ -25,7 +25,8 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 }
 
 try {
-    $url = $baseUrl . '/group/participants/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
+    // Tentar primeiro com getParticipants que retorna números reais
+    $url = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=true';
     
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -37,23 +38,49 @@ try {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
+    $participants = [];
+    
+    // Tentar extrair participantes do grupo específico via fetchAllGroups
     if ($httpCode === 200 && $response) {
-        $data = json_decode($response, true);
-        
-        // Normalizar resposta - a Evolution pode retornar em diferentes formatos
-        $participants = [];
-        if (isset($data['participants'])) {
-            $participants = $data['participants'];
-        } elseif (isset($data[0]['id'])) {
-            $participants = $data;
-        } elseif (isset($data['data']) && is_array($data['data'])) {
-            $participants = $data['data'];
+        $allGroups = json_decode($response, true);
+        if (is_array($allGroups)) {
+            foreach ($allGroups as $g) {
+                $gId = $g['id'] ?? '';
+                if ($gId === $groupJid) {
+                    $participants = $g['participants'] ?? [];
+                    break;
+                }
+            }
         }
-        
-        echo json_encode(['participants' => $participants]);
-    } else {
-        echo json_encode(['error' => 'Erro ao buscar membros. HTTP: ' . $httpCode]);
     }
+    
+    // Se não encontrou via fetchAllGroups, tentar endpoint direto
+    if (empty($participants)) {
+        $url2 = $baseUrl . '/group/participants/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
+        
+        $ch2 = curl_init($url2);
+        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch2, CURLOPT_TIMEOUT, 15);
+        
+        $response2 = curl_exec($ch2);
+        $httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+        curl_close($ch2);
+        
+        if ($httpCode2 === 200 && $response2) {
+            $data = json_decode($response2, true);
+            if (isset($data['participants'])) {
+                $participants = $data['participants'];
+            } elseif (isset($data[0]['id'])) {
+                $participants = $data;
+            } elseif (isset($data['data']) && is_array($data['data'])) {
+                $participants = $data['data'];
+            }
+        }
+    }
+    
+    echo json_encode(['participants' => $participants]);
 } catch (Exception $e) {
     echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);
 }
