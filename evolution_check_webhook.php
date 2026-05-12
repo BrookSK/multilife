@@ -33,6 +33,49 @@ $resp = curl_exec($ch);
 $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
+// Teste: pedir para a Evolution fazer um request para o webhook (via proxy)
+echo "=== TESTE DE CONECTIVIDADE (Evolution → MultiLife) ===\n";
+$testUrl = $baseUrl . '/instance/fetchInstances';
+// Vamos usar a API da Evolution para testar se ela consegue acessar nosso webhook
+// Enviando um webhook de teste via API
+$webhookTestUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
+$webhookPayload = json_encode([
+    'url' => 'https://multilife.onsolutionsbrasil.com.br/chat_webhook.php',
+    'webhook_by_events' => false,
+    'webhook_base64' => true,
+    'events' => ['MESSAGES_UPSERT', 'SEND_MESSAGE', 'CONTACTS_UPSERT', 'CONTACTS_UPDATE', 'CONNECTION_UPDATE']
+]);
+
+$chTest = curl_init($webhookTestUrl);
+curl_setopt($chTest, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($chTest, CURLOPT_POST, true);
+curl_setopt($chTest, CURLOPT_POSTFIELDS, $webhookPayload);
+curl_setopt($chTest, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+curl_setopt($chTest, CURLOPT_SSL_VERIFYPEER, false);
+curl_setopt($chTest, CURLOPT_TIMEOUT, 10);
+$respTest = curl_exec($chTest);
+$codeTest = curl_getinfo($chTest, CURLINFO_HTTP_CODE);
+curl_close($chTest);
+
+echo "  Re-configurar webhook: HTTP $codeTest\n";
+echo "  Resposta: $respTest\n\n";
+
+// Tentar com IP direto
+echo "=== TESTE COM IP DIRETO ===\n";
+$ipWebhookUrl = 'http://186.209.113.140/chat_webhook.php';
+echo "  Tentando: $ipWebhookUrl\n";
+$chIp = curl_init($ipWebhookUrl);
+curl_setopt($chIp, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($chIp, CURLOPT_TIMEOUT, 5);
+curl_setopt($chIp, CURLOPT_HTTPHEADER, ['Host: multilife.onsolutionsbrasil.com.br']);
+$respIp = curl_exec($chIp);
+$codeIp = curl_getinfo($chIp, CURLINFO_HTTP_CODE);
+$errIp = curl_error($chIp);
+curl_close($chIp);
+echo "  HTTP: $codeIp\n";
+echo "  Resposta: " . substr($respIp, 0, 200) . "\n";
+echo "  Erro: $errIp\n\n";
+
 $instances = json_decode($resp, true);
 if (is_array($instances)) {
     foreach ($instances as $inst) {
