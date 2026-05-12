@@ -22,6 +22,23 @@ if ($chatId === '') {
 try {
     $db = db();
     
+    // Garantir que a tabela existe
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS chat_capture_info (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            chat_id VARCHAR(100) NOT NULL,
+            status VARCHAR(50) DEFAULT 'aguardando',
+            type VARCHAR(50) DEFAULT NULL,
+            notes TEXT DEFAULT NULL,
+            created_by_user_id INT UNSIGNED DEFAULT NULL,
+            updated_by_user_id INT UNSIGNED DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE INDEX idx_chat_id (chat_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    
     // Verificar se já existe registro para este chat
     $stmt = $db->prepare('SELECT id FROM chat_capture_info WHERE chat_id = :chat_id');
     $stmt->execute(['chat_id' => $chatId]);
