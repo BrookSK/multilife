@@ -25,10 +25,11 @@ $specialty = (string)($d['specialty'] ?? '');
 
 // Buscar grupos compatíveis - tentar match progressivo
 $groups = [];
+$jidFilter = ' AND evolution_group_jid LIKE \'%@g.us\'';
 
 // Tentativa 1: Match exato por especialidade + estado + cidade
 if (trim($specialty) !== '' && count($groups) === 0) {
-    $sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'';
+    $sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter;
     $conditions = [];
     $params = [];
     
@@ -53,7 +54,7 @@ if (trim($specialty) !== '' && count($groups) === 0) {
 
 // Tentativa 2: Só por especialidade (ignorar localização)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND specialty = :sp ORDER BY id DESC';
+    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND specialty = :sp ORDER BY id DESC';
     $stmt2 = db()->prepare($sql2);
     $stmt2->execute(['sp' => $specialty]);
     $groups = $stmt2->fetchAll();
@@ -61,15 +62,15 @@ if (count($groups) === 0 && trim($specialty) !== '') {
 
 // Tentativa 3: Especialidade com LIKE (caso tenha diferença de acentuação/case)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND (specialty LIKE :sp_like OR name LIKE :name_like) ORDER BY id DESC';
+    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND (specialty LIKE :sp_like OR name LIKE :name_like) ORDER BY id DESC';
     $stmt3 = db()->prepare($sql3);
     $stmt3->execute(['sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%']);
     $groups = $stmt3->fetchAll();
 }
 
-// Tentativa 4: Todos os grupos ativos (último recurso)
+// Tentativa 4: Todos os grupos ativos com JID de grupo válido (último recurso)
 if (count($groups) === 0) {
-    $sql4 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' ORDER BY id DESC';
+    $sql4 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND evolution_group_jid LIKE \'%@g.us\' ORDER BY id DESC';
     $stmt4 = db()->prepare($sql4);
     $stmt4->execute();
     $groups = $stmt4->fetchAll();
