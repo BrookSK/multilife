@@ -157,7 +157,7 @@ function view_header(string $title): void
     echo '.wrap{margin:0 auto;padding:0 16px 26px;position:relative;z-index:1}';
     echo '.card{background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:var(--shadow-elevated);border-radius:calc(var(--radius) + 6px);padding:18px;color:hsl(var(--card-foreground))}';
     echo '.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}';
-    echo '.col3{grid-column:span 3} .col4{grid-column:span 4} .col6{grid-column:span 6} .col12{grid-column:span 12}';
+    echo '.col3{grid-column:span 3} .col4{grid-column:span 4} .col6{grid-column:span 6} .col8{grid-column:span 8} .col12{grid-column:span 12}';
     echo '.alert{margin:0 0 14px;padding:12px;border-radius:12px;font-size:13px;line-height:1.4;border:1px solid transparent}';
     echo '.alertError{background:hsla(var(--destructive)/.10);border-color:hsla(var(--destructive)/.20);color:hsl(var(--foreground))}';
     echo '.alertSuccess{background:hsla(var(--success)/.10);border-color:hsla(var(--success)/.20);color:hsl(var(--foreground))}';
@@ -255,7 +255,7 @@ function view_header(string $title): void
     echo '@media(max-width:1280px){.kpiGrid{grid-template-columns:repeat(3,minmax(0,1fr))}}';
     echo '@media(max-width:780px){.kpiGrid{grid-template-columns:repeat(1,minmax(0,1fr))}}';
 
-    echo '@media(max-width:860px){.col6{grid-column:span 12}}';
+    echo '@media(max-width:860px){.col6{grid-column:span 12}.col8{grid-column:span 12}.col4{grid-column:span 12}}';
     echo '@media(max-width:980px){.sidebar{position:static;height:auto;width:100%}.mainCol{margin-left:0}.mainCol.isCollapsed{margin-left:0}.appShell{flex-direction:column}.collapseBtn{display:none}.topbar{position:static}}';
     echo '</style>';
     echo '</head>';
