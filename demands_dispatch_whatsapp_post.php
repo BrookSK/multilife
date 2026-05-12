@@ -89,10 +89,15 @@ if (count($groups) === 0) {
     exit;
 }
 
-$tpl = (string)admin_setting_get(
+$tpl = trim((string)admin_setting_get(
     'demands.whatsapp_template',
-    "[CAPTAÇÃO #{id}]\n{title}\nLocal: {city}/{state}\nEspecialidade: {specialty}\n\n{description}\nOrigem: {origin}"
-);
+    ''
+));
+
+// Se template vazio ou não configurado, usar padrão
+if ($tpl === '') {
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\nLocal: {city}/{state}\nEspecialidade: {specialty}\n\n{description}\nOrigem: {origin}";
+}
 
 $repl = [
     '{id}' => (string)$d['id'],
