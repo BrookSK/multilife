@@ -190,6 +190,16 @@ foreach ($toSend as $row) {
         if ($ok) {
             $updOne->execute(['st' => 'sent', 'err' => null, 'id' => $logId]);
             $sent++;
+            
+            // Salvar na chat_messages para aparecer no chat
+            try {
+                $stmtChat = db()->prepare(
+                    'INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp) VALUES (?, ?, 1, ?)'
+                );
+                $stmtChat->execute([$jid, $msgRow, time()]);
+            } catch (Throwable $chatErr) {
+                error_log('[DISPATCH] Erro ao salvar em chat_messages: ' . $chatErr->getMessage());
+            }
         } else {
             $updOne->execute(['st' => 'error', 'err' => 'HTTP ' . (string)($res['status'] ?? ''), 'id' => $logId]);
             $errCount++;
