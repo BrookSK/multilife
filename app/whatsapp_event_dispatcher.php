@@ -169,6 +169,10 @@ class WhatsAppEventDispatcher
             // Enviar mensagem via Evolution API
             $result = $this->api->sendText($phone, $message);
             
+            // Verificar sucesso pelo HTTP status
+            $httpStatus = (int)($result['status'] ?? 0);
+            $isSuccess = $httpStatus >= 200 && $httpStatus < 300;
+            
             // Registrar log
             $this->logMessage(
                 $eventId,
@@ -176,11 +180,11 @@ class WhatsAppEventDispatcher
                 $phone,
                 $recipientName,
                 $message,
-                $result['success'] ? 'sent' : 'failed',
-                $result['error'] ?? null
+                $isSuccess ? 'sent' : 'failed',
+                $isSuccess ? null : ('HTTP ' . $httpStatus)
             );
             
-            return $result;
+            return ['success' => $isSuccess, 'status' => $httpStatus, 'result' => $result];
             
         } catch (Exception $e) {
             error_log("[WHATSAPP_DISPATCHER] Erro ao enviar mensagem: " . $e->getMessage());
