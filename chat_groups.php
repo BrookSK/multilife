@@ -334,27 +334,33 @@ if (empty($groups)) {
 
         // Modal Participantes
         echo '<div id="' . $modalId . '_part" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center">';
-        echo '<div style="background:#fff;border-radius:12px;padding:24px;width:100%;max-width:500px;box-shadow:0 20px 40px rgba(0,0,0,.2)">';
+        echo '<div style="background:#fff;border-radius:12px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 40px rgba(0,0,0,.2)">';
         echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
         echo '<div style="font-size:18px;font-weight:700">Gerenciar Participantes</div>';
         echo '<button onclick="closeModal(\'' . $modalId . '_part\')" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">✕</button>';
         echo '</div>';
-        echo '<div style="margin-bottom:16px;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:13px;color:#856404">';
-        echo '⚠️ Adicione pelo menos 1 participante para poder enviar mensagens ao grupo.';
-        echo '</div>';
+        
+        // Adicionar participante
+        echo '<div style="margin-bottom:20px;padding:16px;background:#f8fafc;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<div style="font-size:14px;font-weight:600;margin-bottom:10px">➕ Adicionar Participante</div>';
         echo '<form method="post">';
         echo '<input type="hidden" name="action" value="add_participant">';
         echo '<input type="hidden" name="group_jid" value="' . h($jid) . '">';
-        echo '<div style="margin-bottom:16px">';
-        echo '<label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Número do participante</label>';
-        echo '<input type="text" name="participant_phone" placeholder="Ex: 5511999999999" required style="width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">';
-        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">DDI + DDD + número, apenas dígitos</div>';
+        echo '<div style="display:flex;gap:8px">';
+        echo '<input type="text" name="participant_phone" placeholder="5511999999999" required style="flex:1;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">';
+        echo '<button type="submit" class="btn btnPrimary" style="white-space:nowrap">Adicionar</button>';
         echo '</div>';
-        echo '<div style="display:flex;gap:10px;justify-content:flex-end">';
-        echo '<button type="button" class="btn" onclick="closeModal(\'' . $modalId . '_part\')">Cancelar</button>';
-        echo '<button type="submit" class="btn btnPrimary">➕ Adicionar ao Grupo</button>';
-        echo '</div>';
+        echo '<div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:4px">DDI + DDD + número, apenas dígitos</div>';
         echo '</form>';
+        echo '</div>';
+        
+        // Membros atuais
+        echo '<div style="font-size:14px;font-weight:600;margin-bottom:10px">👥 Membros do Grupo</div>';
+        echo '<div id="' . $modalId . '_members" style="display:grid;gap:6px">';
+        echo '<div style="text-align:center;padding:20px;color:hsl(var(--muted-foreground));font-size:13px">Clique em "Carregar Membros" para ver os participantes</div>';
+        echo '</div>';
+        echo '<button type="button" class="btn" onclick="loadMembers(\'' . $modalId . '\', \'' . h($jid) . '\')" style="margin-top:10px;width:100%">🔄 Carregar Membros</button>';
+        
         echo '</div>';
         echo '</div>';
     }
@@ -366,6 +372,43 @@ echo '<script>';
 echo 'function openModal(id){var el=document.getElementById(id);if(el){el.style.display="flex";}}';
 echo 'function closeModal(id){var el=document.getElementById(id);if(el){el.style.display="none";}}';
 echo 'document.addEventListener("keydown",function(e){if(e.key==="Escape"){document.querySelectorAll("[id$=_meta],[id$=_part]").forEach(function(el){el.style.display="none";});}});';
+
+echo 'function loadMembers(modalId, groupJid){';
+echo '  var container = document.getElementById(modalId + "_members");';
+echo '  container.innerHTML = \'<div style="text-align:center;padding:20px;color:#64748b">Carregando...</div>\';';
+echo '  fetch("/chat_groups_members_api.php?group_jid=" + encodeURIComponent(groupJid))';
+echo '  .then(function(r){ return r.json(); })';
+echo '  .then(function(data){';
+echo '    if(data.error){ container.innerHTML = \'<div style="color:red;padding:12px">\' + data.error + \'</div>\'; return; }';
+echo '    if(!data.participants || data.participants.length === 0){ container.innerHTML = \'<div style="padding:12px;color:#64748b">Nenhum membro encontrado</div>\'; return; }';
+echo '    var html = "";';
+echo '    data.participants.forEach(function(p){';
+echo '      var phone = p.id ? p.id.replace("@s.whatsapp.net","") : "?";';
+echo '      var isAdmin = p.admin === "admin" || p.admin === "superadmin";';
+echo '      var badge = isAdmin ? \'<span style="margin-left:6px;padding:2px 6px;background:#00a884;color:white;border-radius:4px;font-size:10px">ADMIN</span>\' : "";';
+echo '      html += \'<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px">\';';
+echo '      html += \'<div><span style="font-weight:600;font-size:13px">\' + phone + \'</span>\' + badge + \'</div>\';';
+echo '      if(!isAdmin){';
+echo '        html += \'<button type="button" class="btn" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fca5a5" onclick="removeMember(\\x27\' + groupJid + \'\\x27, \\x27\' + p.id + \'\\x27, \\x27\' + modalId + \'\\x27)">Remover</button>\';';
+echo '      }';
+echo '      html += \'</div>\';';
+echo '    });';
+echo '    container.innerHTML = html;';
+echo '  })';
+echo '  .catch(function(e){ container.innerHTML = \'<div style="color:red;padding:12px">Erro: \' + e.message + \'</div>\'; });';
+echo '}';
+
+echo 'function removeMember(groupJid, participantJid, modalId){';
+echo '  if(!confirm("Remover este participante do grupo?")) return;';
+echo '  fetch("/chat_groups.php", {';
+echo '    method: "POST",';
+echo '    headers: {"Content-Type": "application/x-www-form-urlencoded"},';
+echo '    body: "action=remove_participant&group_jid=" + encodeURIComponent(groupJid) + "&participant_jid=" + encodeURIComponent(participantJid)';
+echo '  })';
+echo '  .then(function(){ loadMembers(modalId, groupJid); })';
+echo '  .catch(function(e){ alert("Erro ao remover: " + e.message); });';
+echo '}';
+
 echo '</script>';
 
 view_footer();
