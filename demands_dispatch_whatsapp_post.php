@@ -23,51 +23,67 @@ $city = (string)($d['location_city'] ?? '');
 $state = (string)($d['location_state'] ?? '');
 $specialty = (string)($d['specialty'] ?? '');
 
-// Seleção automática conforme doc: especialidade + cidade/estado
-$sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'';
-$where = [];
-$params = [];
+// Buscar grupos compatíveis - tentar match progressivo
+$groups = [];
 
-if (trim($specialty) !== '') {
-    $where[] = '(specialty IS NULL OR specialty = \'\' OR specialty = :sp OR specialty LIKE :sp_like)';
+// Tentativa 1: Match exato por especialidade + estado + cidade
+if (trim($specialty) !== '' && count($groups) === 0) {
+    $sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'';
+    $conditions = [];
+    $params = [];
+    
+    $conditions[] = '(specialty = :sp)';
     $params['sp'] = $specialty;
-    $params['sp_like'] = '%' . $specialty . '%';
+    
+    if (trim($state) !== '') {
+        $conditions[] = '(state IS NULL OR state = \'\' OR state = :st)';
+        $params['st'] = $state;
+    }
+    
+    if (trim($city) !== '') {
+        $conditions[] = '(city IS NULL OR city = \'\' OR city = :city)';
+        $params['city'] = $city;
+    }
+    
+    $sql .= ' AND ' . implode(' AND ', $conditions) . ' ORDER BY id DESC';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $groups = $stmt->fetchAll();
 }
 
-if (trim($city) !== '') {
-    $where[] = '(city IS NULL OR city = \'\' OR city = :city OR city LIKE :city_like)';
-    $params['city'] = $city;
-    $params['city_like'] = '%' . $city . '%';
-}
-
-if (trim($state) !== '') {
-    // Aceitar tanto sigla (GO) quanto nome completo (Goiás)
-    $where[] = '(state IS NULL OR state = \'\' OR state = :st OR state LIKE :st_like)';
-    $params['st'] = $state;
-    $params['st_like'] = '%' . $state . '%';
-}
-
-if (count($where) > 0) {
-    $sql .= ' AND ' . implode(' AND ', $where);
-}
-
-$sql .= ' ORDER BY id DESC';
-
-$stmt = db()->prepare($sql);
-$stmt->execute($params);
-$groups = $stmt->fetchAll();
-
-// Fallback: se não encontrou com todos os filtros, tentar só por especialidade
+// Tentativa 2: Só por especialidade (ignorar localização)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sqlFallback = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND (specialty = :sp OR specialty LIKE :sp_like) ORDER BY id DESC';
-    $stmtFb = db()->prepare($sqlFallback);
-    $stmtFb->execute(['sp' => $specialty, 'sp_like' => '%' . $specialty . '%']);
-    $groups = $stmtFb->fetchAll();
+    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND specialty = :sp ORDER BY id DESC';
+    $stmt2 = db()->prepare($sql2);
+    $stmt2->execute(['sp' => $specialty]);
+    $groups = $stmt2->fetchAll();
+}
+
+// Tentativa 3: Especialidade com LIKE (caso tenha diferença de acentuação/case)
+if (count($groups) === 0 && trim($specialty) !== '') {
+    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND (specialty LIKE :sp_like OR name LIKE :name_like) ORDER BY id DESC';
+    $stmt3 = db()->prepare($sql3);
+    $stmt3->execute(['sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%']);
+    $groups = $stmt3->fetchAll();
+}
+
+// Tentativa 4: Todos os grupos ativos (último recurso)
+if (count($groups) === 0) {
+    $sql4 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' ORDER BY id DESC';
+    $stmt4 = db()->prepare($sql4);
+    $stmt4->execute();
+    $groups = $stmt4->fetchAll();
 }
 
 if (count($groups) === 0) {
-    $debugInfo = "Especialidade: \"$specialty\", Cidade: \"$city\", Estado: \"$state\"";
-    flash_set('error', 'Nenhum grupo compatível encontrado. Filtros: ' . $debugInfo);
+    // Mostrar debug com dados do banco para facilitar diagnóstico
+    $allGroups = db()->query('SELECT id, name, specialty, city, state, status, evolution_group_jid FROM whatsapp_groups ORDER BY id DESC LIMIT 10')->fetchAll();
+    $groupsDebug = [];
+    foreach ($allGroups as $g) {
+        $groupsDebug[] = '#' . $g['id'] . ' "' . $g['name'] . '" spec="' . ($g['specialty'] ?? 'NULL') . '" state="' . ($g['state'] ?? 'NULL') . '" status="' . $g['status'] . '" jid="' . ($g['evolution_group_jid'] ? 'SIM' : 'NÃO') . '"';
+    }
+    $debugInfo = "Buscando: Especialidade=\"$specialty\", Cidade=\"$city\", Estado=\"$state\". Grupos no banco: " . implode(' | ', $groupsDebug);
+    flash_set('error', 'Nenhum grupo compatível encontrado. ' . $debugInfo);
     header('Location: /demands_view.php?id=' . $id);
     exit;
 }
