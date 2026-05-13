@@ -259,7 +259,19 @@ echo '</div>';
 
 echo '<div class="ptPanel" data-panel="adm">';
 echo '<div class="grid">';
-echo '<div class="col6"><label>Status<input name="admin_status" maxlength="40" value="' . h((string)($p['admin_status'] ?? '')) . '"></label></div>';
+echo '<div class="col6"><label>Status<select name="admin_status">';
+$adminStatusOptions = ['Ativo', 'Inativo', 'Alta', 'Alta Definitiva', 'Óbito', 'Transferido', 'Aguardando'];
+$currentAdminStatus = (string)($p['admin_status'] ?? '');
+echo '<option value="">— Selecione —</option>';
+foreach ($adminStatusOptions as $opt) {
+    $sel = (strcasecmp($currentAdminStatus, $opt) === 0) ? ' selected' : '';
+    echo '<option value="' . h($opt) . '"' . $sel . '>' . h($opt) . '</option>';
+}
+// Se o valor atual não está na lista, adicionar como opção
+if ($currentAdminStatus !== '' && !in_array($currentAdminStatus, $adminStatusOptions)) {
+    echo '<option value="' . h($currentAdminStatus) . '" selected>' . h($currentAdminStatus) . '</option>';
+}
+echo '</select></label></div>';
 echo '<div class="col6"><label>Unidade<input name="unit" maxlength="80" value="' . h((string)($p['unit'] ?? '')) . '"></label></div>';
 echo '<div class="col12"><label>Médico responsável<input name="doctor_responsible" maxlength="160" value="' . h((string)($p['doctor_responsible'] ?? '')) . '"></label></div>';
 echo '<div class="col12">';
