@@ -68,11 +68,21 @@ function email_send_with_template(
     $template = email_get_template($eventType, $healthInsurerId);
     
     if (!$template) {
-        return [
-            'success' => false,
-            'message' => 'Template não encontrado para evento: ' . $eventType,
-            'template_id' => null
-        ];
+        // Fallback: gerar template padrão para proposal_send
+        if ($eventType === 'proposal_send') {
+            $template = [
+                'id' => 0,
+                'subject' => 'Proposta de Atendimento - ' . ($variables['patient_name'] ?? 'Paciente'),
+                'body_html' => email_generate_default_proposal_html($variables),
+                'body_plain' => null,
+            ];
+        } else {
+            return [
+                'success' => false,
+                'message' => 'Template não encontrado para evento: ' . $eventType,
+                'template_id' => null
+            ];
+        }
     }
     
     $templateId = (int)$template['id'];
@@ -111,6 +121,85 @@ function email_send_with_template(
             'template_id' => $templateId
         ];
     }
+}
+
+/**
+ * Gerar HTML padrão para proposta quando template não existe no banco
+ */
+function email_generate_default_proposal_html(array $vars): string
+{
+    $patientName = $vars['patient_name'] ?? '';
+    $patientEmail = $vars['patient_email'] ?? '';
+    $patientPhone = $vars['patient_phone'] ?? '';
+    $professionalName = $vars['professional_name'] ?? '';
+    $professionalEmail = $vars['professional_email'] ?? '';
+    $professionalPhone = $vars['professional_phone'] ?? '';
+    $professionalCouncil = $vars['professional_council'] ?? '';
+    $specialty = $vars['specialty'] ?? '';
+    $serviceName = $vars['service_name'] ?? '';
+    $location = $vars['location'] ?? '';
+    $startDate = $vars['start_date'] ?? '';
+    $startTime = $vars['start_time'] ?? '';
+    $endTime = $vars['end_time'] ?? '';
+    $frequencyText = $vars['frequency_text'] ?? '';
+    $totalSessions = $vars['total_sessions'] ?? '';
+    $durationWeeks = $vars['duration_weeks'] ?? '';
+    $valuePerSession = $vars['value_per_session'] ?? '';
+    $totalValue = $vars['total_value'] ?? '';
+    $sessionSchedule = $vars['session_schedule'] ?? '';
+    $notesSection = $vars['notes_section'] ?? '';
+
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;margin:0;padding:0">
+<div style="max-width:700px;margin:0 auto;padding:20px">
+<div style="background:#00a884;color:white;padding:24px;text-align:center;border-radius:8px 8px 0 0">
+<h1 style="margin:0;font-size:22px">Proposta de Atendimento</h1>
+<p style="margin:8px 0 0;opacity:0.9">MultiLife Care</p>
+</div>
+<div style="background:#f9fafb;padding:30px;border:1px solid #e5e7eb;border-top:none">
+<p>Prezado(a),</p>
+<p>Segue proposta de atendimento domiciliar para análise e autorização:</p>
+
+<div style="background:white;padding:20px;margin:20px 0;border-radius:8px;border-left:4px solid #00a884">
+<h3 style="margin:0 0 12px;color:#00a884">Dados do Paciente</h3>
+<p style="margin:4px 0"><strong>Nome:</strong> ' . htmlspecialchars($patientName) . '</p>
+<p style="margin:4px 0"><strong>E-mail:</strong> ' . htmlspecialchars($patientEmail) . '</p>
+<p style="margin:4px 0"><strong>Telefone:</strong> ' . htmlspecialchars($patientPhone) . '</p>
+<p style="margin:4px 0"><strong>Localização:</strong> ' . htmlspecialchars($location) . '</p>
+</div>
+
+<div style="background:white;padding:20px;margin:20px 0;border-radius:8px;border-left:4px solid #0284c7">
+<h3 style="margin:0 0 12px;color:#0284c7">Profissional Designado</h3>
+<p style="margin:4px 0"><strong>Nome:</strong> ' . htmlspecialchars($professionalName) . '</p>
+<p style="margin:4px 0"><strong>Especialidade:</strong> ' . htmlspecialchars($specialty) . '</p>
+<p style="margin:4px 0"><strong>Serviço:</strong> ' . htmlspecialchars($serviceName) . '</p>
+' . ($professionalCouncil ? '<p style="margin:4px 0"><strong>Registro:</strong> ' . htmlspecialchars($professionalCouncil) . '</p>' : '') . '
+</div>
+
+<div style="background:white;padding:20px;margin:20px 0;border-radius:8px;border-left:4px solid #7c3aed">
+<h3 style="margin:0 0 12px;color:#7c3aed">Detalhes do Atendimento</h3>
+<p style="margin:4px 0"><strong>Data de Início:</strong> ' . htmlspecialchars($startDate) . '</p>
+<p style="margin:4px 0"><strong>Horário:</strong> ' . htmlspecialchars($startTime) . ' às ' . htmlspecialchars($endTime) . '</p>
+<p style="margin:4px 0"><strong>Frequência:</strong> ' . htmlspecialchars($frequencyText) . '</p>
+<p style="margin:4px 0"><strong>Duração:</strong> ' . htmlspecialchars($durationWeeks) . ' semanas</p>
+<p style="margin:4px 0"><strong>Total de Sessões:</strong> ' . htmlspecialchars($totalSessions) . '</p>
+</div>
+
+<div style="background:#d1fae5;padding:20px;margin:20px 0;border-radius:8px;text-align:center">
+<p style="margin:0;font-size:14px;color:#065f46"><strong>Valor por Sessão:</strong> ' . htmlspecialchars($valuePerSession) . '</p>
+<p style="margin:8px 0 0;font-size:24px;font-weight:bold;color:#059669">VALOR TOTAL: ' . htmlspecialchars($totalValue) . '</p>
+</div>
+
+' . $sessionSchedule . '
+' . $notesSection . '
+
+<p style="margin-top:30px">Aguardamos retorno com a autorização ou eventuais ajustes necessários.</p>
+<p>Atenciosamente,<br><strong>MultiLife Care</strong></p>
+</div>
+<div style="text-align:center;padding:16px;color:#6b7280;font-size:12px">
+<p>Este é um e-mail automático. © 2026 MultiLife Care</p>
+</div>
+</div>
+</body></html>';
 }
 
 /**
