@@ -125,6 +125,34 @@ try {
     
     $db->commit();
     
+    // Disparar evento WhatsApp preadmission_approved
+    try {
+        $profStmt = db()->prepare('SELECT phone FROM users WHERE id = :id');
+        $profStmt->execute(['id' => $assignment['professional_user_id']]);
+        $profPhone = preg_replace('/\D+/', '', (string)($profStmt->fetchColumn() ?: ''));
+        
+        $patStmt = db()->prepare('SELECT whatsapp, phone_primary FROM patients WHERE id = :id');
+        $patStmt->execute(['id' => $assignment['patient_id']]);
+        $patData = $patStmt->fetch();
+        $patPhone = preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? ''));
+        
+        $dispatcher = new WhatsAppEventDispatcher();
+        $dispatcher->dispatch('preadmission_approved', [
+            'professional_id' => (int)$assignment['professional_user_id'],
+            'professional_name' => $assignment['professional_name'] ?? '',
+            'professional_phone' => $profPhone,
+            'patient_id' => (int)$assignment['patient_id'],
+            'patient_name' => $assignment['patient_name'] ?? '',
+            'patient_phone' => $patPhone,
+            'attendance_id' => (string)$assignmentId,
+            'attendance_date' => date('d/m/Y'),
+            'id_preadmissao' => (string)$assignmentId,
+            'data_aprovacao' => date('d/m/Y H:i'),
+        ]);
+    } catch (Throwable $evtErr) {
+        error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
+    }
+    
     flash_set('success', 'Atendimento aprovado com sucesso! O card foi movido para "Admitido" na Captação.');
     header('Location: /pre_admissao.php');
     exit;
