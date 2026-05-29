@@ -118,5 +118,5 @@ try {
 }
 
 flash_set('success', 'Documento "' . $category . '" enviado com sucesso.');
-header('Location: /patients_edit.php?id=' . $patientId);
+header('Location: /patients_edit.php?id=' . $patientId . '#docs');
 exit;

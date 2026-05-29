@@ -304,26 +304,9 @@ if (count($patientDocs) > 0) {
 echo '<div style="border-top:1px solid hsl(var(--border));padding-top:16px">';
 echo '<div style="font-weight:700;margin-bottom:12px">Enviar novo documento</div>';
 echo '</div>';
-echo '<div style="padding:16px;border:2px dashed hsl(var(--border));border-radius:10px;background:hsla(var(--muted)/.1)">';
-echo '<form method="post" action="/patients_doc_upload_post.php" enctype="multipart/form-data" style="display:grid;gap:12px">';
-echo '<input type="hidden" name="patient_id" value="' . (int)$p['id'] . '">';
-echo '<div class="grid">';
-echo '<div class="col6"><label>Categoria<select name="doc_category" required>';
-$docCategories = ['Atestado de Óbito', 'Atestado de Internação', 'Alta Hospitalar', 'Alta Definitiva', 'Laudo Médico', 'Receita/Prescrição', 'Exame Laboratorial', 'Exame de Imagem', 'Cartão SUS', 'Carteirinha Convênio', 'Documento de Identidade', 'Outro'];
-echo '<option value="">— Selecione —</option>';
-foreach ($docCategories as $cat) {
-    echo '<option value="' . h($cat) . '">' . h($cat) . '</option>';
-}
-echo '</select></label></div>';
-echo '<div class="col6"><label>Título/Descrição<input name="doc_title" maxlength="160" placeholder="Ex: Atestado de internação - Hospital X"></label></div>';
-echo '<div class="col6"><label>Validade (opcional)<input type="date" name="doc_valid_until"></label></div>';
-echo '<div class="col6"><label>Arquivo<input type="file" name="doc_file" required></label></div>';
-echo '<div class="col12"><label>Observações<textarea name="doc_notes" rows="2" placeholder="Observações sobre o documento..."></textarea></label></div>';
-echo '</div>';
-echo '<div style="display:flex;justify-content:flex-end">';
-echo '<button class="btn btnPrimary" type="submit">Enviar Documento</button>';
-echo '</div>';
-echo '</form>';
+echo '<div style="padding:16px;border:2px dashed hsl(var(--border));border-radius:10px;background:hsla(var(--muted)/.1);text-align:center">';
+echo '<a class="btn btnPrimary" href="/patients_doc_upload.php?patient_id=' . (int)$p['id'] . '" style="font-size:14px;padding:12px 24px">+ Enviar Documento</a>';
+echo '<div style="margin-top:8px;font-size:12px;color:hsl(var(--muted-foreground))">Atestado de óbito, internação, alta, laudos, exames, etc.</div>';
 echo '</div>';
 echo '</div>';
 
