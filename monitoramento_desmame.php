@@ -69,7 +69,7 @@ echo '<div class="grid">';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Paciente:</strong> ' . h((string)$assignment['patient_name']) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Profissional:</strong> ' . h((string)($assignment['professional_name'] ?? '-')) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Especialidade:</strong> ' . h((string)($assignment['specialty'] ?? $assignment['service_type'] ?? '-')) . '</div></div>';
-echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequência atual:</strong> ' . h((string)($assignment['session_frequency'] ?? '-')) . '</div></div>';
+echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequência atual:</strong> ' . h((string)($assignment['session_frequency'] ?? 'Não definida')) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Qtd. Sessões:</strong> ' . (int)($assignment['session_quantity'] ?? 0) . '</div></div>';
 echo '</div>';
 echo '</section>';
@@ -81,7 +81,14 @@ echo '<form method="post" action="/monitoramento_desmame_post.php" style="displa
 echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
 
 echo '<div class="grid">';
-echo '<div class="col6"><label>Nova frequência<input name="new_frequency" required placeholder="Ex: 2x por semana, 1x por semana" value="' . h((string)($assignment['session_frequency'] ?? '')) . '"></label></div>';
+echo '<div class="col6"><label>Nova frequência<select name="new_frequency" required>';
+$freqOptions = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', '6x por semana', 'Diário', '1x a cada 15 dias', '1x por mês', '2x por mês'];
+echo '<option value="">— Selecione —</option>';
+foreach ($freqOptions as $fo) {
+    $sel = (strcasecmp($fo, (string)($assignment['session_frequency'] ?? '')) === 0) ? ' selected' : '';
+    echo '<option value="' . h($fo) . '"' . $sel . '>' . h($fo) . '</option>';
+}
+echo '</select></label></div>';
 echo '<div class="col6"><label>Nova qtd. de sessões (opcional)<input type="number" name="new_session_quantity" min="1" value="' . (int)($assignment['session_quantity'] ?? '') . '"></label></div>';
 echo '<div class="col12"><label>Motivo da alteração<textarea name="reason" rows="3" required placeholder="Ex: Paciente apresentou melhora significativa, reduzindo necessidade de atendimento..."></textarea></label></div>';
 echo '</div>';
