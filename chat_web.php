@@ -301,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $isGroup = strpos($remoteJid, '@g.us') !== false;
                 if (strpos($response, 'SessionError') !== false || strpos($response, 'No sessions') !== false) {
                     if ($isGroup) {
-                        $error = '❌ WhatsApp instável no grupo. A conexão caiu ou as sessões de encriptação não estão ativas. Reconecte o WhatsApp e tente novamente.';
+                        $error = '❌ Não foi possível enviar para este grupo. Ele pode estar dentro de uma Comunidade do WhatsApp, o que impede o envio via API. Tente remover o grupo da comunidade ou crie um grupo normal (fora de comunidades).';
                     } else {
                         $error = '❌ WhatsApp desconectado. Reconecte em Configurações → Evolution API.';
                     }
