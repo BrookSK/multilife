@@ -88,8 +88,8 @@ body{margin:0;padding:0;overflow:hidden}
 .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .legendItem{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
 .legendColor{width:14px;height:14px;border-radius:3px}
-.calendar{flex:1;background:#fff;padding:16px;overflow:hidden;min-height:0}
-#calendar{height:100%;width:100%}
+.calendar{flex:1;background:#fff;padding:16px;overflow:auto;min-height:0}
+#calendar{min-height:800px;width:100%}
 .fc .fc-daygrid-day{min-height:120px !important}
 .fc .fc-daygrid-day-frame{min-height:120px !important}
 .fc .fc-scrollgrid-sync-table{height:100% !important}
