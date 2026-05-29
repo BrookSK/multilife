@@ -97,12 +97,13 @@ if (!empty($assignment['weekdays'])) {
     $currentWeekdays = json_decode((string)$assignment['weekdays'], true) ?: [];
 }
 echo '<div class="col12"><label style="font-weight:700">Novos dias da semana</label>';
+echo '<div id="weekdaysError" style="display:none;margin-top:4px;margin-bottom:4px;color:hsl(var(--destructive));font-size:13px;font-weight:700"></div>';
 echo '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
 $diasSemana = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
 foreach ($diasSemana as $num => $nome) {
     $checked = in_array($num, $currentWeekdays, true) ? ' checked' : '';
     echo '<label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
-    echo '<input type="checkbox" name="weekdays[]" value="' . $num . '"' . $checked . '> ' . $nome;
+    echo '<input type="checkbox" name="weekdays[]" value="' . $num . '"' . $checked . ' class="wd-check"> ' . $nome;
     echo '</label>';
 }
 echo '</div></div>';
@@ -131,6 +132,32 @@ echo '<a class="btn" href="/monitoramento.php">Cancelar</a>';
 echo '<button class="btn btnPrimary" type="submit" style="background:#f59e0b">Confirmar Desmame</button>';
 echo '</div>';
 echo '</form>';
+
+// Validação: dias selecionados devem corresponder à frequência
+echo '<script>';
+echo 'document.querySelector("form[action=\'/monitoramento_desmame_post.php\']").addEventListener("submit", function(e) {';
+echo '  var freqSelect = this.querySelector("select[name=\'new_frequency\']");';
+echo '  var freq = freqSelect ? freqSelect.value : "";';
+echo '  var freqMap = {"1x por semana":1,"2x por semana":2,"3x por semana":3,"4x por semana":4,"5x por semana":5,"6x por semana":6,"Diário":7};';
+echo '  var required = freqMap[freq] || 0;';
+echo '  var checked = document.querySelectorAll(".wd-check:checked").length;';
+echo '  var errDiv = document.getElementById("weekdaysError");';
+echo '  if (required > 0 && checked !== required) {';
+echo '    e.preventDefault();';
+echo '    errDiv.style.display = "block";';
+echo '    errDiv.textContent = "Selecione exatamente " + required + " dia(s) para a frequência \'" + freq + "\'. Você selecionou " + checked + ".";';
+echo '    return false;';
+echo '  }';
+echo '  if (checked === 0) {';
+echo '    e.preventDefault();';
+echo '    errDiv.style.display = "block";';
+echo '    errDiv.textContent = "Selecione pelo menos 1 dia da semana.";';
+echo '    return false;';
+echo '  }';
+echo '  errDiv.style.display = "none";';
+echo '});';
+echo '</script>';
+
 echo '</section>';
 
 // Histórico
