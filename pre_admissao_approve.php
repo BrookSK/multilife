@@ -9,6 +9,7 @@ rbac_require_permission('demands.manage');
 
 $assignmentId = isset($_POST['assignment_id']) ? (int)$_POST['assignment_id'] : 0;
 $demandId = isset($_POST['demand_id']) ? (int)$_POST['demand_id'] : 0;
+$weekdaysRaw = trim((string)($_POST['weekdays'] ?? ''));
 
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
@@ -43,10 +44,18 @@ try {
     // Atualizar status da atribuição para 'admitted' (aguardando documentos)
     $updateAssignmentStmt = $db->prepare("
         UPDATE patient_assignments 
-        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW()
+        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW(), weekdays = ?
         WHERE id = ?
     ");
-    $updateAssignmentStmt->execute([auth_user_id(), $assignmentId]);
+    $weekdaysJson = null;
+    if ($weekdaysRaw !== '') {
+        $weekdaysArr = array_filter(array_map('intval', explode(',', $weekdaysRaw)));
+        if (count($weekdaysArr) > 0) {
+            sort($weekdaysArr);
+            $weekdaysJson = json_encode(array_values($weekdaysArr));
+        }
+    }
+    $updateAssignmentStmt->execute([auth_user_id(), $weekdaysJson, $assignmentId]);
     
     // Atualizar status do card de captação para 'admitido'
     $updateDemandStmt = $db->prepare("
@@ -56,24 +65,64 @@ try {
     ");
     $updateDemandStmt->execute([$demandId]);
     
-    // Criar pendências de documentos para cada sessão
+    // Criar pendências de documentos para cada sessão COM datas calculadas
     $createRequirementsStmt = $db->prepare("
         INSERT INTO billing_document_requirements (
             assignment_id,
             patient_id,
             professional_user_id,
             session_number,
+            session_date,
             status,
             created_at
-        ) VALUES (?, ?, ?, ?, 'pending', NOW())
+        ) VALUES (?, ?, ?, ?, ?, 'pending', NOW())
     ");
     
-    for ($i = 1; $i <= (int)$assignment['session_quantity']; $i++) {
+    // Calcular datas das sessões baseado nos dias da semana selecionados
+    $sessionDates = [];
+    $totalSessions = (int)$assignment['session_quantity'];
+    $startDate = new DateTime(); // Hoje (data da aprovação)
+    
+    if ($weekdaysJson !== null) {
+        $weekdays = json_decode($weekdaysJson, true);
+        if (is_array($weekdays) && count($weekdays) > 0) {
+            // Gerar datas baseado nos dias da semana selecionados
+            $currentDate = clone $startDate;
+            while (count($sessionDates) < $totalSessions) {
+                // PHP: 1=Monday ... 7=Sunday (ISO 8601, mesmo formato que usamos)
+                $dayOfWeek = (int)$currentDate->format('N');
+                if (in_array($dayOfWeek, $weekdays, true)) {
+                    $sessionDates[] = $currentDate->format('Y-m-d');
+                }
+                $currentDate->modify('+1 day');
+                // Proteção contra loop infinito
+                if (count($sessionDates) === 0 && $currentDate->diff($startDate)->days > 14) {
+                    break;
+                }
+                if (count($sessionDates) > 0 && $currentDate->diff($startDate)->days > 365) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Se não conseguiu calcular datas (sem weekdays), usar fallback semanal
+    if (count($sessionDates) === 0) {
+        for ($i = 0; $i < $totalSessions; $i++) {
+            $date = clone $startDate;
+            $date->modify('+' . ($i * 7) . ' days');
+            $sessionDates[] = $date->format('Y-m-d');
+        }
+    }
+    
+    for ($i = 0; $i < $totalSessions; $i++) {
+        $sessionDate = isset($sessionDates[$i]) ? $sessionDates[$i] : null;
         $createRequirementsStmt->execute([
             $assignmentId,
             $assignment['patient_id'],
             $assignment['professional_user_id'],
-            $i
+            $i + 1,
+            $sessionDate
         ]);
     }
     

@@ -387,11 +387,26 @@ if ($selected) {
 
     echo '<div style="height:14px"></div>';
     
+    // Seleção de dias da semana para o atendimento
+    echo '<div style="margin-top:20px;padding:16px;border:1px solid hsl(var(--border));border-radius:10px;background:hsla(var(--primary)/.03)">';
+    echo '<div style="font-weight:900;margin-bottom:10px">📅 Dias da Semana do Atendimento</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">Selecione os dias em que o atendimento será realizado:</div>';
+    echo '<div id="weekdaysSelector" style="display:flex;gap:8px;flex-wrap:wrap">';
+    $diasSemana = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
+    foreach ($diasSemana as $num => $nome) {
+        echo '<label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
+        echo '<input type="checkbox" class="weekday-check" value="' . $num . '" data-form="approveForm"> ' . $nome;
+        echo '</label>';
+    }
+    echo '</div>';
+    echo '</div>';
+    
     // Botão de aprovar atendimento
-    echo '<form method="post" action="/pre_admissao_approve.php" style="margin-top:20px">';
+    echo '<form id="approveForm" method="post" action="/pre_admissao_approve.php" style="margin-top:20px">';
     echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
     echo '<input type="hidden" name="demand_id" value="' . $demandId . '">';
-    echo '<button class="btn btnPrimary" type="submit" style="width:100%">✅ Aprovar Atendimento</button>';
+    echo '<input type="hidden" name="weekdays" id="weekdaysInput" value="">';
+    echo '<button class="btn btnPrimary" type="submit" style="width:100%" onclick="document.getElementById(\'weekdaysInput\').value=Array.from(document.querySelectorAll(\'.weekday-check:checked\')).map(c=>c.value).join(\',\')">✅ Aprovar Atendimento</button>';
     echo '</form>';
 }
 

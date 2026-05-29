@@ -90,6 +90,22 @@ foreach ($freqOptions as $fo) {
 }
 echo '</select></label></div>';
 echo '<div class="col6"><label>Nova qtd. de sessões (opcional)<input type="number" name="new_session_quantity" min="1" value="' . (int)($assignment['session_quantity'] ?? '') . '"></label></div>';
+
+// Seleção de novos dias da semana
+$currentWeekdays = [];
+if (!empty($assignment['weekdays'])) {
+    $currentWeekdays = json_decode((string)$assignment['weekdays'], true) ?: [];
+}
+echo '<div class="col12"><label style="font-weight:700">Novos dias da semana</label>';
+echo '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
+$diasSemana = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
+foreach ($diasSemana as $num => $nome) {
+    $checked = in_array($num, $currentWeekdays, true) ? ' checked' : '';
+    echo '<label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
+    echo '<input type="checkbox" name="weekdays[]" value="' . $num . '"' . $checked . '> ' . $nome;
+    echo '</label>';
+}
+echo '</div></div>';
 echo '<div class="col12"><label>Motivo da alteração<textarea name="reason" rows="3" required placeholder="Ex: Paciente apresentou melhora significativa, reduzindo necessidade de atendimento..."></textarea></label></div>';
 echo '</div>';
 
