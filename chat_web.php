@@ -113,12 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
             file_put_contents($lastSendFile, (string)time());
 
-            // Enviar via EvolutionApiV1 com options.delay (dá tempo para sessão Signal)
-            error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid' com delay");
+            // Enviar via EvolutionApiV1
+            $isGroupMsg = strpos($remoteJid, '@g.us') !== false;
+            error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
             try {
                 $api = new EvolutionApiV1();
-                // options.delay ajuda a estabelecer sessão antes de enviar
-                $res = $api->sendText($remoteJid, $message, ['delay' => 1200]);
+                // Para grupos, não enviar options (pode causar erro 400)
+                // Para individuais, usar delay para estabelecer sessão Signal
+                $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
+                $res = $api->sendText($remoteJid, $message, $sendOptions);
             } catch (Exception $apiEx) {
                 $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
