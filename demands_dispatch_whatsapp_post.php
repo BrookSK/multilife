@@ -88,14 +88,6 @@ if (count($groups) === 0 && trim($specialty) !== '') {
     $groups = $stmt3->fetchAll();
 }
 
-// Tentativa 4: Todos os grupos ativos com JID de grupo válido (último recurso)
-if (count($groups) === 0) {
-    $sql4 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\' AND evolution_group_jid LIKE \'%@g.us\' ORDER BY id DESC';
-    $stmt4 = db()->prepare($sql4);
-    $stmt4->execute();
-    $groups = $stmt4->fetchAll();
-}
-
 if (count($groups) === 0) {
     // Mostrar debug com dados do banco para facilitar diagnóstico
     $allGroups = db()->query('SELECT id, name, specialty, city, state, status, evolution_group_jid FROM whatsapp_groups ORDER BY id DESC LIMIT 10')->fetchAll();
