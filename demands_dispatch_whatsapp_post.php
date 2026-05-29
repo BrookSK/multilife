@@ -116,7 +116,7 @@ $tpl = trim((string)admin_setting_get(
 
 // Se template vazio ou não configurado, usar padrão
 if ($tpl === '') {
-    $tpl = "[CAPTAÇÃO #{id}]\n{title}\nLocal: {city}/{state}\nEspecialidade: {specialty}\n\n{description}\nOrigem: {origin}";
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\nLocal: {city}/{state}\nEspecialidade: {specialty}\nFrequência: {frequency}\n\n{description}\nOrigem: {origin}";
 }
 
 $repl = [
@@ -125,6 +125,7 @@ $repl = [
     '{city}' => $city !== '' ? $city : '-',
     '{state}' => $state !== '' ? $state : '-',
     '{specialty}' => $specialty !== '' ? $specialty : '-',
+    '{frequency}' => $subRequest && trim((string)($subRequest['frequency'] ?? '')) !== '' ? (string)$subRequest['frequency'] : (trim((string)($d['frequency'] ?? '')) !== '' ? (string)$d['frequency'] : '-'),
     '{description}' => $subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? ''),
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];

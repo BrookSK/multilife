@@ -112,8 +112,8 @@ $updErr = $db->prepare(
 );
 
 $insDemand = $db->prepare(
-    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, has_multiple_requests)'
-    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as,:urg,:hmr)'
+    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests)'
+    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr)'
 );
 $insDemandLog = $db->prepare(
     'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)'
@@ -258,20 +258,22 @@ foreach ($emails as $e) {
         . "ATENÇÃO: Um e-mail pode conter MÚLTIPLAS solicitações de especialidades diferentes para o mesmo paciente.\n"
         . "Exemplo: 'Preciso de psicóloga, fisioterapeuta e fonoaudióloga' = 3 solicitações.\n\n"
         . "Retorne um JSON válido no formato:\n"
-        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"requests\":array}\n\n"
+        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null,\"requests\":array}\n\n"
         . "Campos principais (dados gerais do e-mail):\n"
         . "- title: Título curto e objetivo (máx 60 caracteres)\n"
         . "- location_city: Cidade do atendimento\n"
         . "- location_state: UF com 2 letras maiúsculas (ex: SP, RJ)\n"
         . "- specialty: Especialidade principal (a primeira identificada)\n"
         . "- procedure_value: Valor em reais como número decimal (ex: 1500.00) - valor da primeira solicitação ou geral\n"
-        . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n\n"
+        . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n"
+        . "- frequency: Frequência do atendimento (ex: '3 sessões por semana', '2x ao dia', 'diário')\n\n"
         . "Campo requests (OBRIGATÓRIO - lista de TODAS as solicitações identificadas):\n"
-        . "- requests: Array de objetos, cada um com: {\"specialty\":string,\"description\":string|null,\"procedure_value\":number|null,\"urgency\":string|null}\n"
+        . "- requests: Array de objetos, cada um com: {\"specialty\":string,\"description\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null}\n"
         . "  - specialty: Especialidade desta solicitação específica\n"
         . "  - description: Descrição/detalhes específicos desta solicitação (extraídos do e-mail)\n"
         . "  - procedure_value: Valor específico desta solicitação (se mencionado)\n"
-        . "  - urgency: Urgência específica desta solicitação (se diferente da geral)\n\n"
+        . "  - urgency: Urgência específica desta solicitação (se diferente da geral)\n"
+        . "  - frequency: Frequência específica desta solicitação (ex: '3x por semana', '50 min/sessão')\n\n"
         . "Regras:\n"
         . "- Se houver apenas 1 solicitação, retorne requests com 1 item\n"
         . "- Se houver múltiplas especialidades, retorne cada uma como item separado em requests\n"
@@ -347,6 +349,7 @@ foreach ($emails as $e) {
         $specialty = trim((string)($parsed1['specialty'] ?? ''));
         $procedureValue = isset($parsed1['procedure_value']) && $parsed1['procedure_value'] !== null ? (float)$parsed1['procedure_value'] : null;
         $urgency = trim((string)($parsed1['urgency'] ?? ''));
+        $frequency = trim((string)($parsed1['frequency'] ?? ''));
 
         // Extrair múltiplas solicitações (se houver)
         $subRequests = [];
@@ -360,6 +363,7 @@ foreach ($emails as $e) {
                     'description' => trim((string)($req['description'] ?? '')),
                     'procedure_value' => isset($req['procedure_value']) && $req['procedure_value'] !== null ? (float)$req['procedure_value'] : null,
                     'urgency' => trim((string)($req['urgency'] ?? '')),
+                    'frequency' => trim((string)($req['frequency'] ?? '')),
                 ];
             }
         }
@@ -496,6 +500,7 @@ foreach ($emails as $e) {
                 'pv' => $procedureValue,
                 'as' => $aiSummary !== '' ? $aiSummary : null,
                 'urg' => $urgency !== '' ? $urgency : null,
+                'freq' => $frequency !== '' ? $frequency : null,
                 'hmr' => $hasMultipleRequests ? 1 : 0,
             ]);
             $demandId = (int)$db->lastInsertId();
@@ -503,8 +508,8 @@ foreach ($emails as $e) {
             // Inserir sub-solicitações se houver múltiplas
             if ($hasMultipleRequests) {
                 $insSubReq = $db->prepare(
-                    'INSERT INTO demand_sub_requests (demand_id, specialty, description, location_city, location_state, procedure_value, urgency)'
-                    . ' VALUES (:did, :sp, :desc, :city, :state, :pv, :urg)'
+                    'INSERT INTO demand_sub_requests (demand_id, specialty, description, location_city, location_state, procedure_value, urgency, frequency)'
+                    . ' VALUES (:did, :sp, :desc, :city, :state, :pv, :urg, :freq)'
                 );
                 foreach ($subRequests as $sr) {
                     $insSubReq->execute([
@@ -515,6 +520,7 @@ foreach ($emails as $e) {
                         'state' => $state !== '' ? $state : null,
                         'pv' => $sr['procedure_value'],
                         'urg' => $sr['urgency'] !== '' ? $sr['urgency'] : ($urgency !== '' ? $urgency : null),
+                        'freq' => $sr['frequency'] !== '' ? $sr['frequency'] : ($frequency !== '' ? $frequency : null),
                     ]);
                 }
                 error_log("[EMAIL_EXTRACT] E-mail #$id - Múltiplas solicitações: " . count($subRequests) . " especialidades");
