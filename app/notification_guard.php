@@ -20,7 +20,12 @@ define('PATIENT_BLOCKED_STATUSES', [
     'falecido',
     'falecida',
     'deceased',
+    'alta',
     'alta definitiva',
+    'internado',
+    'internada',
+    'internação',
+    'internacao',
     'inativo',
     'inativa',
 ]);
@@ -63,6 +68,16 @@ function notification_guard_check_patient(int $patientId): array
                 ];
             }
         }
+    }
+
+    // Verificar se paciente tem profissional ativo atribuído
+    $stmtAssign = db()->prepare(
+        "SELECT COUNT(*) as total FROM patient_assignments WHERE patient_id = :pid AND status IN ('confirmed','approved')"
+    );
+    $stmtAssign->execute(['pid' => $patientId]);
+    $assignCount = (int)$stmtAssign->fetchColumn();
+    if ($assignCount === 0) {
+        return ['allowed' => false, 'reason' => 'Paciente sem profissional atribuído - notificação bloqueada'];
     }
 
     return ['allowed' => true, 'reason' => null];
