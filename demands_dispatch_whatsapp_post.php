@@ -8,6 +8,7 @@ auth_require_login();
 rbac_require_permission('demands.manage');
 
 $id = (int)($_POST['id'] ?? 0);
+$subRequestId = (int)($_POST['sub_request_id'] ?? 0);
 
 $stmt = db()->prepare('SELECT * FROM demands WHERE id = :id');
 $stmt->execute(['id' => $id]);
@@ -19,9 +20,28 @@ if (!$d) {
     exit;
 }
 
-$city = (string)($d['location_city'] ?? '');
-$state = (string)($d['location_state'] ?? '');
-$specialty = (string)($d['specialty'] ?? '');
+// Se foi selecionada uma sub-solicitação, usar os dados dela
+$subRequest = null;
+if ($subRequestId > 0) {
+    $stmtSub = db()->prepare('SELECT * FROM demand_sub_requests WHERE id = :id AND demand_id = :did');
+    $stmtSub->execute(['id' => $subRequestId, 'did' => $id]);
+    $subRequest = $stmtSub->fetch();
+    if (!$subRequest) {
+        flash_set('error', 'Sub-solicitação não encontrada.');
+        header('Location: /demands_view.php?id=' . $id);
+        exit;
+    }
+    if ($subRequest['status'] === 'em_captacao' || $subRequest['status'] === 'concluido') {
+        flash_set('error', 'Esta sub-solicitação já está em captação ou concluída.');
+        header('Location: /demands_view.php?id=' . $id);
+        exit;
+    }
+}
+
+// Usar dados da sub-solicitação se disponível, senão usar dados da demanda
+$city = (string)($subRequest ? ($subRequest['location_city'] ?? $d['location_city'] ?? '') : ($d['location_city'] ?? ''));
+$state = (string)($subRequest ? ($subRequest['location_state'] ?? $d['location_state'] ?? '') : ($d['location_state'] ?? ''));
+$specialty = (string)($subRequest ? ($subRequest['specialty'] ?? '') : ($d['specialty'] ?? ''));
 
 // Buscar grupos compatíveis - tentar match progressivo
 $groups = [];
@@ -105,7 +125,7 @@ $repl = [
     '{city}' => $city !== '' ? $city : '-',
     '{state}' => $state !== '' ? $state : '-',
     '{specialty}' => $specialty !== '' ? $specialty : '-',
-    '{description}' => (string)($d['description'] ?? ''),
+    '{description}' => $subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? ''),
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];
 
@@ -218,5 +238,12 @@ if ($sent > 0 && $errCount === 0) {
 } else {
     flash_set('error', 'Falha ao enviar captação via WhatsApp. Verifique os logs.');
 }
+
+// Atualizar status da sub-solicitação somente se pelo menos um envio foi bem-sucedido
+if ($subRequest !== null && $sent > 0) {
+    $updSub = db()->prepare('UPDATE demand_sub_requests SET status = \'em_captacao\', dispatched_at = NOW() WHERE id = :id');
+    $updSub->execute(['id' => $subRequestId]);
+}
+
 header('Location: /demands_view.php?id=' . $id);
 exit;

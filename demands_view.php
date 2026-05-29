@@ -138,9 +138,22 @@ echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
 echo '<button class="btn" type="submit">Devolver</button>';
 echo '</form>';
 
+// Buscar sub-solicitações (se houver múltiplas)
+$subRequests = [];
+$hasMultiReqs = (int)($d['has_multiple_requests'] ?? 0);
+if ($hasMultiReqs === 1) {
+    $stmtSub = db()->prepare('SELECT * FROM demand_sub_requests WHERE demand_id = :did ORDER BY id ASC');
+    $stmtSub->execute(['did' => $id]);
+    $subRequests = $stmtSub->fetchAll();
+}
+
 echo '<form method="post" action="/demands_dispatch_whatsapp_post.php" style="display:inline">';
 echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
-echo '<button class="btn btnPrimary" type="submit">Realizar Captação</button>';
+if (count($subRequests) > 1) {
+    echo '<button class="btn btnPrimary" type="button" onclick="document.getElementById(\'modalSubRequests\').style.display=\'flex\'">Realizar Captação</button>';
+} else {
+    echo '<button class="btn btnPrimary" type="submit">Realizar Captação</button>';
+}
 echo '</form>';
 
 if ($st !== 'cancelado') {
@@ -361,5 +374,54 @@ echo '</div>';
 echo '</section>';
 
 echo '</div>';
+
+// Modal de seleção de sub-solicitação (quando e-mail tem múltiplas)
+if (count($subRequests) > 1) {
+    echo '<div id="modalSubRequests" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:20px">';
+    echo '<div style="background:hsl(var(--card));border-radius:12px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+    echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    echo '<div style="font-size:18px;font-weight:900">Selecionar Solicitação para Captação</div>';
+    echo '<button type="button" onclick="document.getElementById(\'modalSubRequests\').style.display=\'none\'" style="background:none;border:none;font-size:24px;cursor:pointer;color:hsl(var(--muted-foreground))">×</button>';
+    echo '</div>';
+    echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;margin-bottom:20px">Este e-mail contém <strong>' . count($subRequests) . ' solicitações</strong> diferentes. Selecione qual deseja captar:</div>';
+    echo '<div style="display:grid;gap:12px">';
+    foreach ($subRequests as $sr) {
+        $srStatus = (string)$sr['status'];
+        $srDisabled = ($srStatus === 'em_captacao' || $srStatus === 'concluido');
+        $srBadge = '';
+        if ($srStatus === 'em_captacao') {
+            $srBadge = '<span class="badge badgeWarn" style="font-size:11px;margin-left:8px">Em Captação</span>';
+        } elseif ($srStatus === 'concluido') {
+            $srBadge = '<span class="badge badgeSuccess" style="font-size:11px;margin-left:8px">Concluído</span>';
+        } elseif ($srStatus === 'cancelado') {
+            $srBadge = '<span class="badge badgeDanger" style="font-size:11px;margin-left:8px">Cancelado</span>';
+        }
+        echo '<div style="border:1px solid hsl(var(--border));border-radius:10px;padding:16px;' . ($srDisabled ? 'opacity:.5;' : '') . '">';
+        echo '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+        echo '<div>';
+        echo '<div style="font-weight:700;font-size:15px">' . h((string)$sr['specialty']) . $srBadge . '</div>';
+        if (trim((string)($sr['description'] ?? '')) !== '') {
+            echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5">' . h(mb_strimwidth((string)$sr['description'], 0, 150, '...')) . '</div>';
+        }
+        if ($sr['procedure_value'] !== null && (float)$sr['procedure_value'] > 0) {
+            echo '<div style="margin-top:4px;font-size:13px;color:hsl(var(--muted-foreground))"><strong>Valor:</strong> R$ ' . number_format((float)$sr['procedure_value'], 2, ',', '.') . '</div>';
+        }
+        echo '</div>';
+        echo '<div>';
+        if (!$srDisabled) {
+            echo '<form method="post" action="/demands_dispatch_whatsapp_post.php" style="display:inline">';
+            echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
+            echo '<input type="hidden" name="sub_request_id" value="' . (int)$sr['id'] . '">';
+            echo '<button class="btn btnPrimary" type="submit" style="white-space:nowrap">Captar esta</button>';
+            echo '</form>';
+        }
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+}
 
 view_footer();

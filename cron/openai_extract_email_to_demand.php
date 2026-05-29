@@ -112,8 +112,8 @@ $updErr = $db->prepare(
 );
 
 $insDemand = $db->prepare(
-    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary, urgency)'
-    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as,:urg)'
+    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, has_multiple_requests)'
+    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as,:urg,:hmr)'
 );
 $insDemandLog = $db->prepare(
     'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)'
@@ -252,18 +252,29 @@ foreach ($emails as $e) {
     }
 
     // CHAMADA 1: Extrair dados básicos (título, localização, especialidade, valor, urgência)
+    // IMPORTANTE: Detecta múltiplas solicitações no mesmo e-mail
     $systemPrompt1 = "Você é um assistente que extrai dados estruturados de e-mails de solicitação de atendimento domiciliar (home care).\n"
-        . "Analise o e-mail e extraia SOMENTE os dados básicos.\n\n"
+        . "Analise o e-mail e identifique TODAS as solicitações de atendimento presentes.\n\n"
+        . "ATENÇÃO: Um e-mail pode conter MÚLTIPLAS solicitações de especialidades diferentes para o mesmo paciente.\n"
+        . "Exemplo: 'Preciso de psicóloga, fisioterapeuta e fonoaudióloga' = 3 solicitações.\n\n"
         . "Retorne um JSON válido no formato:\n"
-        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null}\n\n"
-        . "Campos:\n"
+        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"requests\":array}\n\n"
+        . "Campos principais (dados gerais do e-mail):\n"
         . "- title: Título curto e objetivo (máx 60 caracteres)\n"
         . "- location_city: Cidade do atendimento\n"
         . "- location_state: UF com 2 letras maiúsculas (ex: SP, RJ)\n"
-        . "- specialty: Especialidade médica (ex: Fisioterapia, Enfermagem, Fonoaudiologia)\n"
-        . "- procedure_value: Valor em reais como número decimal (ex: 1500.00)\n"
+        . "- specialty: Especialidade principal (a primeira identificada)\n"
+        . "- procedure_value: Valor em reais como número decimal (ex: 1500.00) - valor da primeira solicitação ou geral\n"
         . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n\n"
+        . "Campo requests (OBRIGATÓRIO - lista de TODAS as solicitações identificadas):\n"
+        . "- requests: Array de objetos, cada um com: {\"specialty\":string,\"description\":string|null,\"procedure_value\":number|null,\"urgency\":string|null}\n"
+        . "  - specialty: Especialidade desta solicitação específica\n"
+        . "  - description: Descrição/detalhes específicos desta solicitação (extraídos do e-mail)\n"
+        . "  - procedure_value: Valor específico desta solicitação (se mencionado)\n"
+        . "  - urgency: Urgência específica desta solicitação (se diferente da geral)\n\n"
         . "Regras:\n"
+        . "- Se houver apenas 1 solicitação, retorne requests com 1 item\n"
+        . "- Se houver múltiplas especialidades, retorne cada uma como item separado em requests\n"
         . "- Seja preciso e objetivo\n"
         . "- UF sempre 2 letras maiúsculas\n"
         . "- Se não encontrar, use null\n"
@@ -336,6 +347,23 @@ foreach ($emails as $e) {
         $specialty = trim((string)($parsed1['specialty'] ?? ''));
         $procedureValue = isset($parsed1['procedure_value']) && $parsed1['procedure_value'] !== null ? (float)$parsed1['procedure_value'] : null;
         $urgency = trim((string)($parsed1['urgency'] ?? ''));
+
+        // Extrair múltiplas solicitações (se houver)
+        $subRequests = [];
+        if (isset($parsed1['requests']) && is_array($parsed1['requests']) && count($parsed1['requests']) > 1) {
+            foreach ($parsed1['requests'] as $req) {
+                if (!is_array($req)) continue;
+                $reqSpecialty = trim((string)($req['specialty'] ?? ''));
+                if ($reqSpecialty === '') continue;
+                $subRequests[] = [
+                    'specialty' => $reqSpecialty,
+                    'description' => trim((string)($req['description'] ?? '')),
+                    'procedure_value' => isset($req['procedure_value']) && $req['procedure_value'] !== null ? (float)$req['procedure_value'] : null,
+                    'urgency' => trim((string)($req['urgency'] ?? '')),
+                ];
+            }
+        }
+        $hasMultipleRequests = count($subRequests) > 1;
 
         // CHAMADA 2: Gerar resumo detalhado e descrição do card
         $systemPrompt2 = "Você é um assistente especializado em criar resumos de solicitações de atendimento domiciliar (home care).\n"
@@ -468,8 +496,29 @@ foreach ($emails as $e) {
                 'pv' => $procedureValue,
                 'as' => $aiSummary !== '' ? $aiSummary : null,
                 'urg' => $urgency !== '' ? $urgency : null,
+                'hmr' => $hasMultipleRequests ? 1 : 0,
             ]);
             $demandId = (int)$db->lastInsertId();
+
+            // Inserir sub-solicitações se houver múltiplas
+            if ($hasMultipleRequests) {
+                $insSubReq = $db->prepare(
+                    'INSERT INTO demand_sub_requests (demand_id, specialty, description, location_city, location_state, procedure_value, urgency)'
+                    . ' VALUES (:did, :sp, :desc, :city, :state, :pv, :urg)'
+                );
+                foreach ($subRequests as $sr) {
+                    $insSubReq->execute([
+                        'did' => $demandId,
+                        'sp' => $sr['specialty'],
+                        'desc' => $sr['description'] !== '' ? $sr['description'] : null,
+                        'city' => $city !== '' ? $city : null,
+                        'state' => $state !== '' ? $state : null,
+                        'pv' => $sr['procedure_value'],
+                        'urg' => $sr['urgency'] !== '' ? $sr['urgency'] : ($urgency !== '' ? $urgency : null),
+                    ]);
+                }
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Múltiplas solicitações: " . count($subRequests) . " especialidades");
+            }
 
             $note = 'criação automática via e-mail';
             if ($needsManual) {
