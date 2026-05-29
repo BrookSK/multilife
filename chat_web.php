@@ -122,6 +122,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Para individuais, usar delay para estabelecer sessão Signal
                 $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
                 $res = $api->sendText($remoteJid, $message, $sendOptions);
+                
+                // Se grupo deu erro de sessão, tentar reiniciar e reenviar
+                $httpCode = (int)($res['status'] ?? 0);
+                $bodyRaw = is_string($res['body_raw'] ?? null) ? $res['body_raw'] : json_encode($res['json'] ?? []);
+                
+                if ($isGroupMsg && $httpCode === 400 && (strpos($bodyRaw, 'No sessions') !== false || strpos($bodyRaw, 'SessionError') !== false)) {
+                    error_log("[$debugId] Grupo sem sessão - tentando restart da instância...");
+                    
+                    // Reiniciar instância para forçar reconexão das sessões
+                    try {
+                        $api->restartInstance();
+                        sleep(3); // Aguardar reconexão
+                    } catch (Throwable $restartErr) {
+                        error_log("[$debugId] Erro no restart: " . $restartErr->getMessage());
+                    }
+                    
+                    // Tentar enviar novamente
+                    error_log("[$debugId] Tentando reenviar após restart...");
+                    $res = $api->sendText($remoteJid, $message, []);
+                }
             } catch (Exception $apiEx) {
                 $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
