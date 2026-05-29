@@ -124,6 +124,7 @@ $tabs = [
     ['k' => 'fin', 'l' => 'Financeiro'],
     ['k' => 'lgpd', 'l' => 'LGPD'],
     ['k' => 'resp', 'l' => 'Responsável'],
+    ['k' => 'docs', 'l' => 'Documentos'],
     ['k' => 'adm', 'l' => 'Administrativo'],
 ];
 foreach ($tabs as $i => $t) {
@@ -254,6 +255,75 @@ echo '<div class="col6"><label>Telefone<input name="responsible_phone" maxlength
 echo '<div class="col6"><label>E-mail<input type="email" name="responsible_email" maxlength="190" value="' . h($respEmail) . '"></label></div>';
 echo '<div class="col12"><label>Observações<textarea name="responsible_notes" rows="3">' . h($respNotes) . '</textarea></label></div>';
 echo '<div class="col12"><label>Responsável (JSON)<textarea name="responsible_json" rows="6" placeholder="{}">' . h((string)($p['responsible_json'] ?? '')) . '</textarea></label></div>';
+echo '</div>';
+echo '</div>';
+
+echo '<div class="ptPanel" data-panel="docs">';
+echo '<div style="margin-bottom:16px;color:hsl(var(--muted-foreground));font-size:14px">Documentos do paciente (atestado de óbito, internação, alta, laudos, etc.)</div>';
+
+// Listar documentos existentes do paciente
+$docsStmt = db()->prepare(
+    "SELECT d.id, d.category, d.title, d.status, dv.original_name, dv.stored_path, dv.uploaded_at, dv.valid_until, dv.file_size, u.name AS uploaded_by
+     FROM documents d
+     INNER JOIN document_versions dv ON dv.document_id = d.id
+     LEFT JOIN users u ON u.id = dv.uploaded_by_user_id
+     WHERE d.entity_type = 'patient' AND d.entity_id = :pid AND d.status = 'active'
+     ORDER BY dv.uploaded_at DESC"
+);
+$docsStmt->execute(['pid' => (int)$p['id']]);
+$patientDocs = $docsStmt->fetchAll();
+
+if (count($patientDocs) > 0) {
+    echo '<div style="overflow:auto;margin-bottom:16px">';
+    echo '<table>';
+    echo '<thead><tr><th>Categoria</th><th>Título</th><th>Arquivo</th><th>Enviado em</th><th>Validade</th><th>Por</th><th>Ações</th></tr></thead><tbody>';
+    foreach ($patientDocs as $doc) {
+        $docTitle = trim((string)($doc['title'] ?? ''));
+        $docCat = (string)$doc['category'];
+        $docFile = (string)$doc['original_name'];
+        $docPath = (string)$doc['stored_path'];
+        $docDate = (string)($doc['uploaded_at'] ?? '');
+        $docValid = (string)($doc['valid_until'] ?? '-');
+        $docBy = (string)($doc['uploaded_by'] ?? '-');
+        echo '<tr>';
+        echo '<td><strong>' . h($docCat) . '</strong></td>';
+        echo '<td>' . h($docTitle !== '' ? $docTitle : '-') . '</td>';
+        echo '<td><a href="/' . h($docPath) . '" target="_blank" style="color:hsl(var(--primary))">' . h($docFile) . '</a></td>';
+        echo '<td>' . h($docDate) . '</td>';
+        echo '<td>' . h($docValid) . '</td>';
+        echo '<td>' . h($docBy) . '</td>';
+        echo '<td><a href="/' . h($docPath) . '" target="_blank" class="btn" style="font-size:11px">Baixar</a></td>';
+        echo '</tr>';
+    }
+    echo '</tbody></table>';
+    echo '</div>';
+} else {
+    echo '<div class="pill" style="display:block;margin-bottom:16px">Nenhum documento cadastrado para este paciente.</div>';
+}
+
+echo '<div style="border-top:1px solid hsl(var(--border));padding-top:16px">';
+echo '<div style="font-weight:700;margin-bottom:12px">Enviar novo documento</div>';
+echo '</div>';
+echo '<div style="padding:16px;border:2px dashed hsl(var(--border));border-radius:10px;background:hsla(var(--muted)/.1)">';
+echo '<form method="post" action="/patients_doc_upload_post.php" enctype="multipart/form-data" style="display:grid;gap:12px">';
+echo '<input type="hidden" name="patient_id" value="' . (int)$p['id'] . '">';
+echo '<div class="grid">';
+echo '<div class="col6"><label>Categoria<select name="doc_category" required>';
+$docCategories = ['Atestado de Óbito', 'Atestado de Internação', 'Alta Hospitalar', 'Alta Definitiva', 'Laudo Médico', 'Receita/Prescrição', 'Exame Laboratorial', 'Exame de Imagem', 'Cartão SUS', 'Carteirinha Convênio', 'Documento de Identidade', 'Outro'];
+echo '<option value="">— Selecione —</option>';
+foreach ($docCategories as $cat) {
+    echo '<option value="' . h($cat) . '">' . h($cat) . '</option>';
+}
+echo '</select></label></div>';
+echo '<div class="col6"><label>Título/Descrição<input name="doc_title" maxlength="160" placeholder="Ex: Atestado de internação - Hospital X"></label></div>';
+echo '<div class="col6"><label>Validade (opcional)<input type="date" name="doc_valid_until"></label></div>';
+echo '<div class="col6"><label>Arquivo<input type="file" name="doc_file" required></label></div>';
+echo '<div class="col12"><label>Observações<textarea name="doc_notes" rows="2" placeholder="Observações sobre o documento..."></textarea></label></div>';
+echo '</div>';
+echo '<div style="display:flex;justify-content:flex-end">';
+echo '<button class="btn btnPrimary" type="submit">Enviar Documento</button>';
+echo '</div>';
+echo '</form>';
 echo '</div>';
 echo '</div>';
 
