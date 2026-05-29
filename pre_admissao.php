@@ -387,18 +387,40 @@ if ($selected) {
 
     echo '<div style="height:14px"></div>';
     
+    // Determinar quantos dias devem ser selecionados baseado na frequência
+    $freqToDays = [
+        '1x por semana' => 1, '2x por semana' => 2, '3x por semana' => 3,
+        '4x por semana' => 4, '5x por semana' => 5, '6x por semana' => 6,
+        'Diário' => 7, 'diario' => 7, 'daily' => 7, 'weekly' => 1,
+    ];
+    $requiredDays = 0;
+    foreach ($freqToDays as $fk => $fv) {
+        if (stripos($sessionFreq, $fk) !== false || strcasecmp($sessionFreq, $fk) === 0) {
+            $requiredDays = $fv;
+            break;
+        }
+    }
+    // Tentar extrair número da frequência (ex: "3x" ou "3 vezes")
+    if ($requiredDays === 0 && preg_match('/(\d+)\s*x/i', $sessionFreq, $m)) {
+        $requiredDays = (int)$m[1];
+    }
+    
     // Seleção de dias da semana para o atendimento
     echo '<div style="margin-top:20px;padding:16px;border:1px solid hsl(var(--border));border-radius:10px;background:hsla(var(--primary)/.03)">';
     echo '<div style="font-weight:900;margin-bottom:10px">📅 Dias da Semana do Atendimento</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">Selecione os dias em que o atendimento será realizado:</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:4px">Selecione os dias em que o atendimento será realizado:</div>';
+    if ($requiredDays > 0) {
+        echo '<div id="weekdaysHint" style="font-size:12px;color:hsl(var(--primary));font-weight:700;margin-bottom:12px">Frequência: ' . h($sessionFreq) . ' — selecione exatamente ' . $requiredDays . ' dia(s)</div>';
+    }
     echo '<div id="weekdaysSelector" style="display:flex;gap:8px;flex-wrap:wrap">';
     $diasSemana = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
     foreach ($diasSemana as $num => $nome) {
         echo '<label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
-        echo '<input type="checkbox" class="weekday-check" value="' . $num . '" data-form="approveForm"> ' . $nome;
+        echo '<input type="checkbox" class="weekday-check" value="' . $num . '"> ' . $nome;
         echo '</label>';
     }
     echo '</div>';
+    echo '<div id="weekdaysError" style="display:none;margin-top:8px;color:hsl(var(--destructive));font-size:13px;font-weight:700"></div>';
     echo '</div>';
     
     // Botão de aprovar atendimento
@@ -406,8 +428,29 @@ if ($selected) {
     echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
     echo '<input type="hidden" name="demand_id" value="' . $demandId . '">';
     echo '<input type="hidden" name="weekdays" id="weekdaysInput" value="">';
-    echo '<button class="btn btnPrimary" type="submit" style="width:100%" onclick="document.getElementById(\'weekdaysInput\').value=Array.from(document.querySelectorAll(\'.weekday-check:checked\')).map(c=>c.value).join(\',\')">✅ Aprovar Atendimento</button>';
+    echo '<button class="btn btnPrimary" type="submit" style="width:100%" id="btnApprove">✅ Aprovar Atendimento</button>';
     echo '</form>';
+    
+    // Validação JavaScript
+    echo '<script>';
+    echo 'document.getElementById("approveForm").addEventListener("submit", function(e) {';
+    echo '  var checks = document.querySelectorAll(".weekday-check:checked");';
+    echo '  var required = ' . $requiredDays . ';';
+    echo '  document.getElementById("weekdaysInput").value = Array.from(checks).map(function(c){return c.value}).join(",");';
+    echo '  if (required > 0 && checks.length !== required) {';
+    echo '    e.preventDefault();';
+    echo '    document.getElementById("weekdaysError").style.display = "block";';
+    echo '    document.getElementById("weekdaysError").textContent = "Selecione exatamente " + required + " dia(s). Você selecionou " + checks.length + ".";';
+    echo '    return false;';
+    echo '  }';
+    echo '  if (checks.length === 0) {';
+    echo '    e.preventDefault();';
+    echo '    document.getElementById("weekdaysError").style.display = "block";';
+    echo '    document.getElementById("weekdaysError").textContent = "Selecione pelo menos 1 dia da semana.";';
+    echo '    return false;';
+    echo '  }';
+    echo '});';
+    echo '</script>';
 }
 
 echo '</div>';
