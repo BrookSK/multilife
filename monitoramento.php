@@ -48,6 +48,7 @@ foreach ($appointments as $apt) {
         'start' => $apt['first_at'],
         'backgroundColor' => $color,
         'extendedProps' => [
+            'assignment_id' => (int)$apt['assignment_id'],
             'patient_id' => (int)$apt['patient_id'],
             'patient_name' => $apt['patient_name'],
             'patient_phone' => $apt['patient_phone'] ?? '',
@@ -289,6 +290,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.innerHTML = '💬 Chat Paciente';
                 actions.appendChild(btn);
             }
+            
+            // Botão Desmame (alteração de frequência)
+            const btnDesmame = document.createElement('a');
+            btnDesmame.href = '/monitoramento_desmame.php?assignment_id=' + (p.assignment_id || info.event.id);
+            btnDesmame.className = 'btn';
+            btnDesmame.style.background = '#f59e0b';
+            btnDesmame.style.color = '#fff';
+            btnDesmame.innerHTML = '📉 Desmame (Alterar Frequência)';
+            actions.appendChild(btnDesmame);
+            
+            // Botão Substituição de Profissional
+            const btnSubst = document.createElement('a');
+            btnSubst.href = '/monitoramento_substituicao.php?assignment_id=' + (p.assignment_id || info.event.id);
+            btnSubst.className = 'btn';
+            btnSubst.style.background = '#8b5cf6';
+            btnSubst.style.color = '#fff';
+            btnSubst.innerHTML = '🔄 Substituir Profissional';
+            actions.appendChild(btnSubst);
             
             document.getElementById('modal').classList.add('open');
         }
