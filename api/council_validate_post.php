@@ -3,10 +3,15 @@
 declare(strict_types=1);
 
 /**
- * API endpoint: Validação de registro profissional no portal do conselho.
+ * API endpoint: Validação de registro profissional via provedores de API.
  *
  * POST /api/council_validate_post.php
  * Body (JSON ou form): { application_id, council_abbr, registry_number, council_state }
+ *
+ * Utiliza sistema de fallback entre provedores:
+ *  1. Consultar.IO (se configurado)
+ *  2. Infosimples (se configurado)
+ *  3. Portal Direto (scraping — fallback final)
  *
  * Retorna JSON com o resultado padronizado da validação.
  */

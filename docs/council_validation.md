@@ -2,7 +2,31 @@
 
 ## Visão Geral
 
-O sistema consulta os portais públicos oficiais dos conselhos profissionais brasileiros para validar registros durante a aprovação de candidaturas. A consulta é disparada manualmente pelo administrador através do botão **"Validar [CONSELHO]"** na tela de visualização da candidatura.
+O sistema valida registros profissionais de conselhos brasileiros utilizando **APIs especializadas** com sistema de **fallback automático**. A arquitetura é desacoplada dos provedores específicos, permitindo substituir ou adicionar novas APIs sem impactar telas, regras de negócio ou banco de dados.
+
+A consulta é disparada manualmente pelo administrador através do botão **"Validar [CONSELHO]"** na tela de visualização da candidatura.
+
+---
+
+## Arquitetura
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    council_validate()                             │
+│              (Função pública — orquestrador)                     │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Verifica cache (MySQL, 24h)                                  │
+│  2. Obtém provedores ordenados por prioridade                    │
+│  3. Tenta cada provedor em sequência (fallback)                  │
+│  4. Persiste cache + log                                         │
+└────────────┬──────────────────┬──────────────────┬──────────────┘
+             │                  │                  │
+    ┌────────▼────────┐ ┌──────▼──────┐ ┌────────▼────────┐
+    │  Consultar.IO   │ │ Infosimples │ │  Portal Direto  │
+    │  (Prioridade 10)│ │(Prioridade 20)│ │ (Prioridade 99) │
+    │  API REST       │ │ API REST    │ │  Scraping       │
+    └─────────────────┘ └─────────────┘ └─────────────────┘
+```
 
 ---
 
@@ -10,164 +34,106 @@ O sistema consulta os portais públicos oficiais dos conselhos profissionais bra
 
 | Arquivo | Descrição |
 |---|---|
-| `app/council_validator.php` | Núcleo do sistema — handlers por conselho, cache, log |
+| `app/council_validator.php` | Orquestrador principal — cache, log, fallback |
+| `app/council_providers/CouncilProviderInterface.php` | Interface que todo provedor deve implementar |
+| `app/council_providers/AbstractProvider.php` | Classe base com métodos utilitários |
+| `app/council_providers/ConsultarIoProvider.php` | Integração com API Consultar.IO |
+| `app/council_providers/InfosimplesProvider.php` | Integração com API Infosimples |
+| `app/council_providers/PortalDirectProvider.php` | Fallback via scraping direto nos portais |
 | `api/council_validate_post.php` | Endpoint AJAX chamado pelo botão na interface |
-| `migrations/2026-06-01_0001_council_validation.sql` | Tabelas de cache, log e colunas na candidatura |
+| `admin_council_providers.php` | Painel admin — estatísticas e visão geral |
+| `admin_council_providers_settings.php` | Configuração de credenciais dos provedores |
+| `admin_council_providers_post.php` | POST para salvar configurações |
+| `admin_council_logs.php` | Histórico detalhado de todas as consultas |
+| `migrations/2026-06-01_0001_council_validation.sql` | Tabelas de cache, log e colunas |
 
 ---
 
 ## Conselhos Suportados
 
-### CRP — Conselho Regional de Psicologia
+| Conselho | Descrição | UF Obrigatória |
+|---|---|---|
+| CRP | Psicologia | Sim |
+| CRN | Nutrição | Sim |
+| COREN | Enfermagem | Sim |
+| CREFITO | Fisioterapia e Terapia Ocupacional | Sim |
+| CRM | Medicina | Sim |
+| CRO | Odontologia | Sim |
+| CREA | Engenharia e Agronomia | Sim |
+| OAB | Advocacia | Sim |
 
-- **URL oficial:** https://cadastro.cfp.org.br/
-- **Método:** GET com parâmetros `numero` e `uf`
-- **Endpoint:** `https://cadastro.cfp.org.br/profissional/busca?numero=XXXXX&uf=SP`
-- **Resposta esperada:** JSON `{"nome":"...","situacao":"ATIVO","crp":"..."}`
-- **Fallback:** Parsing HTML via DOMXPath
-- **Limitações:** Possível CAPTCHA em consultas repetidas
+---
 
-**Exemplo de requisição:**
+## Provedores Suportados
+
+### 1. Consultar.IO (Prioridade padrão: 10)
+
+- **Tipo:** API REST
+- **Autenticação:** Bearer Token (API Key)
+- **Método:** GET com query params
+- **Conselhos:** Todos (CRP, CRN, COREN, CREFITO, CRM, CRO, CREA, OAB)
+- **Documentação:** https://consultar.io/docs
+
+**Configuração:**
 ```
-GET https://cadastro.cfp.org.br/profissional/busca?numero=123456&uf=SP
-Accept: application/json
+council_provider.consultario.api_key   = SUA_CHAVE_DE_API
+council_provider.consultario.base_url  = https://api.consultar.io/v1
+council_provider.consultario.enabled   = 1
+council_provider.consultario.priority  = 10
+```
+
+**Endpoint por conselho:**
+```
+GET {base_url}/conselhos/{conselho}?registro={numero}&uf={estado}
+Authorization: Bearer {api_key}
 ```
 
 ---
 
-### CRN — Conselho Regional de Nutrição
+### 2. Infosimples (Prioridade padrão: 20)
 
-- **URL oficial:** https://www.cfn.org.br/index.php/consulta-de-registro/
-- **Método:** POST AJAX (WordPress `admin-ajax.php`)
-- **Endpoint:** `https://www.cfn.org.br/wp-admin/admin-ajax.php`
-- **Parâmetros:** `action=consulta_registro`, `registro`, `uf`, `nonce`
-- **Resposta esperada:** JSON `{"nome":"...","situacao":"ATIVO"}`
-- **Fallback:** Parsing HTML da página de resultado
-- **Limitações:** Nonce WordPress pode expirar; CAPTCHA possível
+- **Tipo:** API REST
+- **Autenticação:** Token no body JSON
+- **Método:** POST com JSON body
+- **Conselhos:** Todos (CRP, CRN, COREN, CREFITO, CRM, CRO, CREA, OAB)
+- **Documentação:** https://infosimples.com/docs
 
-**Exemplo de requisição:**
+**Configuração:**
 ```
-POST https://www.cfn.org.br/wp-admin/admin-ajax.php
-Content-Type: application/x-www-form-urlencoded
-X-Requested-With: XMLHttpRequest
-
-action=consulta_registro&registro=12345&uf=SP&nonce=abc123
+council_provider.infosimples.api_token = SEU_TOKEN_DE_API
+council_provider.infosimples.base_url  = https://api.infosimples.com/api/v2
+council_provider.infosimples.enabled   = 1
+council_provider.infosimples.priority  = 20
 ```
 
----
-
-### COREN — Conselho Regional de Enfermagem
-
-- **URL oficial:** https://www.cofen.gov.br/consulta-de-profissionais/
-- **Método:** POST AJAX (WordPress `admin-ajax.php`)
-- **Endpoint:** `https://www.cofen.gov.br/wp-admin/admin-ajax.php`
-- **Parâmetros:** `action=consulta_profissional`, `coren`, `uf`, `nonce`
-- **Resposta esperada:** JSON `{"data":{"nome":"...","situacao":"ATIVO"}}`
-- **Fallback:** Parsing HTML
-- **Limitações:** Nonce WordPress; possível CAPTCHA
-
----
-
-### CREFITO — Conselho Regional de Fisioterapia e Terapia Ocupacional
-
-- **URL oficial:** https://www.coffito.gov.br/nsite/?page_id=2341
-- **Método:** POST AJAX (WordPress `admin-ajax.php`)
-- **Endpoint:** `https://www.coffito.gov.br/nsite/wp-admin/admin-ajax.php`
-- **Parâmetros:** `action=consulta_profissional`, `registro`, `uf`, `nonce`
-- **Resposta esperada:** JSON `{"data":{"nome":"...","situacao":"ATIVO"}}`
-- **Fallback:** Parsing HTML
-- **Limitações:** Nonce WordPress; possível CAPTCHA
-
----
-
-### CRM — Conselho Regional de Medicina
-
-- **URL oficial:** https://portal.cfm.org.br/busca-medicos/
-- **Método:** GET (API REST pública do CFM)
-- **Endpoint:** `https://portal.cfm.org.br/api/v1/medicos/busca?crm=XXXXX&uf=SP`
-- **Resposta esperada:** JSON `{"medicos":[{"nome":"...","situacao":"ATIVO","especialidade":"..."}]}`
-- **Fallback:** Scraping HTML do portal CFM
-- **Limitações:** Consulta por UF obrigatória (cadastro não é nacional unificado)
-
-**Exemplo de requisição:**
+**Endpoint por conselho:**
 ```
-GET https://portal.cfm.org.br/api/v1/medicos/busca?crm=123456&uf=SP
-Accept: application/json
-Referer: https://portal.cfm.org.br/busca-medicos/
-```
+POST {base_url}/consultas/conselhos/{conselho}
+Content-Type: application/json
 
-**Exemplo de resposta:**
-```json
-{
-  "medicos": [{
-    "nome": "JOÃO DA SILVA",
-    "crm": "123456",
-    "uf": "SP",
-    "situacao": "ATIVO",
-    "especialidade": "CLÍNICA MÉDICA"
-  }]
-}
+{"token": "...", "registro": "123456", "uf": "SP"}
 ```
 
 ---
 
-### CRO — Conselho Regional de Odontologia
+### 3. Portal Direto — Fallback (Prioridade padrão: 99)
 
-- **URL oficial:** https://website.cfo.org.br/servicos/consulta-de-inscricao/
-- **Método:** POST form (WordPress)
-- **Parâmetros:** `cro`, `uf`, `_wpnonce`
-- **Resposta:** HTML com tabela de resultado
-- **Fallback:** Parsing HTML via DOMXPath
-- **Limitações:** CAPTCHA detectado em alguns acessos; consulta por UF necessária
+- **Tipo:** Scraping direto nos portais oficiais
+- **Autenticação:** Nenhuma
+- **Limitações:** CAPTCHA, WAF, SPAs podem bloquear consultas
+- **Conselhos:** Todos (com limitações por portal)
 
----
-
-### CREA — Conselho Regional de Engenharia e Agronomia
-
-- **URL oficial:** Varia por UF (ex: https://www.crea-sp.org.br/)
-- **Método:** GET (API CONFEA) com fallback POST no portal estadual
-- **Endpoint primário:** `https://www.confea.org.br/api/profissional/consulta?registro=XXXXX&uf=SP`
-- **Fallback:** Portal do CREA estadual correspondente à UF
-- **Limitações:** Cada CREA estadual tem portal próprio; alguns possuem CAPTCHA ou Cloudflare
-
-**Mapa de URLs por UF:** Implementado em `council_crea_url_by_uf()` no `council_validator.php`.
-
----
-
-### OAB — Ordem dos Advogados do Brasil
-
-- **URL oficial:** https://cna.oab.org.br/
-- **Método:** GET (API pública do CNA)
-- **Endpoint:** `https://cna.oab.org.br/Home/Search?q=NUMERO&uf=SP`
-- **Resposta esperada:** JSON `{"Data":[{"Nome":"...","Situacao":"ATIVO","InscricaoTipo":"..."}]}`
-- **Fallback:** Scraping HTML do CNA
-- **Limitações:** Consulta por UF obrigatória
-
-**Exemplo de requisição:**
+**Configuração:**
 ```
-GET https://cna.oab.org.br/Home/Search?q=123456&uf=SP
-Accept: application/json
-X-Requested-With: XMLHttpRequest
-Referer: https://cna.oab.org.br/
-```
-
-**Exemplo de resposta:**
-```json
-{
-  "Data": [{
-    "Nome": "JOÃO DA SILVA",
-    "InscricaoNumero": "123456",
-    "InscricaoUF": "SP",
-    "InscricaoTipo": "Advogado",
-    "Situacao": "ATIVO"
-  }]
-}
+council_provider.portal_direct.enabled  = 1
+council_provider.portal_direct.priority = 99
 ```
 
 ---
 
 ## Formato de Retorno Padronizado
 
+### Sucesso (registro encontrado):
 ```json
 {
   "success": true,
@@ -177,25 +143,63 @@ Referer: https://cna.oab.org.br/
   "name": "JOÃO DA SILVA",
   "status": "ATIVO",
   "state": "SP",
-  "source": "Portal CFM — portal.cfm.org.br",
+  "source": "Consultar.IO",
   "consulted_at": "2026-06-01 12:00:00",
+  "provider_used": "Consultar.IO",
   "from_cache": false
 }
 ```
 
-### Campos de erro (quando `success: false`):
+### Sucesso (registro não encontrado):
+```json
+{
+  "success": true,
+  "valid": false,
+  "registry_type": "CRM",
+  "registry_number": "999999",
+  "name": null,
+  "status": "NÃO ENCONTRADO",
+  "state": "SP",
+  "source": "Consultar.IO",
+  "consulted_at": "2026-06-01 12:00:00"
+}
+```
 
+### Erro (todos os provedores falharam):
 ```json
 {
   "success": false,
   "valid": false,
-  "error": "CAPTCHA detectado no portal CFO/CRO.",
-  "has_captcha": true,
-  "has_cloudflare": false,
-  "has_auth": false,
-  "has_ip_block": false
+  "registry_type": "CRM",
+  "registry_number": "123456",
+  "name": null,
+  "status": "ERRO",
+  "state": "SP",
+  "source": "Sistema",
+  "error": "Todos os provedores falharam: Consultar.IO: Timeout | Infosimples: Rate limit",
+  "all_errors": [
+    "Consultar.IO: Timeout ou erro de conexão",
+    "Infosimples: Limite de consultas atingido"
+  ],
+  "consulted_at": "2026-06-01 12:00:00"
 }
 ```
+
+---
+
+## Sistema de Fallback
+
+O sistema tenta os provedores em ordem de prioridade (menor número = maior prioridade):
+
+1. **Consultar.IO** (prioridade 10) — Se configurado e habilitado
+2. **Infosimples** (prioridade 20) — Se configurado e habilitado
+3. **Portal Direto** (prioridade 99) — Scraping como último recurso
+
+**Regras de fallback:**
+- Se um provedor retorna `success: true` (mesmo com `valid: false`), o resultado é aceito
+- Se um provedor retorna `success: false` (erro), tenta o próximo
+- Se todos falharem, retorna erro consolidado com detalhes de cada provedor
+- Provedores não configurados ou desabilitados são ignorados
 
 ---
 
@@ -205,40 +209,117 @@ Referer: https://cna.oab.org.br/
 - **Validade:** 24 horas
 - **Chave:** `(council_abbr, registry_number, council_state)`
 - **Estratégia:** INSERT ... ON DUPLICATE KEY UPDATE
+- **Regra:** Resultados de erro NÃO são cacheados (sempre revalida)
 - **Identificação:** Campo `from_cache: true` no retorno quando servido do cache
+- **Force refresh:** Botão "Revalidar" na interface ignora cache
 
 ---
 
 ## Logs
 
 - **Tabela:** `council_validation_logs`
-- **Campos:** conselho, número, UF, sucesso, válido, nome encontrado, status, fonte, erro, JSON completo, usuário que disparou, ID da candidatura
-- **Retenção:** Sem expiração automática (manter para auditoria)
+- **Campos registrados:**
+  - Data e hora da consulta
+  - Conselho consultado (sigla)
+  - Número do registro
+  - UF do registro
+  - Sucesso (sim/não)
+  - Válido (sim/não)
+  - Nome encontrado
+  - Status encontrado
+  - Fonte/provedor utilizado
+  - Tempo de resposta (ms)
+  - Mensagem de erro (se houver)
+  - JSON completo do resultado
+  - Usuário que disparou a consulta
+  - ID da candidatura associada
+- **Retenção:** Sem expiração automática (auditoria)
+- **Painel:** Acessível em `/admin_council_logs.php`
 
 ---
 
-## Proteções Anti-Bot Identificadas
+## Tratamento de Erros
 
-| Conselho | Cloudflare | CAPTCHA | Autenticação | Observação |
-|---|---|---|---|---|
-| CRP/CFP | Não identificado | Possível | Não | Portal WordPress |
-| CRN/CFN | Não identificado | Possível | Não | Portal WordPress |
-| COREN/COFEN | Não identificado | Possível | Não | Portal WordPress |
-| CREFITO/COFFITO | Não identificado | Possível | Não | Portal WordPress |
-| CRM/CFM | Não identificado | Não | Não | API REST pública |
-| CRO/CFO | Não identificado | Detectado em alguns acessos | Não | Portal WordPress |
-| CREA/CONFEA | Varia por UF | Varia por UF | Não | Portais estaduais independentes |
-| OAB/CNA | Não identificado | Não | Não | API pública JSON |
+| Cenário | Comportamento |
+|---|---|
+| Timeout de API | Registra erro, tenta próximo provedor |
+| Falha de autenticação (401/403) | Registra erro, tenta próximo provedor |
+| Limite de consultas (429) | Registra erro, tenta próximo provedor |
+| Resposta inválida (não-JSON) | Registra erro, tenta próximo provedor |
+| Conselho não suportado | Retorna erro imediato (sem fallback) |
+| Registro não encontrado | Aceita resultado (success=true, valid=false) |
+| Erro temporário do servidor (5xx) | Registra erro, tenta próximo provedor |
+| Todos os provedores falharam | Retorna erro consolidado com todos os detalhes |
 
 ---
 
-## Notas sobre Cadastros Regionais
+## Configuração de Credenciais
 
-Os seguintes conselhos **não possuem cadastro nacional unificado** e exigem a UF do profissional para direcionar a consulta ao conselho regional correto:
+As credenciais são armazenadas na tabela `admin_settings` com as seguintes chaves:
 
-- **CRM** — Consulta via CFM com parâmetro `uf` obrigatório
-- **CREA** — Cada estado tem portal próprio; sistema tenta CONFEA nacional primeiro
-- **CRO** — Consulta via CFO com parâmetro `uf`
-- **OAB** — Consulta via CNA com parâmetro `uf`
+| Chave | Descrição |
+|---|---|
+| `council_provider.consultario.api_key` | Chave de API do Consultar.IO |
+| `council_provider.consultario.base_url` | URL base (padrão: https://api.consultar.io/v1) |
+| `council_provider.consultario.enabled` | "1" para ativo, "0" para inativo |
+| `council_provider.consultario.priority` | Prioridade numérica (padrão: 10) |
+| `council_provider.infosimples.api_token` | Token de API do Infosimples |
+| `council_provider.infosimples.base_url` | URL base (padrão: https://api.infosimples.com/api/v2) |
+| `council_provider.infosimples.enabled` | "1" para ativo, "0" para inativo |
+| `council_provider.infosimples.priority` | Prioridade numérica (padrão: 20) |
+| `council_provider.portal_direct.enabled` | "1" para ativo (padrão), "0" para inativo |
+| `council_provider.portal_direct.priority` | Prioridade numérica (padrão: 99) |
 
-O campo `council_state` da candidatura é usado automaticamente como UF de direcionamento.
+---
+
+## Limites de Uso
+
+Os limites dependem do plano contratado com cada provedor:
+
+- **Consultar.IO:** Verificar plano contratado (geralmente por consulta)
+- **Infosimples:** Verificar plano contratado (geralmente por consulta)
+- **Portal Direto:** Sem limite de consultas, mas sujeito a bloqueios por CAPTCHA/WAF
+
+O sistema detecta HTTP 429 (rate limit) e registra no log para monitoramento.
+
+---
+
+## Como Adicionar um Novo Provedor
+
+1. Criar arquivo em `app/council_providers/NovoProvider.php`
+2. Implementar a interface `CouncilProviderInterface`
+3. Estender `AbstractProvider` para herdar métodos utilitários
+4. Registrar o provedor em `council_get_all_providers()` no `app/council_validator.php`
+5. Adicionar configurações no painel admin (`admin_council_providers_settings.php`)
+6. Documentar aqui
+
+**Exemplo mínimo:**
+```php
+<?php
+class NovoProvider extends AbstractProvider
+{
+    public function getName(): string { return 'Novo Provedor'; }
+    public function supports(string $councilAbbr): bool { return true; }
+    public function supportedCouncils(): array { return ['CRP','CRN','COREN','CREFITO','CRM','CRO','CREA','OAB']; }
+    public function isConfigured(): bool { return $this->getSetting('council_provider.novo.enabled') === '1'; }
+    public function getPriority(): int { return 15; }
+
+    public function validate(string $councilAbbr, string $number, string $state): array
+    {
+        // Implementar chamada à API
+        // Retornar $this->successResult(), $this->notFoundResult() ou $this->errorResult()
+    }
+}
+```
+
+---
+
+## Notas Importantes
+
+- A UF é obrigatória para todos os conselhos (CRM, CREA, CRO e OAB exigem para direcionar ao regional correto)
+- O campo `council_state` da candidatura é usado automaticamente como UF
+- O cache de 24h reduz custos com APIs pagas
+- Resultados de erro nunca são cacheados (sempre revalida)
+- O botão "Revalidar" na interface sempre ignora o cache
+- Logs são mantidos indefinidamente para auditoria
+- A troca de provedor não requer alteração em telas ou regras de negócio
