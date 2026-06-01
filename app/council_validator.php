@@ -415,102 +415,91 @@ function council_crn_html_fallback(string $number, string $uf, string $html): ar
 
 // ---------------------------------------------------------------------------
 // COREN — Conselho Regional de Enfermagem
-// Portal: https://www.cofen.gov.br/consulta-de-profissionais/
-// Endpoint AJAX: https://www.cofen.gov.br/wp-admin/admin-ajax.php
-// Método: POST AJAX (WordPress)
+//
+// Portal real (inspecionado): https://consultapublica.cofen.gov.br/coren-{uf}/
+// Cada UF tem subdomínio próprio: /coren-sp/, /coren-pr/, etc.
+//
+// LIMITAÇÕES IDENTIFICADAS (inspeção real em 2026-06-01):
+//  1. O formulário exige CPF do profissional — não número de inscrição.
+//  2. O formulário possui reCAPTCHA v2 obrigatório (sitekey: 6Ld1A1sUAAAAAJHzvmOAR-KUBjJ0cDfunmGaDiQl).
+//  3. O portal usa CloudWAF (Huawei) que retorna HTTP 418 para POSTs automatizados.
+//  4. Há CSRF token por sessão (c_publica_login[_token]).
+//
+// CONCLUSÃO: Automação completa não é possível sem resolver o reCAPTCHA.
+// O sistema informa claramente as proteções encontradas e orienta consulta manual.
+//
+// URL de consulta manual: https://consultapublica.cofen.gov.br/coren-{uf}/consulta-profissional
 // ---------------------------------------------------------------------------
 
 function council_coren(string $number, string $uf): array
 {
-    // COFEN possui endpoint AJAX público para consulta por número
-    $ajaxUrl  = 'https://www.cofen.gov.br/wp-admin/admin-ajax.php';
-    $pageUrl  = 'https://www.cofen.gov.br/consulta-de-profissionais/';
+    $ufLower  = strtolower($uf);
+    $portalUrl = 'https://consultapublica.cofen.gov.br/coren-' . $ufLower . '/consulta-profissional';
 
-    // Obtém nonce da página
-    $pageRes = council_http('GET', $pageUrl);
-    $nonce   = '';
-    if ($pageRes['error'] === '' && preg_match('/nonce["\s:]+([a-f0-9]{10,})/i', $pageRes['body'], $m)) {
-        $nonce = $m[1];
-    }
-
-    $postData = http_build_query([
-        'action'   => 'consulta_profissional',
-        'coren'    => $number,
-        'uf'       => $uf,
-        'nonce'    => $nonce,
-    ]);
-
-    $res = council_http('POST', $ajaxUrl, [
-        'Content-Type: application/x-www-form-urlencoded',
-        'Referer: ' . $pageUrl,
-        'X-Requested-With: XMLHttpRequest',
-    ], $postData);
+    // Verifica se a UF é válida fazendo um GET na página
+    $res = council_http('GET', $portalUrl, [
+        'Referer: https://consultapublica.cofen.gov.br/',
+    ], null, 15);
 
     if ($res['error'] !== '') {
-        return council_error_result('COREN', $number, $uf, 'Timeout/conexão: ' . $res['error']);
+        return council_error_result('COREN', $number, $uf,
+            'Timeout ao acessar portal COREN-' . $uf . '. ' .
+            'Acesse manualmente: ' . $portalUrl
+        );
     }
 
-    $prot = council_detect_protections($res['status'], $res['body'], $res['headers']);
-    if ($prot['cf']) {
-        return council_error_result('COREN', $number, $uf, 'Cloudflare detectado no portal COFEN.');
-    }
-    if ($prot['captcha']) {
-        return council_error_result('COREN', $number, $uf, 'CAPTCHA detectado no portal COFEN/COREN.');
-    }
-
-    $json = json_decode($res['body'], true);
-    if (is_array($json)) {
-        $data   = $json['data'] ?? $json;
-        $name   = $data['nome'] ?? $data['name'] ?? null;
-        $status = $data['situacao'] ?? $data['status'] ?? 'DESCONHECIDO';
-        if ($name) {
-            return council_success((string)$name, strtoupper((string)$status), 'Portal COFEN — cofen.gov.br');
-        }
-        if (isset($json['success']) && !$json['success']) {
-            return council_not_found('Portal COFEN');
-        }
-    }
-
-    // Fallback HTML
-    return council_coren_html_fallback($number, $uf, $res['body']);
-}
-
-function council_coren_html_fallback(string $number, string $uf, string $html): array
-{
-    if (trim($html) === '') {
-        return council_not_found('Portal COFEN');
+    // CloudWAF bloqueia POSTs automatizados com HTTP 418
+    if ($res['status'] === 418) {
+        return [
+            'success'        => false,
+            'valid'          => false,
+            'name'           => null,
+            'status'         => 'BLOQUEADO',
+            'source'         => 'Portal COFEN — consultapublica.cofen.gov.br',
+            'error'          => 'CloudWAF (Huawei) bloqueou a requisição automática (HTTP 418). '
+                              . 'O portal COREN-' . $uf . ' exige resolução de reCAPTCHA v2 para consulta. '
+                              . 'Acesse manualmente: ' . $portalUrl,
+            'has_captcha'    => true,
+            'has_cloudflare' => false,
+            'has_waf'        => true,
+            'has_auth'       => false,
+            'has_ip_block'   => false,
+            'manual_url'     => $portalUrl,
+            'requires_cpf'   => true,
+            'note'           => 'O portal COREN exige CPF do profissional (não número de inscrição) e reCAPTCHA v2.',
+        ];
     }
 
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-    $xpath = new DOMXPath($dom);
+    // Verifica se a página carregou e contém reCAPTCHA
+    $hasCaptcha = str_contains($res['body'], 'g-recaptcha') || str_contains($res['body'], 'recaptcha');
+    $hasWaf     = $res['status'] === 418 || str_contains($res['body'], 'CloudWAF') || str_contains($res['body'], 'HWWAF');
 
-    $name   = null;
-    $status = 'DESCONHECIDO';
-
-    // Tenta encontrar nome em células de tabela ou divs de resultado
-    $cells = $xpath->query('//td | //*[contains(@class,"nome")] | //*[contains(@class,"profissional")]');
-    if ($cells) {
-        foreach ($cells as $cell) {
-            $text = trim($cell->textContent);
-            if (strlen($text) > 8 && preg_match('/^[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ\s]+$/u', $text)) {
-                $name = $text;
-                break;
-            }
-        }
+    if ($hasCaptcha) {
+        return [
+            'success'        => false,
+            'valid'          => false,
+            'name'           => null,
+            'status'         => 'CAPTCHA OBRIGATÓRIO',
+            'source'         => 'Portal COFEN — consultapublica.cofen.gov.br',
+            'error'          => 'O portal COREN-' . $uf . ' exige reCAPTCHA v2 e CPF do profissional. '
+                              . 'Automação não é possível sem resolver o CAPTCHA. '
+                              . 'Acesse manualmente: ' . $portalUrl,
+            'has_captcha'    => true,
+            'has_cloudflare' => false,
+            'has_waf'        => $hasWaf,
+            'has_auth'       => false,
+            'has_ip_block'   => false,
+            'manual_url'     => $portalUrl,
+            'requires_cpf'   => true,
+            'note'           => 'O portal COREN exige CPF do profissional (não número de inscrição) e reCAPTCHA v2.',
+        ];
     }
 
-    if (str_contains(strtolower($html), 'ativo')) {
-        $status = 'ATIVO';
-    } elseif (str_contains(strtolower($html), 'inativo') || str_contains(strtolower($html), 'cancelado')) {
-        $status = 'INATIVO';
-    }
-
-    if ($name === null) {
-        return council_error_result('COREN', $number, $uf, 'Não foi possível extrair dados do portal COFEN. Layout pode ter mudado.');
-    }
-
-    return council_success($name, $status, 'Portal COFEN — cofen.gov.br');
+    // Se chegou aqui sem captcha (improvável, mas tratamos)
+    return council_error_result('COREN', $number, $uf,
+        'Não foi possível consultar automaticamente o portal COREN-' . $uf . '. '
+        . 'Acesse manualmente: ' . $portalUrl
+    );
 }
 
 // ---------------------------------------------------------------------------

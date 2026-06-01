@@ -128,8 +128,14 @@ if ($hasCouncil) {
         if (!empty($lastValidation['error'])) {
             $fields['Detalhe do erro'] = $lastValidation['error'];
         }
+        if (!empty($lastValidation['note'])) {
+            $fields['Observação'] = $lastValidation['note'];
+        }
         if (!empty($lastValidation['has_captcha']) && $lastValidation['has_captcha']) {
-            $fields['Proteção'] = 'CAPTCHA detectado — consulta manual necessária';
+            $fields['Proteção'] = 'reCAPTCHA obrigatório — consulta manual necessária';
+        }
+        if (!empty($lastValidation['has_waf']) && $lastValidation['has_waf']) {
+            $fields['Proteção'] = ($fields['Proteção'] ?? '') . ' WAF bloqueou requisição automática';
         }
         if (!empty($lastValidation['has_cloudflare']) && $lastValidation['has_cloudflare']) {
             $fields['Proteção'] = 'Cloudflare detectado — consulta manual necessária';
@@ -137,6 +143,12 @@ if ($hasCouncil) {
         foreach ($fields as $label => $value) {
             $v = trim((string)$value);
             echo '<div class="pill" style="display:block"><strong>' . h($label) . ':</strong> ' . h($v !== '' ? $v : '-') . '</div>';
+        }
+        // Link para consulta manual (quando disponível)
+        if (!empty($lastValidation['manual_url'])) {
+            echo '<div class="pill" style="display:block"><strong>Consulta manual:</strong> '
+                . '<a href="' . h((string)$lastValidation['manual_url']) . '" target="_blank" rel="noopener">'
+                . h((string)$lastValidation['manual_url']) . '</a></div>';
         }
         echo '</div>';
     } else {
@@ -195,13 +207,18 @@ function runCouncilValidation(btn) {
             html += '</div>';
         } else {
             html += '<div style="background:hsl(38 92% 97%);border:1px solid hsl(38 92% 50%);border-radius:8px;padding:14px;font-size:14px">';
-            html += '<div style="font-weight:900;color:hsl(38 92% 35%);margin-bottom:8px">⚠ Não foi possível consultar automaticamente</div>';
-            if (data.error) { html += '<div><strong>Motivo:</strong> ' + data.error + '</div>'; }
-            if (data.has_captcha)    { html += '<div>🔒 CAPTCHA detectado no portal.</div>'; }
-            if (data.has_cloudflare) { html += '<div>🔒 Cloudflare detectado no portal.</div>'; }
-            if (data.has_auth)       { html += '<div>🔒 Autenticação obrigatória no portal.</div>'; }
-            if (data.has_ip_block)   { html += '<div>🔒 Possível bloqueio por IP.</div>'; }
-            html += '<div style="margin-top:8px">Realize a consulta manual no portal oficial do conselho.</div>';
+            html += '<div style="font-weight:900;color:hsl(38 92% 35%);margin-bottom:8px">⚠ Consulta automática não disponível</div>';
+            if (data.error) { html += '<div style="margin-bottom:8px">' + data.error + '</div>'; }
+            if (data.has_captcha)    { html += '<div>🔒 <strong>reCAPTCHA obrigatório</strong> no portal.</div>'; }
+            if (data.has_waf)        { html += '<div>🔒 <strong>WAF (firewall)</strong> bloqueou a requisição automática.</div>'; }
+            if (data.has_cloudflare) { html += '<div>🔒 <strong>Cloudflare</strong> detectado no portal.</div>'; }
+            if (data.has_auth)       { html += '<div>🔒 <strong>Autenticação</strong> obrigatória no portal.</div>'; }
+            if (data.has_ip_block)   { html += '<div>🔒 <strong>Bloqueio por IP</strong> detectado.</div>'; }
+            if (data.requires_cpf)   { html += '<div style="margin-top:6px">ℹ️ Este portal exige <strong>CPF</strong> do profissional (não o número de inscrição).</div>'; }
+            if (data.note)           { html += '<div style="margin-top:4px;color:#666">' + data.note + '</div>'; }
+            if (data.manual_url) {
+                html += '<div style="margin-top:10px"><a href="' + data.manual_url + '" target="_blank" style="color:hsl(38 92% 35%);font-weight:700;text-decoration:underline">→ Abrir portal para consulta manual</a></div>';
+            }
             html += '</div>';
         }
 
