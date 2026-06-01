@@ -27,10 +27,14 @@ $councilNumber = trim((string)($pa['council_number'] ?? ''));
 $councilState  = strtoupper(trim((string)($pa['council_state'] ?? '')));
 $hasCouncil    = $councilAbbr !== '' && $councilNumber !== '' && $councilState !== '';
 
-// Resultado da última validação (se existir)
+// Resultado da última validação (se existir) — só exibe resultados conclusivos, não erros antigos
 $lastValidation = null;
 if (!empty($pa['council_validation_result'])) {
-    $lastValidation = json_decode((string)$pa['council_validation_result'], true);
+    $decoded = json_decode((string)$pa['council_validation_result'], true);
+    // Não exibe resultados de ERRO no card persistido — o usuário deve revalidar
+    if (is_array($decoded) && !empty($decoded['success'])) {
+        $lastValidation = $decoded;
+    }
 }
 $validationStatus = (string)($pa['council_validation_status'] ?? '');
 $validatedAt      = (string)($pa['council_validated_at'] ?? '');
@@ -98,7 +102,7 @@ if ($hasCouncil) {
     echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">';
     echo '<div style="font-weight:900">Validação do Registro Profissional</div>';
 
-    if ($validationStatus !== '') {
+    if ($validationStatus !== '' && $validationStatus !== 'ERROR') {
         $badgeColor = match($validationStatus) {
             'VALID'   => 'hsl(142 71% 45%)',
             'INVALID' => 'hsl(0 72% 51%)',
@@ -224,8 +228,11 @@ function runCouncilValidation(btn) {
 
         resultDiv.innerHTML = html;
 
-        // Recarrega a página após 2s para atualizar o badge de status
-        setTimeout(function() { window.location.reload(); }, 2000);
+        // Recarrega a página após 3s apenas se o resultado foi positivo (para atualizar o badge)
+        // Para erros/captcha, não recarrega — o resultado inline já é suficiente
+        if (data.success) {
+            setTimeout(function() { window.location.reload(); }, 3000);
+        }
     })
     .catch(function(err) {
         btn.disabled = false;

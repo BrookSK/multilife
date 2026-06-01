@@ -26,17 +26,27 @@ declare(strict_types=1);
  * @param string $state        UF do conselho regional (ex: SP, RJ)
  * @return array               Resultado padronizado (ver docblock abaixo)
  */
-function council_validate(string $councilAbbr, string $number, string $state): array
+function council_validate(string $councilAbbr, string $number, string $state, bool $forceRefresh = false): array
 {
     $abbr  = strtoupper(trim($councilAbbr));
     $num   = trim($number);
     $uf    = strtoupper(trim($state));
     $start = date('Y-m-d H:i:s');
 
-    // Verifica cache
-    $cached = council_cache_get($abbr, $num, $uf);
-    if ($cached !== null) {
-        return $cached;
+    // Verifica cache (ignorado quando forceRefresh=true ou resultado anterior era ERRO)
+    if (!$forceRefresh) {
+        $cached = council_cache_get($abbr, $num, $uf);
+        if ($cached !== null) {
+            // Não serve cache de resultados de erro — sempre revalida
+            $cachedStatus = strtoupper((string)($cached['status'] ?? ''));
+            if ($cachedStatus !== 'ERRO' && ($cached['success'] ?? false) !== false) {
+                return $cached;
+            }
+            // Limpa o cache de erro para forçar nova consulta
+            council_cache_delete($abbr, $num, $uf);
+        }
+    } else {
+        council_cache_delete($abbr, $num, $uf);
     }
 
     // Despacha para o handler correto
@@ -1065,6 +1075,12 @@ function council_cache_get(string $abbr, string $number, string $uf): ?array
 
 function council_cache_set(string $abbr, string $number, string $uf, array $result): void
 {
+    // Não cacheia resultados de erro — eles devem ser revalidados sempre
+    $status = strtoupper((string)($result['status'] ?? ''));
+    if ($status === 'ERRO' || ($result['success'] ?? true) === false) {
+        return;
+    }
+
     try {
         $stmt = db()->prepare(
             'INSERT INTO council_validation_cache
@@ -1083,6 +1099,19 @@ function council_cache_set(string $abbr, string $number, string $uf, array $resu
         ]);
     } catch (Throwable) {
         // Cache é best-effort; não interrompe o fluxo
+    }
+}
+
+function council_cache_delete(string $abbr, string $number, string $uf): void
+{
+    try {
+        $stmt = db()->prepare(
+            'DELETE FROM council_validation_cache
+             WHERE council_abbr = :abbr AND registry_number = :num AND council_state = :uf'
+        );
+        $stmt->execute(['abbr' => $abbr, 'num' => $number, 'uf' => $uf]);
+    } catch (Throwable) {
+        // best-effort
     }
 }
 

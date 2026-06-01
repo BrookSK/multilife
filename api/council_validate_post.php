@@ -64,8 +64,8 @@ if (!in_array($councilAbbr, $supportedCouncils, true)) {
     exit;
 }
 
-// Executa validação
-$result = council_validate($councilAbbr, $registryNumber, $councilState);
+// Executa validação — botão sempre força revalidação (ignora cache de erro)
+$result = council_validate($councilAbbr, $registryNumber, $councilState, true);
 
 // Persiste resultado na candidatura (se application_id fornecido)
 if ($applicationId > 0) {
