@@ -225,96 +225,108 @@ function council_detect_protections(int $status, string $body, array $headers): 
 
 // ---------------------------------------------------------------------------
 // CRP — Conselho Regional de Psicologia
-// Portal: https://cadastro.cfp.org.br/
-// Método: GET com parâmetros de busca → resposta HTML
-// Endpoint AJAX identificado: https://cadastro.cfp.org.br/profissional/busca
+//
+// Portal real (inspecionado): https://cadastro.cfp.org.br/
+// API real identificada via inspeção do JS: https://cn-api.cfp.org.br
+//
+// Endpoints:
+//   Busca: GET https://cn-api.cfp.org.br/psi/busca?registro=XXXXX&regiao=8&tipo=PF&recaptchaToken=TOKEN
+//   Por código: GET https://cn-api.cfp.org.br/psi/buscarComCodigo?profissional=CODIGO
+//
+// LIMITAÇÕES IDENTIFICADAS (inspeção real em 2026-06-01):
+//  1. A API exige recaptchaToken (reCAPTCHA v3) em todas as requisições.
+//     Retorna HTTP 422: {"recaptchaToken":["O campo recaptcha token é obrigatório."]}
+//  2. O campo de busca usa "regiao" (número da região CRP), não UF diretamente.
+//     Mapeamento: SP=6, RJ=5, MG=4, PR=8, RS=7, SC=12, etc.
+//  3. Busca por nome + região, não por número de inscrição diretamente.
+//
+// CONCLUSÃO: Automação não é possível sem resolver reCAPTCHA v3.
+// URL de consulta manual: https://cadastro.cfp.org.br/
 // ---------------------------------------------------------------------------
+
+/** Mapa UF → número da região CRP */
+function council_crp_regiao_by_uf(string $uf): ?int
+{
+    $map = [
+        'DF' => 1, 'PE' => 2, 'BA' => 3, 'MG' => 4, 'RJ' => 5,
+        'SP' => 6, 'RS' => 7, 'PR' => 8, 'GO' => 9, 'AP' => 10,
+        'CE' => 11, 'SC' => 12, 'PB' => 13, 'MS' => 14, 'AL' => 15,
+        'ES' => 16, 'RN' => 17, 'MT' => 18, 'SE' => 19, 'AM' => 20,
+        'PI' => 21, 'MA' => 22, 'TO' => 23, 'AC' => 24, 'RO' => 24,
+        'RR' => 20, 'PA' => 10,
+    ];
+    return $map[$uf] ?? null;
+}
 
 function council_crp(string $number, string $uf): array
 {
-    // O CFP possui endpoint de busca pública por número de registro
-    // URL: https://cadastro.cfp.org.br/profissional/busca?numero=XXXXX&uf=SP
-    $url = 'https://cadastro.cfp.org.br/profissional/busca?' . http_build_query([
-        'numero' => $number,
-        'uf'     => $uf,
+    $manualUrl = 'https://cadastro.cfp.org.br/';
+    $regiao    = council_crp_regiao_by_uf($uf);
+
+    // Tenta a API (vai falhar por falta de reCAPTCHA, mas documenta o comportamento)
+    $apiUrl = 'https://cn-api.cfp.org.br/psi/busca?' . http_build_query([
+        'registro'       => $number,
+        'regiao'         => $regiao ?? '',
+        'tipo'           => 'PF',
+        'recaptchaToken' => '',
     ]);
 
-    $res = council_http('GET', $url, [
+    $res = council_http('GET', $apiUrl, [
+        'Accept: application/json',
+        'Origin: https://cadastro.cfp.org.br',
         'Referer: https://cadastro.cfp.org.br/',
-    ]);
+    ], null, 15);
+
+    // HTTP 422 = reCAPTCHA obrigatório (comportamento esperado)
+    if ($res['status'] === 422) {
+        return [
+            'success'        => false,
+            'valid'          => false,
+            'name'           => null,
+            'status'         => 'CAPTCHA OBRIGATÓRIO',
+            'source'         => 'Portal CFP — cadastro.cfp.org.br',
+            'error'          => 'A API do CFP/CRP exige reCAPTCHA v3 em todas as requisições. '
+                              . 'Automação não é possível sem resolver o CAPTCHA. '
+                              . 'Acesse manualmente: ' . $manualUrl,
+            'has_captcha'    => true,
+            'has_cloudflare' => false,
+            'has_waf'        => false,
+            'has_auth'       => false,
+            'has_ip_block'   => false,
+            'manual_url'     => $manualUrl,
+            'note'           => 'O portal CRP usa reCAPTCHA v3 (invisível). A busca é feita por nome + região, não por número de inscrição diretamente.',
+        ];
+    }
 
     if ($res['error'] !== '') {
-        return council_error_result('CRP', $number, $uf, 'Timeout/conexão: ' . $res['error']);
+        return council_error_result('CRP', $number, $uf, 'Timeout/conexão ao portal CFP: ' . $res['error']);
     }
 
     $prot = council_detect_protections($res['status'], $res['body'], $res['headers']);
     if ($prot['cf']) {
-        return council_error_result('CRP', $number, $uf, 'Cloudflare detectado. Consulta automática bloqueada.');
-    }
-    if ($prot['captcha']) {
-        return council_error_result('CRP', $number, $uf, 'CAPTCHA detectado no portal CFP/CRP.');
+        return council_error_result('CRP', $number, $uf, 'Cloudflare detectado no portal CFP. Acesse manualmente: ' . $manualUrl);
     }
 
-    // Tenta parse JSON primeiro
     $json = json_decode($res['body'], true);
-    if (is_array($json)) {
-        return council_crp_parse_json($json, $number, $uf);
-    }
-
-    // Fallback: parse HTML
-    return council_crp_parse_html($res['body'], $number, $uf);
-}
-
-function council_crp_parse_json(array $json, string $number, string $uf): array
-{
-    // Estrutura esperada: {"nome":"...","situacao":"ATIVO","crp":"..."}
-    $name   = $json['nome'] ?? $json['name'] ?? null;
-    $status = $json['situacao'] ?? $json['status'] ?? $json['situacao_registro'] ?? null;
-
-    if ($name === null && $status === null) {
-        return council_not_found('Portal CFP (JSON)');
-    }
-
-    return council_success(
-        (string)$name,
-        strtoupper((string)$status),
-        'Portal CFP — cadastro.cfp.org.br'
-    );
-}
-
-function council_crp_parse_html(string $html, string $number, string $uf): array
-{
-    if (trim($html) === '' || $html === false) {
-        return council_not_found('Portal CFP');
-    }
-
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-    $xpath = new DOMXPath($dom);
-
-    // Busca nome do profissional em elementos comuns de resultado
-    $nameNodes = $xpath->query('//*[contains(@class,"nome") or contains(@class,"profissional") or contains(@class,"resultado")]');
-    $name = null;
-    if ($nameNodes && $nameNodes->length > 0) {
-        $name = trim($nameNodes->item(0)->textContent);
-    }
-
-    // Busca status
-    $statusNodes = $xpath->query('//*[contains(@class,"situacao") or contains(@class,"status") or contains(text(),"ATIVO") or contains(text(),"INATIVO")]');
-    $status = 'DESCONHECIDO';
-    if ($statusNodes && $statusNodes->length > 0) {
-        $status = strtoupper(trim($statusNodes->item(0)->textContent));
-    }
-
-    if ($name === null || $name === '') {
-        // Verifica se há mensagem de "não encontrado"
-        if (str_contains(strtolower($html), 'não encontrado') || str_contains(strtolower($html), 'nenhum resultado')) {
-            return council_not_found('Portal CFP');
+    if (is_array($json) && count($json) > 0) {
+        $item   = $json[0];
+        $name   = $item['Nome'] ?? $item['nome'] ?? null;
+        $status = $item['situacao'] ?? $item['status'] ?? 'DESCONHECIDO';
+        if ($name) {
+            return council_success((string)$name, strtoupper((string)$status), 'Portal CFP — cadastro.cfp.org.br');
         }
-        return council_error_result('CRP', $number, $uf, 'Não foi possível extrair dados do HTML. O layout do portal pode ter mudado.');
     }
 
-    return council_success($name, $status, 'Portal CFP — cadastro.cfp.org.br');
+    return [
+        'success'     => false,
+        'valid'       => false,
+        'name'        => null,
+        'status'      => 'CAPTCHA OBRIGATÓRIO',
+        'source'      => 'Portal CFP — cadastro.cfp.org.br',
+        'error'       => 'reCAPTCHA v3 obrigatório. Acesse manualmente: ' . $manualUrl,
+        'has_captcha' => true,
+        'manual_url'  => $manualUrl,
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -610,97 +622,88 @@ function council_crefito_html_fallback(string $number, string $uf, string $html)
 
 // ---------------------------------------------------------------------------
 // CRM — Conselho Regional de Medicina
-// Portal: Consulta por UF — cada CRM estadual tem seu próprio portal.
-// Estratégia: CFM possui API pública em https://portal.cfm.org.br/busca-medicos/
-// Endpoint JSON: https://portal.cfm.org.br/api/v1/medicos/busca?crm=XXXXX&uf=SP
+//
+// Portal real (inspecionado): https://portal.cfm.org.br/busca-medicos/
+// API tentada: https://portal.cfm.org.br/api/v1/medicos/busca → HTTP 404 (não existe)
+// O portal CFM usa WordPress + busca renderizada no servidor.
+// Serviço de listagem para empresas: https://sistemas.cfm.org.br/listamedicos/informacoes
+//   (requer cadastro/autenticação)
+//
+// LIMITAÇÕES IDENTIFICADAS (inspeção real em 2026-06-01):
+//  1. Não existe API REST pública sem autenticação para busca por CRM.
+//  2. O portal usa reCAPTCHA v2 e v2 "outros" (sitekeys identificados no HTML).
+//  3. Consulta por UF obrigatória — cada CRM estadual tem portal próprio.
+//  4. O webservice oficial (sistemas.cfm.org.br/listamedicos) requer cadastro.
+//
+// URL de consulta manual: https://portal.cfm.org.br/busca-medicos/
 // ---------------------------------------------------------------------------
 
 function council_crm(string $number, string $uf): array
 {
-    // CFM possui API REST pública (sem autenticação)
-    $apiUrl = 'https://portal.cfm.org.br/api/v1/medicos/busca?' . http_build_query([
-        'crm' => $number,
-        'uf'  => $uf,
-    ]);
+    $manualUrl = 'https://portal.cfm.org.br/busca-medicos/';
 
-    $res = council_http('GET', $apiUrl, [
-        'Accept: application/json',
-        'Referer: https://portal.cfm.org.br/busca-medicos/',
-    ]);
+    // Tenta o portal de busca para verificar se há proteções
+    $res = council_http('GET', $manualUrl . '?crm=' . urlencode($number) . '&uf=' . urlencode($uf), [
+        'Referer: https://portal.cfm.org.br/',
+    ], null, 15);
 
     if ($res['error'] !== '') {
-        return council_error_result('CRM', $number, $uf, 'Timeout/conexão ao portal CFM: ' . $res['error']);
+        return council_error_result('CRM', $number, $uf, 'Timeout ao acessar portal CFM: ' . $res['error']);
     }
 
-    $prot = council_detect_protections($res['status'], $res['body'], $res['headers']);
+    // Verifica reCAPTCHA no HTML
+    $hasCaptcha = str_contains($res['body'], 'recaptcha') || str_contains($res['body'], 'g-recaptcha');
+    $prot       = council_detect_protections($res['status'], $res['body'], $res['headers']);
+
     if ($prot['cf']) {
-        return council_error_result('CRM', $number, $uf, 'Cloudflare detectado no portal CFM.');
-    }
-    if ($prot['captcha']) {
-        return council_error_result('CRM', $number, $uf, 'CAPTCHA detectado no portal CFM/CRM.');
+        return council_error_result('CRM', $number, $uf, 'Cloudflare detectado no portal CFM. Acesse manualmente: ' . $manualUrl);
     }
 
-    $json = json_decode($res['body'], true);
-    if (is_array($json)) {
-        // Estrutura: {"medicos":[{"nome":"...","situacao":"ATIVO","crm":"...","uf":"SP"}]}
-        $medicos = $json['medicos'] ?? $json['data'] ?? $json['results'] ?? null;
-        if (is_array($medicos) && count($medicos) > 0) {
-            $m      = $medicos[0];
-            $name   = $m['nome'] ?? $m['name'] ?? null;
-            $status = $m['situacao'] ?? $m['status'] ?? 'DESCONHECIDO';
-            if ($name) {
-                return council_success(
-                    (string)$name,
-                    strtoupper((string)$status),
-                    'Portal CFM — portal.cfm.org.br',
-                    ['specialty' => $m['especialidade'] ?? $m['specialty'] ?? null]
-                );
-            }
-        }
-        if (empty($medicos)) {
-            return council_not_found('Portal CFM');
-        }
-    }
-
-    // Fallback: scraping da página de busca do CFM
-    return council_crm_html_fallback($number, $uf);
-}
-
-function council_crm_html_fallback(string $number, string $uf): array
-{
-    $url = 'https://portal.cfm.org.br/busca-medicos/?crm=' . urlencode($number) . '&uf=' . urlencode($uf);
-    $res = council_http('GET', $url, ['Referer: https://portal.cfm.org.br/']);
-
-    if ($res['error'] !== '') {
-        return council_error_result('CRM', $number, $uf, 'Timeout no fallback HTML CFM: ' . $res['error']);
-    }
-
+    // Tenta extrair dados do HTML renderizado (WordPress SSR)
     $dom = new DOMDocument();
     @$dom->loadHTML('<?xml encoding="UTF-8">' . $res['body']);
     $xpath = new DOMXPath($dom);
 
+    // Busca em tabelas de resultado típicas do portal CFM
     $name   = null;
     $status = 'DESCONHECIDO';
 
-    // Busca em elementos de resultado típicos do portal CFM
-    $nameNodes = $xpath->query('//*[contains(@class,"medico-nome") or contains(@class,"doctor-name") or contains(@class,"nome")]');
-    if ($nameNodes && $nameNodes->length > 0) {
-        $name = trim($nameNodes->item(0)->textContent);
-    }
-
-    $statusNodes = $xpath->query('//*[contains(@class,"situacao") or contains(@class,"status")]');
-    if ($statusNodes && $statusNodes->length > 0) {
-        $status = strtoupper(trim($statusNodes->item(0)->textContent));
-    }
-
-    if ($name === null) {
-        if (str_contains(strtolower($res['body']), 'não encontrado') || str_contains(strtolower($res['body']), 'nenhum')) {
-            return council_not_found('Portal CFM');
+    $rows = $xpath->query('//table//tr[position()>1] | //*[contains(@class,"medico")] | //*[contains(@class,"resultado")]');
+    if ($rows && $rows->length > 0) {
+        foreach ($rows as $row) {
+            $text = trim($row->textContent);
+            if (strlen($text) > 8 && preg_match('/^[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ\s]+$/u', $text)) {
+                $name = $text;
+                break;
+            }
         }
-        return council_error_result('CRM', $number, $uf, 'Não foi possível extrair dados do portal CFM. Layout pode ter mudado.');
     }
 
-    return council_success($name, $status, 'Portal CFM — portal.cfm.org.br');
+    if ($name !== null) {
+        if (preg_match('/(ATIVO|INATIVO|CANCELADO|SUSPENSO)/i', $res['body'], $sm)) {
+            $status = strtoupper($sm[1]);
+        }
+        return council_success($name, $status, 'Portal CFM — portal.cfm.org.br');
+    }
+
+    // Não conseguiu extrair — informa proteções encontradas
+    return [
+        'success'        => false,
+        'valid'          => false,
+        'name'           => null,
+        'status'         => $hasCaptcha ? 'CAPTCHA OBRIGATÓRIO' : 'NÃO AUTOMATIZÁVEL',
+        'source'         => 'Portal CFM — portal.cfm.org.br',
+        'error'          => 'O portal CFM não possui API pública sem autenticação. '
+                          . ($hasCaptcha ? 'reCAPTCHA v2 detectado. ' : '')
+                          . 'Acesse manualmente: ' . $manualUrl,
+        'has_captcha'    => $hasCaptcha,
+        'has_cloudflare' => false,
+        'has_waf'        => false,
+        'has_auth'       => false,
+        'has_ip_block'   => false,
+        'manual_url'     => $manualUrl,
+        'note'           => 'Para consulta automatizada, o CFM oferece webservice pago para empresas em sistemas.cfm.org.br/listamedicos.',
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -944,44 +947,47 @@ function council_crea_parse_html(string $html, string $number, string $uf, strin
 
 // ---------------------------------------------------------------------------
 // OAB — Ordem dos Advogados do Brasil
-// Portal: https://cna.oab.org.br/
-// Endpoint JSON: https://cna.oab.org.br/Home/Search?q=NUMERO&uf=SP
-// Método: GET → JSON (API pública do CNA)
+//
+// Portal real (inspecionado): https://cna.oab.org.br/
+// O portal migrou para Angular SPA — todas as rotas retornam o mesmo HTML shell.
+// A API real é carregada pelo Angular em runtime (não acessível via GET simples).
+//
+// LIMITAÇÕES IDENTIFICADAS (inspeção real em 2026-06-01):
+//  1. Portal é Angular SPA — GET em qualquer URL retorna HTML sem dados.
+//  2. A API backend do Angular não foi identificada sem inspeção de rede no browser.
+//  3. Endpoint antigo /Home/Search retorna HTML da SPA (não JSON).
+//
+// URL de consulta manual: https://cna.oab.org.br/
 // ---------------------------------------------------------------------------
 
 function council_oab(string $number, string $uf): array
 {
-    // OAB possui API pública no CNA (Cadastro Nacional dos Advogados)
-    // Endpoint real identificado via inspeção de rede
-    $apiUrl = 'https://cna.oab.org.br/Home/Search?' . http_build_query([
+    $manualUrl = 'https://cna.oab.org.br/';
+
+    // Tenta o endpoint legado que costumava retornar JSON
+    $legacyUrl = 'https://cna.oab.org.br/Home/Search?' . http_build_query([
         'q'  => $number,
         'uf' => $uf,
     ]);
 
-    $res = council_http('GET', $apiUrl, [
+    $res = council_http('GET', $legacyUrl, [
         'Accept: application/json, text/javascript, */*',
         'X-Requested-With: XMLHttpRequest',
         'Referer: https://cna.oab.org.br/',
-    ]);
+    ], null, 15);
 
     if ($res['error'] !== '') {
-        return council_error_result('OAB', $number, $uf, 'Timeout/conexão ao portal CNA/OAB: ' . $res['error']);
+        return council_error_result('OAB', $number, $uf, 'Timeout ao acessar portal CNA/OAB: ' . $res['error']);
     }
 
     $prot = council_detect_protections($res['status'], $res['body'], $res['headers']);
     if ($prot['cf']) {
-        return council_error_result('OAB', $number, $uf, 'Cloudflare detectado no portal CNA/OAB.');
-    }
-    if ($prot['captcha']) {
-        return council_error_result('OAB', $number, $uf,
-            'CAPTCHA detectado no portal CNA/OAB. ' .
-            'Acesse manualmente: https://cna.oab.org.br/'
-        );
+        return council_error_result('OAB', $number, $uf, 'Cloudflare detectado no portal CNA/OAB. Acesse manualmente: ' . $manualUrl);
     }
 
+    // Tenta JSON (endpoint legado pode ainda funcionar)
     $json = json_decode($res['body'], true);
     if (is_array($json)) {
-        // Estrutura CNA: {"Data":[{"Nome":"...","InscricaoNumero":"...","InscricaoUF":"SP","InscricaoTipo":"...","Situacao":"ATIVO"}]}
         $data = $json['Data'] ?? $json['data'] ?? $json['results'] ?? null;
         if (is_array($data) && count($data) > 0) {
             $item   = $data[0];
@@ -1002,46 +1008,27 @@ function council_oab(string $number, string $uf): array
         }
     }
 
-    // Fallback: scraping da página de resultado
-    return council_oab_html_fallback($number, $uf);
-}
+    // Resposta é HTML da SPA Angular — portal não acessível via scraping
+    $isSpa = str_contains($res['body'], 'app-root') || str_contains($res['body'], 'Angular');
 
-function council_oab_html_fallback(string $number, string $uf): array
-{
-    $url = 'https://cna.oab.org.br/';
-    $res = council_http('GET', $url . '?q=' . urlencode($number) . '&uf=' . urlencode($uf));
-
-    if ($res['error'] !== '') {
-        return council_error_result('OAB', $number, $uf, 'Timeout no fallback HTML CNA/OAB: ' . $res['error']);
-    }
-
-    $dom = new DOMDocument();
-    @$dom->loadHTML('<?xml encoding="UTF-8">' . $res['body']);
-    $xpath = new DOMXPath($dom);
-
-    $name   = null;
-    $status = 'DESCONHECIDO';
-
-    // CNA usa tabela com classe específica
-    $rows = $xpath->query('//table[contains(@class,"table")]//tbody//tr | //*[contains(@class,"advogado")]');
-    if ($rows && $rows->length > 0) {
-        $cells = $xpath->query('.//td', $rows->item(0));
-        if ($cells && $cells->length > 0) {
-            $name = trim($cells->item(0)->textContent);
-        }
-        if ($cells && $cells->length > 2) {
-            $status = strtoupper(trim($cells->item(2)->textContent));
-        }
-    }
-
-    if ($name === null) {
-        if (str_contains(strtolower($res['body']), 'não encontrado') || str_contains(strtolower($res['body']), 'nenhum')) {
-            return council_not_found('Portal CNA/OAB');
-        }
-        return council_error_result('OAB', $number, $uf, 'Não foi possível extrair dados do portal CNA/OAB. Layout pode ter mudado.');
-    }
-
-    return council_success($name, $status, 'Portal CNA/OAB — cna.oab.org.br');
+    return [
+        'success'        => false,
+        'valid'          => false,
+        'name'           => null,
+        'status'         => 'NÃO AUTOMATIZÁVEL',
+        'source'         => 'Portal CNA/OAB — cna.oab.org.br',
+        'error'          => 'O portal CNA/OAB migrou para Angular SPA. '
+                          . 'Os dados são carregados via API privada em runtime, não acessível por scraping. '
+                          . 'Acesse manualmente: ' . $manualUrl,
+        'has_captcha'    => false,
+        'has_cloudflare' => false,
+        'has_waf'        => false,
+        'has_auth'       => false,
+        'has_ip_block'   => false,
+        'is_spa'         => $isSpa,
+        'manual_url'     => $manualUrl,
+        'note'           => 'Portal Angular SPA — a API backend não é acessível sem execução de JavaScript no browser.',
+    ];
 }
 
 // ---------------------------------------------------------------------------
