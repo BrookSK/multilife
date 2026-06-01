@@ -1397,12 +1397,12 @@ foreach ($sections as $sectionTitle => $sectionData) {
         $councilProviders = council_get_providers_info();
         
         $cioKey      = $councilCfg['council_provider.consultario.api_key'] ?? '';
-        $cioBaseUrl  = $councilCfg['council_provider.consultario.base_url'] ?? 'https://api.consultar.io/v1';
+        $cioBaseUrl  = $councilCfg['council_provider.consultario.base_url'] ?? 'https://consultar.io/api/v1';
         $cioEnabled  = ($councilCfg['council_provider.consultario.enabled'] ?? '0') === '1';
         $cioPriority = (int)($councilCfg['council_provider.consultario.priority'] ?? 10);
         
         $isToken     = $councilCfg['council_provider.infosimples.api_token'] ?? '';
-        $isBaseUrl   = $councilCfg['council_provider.infosimples.base_url'] ?? 'https://api.infosimples.com/api/v2';
+        $isBaseUrl   = $councilCfg['council_provider.infosimples.base_url'] ?? 'https://api.infosimples.com/api/v2/consultas';
         $isEnabled   = ($councilCfg['council_provider.infosimples.enabled'] ?? '0') === '1';
         $isPriority  = (int)($councilCfg['council_provider.infosimples.priority'] ?? 20);
         
@@ -1434,7 +1434,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         // Consultar.IO
         echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;margin-bottom:16px">';
-        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🔑 Consultar.IO</h3>';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:4px">🔑 Consultar.IO</h3>';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Conselhos suportados: <strong>CRM, CRO</strong> · Custo: R$ 0,20/consulta · Auth: Token no header</div>';
         
         echo '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
         echo '<input type="checkbox" name="settings[council_provider.consultario.enabled]" value="1"' . ($cioEnabled ? ' checked' : '') . ' style="width:18px;height:18px">';
@@ -1442,19 +1443,21 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</label>';
         
         echo '<div style="display:grid;gap:12px;max-width:600px">';
-        echo '<label>API Key<input type="password" name="settings[council_provider.consultario.api_key]" value="' . h($cioKey) . '" placeholder="Insira a chave de API" style="font-family:monospace"></label>';
+        echo '<label>Token de API<input type="password" name="settings[council_provider.consultario.api_key]" value="' . h($cioKey) . '" placeholder="Insira o token de API" style="font-family:monospace"></label>';
         echo '<label>URL Base<input type="text" name="settings[council_provider.consultario.base_url]" value="' . h($cioBaseUrl) . '"></label>';
         echo '<label>Prioridade (menor = primeiro)<input type="number" name="settings[council_provider.consultario.priority]" value="' . $cioPriority . '" min="1" max="999" style="width:100px"></label>';
         echo '</div>';
         
         echo '<div style="margin-top:12px;padding:10px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:4px;font-size:12px;color:#1e40af">';
-        echo '<strong>Documentação:</strong> <a href="https://consultar.io/docs" target="_blank" style="color:#1e40af;text-decoration:underline">consultar.io/docs</a>';
+        echo '<strong>Documentação:</strong> <a href="https://docs.consultar.io/" target="_blank" style="color:#1e40af;text-decoration:underline">docs.consultar.io</a> · ';
+        echo 'Obter token: <a href="https://consultar.io/painel/token/" target="_blank" style="color:#1e40af;text-decoration:underline">consultar.io/painel/token</a>';
         echo '</div>';
         echo '</div>';
         
         // Infosimples
         echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;margin-bottom:16px">';
-        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🔑 Infosimples</h3>';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:4px">🔑 Infosimples</h3>';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Conselhos suportados: <strong>CRM, CRP, CRO, COREN</strong> (SP/PR) · Auth: Token na query</div>';
         
         echo '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
         echo '<input type="checkbox" name="settings[council_provider.infosimples.enabled]" value="1"' . ($isEnabled ? ' checked' : '') . ' style="width:18px;height:18px">';
@@ -1468,7 +1471,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         
         echo '<div style="margin-top:12px;padding:10px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:4px;font-size:12px;color:#1e40af">';
-        echo '<strong>Documentação:</strong> <a href="https://infosimples.com/docs" target="_blank" style="color:#1e40af;text-decoration:underline">infosimples.com/docs</a>';
+        echo '<strong>Documentação:</strong> <a href="https://infosimples.com/consultas/" target="_blank" style="color:#1e40af;text-decoration:underline">infosimples.com/consultas</a> · ';
+        echo 'Área do cliente: <a href="https://api.infosimples.com/" target="_blank" style="color:#1e40af;text-decoration:underline">api.infosimples.com</a>';
         echo '</div>';
         echo '</div>';
         

@@ -69,50 +69,100 @@ A consulta é disparada manualmente pelo administrador através do botão **"Val
 ### 1. Consultar.IO (Prioridade padrão: 10)
 
 - **Tipo:** API REST
-- **Autenticação:** Bearer Token (API Key)
+- **Autenticação:** Header `Authorization: Token <seu-token>`
 - **Método:** GET com query params
-- **Conselhos:** Todos (CRP, CRN, COREN, CREFITO, CRM, CRO, CREA, OAB)
-- **Documentação:** https://consultar.io/docs
+- **Conselhos:** CRM, CRO
+- **Documentação:** https://docs.consultar.io/
+- **Custo:** R$ 0,20 por consulta (cobrado em 200 e 404)
+- **Timeout recomendado:** 300 segundos
 
 **Configuração:**
 ```
-council_provider.consultario.api_key   = SUA_CHAVE_DE_API
-council_provider.consultario.base_url  = https://api.consultar.io/v1
+council_provider.consultario.api_key   = SEU_TOKEN_DE_API
+council_provider.consultario.base_url  = https://consultar.io/api/v1
 council_provider.consultario.enabled   = 1
 council_provider.consultario.priority  = 10
 ```
 
-**Endpoint por conselho:**
+**Endpoints:**
 ```
-GET {base_url}/conselhos/{conselho}?registro={numero}&uf={estado}
-Authorization: Bearer {api_key}
+CRM: GET https://consultar.io/api/v1/crm/consultar?uf={uf}&numero_registro={numero}
+CRO: GET https://consultar.io/api/v1/cro/consultar?uf={uf}&numero_registro={numero}&categoria=cd
 ```
+
+**Exemplo de resposta (CRM):**
+```json
+{
+  "uf": "SP",
+  "numero_registro": "123456",
+  "categoria": "MÉDICO",
+  "nome_razao_social": "JOÃO DA SILVA",
+  "situacao": "ATIVO",
+  "tipo_inscricao": "PRINCIPAL",
+  "especialidades": "CLÍNICA MÉDICA - RQE Nº 74493"
+}
+```
+
+**Códigos de erro:**
+| HTTP | Código | Descrição |
+|---|---|---|
+| 400 | REQUISICAO_INVALIDA | Parâmetros inválidos |
+| 403 | PLANO_INATIVO | Plano inativo, fazer recarga |
+| 403 | CREDITOS_INSUFICIENTES | Créditos esgotados |
+| 404 | NAO_ENCONTRADO | Registro não encontrado |
+| 500 | ERRO_INTERNO | Erro no servidor |
+| 503 | SERVICO_INDISPONIVEL | Serviço temporariamente fora |
 
 ---
 
 ### 2. Infosimples (Prioridade padrão: 20)
 
-- **Tipo:** API REST
-- **Autenticação:** Token no body JSON
-- **Método:** POST com JSON body
-- **Conselhos:** Todos (CRP, CRN, COREN, CREFITO, CRM, CRO, CREA, OAB)
-- **Documentação:** https://infosimples.com/docs
+- **Tipo:** API REST (automação de consultas em portais públicos)
+- **Autenticação:** Token enviado como parâmetro na query
+- **Método:** GET com query params
+- **Conselhos:** CRM, CRP, CRO, COREN (SP e PR)
+- **Documentação:** https://infosimples.com/consultas/
+- **Timeout recomendado:** 120 segundos (automação pode demorar)
 
 **Configuração:**
 ```
 council_provider.infosimples.api_token = SEU_TOKEN_DE_API
-council_provider.infosimples.base_url  = https://api.infosimples.com/api/v2
+council_provider.infosimples.base_url  = https://api.infosimples.com/api/v2/consultas
 council_provider.infosimples.enabled   = 1
 council_provider.infosimples.priority  = 20
 ```
 
-**Endpoint por conselho:**
+**Endpoints por conselho:**
 ```
-POST {base_url}/consultas/conselhos/{conselho}
-Content-Type: application/json
+CRM:   GET {base_url}/cfm/cadastro?token={token}&crm={numero}&uf={uf}
+CRP:   GET {base_url}/cfp/cadastro?token={token}&registro={numero}&uf={uf}
+CRO:   GET {base_url}/cro/{uf}/cadastro?token={token}&registro={numero}
+COREN: GET {base_url}/coren/{uf}/cadastro?token={token}&registro={numero}
+```
 
-{"token": "...", "registro": "123456", "uf": "SP"}
+**Formato de resposta:**
+```json
+{
+  "code": 200,
+  "code_message": "Consulta realizada com sucesso",
+  "header": { "billable": true, "price": "2.07" },
+  "data_count": 1,
+  "data": [{
+    "nome": "JOÃO DA SILVA",
+    "situacao": "ATIVO",
+    "especialidade": "CLÍNICA MÉDICA"
+  }]
+}
 ```
+
+**Códigos de resposta:**
+| Code | Descrição |
+|---|---|
+| 200 | Sucesso |
+| 600 | Registro não encontrado |
+| 601 | Token inválido |
+| 602 | Créditos insuficientes |
+| 500 | Erro interno |
 
 ---
 
@@ -191,15 +241,29 @@ council_provider.portal_direct.priority = 99
 
 O sistema tenta os provedores em ordem de prioridade (menor número = maior prioridade):
 
-1. **Consultar.IO** (prioridade 10) — Se configurado e habilitado
-2. **Infosimples** (prioridade 20) — Se configurado e habilitado
-3. **Portal Direto** (prioridade 99) — Scraping como último recurso
+1. **Consultar.IO** (prioridade 10) — CRM e CRO
+2. **Infosimples** (prioridade 20) — CRM, CRP, CRO, COREN (SP/PR)
+3. **Portal Direto** (prioridade 99) — Todos os conselhos (scraping, com limitações)
+
+**Cobertura por conselho:**
+
+| Conselho | Consultar.IO | Infosimples | Portal Direto |
+|---|---|---|---|
+| CRM | ✓ | ✓ | ⚠️ CAPTCHA |
+| CRO | ✓ | ✓ | ⚠️ Variável |
+| CRP | — | ✓ | ⚠️ CAPTCHA |
+| COREN | — | ✓ (SP/PR) | ⚠️ CAPTCHA + CPF |
+| CRN | — | — | ⚠️ Variável |
+| CREFITO | — | — | ⚠️ Variável |
+| CREA | — | — | ⚠️ Variável |
+| OAB | — | — | ⚠️ SPA Angular |
 
 **Regras de fallback:**
 - Se um provedor retorna `success: true` (mesmo com `valid: false`), o resultado é aceito
 - Se um provedor retorna `success: false` (erro), tenta o próximo
 - Se todos falharem, retorna erro consolidado com detalhes de cada provedor
 - Provedores não configurados ou desabilitados são ignorados
+- Provedores que não suportam o conselho solicitado são pulados automaticamente
 
 ---
 
@@ -259,12 +323,12 @@ As credenciais são armazenadas na tabela `admin_settings` com as seguintes chav
 
 | Chave | Descrição |
 |---|---|
-| `council_provider.consultario.api_key` | Chave de API do Consultar.IO |
-| `council_provider.consultario.base_url` | URL base (padrão: https://api.consultar.io/v1) |
+| `council_provider.consultario.api_key` | Token de API do Consultar.IO |
+| `council_provider.consultario.base_url` | URL base (padrão: https://consultar.io/api/v1) |
 | `council_provider.consultario.enabled` | "1" para ativo, "0" para inativo |
 | `council_provider.consultario.priority` | Prioridade numérica (padrão: 10) |
 | `council_provider.infosimples.api_token` | Token de API do Infosimples |
-| `council_provider.infosimples.base_url` | URL base (padrão: https://api.infosimples.com/api/v2) |
+| `council_provider.infosimples.base_url` | URL base (padrão: https://api.infosimples.com/api/v2/consultas) |
 | `council_provider.infosimples.enabled` | "1" para ativo, "0" para inativo |
 | `council_provider.infosimples.priority` | Prioridade numérica (padrão: 20) |
 | `council_provider.portal_direct.enabled` | "1" para ativo (padrão), "0" para inativo |
