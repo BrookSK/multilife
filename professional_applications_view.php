@@ -21,6 +21,20 @@ if (!$pa) {
 
 view_header('Candidatura #' . (string)$pa['id']);
 
+// Dados do conselho para o botão de validação
+$councilAbbr   = strtoupper(trim((string)($pa['council_abbr'] ?? '')));
+$councilNumber = trim((string)($pa['council_number'] ?? ''));
+$councilState  = strtoupper(trim((string)($pa['council_state'] ?? '')));
+$hasCouncil    = $councilAbbr !== '' && $councilNumber !== '' && $councilState !== '';
+
+// Resultado da última validação (se existir)
+$lastValidation = null;
+if (!empty($pa['council_validation_result'])) {
+    $lastValidation = json_decode((string)$pa['council_validation_result'], true);
+}
+$validationStatus = (string)($pa['council_validation_status'] ?? '');
+$validatedAt      = (string)($pa['council_validated_at'] ?? '');
+
 echo '<style>.pill{border:none !important;padding:6px 0 !important}</style>';
 
 echo '<div class="grid">';
@@ -37,6 +51,26 @@ echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/professional_applications_list.php">Voltar</a>';
+
+// Botão de validação do conselho
+if ($hasCouncil) {
+    $btnLabel = 'Validar ' . h($councilAbbr);
+    if ($validationStatus === 'VALID') {
+        $btnLabel = '✓ Revalidar ' . h($councilAbbr);
+    } elseif ($validationStatus === 'INVALID') {
+        $btnLabel = '✗ Revalidar ' . h($councilAbbr);
+    } elseif ($validationStatus === 'ERROR') {
+        $btnLabel = '⚠ Revalidar ' . h($councilAbbr);
+    }
+    echo '<button class="btn" id="btnValidateCouncil" type="button"'
+        . ' data-application-id="' . (int)$pa['id'] . '"'
+        . ' data-council-abbr="' . h($councilAbbr) . '"'
+        . ' data-registry-number="' . h($councilNumber) . '"'
+        . ' data-council-state="' . h($councilState) . '"'
+        . ' onclick="runCouncilValidation(this)">'
+        . $btnLabel
+        . '</button>';
+}
 
 echo '<form method="post" action="/professional_applications_approve_post.php" style="display:inline">';
 echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
@@ -57,6 +91,133 @@ echo '</div>';
 echo '</div>';
 
 echo '</section>';
+
+// Card de resultado da validação do conselho
+if ($hasCouncil) {
+    echo '<section class="card col12" id="councilValidationCard">';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">';
+    echo '<div style="font-weight:900">Validação do Registro Profissional</div>';
+
+    if ($validationStatus !== '') {
+        $badgeColor = match($validationStatus) {
+            'VALID'   => 'hsl(142 71% 45%)',
+            'INVALID' => 'hsl(0 72% 51%)',
+            'ERROR'   => 'hsl(38 92% 50%)',
+            default   => 'hsl(var(--muted-foreground))',
+        };
+        $badgeLabel = match($validationStatus) {
+            'VALID'   => '✓ Válido',
+            'INVALID' => '✗ Inválido / Não encontrado',
+            'ERROR'   => '⚠ Erro na consulta',
+            default   => $validationStatus,
+        };
+        echo '<span style="background:' . $badgeColor . ';color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700">'
+            . h($badgeLabel) . '</span>';
+    }
+    echo '</div>';
+
+    if ($lastValidation !== null) {
+        echo '<div style="display:grid;gap:6px;font-size:14px">';
+        $fields = [
+            'Conselho'       => ($lastValidation['registry_type'] ?? '') . ' ' . ($lastValidation['registry_number'] ?? '') . '/' . ($lastValidation['state'] ?? ''),
+            'Nome encontrado'=> $lastValidation['name'] ?? '-',
+            'Situação'       => $lastValidation['status'] ?? '-',
+            'Fonte'          => $lastValidation['source'] ?? '-',
+            'Consultado em'  => $lastValidation['consulted_at'] ?? $validatedAt,
+        ];
+        if (!empty($lastValidation['error'])) {
+            $fields['Detalhe do erro'] = $lastValidation['error'];
+        }
+        if (!empty($lastValidation['has_captcha']) && $lastValidation['has_captcha']) {
+            $fields['Proteção'] = 'CAPTCHA detectado — consulta manual necessária';
+        }
+        if (!empty($lastValidation['has_cloudflare']) && $lastValidation['has_cloudflare']) {
+            $fields['Proteção'] = 'Cloudflare detectado — consulta manual necessária';
+        }
+        foreach ($fields as $label => $value) {
+            $v = trim((string)$value);
+            echo '<div class="pill" style="display:block"><strong>' . h($label) . ':</strong> ' . h($v !== '' ? $v : '-') . '</div>';
+        }
+        echo '</div>';
+    } else {
+        echo '<div style="color:hsl(var(--muted-foreground));font-size:14px">Nenhuma validação realizada ainda. Clique em "Validar ' . h($councilAbbr) . '" para consultar o portal oficial.</div>';
+    }
+
+    // Área de resultado em tempo real (preenchida via JS)
+    echo '<div id="councilValidationResult" style="margin-top:12px"></div>';
+    echo '</section>';
+}
+
+// JavaScript para o botão de validação
+echo <<<'JS'
+<script>
+function runCouncilValidation(btn) {
+    var applicationId  = btn.dataset.applicationId;
+    var councilAbbr    = btn.dataset.councilAbbr;
+    var registryNumber = btn.dataset.registryNumber;
+    var councilState   = btn.dataset.councilState;
+
+    var resultDiv = document.getElementById('councilValidationResult');
+    resultDiv.innerHTML = '<div style="padding:10px;color:hsl(var(--muted-foreground));font-size:14px">⏳ Consultando portal ' + councilAbbr + '... aguarde.</div>';
+    btn.disabled = true;
+    btn.textContent = 'Consultando...';
+
+    fetch('/api/council_validate_post.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            application_id:  parseInt(applicationId),
+            council_abbr:    councilAbbr,
+            registry_number: registryNumber,
+            council_state:   councilState
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Revalidar ' + councilAbbr;
+
+        var html = '';
+        if (data.success && data.valid) {
+            html += '<div style="background:hsl(142 71% 95%);border:1px solid hsl(142 71% 45%);border-radius:8px;padding:14px;font-size:14px">';
+            html += '<div style="font-weight:900;color:hsl(142 71% 35%);margin-bottom:8px">✓ Registro válido</div>';
+            html += '<div><strong>Nome:</strong> ' + (data.name || '-') + '</div>';
+            html += '<div><strong>Situação:</strong> ' + (data.status || '-') + '</div>';
+            html += '<div><strong>Fonte:</strong> ' + (data.source || '-') + '</div>';
+            html += '<div><strong>Consultado em:</strong> ' + (data.consulted_at || '-') + '</div>';
+            if (data.specialty) { html += '<div><strong>Especialidade:</strong> ' + data.specialty + '</div>'; }
+            html += '</div>';
+        } else if (data.success && !data.valid) {
+            html += '<div style="background:hsl(0 72% 97%);border:1px solid hsl(0 72% 51%);border-radius:8px;padding:14px;font-size:14px">';
+            html += '<div style="font-weight:900;color:hsl(0 72% 40%);margin-bottom:8px">✗ Registro não encontrado</div>';
+            html += '<div>O número ' + registryNumber + '/' + councilState + ' não foi localizado no portal ' + councilAbbr + '.</div>';
+            html += '<div style="margin-top:6px"><strong>Fonte:</strong> ' + (data.source || '-') + '</div>';
+            html += '</div>';
+        } else {
+            html += '<div style="background:hsl(38 92% 97%);border:1px solid hsl(38 92% 50%);border-radius:8px;padding:14px;font-size:14px">';
+            html += '<div style="font-weight:900;color:hsl(38 92% 35%);margin-bottom:8px">⚠ Não foi possível consultar automaticamente</div>';
+            if (data.error) { html += '<div><strong>Motivo:</strong> ' + data.error + '</div>'; }
+            if (data.has_captcha)    { html += '<div>🔒 CAPTCHA detectado no portal.</div>'; }
+            if (data.has_cloudflare) { html += '<div>🔒 Cloudflare detectado no portal.</div>'; }
+            if (data.has_auth)       { html += '<div>🔒 Autenticação obrigatória no portal.</div>'; }
+            if (data.has_ip_block)   { html += '<div>🔒 Possível bloqueio por IP.</div>'; }
+            html += '<div style="margin-top:8px">Realize a consulta manual no portal oficial do conselho.</div>';
+            html += '</div>';
+        }
+
+        resultDiv.innerHTML = html;
+
+        // Recarrega a página após 2s para atualizar o badge de status
+        setTimeout(function() { window.location.reload(); }, 2000);
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Revalidar ' + councilAbbr;
+        resultDiv.innerHTML = '<div style="background:hsl(0 72% 97%);border:1px solid hsl(0 72% 51%);border-radius:8px;padding:14px;font-size:14px">Erro de comunicação: ' + err.message + '</div>';
+    });
+}
+</script>
+JS;
 
 $sections = [
     'Identificação' => [
