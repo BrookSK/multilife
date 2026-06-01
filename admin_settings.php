@@ -153,6 +153,10 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
         'keys' => ['_zapsign_manage_']
     ],
+    'Consultas API' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.5 0 2.91.37 4.15 1.02"/><path d="M22 4L12 14.01l-3-3"/></svg>',
+        'keys' => ['_council_providers_']
+    ],
     'WhatsApp' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
         'keys' => ['demands.whatsapp_template', 'appointments.patient_whatsapp_template', 'professional.onboarding_whatsapp_template', 'professional.application_need_more_info_whatsapp_template', 'professional.application_rejected_whatsapp_template', 'professional.docs_reminder_whatsapp_template', 'professional.docs_overdue_whatsapp_template', 'professional.docs_approved_whatsapp_template']
@@ -1382,6 +1386,120 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
         
         // Botão salvar dentro da aba Evolution (antes de forms aninhados quebrarem o form principal)
+        echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
+        echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
+        echo '</div>';
+    } elseif ($sectionTitle === 'Consultas API') {
+        // Aba de configuração dos provedores de validação de registros profissionais
+        require_once __DIR__ . '/app/council_validator.php';
+        
+        $councilCfg = admin_settings_get_prefix('council_provider.');
+        $councilProviders = council_get_providers_info();
+        
+        $cioKey      = $councilCfg['council_provider.consultario.api_key'] ?? '';
+        $cioBaseUrl  = $councilCfg['council_provider.consultario.base_url'] ?? 'https://api.consultar.io/v1';
+        $cioEnabled  = ($councilCfg['council_provider.consultario.enabled'] ?? '0') === '1';
+        $cioPriority = (int)($councilCfg['council_provider.consultario.priority'] ?? 10);
+        
+        $isToken     = $councilCfg['council_provider.infosimples.api_token'] ?? '';
+        $isBaseUrl   = $councilCfg['council_provider.infosimples.base_url'] ?? 'https://api.infosimples.com/api/v2';
+        $isEnabled   = ($councilCfg['council_provider.infosimples.enabled'] ?? '0') === '1';
+        $isPriority  = (int)($councilCfg['council_provider.infosimples.priority'] ?? 20);
+        
+        $pdEnabled   = ($councilCfg['council_provider.portal_direct.enabled'] ?? '1') === '1';
+        $pdPriority  = (int)($councilCfg['council_provider.portal_direct.priority'] ?? 99);
+        
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Validação de Registros Profissionais — Provedores de API</div>';
+        
+        echo '<div style="padding:14px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'O sistema utiliza APIs especializadas para validar registros profissionais (CRP, CRN, COREN, CREFITO, CRM, CRO, CREA, OAB). ';
+        echo 'Configure os provedores abaixo. O sistema tentará cada provedor em ordem de prioridade (menor = primeiro). Se um falhar, tenta o próximo automaticamente.';
+        echo '</div>';
+        echo '</div>';
+        
+        // Status dos provedores
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">';
+        foreach ($councilProviders as $cp) {
+            $statusColor = $cp['configured'] ? 'hsl(142 71% 45%)' : 'hsl(var(--muted-foreground))';
+            $statusLabel = $cp['configured'] ? '✓ Ativo' : '○ Inativo';
+            echo '<div style="padding:12px;border:1px solid hsl(var(--border));border-radius:8px;text-align:center">';
+            echo '<div style="font-weight:700;font-size:14px">' . h($cp['name']) . '</div>';
+            echo '<div style="font-size:12px;color:' . $statusColor . ';margin-top:4px;font-weight:600">' . $statusLabel . '</div>';
+            echo '<div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:2px">Prioridade: ' . (int)$cp['priority'] . '</div>';
+            echo '</div>';
+        }
+        echo '</div>';
+        
+        // Consultar.IO
+        echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;margin-bottom:16px">';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🔑 Consultar.IO</h3>';
+        
+        echo '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+        echo '<input type="checkbox" name="settings[council_provider.consultario.enabled]" value="1"' . ($cioEnabled ? ' checked' : '') . ' style="width:18px;height:18px">';
+        echo '<span style="font-weight:600">Habilitado</span>';
+        echo '</label>';
+        
+        echo '<div style="display:grid;gap:12px;max-width:600px">';
+        echo '<label>API Key<input type="password" name="settings[council_provider.consultario.api_key]" value="' . h($cioKey) . '" placeholder="Insira a chave de API" style="font-family:monospace"></label>';
+        echo '<label>URL Base<input type="text" name="settings[council_provider.consultario.base_url]" value="' . h($cioBaseUrl) . '"></label>';
+        echo '<label>Prioridade (menor = primeiro)<input type="number" name="settings[council_provider.consultario.priority]" value="' . $cioPriority . '" min="1" max="999" style="width:100px"></label>';
+        echo '</div>';
+        
+        echo '<div style="margin-top:12px;padding:10px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:4px;font-size:12px;color:#1e40af">';
+        echo '<strong>Documentação:</strong> <a href="https://consultar.io/docs" target="_blank" style="color:#1e40af;text-decoration:underline">consultar.io/docs</a>';
+        echo '</div>';
+        echo '</div>';
+        
+        // Infosimples
+        echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;margin-bottom:16px">';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🔑 Infosimples</h3>';
+        
+        echo '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+        echo '<input type="checkbox" name="settings[council_provider.infosimples.enabled]" value="1"' . ($isEnabled ? ' checked' : '') . ' style="width:18px;height:18px">';
+        echo '<span style="font-weight:600">Habilitado</span>';
+        echo '</label>';
+        
+        echo '<div style="display:grid;gap:12px;max-width:600px">';
+        echo '<label>Token de API<input type="password" name="settings[council_provider.infosimples.api_token]" value="' . h($isToken) . '" placeholder="Insira o token de API" style="font-family:monospace"></label>';
+        echo '<label>URL Base<input type="text" name="settings[council_provider.infosimples.base_url]" value="' . h($isBaseUrl) . '"></label>';
+        echo '<label>Prioridade (menor = primeiro)<input type="number" name="settings[council_provider.infosimples.priority]" value="' . $isPriority . '" min="1" max="999" style="width:100px"></label>';
+        echo '</div>';
+        
+        echo '<div style="margin-top:12px;padding:10px;background:#dbeafe;border-left:4px solid #3b82f6;border-radius:4px;font-size:12px;color:#1e40af">';
+        echo '<strong>Documentação:</strong> <a href="https://infosimples.com/docs" target="_blank" style="color:#1e40af;text-decoration:underline">infosimples.com/docs</a>';
+        echo '</div>';
+        echo '</div>';
+        
+        // Portal Direto (Fallback)
+        echo '<div style="padding:16px;background:hsl(var(--muted));border-radius:8px;margin-bottom:16px">';
+        echo '<h3 style="font-size:16px;font-weight:700;margin-bottom:12px">🌐 Portal Direto (Fallback)</h3>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">Consulta diretamente os portais oficiais dos conselhos via scraping. Usado como último recurso quando as APIs não estão disponíveis.</div>';
+        
+        echo '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+        echo '<input type="checkbox" name="settings[council_provider.portal_direct.enabled]" value="1"' . ($pdEnabled ? ' checked' : '') . ' style="width:18px;height:18px">';
+        echo '<span style="font-weight:600">Habilitado</span>';
+        echo '</label>';
+        
+        echo '<div style="display:grid;gap:12px;max-width:600px">';
+        echo '<label>Prioridade (menor = primeiro)<input type="number" name="settings[council_provider.portal_direct.priority]" value="' . $pdPriority . '" min="1" max="999" style="width:100px"></label>';
+        echo '</div>';
+        
+        echo '<div style="margin-top:12px;padding:10px;background:#fef3c7;border-left:4px solid #f59e0b;border-radius:4px;font-size:12px;color:#92400e">';
+        echo '<strong>⚠️ Limitações:</strong> Muitos portais possuem CAPTCHA, WAF ou são SPAs (Angular/React). A consulta direta pode falhar com frequência. Recomenda-se usar APIs especializadas como provedor primário.';
+        echo '</div>';
+        echo '</div>';
+        
+        // Links úteis
+        echo '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">';
+        echo '<a class="btn" href="/admin_council_providers.php">📊 Estatísticas de Consultas</a>';
+        echo '<a class="btn" href="/admin_council_logs.php">📋 Logs de Validação</a>';
+        echo '</div>';
+        
+        echo '</div>';
+        
+        // Botão salvar
         echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
         echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
         echo '</div>';

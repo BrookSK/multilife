@@ -12,6 +12,28 @@ if (!is_array($settings)) {
     $settings = [];
 }
 
+// Checkboxes não enviados quando desmarcados — garantir valor "0" para campos de habilitação
+$checkboxDefaults = [
+    'council_provider.consultario.enabled',
+    'council_provider.infosimples.enabled',
+    'council_provider.portal_direct.enabled',
+];
+foreach ($checkboxDefaults as $cbKey) {
+    if (!isset($settings[$cbKey]) && isset($_POST['settings']) && is_array($_POST['settings'])) {
+        // Só define "0" se a aba de Consultas API foi submetida (alguma key council_provider.* presente)
+        $hasCouncilKeys = false;
+        foreach (array_keys($settings) as $sk) {
+            if (str_starts_with((string)$sk, 'council_provider.')) {
+                $hasCouncilKeys = true;
+                break;
+            }
+        }
+        if ($hasCouncilKeys) {
+            $settings[$cbKey] = '0';
+        }
+    }
+}
+
 $db = db();
 $db->beginTransaction();
 try {
@@ -24,7 +46,7 @@ try {
             continue;
         }
 
-        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'evolution.api_key'], true) && $val === '') {
+        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'evolution.api_key', 'council_provider.consultario.api_key', 'council_provider.infosimples.api_token'], true) && $val === '') {
             continue;
         }
         $stmt->execute(['k' => $key, 'v' => $val, 'uid' => auth_user_id()]);
