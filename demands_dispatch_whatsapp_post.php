@@ -201,15 +201,29 @@ foreach ($toSend as $row) {
         $res = $api->sendText($jid, $msgRow);
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         if ($ok) {
+            // Extrair o message_id retornado pela API (para vincular reações futuras)
+            $externalMsgId = null;
+            $jsonRes = $res['json'] ?? null;
+            if (is_array($jsonRes) && isset($jsonRes['key']['id'])) {
+                $externalMsgId = (string)$jsonRes['key']['id'];
+            }
+            
             $updOne->execute(['st' => 'sent', 'err' => null, 'id' => $logId]);
+            
+            // Salvar external_message_id para vincular reações
+            if ($externalMsgId) {
+                $stmtExtId = db()->prepare('UPDATE demand_dispatch_logs SET external_message_id = :eid WHERE id = :id');
+                $stmtExtId->execute(['eid' => $externalMsgId, 'id' => $logId]);
+            }
+            
             $sent++;
             
             // Salvar na chat_messages para aparecer no chat
             try {
                 $stmtChat = db()->prepare(
-                    'INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp) VALUES (?, ?, 1, ?)'
+                    'INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, external_message_id) VALUES (?, ?, 1, ?, ?)'
                 );
-                $stmtChat->execute([$jid, $msgRow, time()]);
+                $stmtChat->execute([$jid, $msgRow, time(), $externalMsgId]);
             } catch (Throwable $chatErr) {
                 error_log('[DISPATCH] Erro ao salvar em chat_messages: ' . $chatErr->getMessage());
             }
