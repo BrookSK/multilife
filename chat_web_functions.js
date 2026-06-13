@@ -688,8 +688,43 @@ document.addEventListener('DOMContentLoaded', function() {
               // e está marcada como optimistic, vamos removê-la quando o polling trouxer
               window._lastOptimisticText = message;
             } else {
-              if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
-              alert('Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
+              // Erro no envio - tentar novamente uma vez após 3 segundos
+              if (!window._retryingMessage) {
+                window._retryingMessage = true;
+                console.log('Erro no primeiro envio, tentando novamente em 3s...');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                const retryFormData = new FormData(sendForm);
+                retryFormData.set('message', message);
+                
+                try {
+                  const retryResp = await fetch(sendUrl, {
+                    method: 'POST',
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                    body: retryFormData
+                  });
+                  const retryContentType = retryResp.headers.get('content-type') || '';
+                  if (retryContentType.indexOf('application/json') > -1) {
+                    const retryData = await retryResp.json();
+                    if (retryData.success) {
+                      if (msgDiv) {
+                        const timeEl = msgDiv.querySelector('.whatsapp-message-time');
+                        if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
+                      }
+                    } else {
+                      if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
+                      alert('Erro ao enviar: ' + (retryData.error || 'Erro desconhecido'));
+                    }
+                  }
+                } catch (retryErr) {
+                  if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
+                  alert('Erro ao enviar mensagem. Tente novamente.');
+                }
+                window._retryingMessage = false;
+              } else {
+                if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
+                alert('Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
+              }
             }
           }
           // Se não é JSON, mensagem provavelmente foi enviada (servidor redirecionou)

@@ -100,14 +100,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
-            // WORKAROUND: Delay entre mensagens para o mesmo destinatário (reduz "Aguardando mensagem")
+            // WORKAROUND: Delay entre mensagens para o mesmo destinatário
+            // A Evolution API tem um bug conhecido com grupos que retorna 400 se enviar muito rápido
             $lastSendFile = sys_get_temp_dir() . '/evolution_last_send_' . md5($remoteJid);
             if (file_exists($lastSendFile)) {
                 $lastSend = (int)file_get_contents($lastSendFile);
                 $elapsed = time() - $lastSend;
-                if ($elapsed < 3) {
-                    $waitTime = 3 - $elapsed;
-                    error_log("[$debugId] DELAY {$waitTime}s para evitar sobrecarga");
+                if ($elapsed < 5) {
+                    $waitTime = 5 - $elapsed;
+                    error_log("[$debugId] DELAY {$waitTime}s para evitar erro 400 em grupo");
                     sleep($waitTime);
                 }
             }
@@ -116,22 +117,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Enviar via EvolutionApiV1
             $isGroupMsg = strpos($remoteJid, '@g.us') !== false;
             error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
-            try {
-                $api = new EvolutionApiV1();
-                // Para individuais: usar delay para estabelecer sessão Signal
-                // Para grupos: enviar sem options (pode causar 400 com delay)
-                $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
-                $res = $api->sendText($remoteJid, $message, $sendOptions);
-                
-                // Retry: Se grupo retornou 400, esperar e tentar novamente uma vez
-                $httpCode = (int)($res['status'] ?? 0);
-                if ($httpCode === 400 && $isGroupMsg) {
-                    error_log("[$debugId] RETRY: Grupo retornou 400, aguardando 3s e tentando novamente...");
-                    sleep(3);
-                    $res = $api->sendText($remoteJid, $message, []);
+            $res = null;
+            $maxAttempts = $isGroupMsg ? 3 : 1;
+            
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                try {
+                    $api = new EvolutionApiV1();
+                    $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
+                    $res = $api->sendText($remoteJid, $message, $sendOptions);
+                    
+                    $httpCode = (int)($res['status'] ?? 0);
+                    if ($httpCode >= 200 && $httpCode < 300) {
+                        break; // Sucesso, sair do loop
+                    }
+                    
+                    // Se erro 400 em grupo, tentar novamente após delay
+                    if ($httpCode === 400 && $isGroupMsg && $attempt < $maxAttempts) {
+                        $retryDelay = $attempt * 3;
+                        error_log("[$debugId] RETRY $attempt/$maxAttempts: Grupo retornou 400, aguardando {$retryDelay}s...");
+                        sleep($retryDelay);
+                    }
+                } catch (Exception $apiEx) {
+                    $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
+                    if ($attempt < $maxAttempts) {
+                        sleep(3);
+                    }
                 }
-            } catch (Exception $apiEx) {
-                $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
             $httpCode = (int)($res['status'] ?? 0);
             $response = is_string($res['body_raw'] ?? null)
