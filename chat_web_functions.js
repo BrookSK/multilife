@@ -830,28 +830,172 @@ function stopAudioRecording() {
   }
 }
 
-// Atualizar conversas automaticamente (polling a cada 10 segundos)
+// Atualizar conversas automaticamente (polling a cada 3 segundos, sem reload)
 let lastUpdateTimestamp = Date.now();
+let isPolling = false;
 
 function checkForNewMessages() {
-  if (!window.chatId) return;
+  if (!window.chatId || isPolling) return;
+  isPolling = true;
   
-  fetch('/chat_check_updates.php?chat_id=' + encodeURIComponent(window.chatId) + '&last_timestamp=' + window.lastTimestamp)
+  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp)
     .then(r => r.json())
     .then(data => {
-      if (data.has_new_messages) {
-        // Recarregar página silenciosamente
-        window.location.reload();
+      isPolling = false;
+      if (data.messages && data.messages.length > 0) {
+        const container = document.getElementById('messagesContainer');
+        if (!container) return;
+        
+        // Verificar se está no fundo antes de adicionar (para auto-scroll)
+        const wasAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
+        
+        data.messages.forEach(msg => {
+          appendMessageToDOM(msg);
+        });
+        
+        // Atualizar lastTimestamp
+        if (data.last_timestamp > window.lastTimestamp) {
+          window.lastTimestamp = data.last_timestamp;
+        }
+        
+        // Auto-scroll apenas se já estava no final
+        if (wasAtBottom) {
+          container.scrollTop = container.scrollHeight;
+        }
+        
+        // Atualizar lista de conversas (preview da última mensagem)
+        updateChatListPreview(data.messages[data.messages.length - 1]);
       }
     })
     .catch(err => {
+      isPolling = false;
       console.error('Erro ao verificar atualizações:', err);
     });
 }
 
+// Renderizar uma mensagem nova no DOM sem recarregar a página
+function appendMessageToDOM(msg) {
+  const container = document.getElementById('messagesContainer');
+  if (!container) return;
+  
+  // Verificar se mensagem já existe no DOM (evitar duplicatas)
+  if (msg.external_message_id) {
+    const existing = container.querySelector('[data-msg-id="' + msg.external_message_id + '"]');
+    if (existing) return;
+  }
+  
+  const isFromMe = msg.from_me == 1 || msg.from_me === true;
+  const messageClass = isFromMe ? 'out' : 'in';
+  const timestamp = msg.message_timestamp ? formatTimestamp(msg.message_timestamp) : '';
+  const messageType = msg.message_type || 'text';
+  const text = msg.message_text || '';
+  const mediaUrl = msg.media_url || '';
+  const quotedText = msg.quoted_message_text || '';
+  const quotedSender = msg.quoted_message_sender || '';
+  const senderName = msg.sender_name || '';
+  const reactions = msg.reactions || [];
+  
+  let html = '<div class="whatsapp-message ' + messageClass + '"' + (msg.external_message_id ? ' data-msg-id="' + escapeHtml(msg.external_message_id) + '"' : '') + '>';
+  html += '<div class="whatsapp-message-bubble">';
+  
+  // Nome do remetente em grupos
+  if (window.chatId && window.chatId.includes('@g.us') && !isFromMe && senderName) {
+    html += '<div style="font-size:12px;font-weight:600;color:#06cf9c;margin-bottom:4px">' + escapeHtml(senderName) + '</div>';
+  }
+  
+  // Mensagem citada (reply)
+  if (quotedText) {
+    const quotedSenderDisplay = quotedSender ? quotedSender.replace(/@s\.whatsapp\.net|@g\.us/g, '') : '';
+    html += '<div style="background:rgba(0,0,0,.05);border-left:4px solid #06cf9c;border-radius:4px;padding:6px 10px;margin-bottom:6px;font-size:12px;cursor:pointer">';
+    if (quotedSenderDisplay) {
+      html += '<div style="font-weight:600;color:#06cf9c;margin-bottom:2px">' + escapeHtml(quotedSenderDisplay) + '</div>';
+    }
+    html += '<div style="color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px">' + escapeHtml(quotedText) + '</div>';
+    html += '</div>';
+  }
+  
+  // Conteúdo baseado no tipo
+  if (messageType === 'audio' && mediaUrl) {
+    const mimeType = msg.media_mime_type || 'audio/ogg; codecs=opus';
+    html += '<div style="margin-bottom:8px"><audio controls preload="metadata" style="max-width:100%;height:40px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(mimeType) + '"></audio></div>';
+  } else if (messageType === 'image' && mediaUrl) {
+    html += '<div style="margin-bottom:8px"><img src="' + escapeHtml(mediaUrl) + '" alt="Imagem" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"></div>';
+    if (text && text !== '[Imagem]') {
+      html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
+    }
+  } else if (messageType === 'video' && mediaUrl) {
+    html += '<div style="margin-bottom:8px"><video controls style="max-width:100%;border-radius:8px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(msg.media_mime_type || 'video/mp4') + '"></video></div>';
+    if (text && text !== '[Vídeo]') {
+      html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
+    }
+  } else if (messageType === 'document' && mediaUrl) {
+    const docFilename = msg.media_filename || 'Documento';
+    html += '<a href="' + escapeHtml(mediaUrl) + '" download style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
+    html += '<div style="width:40px;height:40px;border-radius:8px;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>';
+    html += '<div style="flex:1;min-width:0;overflow:hidden"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(docFilename) + '</div></div>';
+    html += '</a>';
+  } else if (messageType === 'sticker' && mediaUrl) {
+    html += '<div style="margin-bottom:4px"><img src="' + escapeHtml(mediaUrl) + '" alt="Sticker" style="max-width:150px;max-height:150px"></div>';
+  } else {
+    html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
+  }
+  
+  // Reações
+  if (reactions.length > 0) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">';
+    const emojiCounts = {};
+    reactions.forEach(r => { emojiCounts[r.emoji] = (emojiCounts[r.emoji] || 0) + 1; });
+    Object.keys(emojiCounts).forEach(emoji => {
+      const count = emojiCounts[emoji] > 1 ? ' ' + emojiCounts[emoji] : '';
+      html += '<span style="background:rgba(0,0,0,.05);border-radius:12px;padding:2px 6px;font-size:12px">' + emoji + count + '</span>';
+    });
+    html += '</div>';
+  }
+  
+  html += '<div class="whatsapp-message-time">' + escapeHtml(timestamp) + '</div>';
+  html += '</div></div>';
+  
+  // Remover mensagem de "chat vazio" se existir
+  const emptyChat = container.querySelector('.whatsapp-empty-chat');
+  if (emptyChat) emptyChat.remove();
+  
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function formatTimestamp(unixTs) {
+  const d = new Date(unixTs * 1000);
+  return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function updateChatListPreview(lastMsg) {
+  // Atualizar preview na lista lateral
+  const chatItems = document.querySelectorAll('.whatsapp-chat-item');
+  chatItems.forEach(item => {
+    const link = item.querySelector('a');
+    if (link && link.href && link.href.includes(encodeURIComponent(window.chatId))) {
+      const preview = item.querySelector('.whatsapp-chat-last-msg, [style*="color:#667781"]');
+      if (preview && lastMsg.message_text) {
+        let previewText = lastMsg.message_text;
+        if (lastMsg.message_type && lastMsg.message_type !== 'text') {
+          const typeLabels = { audio: '🎵 Áudio', image: '📷 Imagem', video: '🎬 Vídeo', document: '📄 Documento', sticker: '🏷️ Sticker' };
+          previewText = typeLabels[lastMsg.message_type] || previewText;
+        }
+        preview.textContent = previewText.substring(0, 40) + (previewText.length > 40 ? '...' : '');
+      }
+    }
+  });
+}
+
 // Iniciar polling se houver chat selecionado
 if (window.chatId) {
-  setInterval(checkForNewMessages, 10000);
+  setInterval(checkForNewMessages, 3000);
 }
 
 // Auto-scroll para última mensagem

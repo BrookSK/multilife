@@ -1807,7 +1807,7 @@ if (empty($selectedChat)) {
                 error_log("[RENDER] Tipo: $messageType | URL: '$mediaUrl' | Text: '$messageText'");
             }
             
-            echo '<div class="whatsapp-message ' . $messageClass . '">';
+            echo '<div class="whatsapp-message ' . $messageClass . '"' . (!empty($msg['externalMessageId']) ? ' data-msg-id="' . h($msg['externalMessageId']) . '"' : '') . '>';
             echo '<div class="whatsapp-message-bubble">';
             
             // Renderizar nome do remetente em grupos (mensagens recebidas)
