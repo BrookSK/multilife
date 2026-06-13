@@ -713,8 +713,13 @@ document.addEventListener('DOMContentLoaded', function() {
               if (msgDiv) {
                 const timeEl = msgDiv.querySelector('.whatsapp-message-time');
                 if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
+                // Remover atributo optimistic para que não seja tocada pelo polling
+                msgDiv.removeAttribute('data-optimistic');
               }
-              window._lastOptimisticText = message;
+              // Atualizar lastTimestamp para que o polling pule esta mensagem
+              if (data.timestamp && data.timestamp > window.lastTimestamp) {
+                window.lastTimestamp = data.timestamp;
+              }
             } else {
               // Erro no envio — remover mensagem otimista e mostrar erro
               if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
@@ -924,16 +929,17 @@ function appendMessageToDOM(msg) {
   
   const isFromMe = msg.from_me == 1 || msg.from_me === true;
   
-  // Se é uma mensagem from_me, verificar se já existe uma mensagem otimista equivalente
+  // Se é uma mensagem from_me, verificar se já existe no DOM (evitar duplicata)
   if (isFromMe) {
-    const optimisticMsgs = container.querySelectorAll('[data-optimistic="1"]');
-    for (let i = 0; i < optimisticMsgs.length; i++) {
-      const rawText = optimisticMsgs[i].getAttribute('data-raw-text') || '';
-      const msgText = (msg.message_text || '').trim();
-      // Comparar texto original guardado no atributo
-      if (rawText.trim() === msgText) {
-        optimisticMsgs[i].remove();
-        break;
+    // Verificar todas as mensagens .out no container com mesmo texto
+    const existingOutMsgs = container.querySelectorAll('.whatsapp-message.out');
+    const msgTextNormalized = (msg.message_text || '').trim();
+    for (let i = existingOutMsgs.length - 1; i >= Math.max(0, existingOutMsgs.length - 10); i--) {
+      const el = existingOutMsgs[i];
+      // Comparar via data-raw-text (otimistas) ou innerText (já renderizadas)
+      const rawText = el.getAttribute('data-raw-text');
+      if (rawText && rawText.trim() === msgTextNormalized) {
+        return; // Já existe, não adicionar
       }
     }
   }
