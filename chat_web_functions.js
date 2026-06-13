@@ -676,6 +676,7 @@ document.addEventListener('DOMContentLoaded', function() {
           msgDiv.className = 'whatsapp-message out';
           msgDiv.id = optimisticId;
           msgDiv.setAttribute('data-optimistic', '1');
+          msgDiv.setAttribute('data-raw-text', message); // Guardar texto original para comparação
           msgDiv.innerHTML = '<div class="whatsapp-message-bubble"><div class="whatsapp-message-text">' + message.replace(/\n/g,'<br>') + '</div><div class="whatsapp-message-time">' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ✓</div></div>';
           chatArea.appendChild(msgDiv);
           chatArea.scrollTop = chatArea.scrollHeight;
@@ -927,16 +928,12 @@ function appendMessageToDOM(msg) {
   if (isFromMe) {
     const optimisticMsgs = container.querySelectorAll('[data-optimistic="1"]');
     for (let i = 0; i < optimisticMsgs.length; i++) {
-      const optText = optimisticMsgs[i].querySelector('.whatsapp-message-text');
-      if (optText) {
-        // Comparar texto normalizado (sem quebras de linha e espaços extras)
-        const optNormalized = optText.textContent.trim().replace(/\s+/g, ' ');
-        const msgNormalized = (msg.message_text || '').trim().replace(/\s+/g, ' ');
-        if (optNormalized === msgNormalized) {
-          // Remover a mensagem otimista — a versão real do servidor vai substituí-la
-          optimisticMsgs[i].remove();
-          break;
-        }
+      const rawText = optimisticMsgs[i].getAttribute('data-raw-text') || '';
+      const msgText = (msg.message_text || '').trim();
+      // Comparar texto original guardado no atributo
+      if (rawText.trim() === msgText) {
+        optimisticMsgs[i].remove();
+        break;
       }
     }
   }
