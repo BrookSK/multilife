@@ -1856,7 +1856,7 @@ if (empty($selectedChat)) {
             } elseif ($messageType === 'image' && !empty($mediaUrl)) {
                 echo '<!-- DEBUG IMAGE: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="margin-bottom:8px">';
-                echo '<img src="' . h($mediaUrl) . '" alt="Imagem" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)" onerror="console.error(\'Erro ao carregar imagem:\', this.src); this.style.border=\'2px solid red\';">';
+                echo '<img src="' . h($mediaUrl) . '" alt="Imagem" style="max-width:100%;max-height:300px;border-radius:8px;cursor:pointer;object-fit:contain" onclick="window.open(this.src)" onerror="console.error(\'Erro ao carregar imagem:\', this.src); this.style.border=\'2px solid red\';">';
                 echo '</div>';
                 if (!empty($messageText) && $messageText !== '[Imagem]') {
                     echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
@@ -2221,6 +2221,7 @@ if (!empty($messages)) {
     }
 }
 echo 'window.lastTimestamp = ' . $lastTs . ';';
+echo 'if (typeof startChatPolling === "function") startChatPolling();';
 echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window.chatName);';
 
 // Marcar mensagens como lidas quando chat for aberto

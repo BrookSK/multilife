@@ -919,7 +919,7 @@ function appendMessageToDOM(msg) {
     const mimeType = msg.media_mime_type || 'audio/ogg; codecs=opus';
     html += '<div style="margin-bottom:8px"><audio controls preload="metadata" style="max-width:100%;height:40px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(mimeType) + '"></audio></div>';
   } else if (messageType === 'image' && mediaUrl) {
-    html += '<div style="margin-bottom:8px"><img src="' + escapeHtml(mediaUrl) + '" alt="Imagem" style="max-width:100%;border-radius:8px;cursor:pointer" onclick="window.open(this.src)"></div>';
+    html += '<div style="margin-bottom:8px"><img src="' + escapeHtml(mediaUrl) + '" alt="Imagem" style="max-width:100%;max-height:300px;border-radius:8px;cursor:pointer;object-fit:contain" onclick="window.open(this.src)"></div>';
     if (text && text !== '[Imagem]') {
       html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
     }
@@ -994,9 +994,22 @@ function updateChatListPreview(lastMsg) {
 }
 
 // Iniciar polling se houver chat selecionado
-if (window.chatId) {
-  setInterval(checkForNewMessages, 3000);
+// (Será iniciado pelo inline script que define window.chatId)
+function startChatPolling() {
+  if (window.chatId && !window._pollingStarted) {
+    window._pollingStarted = true;
+    setInterval(checkForNewMessages, 3000);
+    console.log("✅ Polling iniciado para chat:", window.chatId, "| lastTimestamp:", window.lastTimestamp);
+  }
 }
+
+// Tentar iniciar imediatamente (caso chatId já esteja definido)
+startChatPolling();
+
+// Também tentar após DOMContentLoaded (fallback)
+document.addEventListener('DOMContentLoaded', function() {
+  startChatPolling();
+});
 
 // Auto-scroll para última mensagem
 document.addEventListener('DOMContentLoaded', function() {
