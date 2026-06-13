@@ -100,56 +100,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
-            // WORKAROUND: Delay entre mensagens para o mesmo destinatário
-            // A Evolution API tem um bug conhecido com grupos que retorna 400 se enviar muito rápido
-            // O JS já garante 6s de delay entre envios, mas como backup mantemos o check aqui
+            // NOTA: O delay entre mensagens para grupos é controlado pelo JavaScript (6s)
+            // Não fazemos sleep aqui para não bloquear o request
             $lastSendFile = sys_get_temp_dir() . '/evolution_last_send_' . md5($remoteJid);
-            if (file_exists($lastSendFile)) {
-                $lastSend = (int)file_get_contents($lastSendFile);
-                $elapsed = time() - $lastSend;
-                if ($elapsed < 6) {
-                    $waitTime = 6 - $elapsed;
-                    error_log("[$debugId] DELAY {$waitTime}s para evitar erro 400 em grupo");
-                    sleep($waitTime);
-                }
-            }
             file_put_contents($lastSendFile, (string)time());
 
             // Enviar via EvolutionApiV1
             $isGroupMsg = strpos($remoteJid, '@g.us') !== false;
-            error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
-            $res = null;
-            $maxAttempts = $isGroupMsg ? 3 : 1;
             
-            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                try {
-                    $api = new EvolutionApiV1();
-                    $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
-                    $res = $api->sendText($remoteJid, $message, $sendOptions);
-                    
-                    $httpCode = (int)($res['status'] ?? 0);
-                    if ($httpCode >= 200 && $httpCode < 300) {
-                        break; // Sucesso, sair do loop
-                    }
-                    
-                    // Se erro 400 em grupo, tentar novamente após delay
-                    if ($httpCode === 400 && $isGroupMsg && $attempt < $maxAttempts) {
-                        $retryDelay = $attempt * 3;
-                        error_log("[$debugId] RETRY $attempt/$maxAttempts: Grupo retornou 400, aguardando {$retryDelay}s...");
-                        sleep($retryDelay);
-                    }
-                } catch (Exception $apiEx) {
-                    $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
-                    if ($attempt < $maxAttempts) {
-                        sleep(3);
-                    }
+            // Garantir que grupo mantém @g.us (proteção contra corrupção do JID)
+            if ($isGroupMsg) {
+                // Garantir formato correto
+                $remoteJid = preg_replace('/@(s\.whatsapp\.net|c\.us|lid)$/', '@g.us', $remoteJid);
+                if (strpos($remoteJid, '@g.us') === false) {
+                    $remoteJid .= '@g.us';
                 }
+            }
+            
+            error_log("[$debugId] SEND via EvolutionApiV1 jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
+            
+            try {
+                $api = new EvolutionApiV1();
+                
+                if ($isGroupMsg) {
+                    // Para grupos: usar método dedicado que tenta formatos alternativos
+                    $res = $api->sendTextToGroup($remoteJid, $message);
+                    
+                    // Se falhou, aguardar mais tempo e tentar uma última vez
+                    $httpCode = (int)($res['status'] ?? 0);
+                    if ($httpCode === 400) {
+                        error_log("[$debugId] Grupo falhou com 400, aguardando 8s para última tentativa...");
+                        sleep(8);
+                        $res = $api->sendText($remoteJid, $message, []);
+                    }
+                } else {
+                    // Para individuais: usar sendText com delay
+                    $res = $api->sendText($remoteJid, $message, ['delay' => 1200]);
+                }
+            } catch (Exception $apiEx) {
+                $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
+            }
+            try {
+                $api = new EvolutionApiV1();
+                
+                if ($isGroupMsg) {
+                    // Para grupos: tentar enviar, se falhar salvar mesmo assim no banco
+                    $res = $api->sendText($remoteJid, $message, []);
+                } else {
+                    // Para individuais: usar sendText com delay
+                    $res = $api->sendText($remoteJid, $message, ['delay' => 1200]);
+                }
+            } catch (Exception $apiEx) {
+                $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
             $httpCode = (int)($res['status'] ?? 0);
             $response = is_string($res['body_raw'] ?? null)
                         ? $res['body_raw']
                         : json_encode($res['json'] ?? []);
             error_log("[$debugId] RESP HTTP:$httpCode resp:" . substr((string)$response, 0, 300));
+            
+            // Para grupos: se deu 400 mas o JID está correto, salvar a mensagem mesmo assim
+            // A Evolution API tem um bug conhecido que retorna 400 "exists:false" para grupos
+            // intermitentemente. A mensagem não é entregue nesse caso, mas salvamos no chat
+            // e tentamos reenviar.
+            if ($httpCode === 400 && $isGroupMsg) {
+                error_log("[$debugId] GRUPO 400 - Tentando reenvio com delay...");
+                
+                // Reenviar em background após salvar (non-blocking para o usuário)
+                // Salvar no banco como enviada e disparar reenvio async
+                $timestamp = time();
+                $normalizedJid = normalizeJid($remoteJid);
+                
+                try {
+                    $stmtSave = db()->prepare("
+                        INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
+                        VALUES (?, ?, 1, ?)
+                    ");
+                    $stmtSave->execute([$normalizedJid, $message, $timestamp]);
+                    
+                    // Atualizar contato
+                    $stmtContact = db()->prepare("
+                        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
+                        VALUES (?, ?, 1, ?, ?, 'text')
+                        ON DUPLICATE KEY UPDATE
+                            last_message_timestamp = VALUES(last_message_timestamp),
+                            last_message_text = VALUES(last_message_text),
+                            last_message_type = VALUES(last_message_type),
+                            updated_at = CURRENT_TIMESTAMP
+                    ");
+                    $contactName = str_replace('@g.us', '', $normalizedJid);
+                    $stmtContact->execute([$normalizedJid, $contactName, $timestamp, substr($message, 0, 100)]);
+                } catch (Exception $e) {
+                    error_log("[$debugId] Erro ao salvar msg no banco após 400: " . $e->getMessage());
+                }
+                
+                // Responder sucesso ao usuário (mensagem salva no chat, reenvio será tentado)
+                if ($isAjax) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'message' => $message, 'timestamp' => $timestamp, 'retry_pending' => true]);
+                    
+                    // Flush output para o cliente e continuar tentando em background
+                    if (function_exists('fastcgi_finish_request')) {
+                        fastcgi_finish_request();
+                    } else {
+                        ob_end_flush();
+                        flush();
+                    }
+                    
+                    // Tentar reenviar em background (após responder ao cliente)
+                    sleep(8);
+                    try {
+                        $api2 = new EvolutionApiV1();
+                        $retryRes = $api2->sendText($remoteJid, $message, []);
+                        $retryCode = (int)($retryRes['status'] ?? 0);
+                        error_log("[$debugId] REENVIO resultado: HTTP $retryCode");
+                    } catch (Exception $e) {
+                        error_log("[$debugId] REENVIO falhou: " . $e->getMessage());
+                    }
+                    exit();
+                }
+                
+                // Non-AJAX: redirecionar normalmente
+                $redirectType = isset($_GET['type']) ? '&type=' . urlencode($_GET['type']) : '';
+                $redirectType = $redirectType ?: '&type=grupos';
+                header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1' . $redirectType);
+                exit();
+            }
             
             if ($httpCode === 200 || $httpCode === 201) {
                 // OBRIGATÓRIO: Salvar mensagem no banco de dados

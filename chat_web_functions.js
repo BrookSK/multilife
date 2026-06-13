@@ -649,7 +649,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Para grupos: garantir delay mínimo entre envios (evita erro 400 da Evolution API)
         if (isGroup && window._lastGroupSendTime) {
           const elapsed = Date.now() - window._lastGroupSendTime;
-          const minDelay = 6000; // 6 segundos entre mensagens para grupo
+          const minDelay = 8000; // 8 segundos entre mensagens para grupo
           if (elapsed < minDelay) {
             const waitMs = minDelay - elapsed;
             console.log('Aguardando ' + waitMs + 'ms antes de enviar para grupo...');
@@ -679,17 +679,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(sendForm);
         formData.set('message', message);
         
+        // Marcar timestamp ANTES de enviar (para calcular delay da próxima mensagem)
+        if (isGroup) {
+          window._lastGroupSendTime = Date.now();
+        }
+        
+        // Debug: garantir que phone_number está correto
+        console.log('[SEND] chatId:', chatId, '| isGroup:', isGroup, '| message:', message.substring(0, 20));
+        
         try {
           const resp = await fetch(sendUrl, {
             method: 'POST',
             headers: {'X-Requested-With': 'XMLHttpRequest'},
             body: formData
           });
-          
-          // Marcar timestamp do envio para controle de delay
-          if (isGroup) {
-            window._lastGroupSendTime = Date.now();
-          }
           
           const contentType = resp.headers.get('content-type') || '';
           if (contentType.indexOf('application/json') > -1) {

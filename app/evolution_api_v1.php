@@ -220,6 +220,69 @@ final class EvolutionApiV1
         return $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body);
     }
 
+    /**
+     * Enviar texto para grupo usando formato alternativo.
+     * A Evolution API às vezes falha com sendText para grupos retornando "exists: false".
+     * Este método tenta múltiplos formatos do JID.
+     */
+    public function sendTextToGroup(string $groupJid, string $text): array
+    {
+        // Formato 1: JID completo (padrão)
+        $body = [
+            'number' => $groupJid,
+            'textMessage' => ['text' => $text],
+        ];
+        $res = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body);
+        
+        $httpCode = (int)($res['status'] ?? 0);
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return $res;
+        }
+        
+        error_log("[EVOLUTION] sendTextToGroup: Formato 1 (number=$groupJid) falhou ($httpCode)");
+        
+        // Formato 2: Apenas o ID numérico sem @g.us
+        // Algumas versões da API fazem append automático de @g.us
+        $groupId = str_replace('@g.us', '', $groupJid);
+        $body2 = [
+            'number' => $groupId,
+            'textMessage' => ['text' => $text],
+        ];
+        
+        // Delay antes de tentar novamente
+        usleep(500000); // 500ms
+        
+        $res2 = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body2);
+        
+        $httpCode2 = (int)($res2['status'] ?? 0);
+        if ($httpCode2 >= 200 && $httpCode2 < 300) {
+            return $res2;
+        }
+        
+        error_log("[EVOLUTION] sendTextToGroup: Formato 2 (number=$groupId) falhou ($httpCode2)");
+        
+        // Formato 3: Usando campo "options" com "delay" pode forçar novo lookup
+        $body3 = [
+            'number' => $groupJid,
+            'textMessage' => ['text' => $text],
+            'options' => (object)['delay' => 2000],
+        ];
+        
+        usleep(500000); // 500ms
+        
+        $res3 = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body3);
+        
+        $httpCode3 = (int)($res3['status'] ?? 0);
+        if ($httpCode3 >= 200 && $httpCode3 < 300) {
+            return $res3;
+        }
+        
+        error_log("[EVOLUTION] sendTextToGroup: TODOS OS FORMATOS FALHARAM para $groupJid");
+        
+        // Retornar o primeiro resultado (mais relevante)
+        return $res;
+    }
+
     public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = []): array
     {
         $msg = [
