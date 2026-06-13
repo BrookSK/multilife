@@ -469,6 +469,7 @@ if ($event === 'messages.upsert') {
         $senderPn    = $messageData['key']['senderPn'] ?? ''; // Número real do remetente
         $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
         $participant = $messageData['key']['participant'] ?? '';
+        $participantPn = $messageData['key']['participantPn'] ?? ''; // Número real do participante (em vez de LID)
         $externalMsgId = $messageData['key']['id'] ?? '';
         $pushName    = $messageData['pushName'] ?? '';
         $msgPayload  = $messageData['message'] ?? [];
@@ -483,10 +484,10 @@ if ($event === 'messages.upsert') {
             $reactionKey = $reaction['key'] ?? [];
             $reactionMsgId = $reactionKey['id'] ?? '';
             $reactionEmoji = $reaction['text'] ?? '';
-            // Quem reagiu: participant do messageData (não da reactionKey)
-            $reactorJid = $fromMe ? 'me' : ($participant ?: $remoteJid);
+            // Quem reagiu: usar participantPn (número real) se disponível, senão participant (LID)
+            $reactorJid = $fromMe ? 'me' : ($participantPn ?: $participant ?: $remoteJid);
             
-            error_log("[WEBHOOK] REAÇÃO recebida: emoji='$reactionEmoji' msgId='$reactionMsgId' reactor='$reactorJid' participant='$participant' remoteJid='$remoteJid'");
+            error_log("[WEBHOOK] REAÇÃO recebida: emoji='$reactionEmoji' msgId='$reactionMsgId' reactor='$reactorJid' participantPn='$participantPn' participant='$participant'");
             
             if (!empty($reactionMsgId)) {
                 try {
