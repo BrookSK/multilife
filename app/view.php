@@ -543,6 +543,8 @@ function view_footer(): void
         echo '      form.querySelectorAll("input").forEach(function(input){';
         echo '        const name=input.name||"";';
         echo '        const id=input.id||"";';
+        echo '        const val=input.value||"";';
+        echo '        if(input.type==="hidden"&&val.indexOf("@")>-1)return;';
         echo '        const label=input.labels&&input.labels[0]?input.labels[0].textContent.toLowerCase():"";';
         echo '        if(name.toLowerCase().includes("phone")||name.toLowerCase().includes("telefone")||';
         echo '           name.toLowerCase().includes("whatsapp")||name.toLowerCase().includes("celular")||';

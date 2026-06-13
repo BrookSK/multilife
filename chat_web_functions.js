@@ -646,13 +646,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const sendBtn = sendForm.querySelector('button[type=submit]');
         if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
         
-        // Para grupos: garantir delay mínimo entre envios (evita erro 400 da Evolution API)
+        // Para grupos: pequeno delay entre envios (proteção extra)
         if (isGroup && window._lastGroupSendTime) {
           const elapsed = Date.now() - window._lastGroupSendTime;
-          const minDelay = 8000; // 8 segundos entre mensagens para grupo
+          const minDelay = 2000; // 2 segundos entre mensagens para grupo
           if (elapsed < minDelay) {
             const waitMs = minDelay - elapsed;
-            console.log('Aguardando ' + waitMs + 'ms antes de enviar para grupo...');
             await new Promise(resolve => setTimeout(resolve, waitMs));
           }
         }
