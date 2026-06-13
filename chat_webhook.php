@@ -483,7 +483,10 @@ if ($event === 'messages.upsert') {
             $reactionKey = $reaction['key'] ?? [];
             $reactionMsgId = $reactionKey['id'] ?? '';
             $reactionEmoji = $reaction['text'] ?? '';
+            // Quem reagiu: participant do messageData (não da reactionKey)
             $reactorJid = $fromMe ? 'me' : ($participant ?: $remoteJid);
+            
+            error_log("[WEBHOOK] REAÇÃO recebida: emoji='$reactionEmoji' msgId='$reactionMsgId' reactor='$reactorJid' participant='$participant' remoteJid='$remoteJid'");
             
             if (!empty($reactionMsgId)) {
                 try {
@@ -557,11 +560,11 @@ if ($event === 'messages.upsert') {
                                     
                                     $displayName = $professionalName ?: $pushName ?: $reactorPhone;
                                     
-                                    // Enviar mensagem no GRUPO confirmando
+                                    // Enviar mensagem no GRUPO confirmando (SEM expor nome do profissional)
                                     try {
                                         $api = new EvolutionApiV1();
-                                        $groupMsg = "✅ *Captação confirmada!*\n\n"
-                                            . "O profissional *{$displayName}* aceitou a captação:\n"
+                                        $groupMsg = "✅ *Captação assumida!*\n\n"
+                                            . "Um profissional confirmou interesse nesta captação.\n"
                                             . "📋 {$demandTitle}\n\n"
                                             . "O atendimento será tratado no privado. Obrigado!";
                                         $api->sendText($remoteJid, $groupMsg, []);
@@ -573,17 +576,30 @@ if ($event === 'messages.upsert') {
                                     // Enviar mensagem PRIVADA para o profissional
                                     try {
                                         $api = $api ?? new EvolutionApiV1();
-                                        $privateJid = $reactorPhone . '@s.whatsapp.net';
-                                        $privateMsg = "🎉 *Captação confirmada!*\n\n"
-                                            . "Olá, *{$displayName}*!\n\n"
-                                            . "Você confirmou interesse na captação:\n"
-                                            . "📋 *{$demandTitle}*\n"
-                                            . ($specialty ? "🏥 Especialidade: {$specialty}\n" : "")
-                                            . "\n"
-                                            . "Em breve um operador entrará em contato com mais detalhes sobre o atendimento.\n\n"
-                                            . "Equipe MultiLife";
-                                        $api->sendText($privateJid, $privateMsg, ['delay' => 1200]);
-                                        error_log("[WEBHOOK] Mensagem privada enviada para profissional: $privateJid");
+                                        // Limpar o telefone: remover sufixos como :38, @s.whatsapp.net, etc.
+                                        $cleanPhone = preg_replace('/[:@].+$/', '', $reactorJid);
+                                        $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
+                                        
+                                        if (strlen($cleanPhone) >= 10) {
+                                            $privateJid = $cleanPhone . '@s.whatsapp.net';
+                                            $privateMsg = "🎉 *Olá!*\n\n"
+                                                . "Vimos que você confirmou interesse na captação:\n"
+                                                . "📋 *{$demandTitle}*\n"
+                                                . ($specialty ? "🏥 Especialidade: {$specialty}\n" : "")
+                                                . "\n"
+                                                . "Em breve um operador entrará em contato com mais detalhes sobre o atendimento.\n\n"
+                                                . "Obrigado por fazer parte da equipe!\n"
+                                                . "Equipe MultiLife";
+                                            
+                                            // Pequeno delay antes de enviar no privado
+                                            usleep(1500000); // 1.5s
+                                            
+                                            $privRes = $api->sendText($privateJid, $privateMsg, ['delay' => 1200]);
+                                            $privCode = (int)($privRes['status'] ?? 0);
+                                            error_log("[WEBHOOK] Mensagem privada enviada para profissional: $privateJid (HTTP $privCode)");
+                                        } else {
+                                            error_log("[WEBHOOK] Telefone do reactor inválido: '$cleanPhone' (original: '$reactorJid')");
+                                        }
                                     } catch (Exception $privErr) {
                                         error_log("[WEBHOOK] Erro ao enviar msg privada: " . $privErr->getMessage());
                                     }
