@@ -744,6 +744,30 @@ if ($event === 'messages.upsert') {
         if ($shouldSave) {
             try {
                 $fromMeInt = $fromMe ? 1 : 0;
+                
+                // Para mensagens fromMe: verificar se já existe (pode ter sido salva pelo chat_web.php)
+                if ($fromMe) {
+                    $normalizedCheckJid = normalizeJid($remoteJid);
+                    $stmtDupCheck = db()->prepare("
+                        SELECT id FROM chat_messages 
+                        WHERE remote_jid = ? AND from_me = 1 AND message_text = ? 
+                        AND message_timestamp BETWEEN ? AND ?
+                        LIMIT 1
+                    ");
+                    $stmtDupCheck->execute([$normalizedCheckJid, $messageText, $timestamp - 10, $timestamp + 10]);
+                    $existingMsg = $stmtDupCheck->fetch();
+                    
+                    if ($existingMsg) {
+                        // Já existe, apenas atualizar external_message_id se necessário
+                        if (!empty($externalMsgId)) {
+                            $stmtUpd = db()->prepare("UPDATE chat_messages SET external_message_id = ? WHERE id = ? AND external_message_id IS NULL");
+                            $stmtUpd->execute([$externalMsgId, $existingMsg['id']]);
+                        }
+                        error_log("[WEBHOOK] mensagem fromMe já existe (id={$existingMsg['id']}), skip duplicata");
+                        continue;
+                    }
+                }
+                
                 $extraData = [
                     'quoted_message_id' => $quotedMessageId,
                     'quoted_message_text' => $quotedMessageText,
@@ -848,11 +872,34 @@ if ($event === 'send.message') {
         && !$isStatusBroadcast && !isSystemMessageType($msgPayload) && !isSystemText($messageText)) {
         try {
             $sendExternalId = $messageData['key']['id'] ?? null;
-            $sendExtraData = [
-                'external_message_id' => $sendExternalId,
-            ];
-            saveMessage($remoteJid, $messageText, 1, $timestamp, $mediaData, $sendExtraData);
-            error_log("[WEBHOOK] mensagem ENVIADA salva: jid='$remoteJid' type='$messageType'");
+            $normalizedJid = normalizeJid($remoteJid);
+            
+            // Verificar se a mensagem já foi salva pelo chat_web.php (evitar duplicata)
+            // Mensagens enviadas pelo sistema são salvas no momento do envio,
+            // o webhook send.message chega depois e duplicaria
+            $stmtCheck = db()->prepare("
+                SELECT id FROM chat_messages 
+                WHERE remote_jid = ? AND from_me = 1 AND message_text = ? 
+                AND message_timestamp BETWEEN ? AND ?
+                LIMIT 1
+            ");
+            $stmtCheck->execute([$normalizedJid, $messageText, $timestamp - 10, $timestamp + 10]);
+            $existing = $stmtCheck->fetch();
+            
+            if ($existing) {
+                // Mensagem já existe (salva pelo chat_web.php), apenas atualizar external_message_id se necessário
+                if ($sendExternalId) {
+                    $stmtUpdate = db()->prepare("UPDATE chat_messages SET external_message_id = ? WHERE id = ? AND external_message_id IS NULL");
+                    $stmtUpdate->execute([$sendExternalId, $existing['id']]);
+                }
+                error_log("[WEBHOOK] mensagem ENVIADA já existe no banco (id={$existing['id']}), skip duplicata");
+            } else {
+                $sendExtraData = [
+                    'external_message_id' => $sendExternalId,
+                ];
+                saveMessage($remoteJid, $messageText, 1, $timestamp, $mediaData, $sendExtraData);
+                error_log("[WEBHOOK] mensagem ENVIADA salva: jid='$remoteJid' type='$messageType'");
+            }
         } catch (Exception $e) {
             error_log("Webhook erro ao salvar mensagem enviada: " . $e->getMessage());
         }
