@@ -105,8 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (file_exists($lastSendFile)) {
                 $lastSend = (int)file_get_contents($lastSendFile);
                 $elapsed = time() - $lastSend;
-                if ($elapsed < 2) {
-                    $waitTime = 2 - $elapsed;
+                if ($elapsed < 3) {
+                    $waitTime = 3 - $elapsed;
                     error_log("[$debugId] DELAY {$waitTime}s para evitar sobrecarga");
                     sleep($waitTime);
                 }
@@ -118,10 +118,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("[$debugId] SEND via EvolutionApiV1::sendText jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
             try {
                 $api = new EvolutionApiV1();
-                // Para grupos, não enviar options (pode causar erro 400)
-                // Para individuais, usar delay para estabelecer sessão Signal
+                // Para individuais: usar delay para estabelecer sessão Signal
+                // Para grupos: enviar sem options (pode causar 400 com delay)
                 $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
                 $res = $api->sendText($remoteJid, $message, $sendOptions);
+                
+                // Retry: Se grupo retornou 400, esperar e tentar novamente uma vez
+                $httpCode = (int)($res['status'] ?? 0);
+                if ($httpCode === 400 && $isGroupMsg) {
+                    error_log("[$debugId] RETRY: Grupo retornou 400, aguardando 3s e tentando novamente...");
+                    sleep(3);
+                    $res = $api->sendText($remoteJid, $message, []);
+                }
             } catch (Exception $apiEx) {
                 $res = ['status' => 0, 'json' => null, 'body_raw' => $apiEx->getMessage()];
             }
@@ -290,10 +298,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             } else {
                 $responseData = json_decode($response, true);
 
-                // Extrair mensagem de erro como string segura (API pode retornar array)
+                // Extrair mensagem de erro como string segura (API pode retornar array/objeto aninhado)
                 $rawMsg = $responseData['message'] ?? $responseData['response']['message'] ?? $response;
                 if (is_array($rawMsg)) {
-                    $rawMsg = implode('; ', array_map('strval', $rawMsg));
+                    $rawMsg = json_encode($rawMsg, JSON_UNESCAPED_UNICODE);
                 }
                 $errorMsg = (string)$rawMsg;
 

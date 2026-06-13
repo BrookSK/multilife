@@ -209,11 +209,15 @@ final class EvolutionApiV1
 
     public function sendText(string $number, string $text, array $options = []): array
     {
-        return $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], [
+        $body = [
             'number' => $number,
             'textMessage' => ['text' => $text],
-            'options' => (object)$options,
-        ]);
+        ];
+        // Só incluir options se não estiver vazio (evitar enviar options:{} que pode causar 400 em grupos)
+        if (!empty($options)) {
+            $body['options'] = (object)$options;
+        }
+        return $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body);
     }
 
     public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = []): array
