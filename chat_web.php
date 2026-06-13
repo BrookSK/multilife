@@ -663,7 +663,14 @@ if (!empty($selectedChat)) {
                 media_mime_type as mediaMimeType,
                 media_filename as mediaFilename,
                 audio_transcription as audioTranscription,
-                thumbnail_url as thumbnailUrl
+                thumbnail_url as thumbnailUrl,
+                quoted_message_id as quotedMessageId,
+                quoted_message_text as quotedMessageText,
+                quoted_message_sender as quotedMessageSender,
+                mentioned_jids as mentionedJids,
+                sender_name as senderName,
+                participant_jid as participantJid,
+                external_message_id as externalMessageId
             FROM chat_messages
             WHERE remote_jid = ?
             ORDER BY message_timestamp ASC
@@ -671,9 +678,28 @@ if (!empty($selectedChat)) {
         $stmt->execute([$selectedChat]);
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Converter fromMe para boolean
+        // Buscar reações para todas as mensagens deste chat
+        $reactions = [];
+        try {
+            $stmtReactions = db()->prepare("SELECT message_id, reactor_jid, emoji FROM chat_reactions WHERE remote_jid = ?");
+            $stmtReactions->execute([$selectedChat]);
+            $rawReactions = $stmtReactions->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rawReactions as $r) {
+                $reactions[$r['message_id']][] = ['reactor' => $r['reactor_jid'], 'emoji' => $r['emoji']];
+            }
+        } catch (Exception $e) {
+            // Tabela pode não existir ainda
+        }
+        
+        // Converter fromMe para boolean e anexar reações
         foreach ($messages as &$msg) {
             $msg['fromMe'] = (bool)$msg['fromMe'];
+            // Anexar reações via external_message_id
+            if (!empty($msg['externalMessageId']) && isset($reactions[$msg['externalMessageId']])) {
+                $msg['reactions'] = $reactions[$msg['externalMessageId']];
+            } else {
+                $msg['reactions'] = [];
+            }
         }
         unset($msg);
     } catch (Exception $e) {
@@ -1764,6 +1790,10 @@ if (empty($selectedChat)) {
             $messageType = $msg['type'] ?? 'text';
             $mediaUrl = $msg['mediaUrl'] ?? '';
             $timestamp = isset($msg['timestamp']) ? date('H:i', $msg['timestamp']) : '';
+            $quotedText = $msg['quotedMessageText'] ?? '';
+            $quotedSender = $msg['quotedMessageSender'] ?? '';
+            $senderName = $msg['senderName'] ?? '';
+            $msgReactions = $msg['reactions'] ?? [];
             
             // Converter URL relativa para absoluta
             if (!empty($mediaUrl) && $mediaUrl[0] === '/' && strpos($mediaUrl, 'http') !== 0) {
@@ -1779,6 +1809,25 @@ if (empty($selectedChat)) {
             
             echo '<div class="whatsapp-message ' . $messageClass . '">';
             echo '<div class="whatsapp-message-bubble">';
+            
+            // Renderizar nome do remetente em grupos (mensagens recebidas)
+            if ($isGroup && !$isFromMe && !empty($senderName)) {
+                echo '<div style="font-size:12px;font-weight:600;color:#06cf9c;margin-bottom:4px">' . h($senderName) . '</div>';
+            }
+            
+            // Renderizar mensagem citada (reply/quoted)
+            if (!empty($quotedText)) {
+                $quotedSenderDisplay = '';
+                if (!empty($quotedSender)) {
+                    $quotedSenderDisplay = str_replace(['@s.whatsapp.net', '@g.us'], '', $quotedSender);
+                }
+                echo '<div style="background:rgba(0,0,0,.05);border-left:4px solid #06cf9c;border-radius:4px;padding:6px 10px;margin-bottom:6px;font-size:12px;cursor:pointer">';
+                if (!empty($quotedSenderDisplay)) {
+                    echo '<div style="font-weight:600;color:#06cf9c;margin-bottom:2px">' . h($quotedSenderDisplay) . '</div>';
+                }
+                echo '<div style="color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px">' . h($quotedText) . '</div>';
+                echo '</div>';
+            }
             
             // Renderizar baseado no tipo de mensagem
             if ($messageType === 'audio' && !empty($mediaUrl)) {
@@ -1838,8 +1887,44 @@ if (empty($selectedChat)) {
                 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
                 echo '</div>';
                 echo '</a>';
+            } elseif ($messageType === 'sticker' && !empty($mediaUrl)) {
+                echo '<div style="margin-bottom:4px">';
+                echo '<img src="' . h($mediaUrl) . '" alt="Sticker" style="max-width:150px;max-height:150px" onerror="this.alt=\'[Sticker]\';this.style.display=\'none\'">';
+                echo '</div>';
             } else {
-                echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                // Texto com suporte a menções
+                $displayText = $messageText;
+                if (!empty($msg['mentionedJids'])) {
+                    $mentions = json_decode($msg['mentionedJids'], true);
+                    if (is_array($mentions)) {
+                        foreach ($mentions as $mentionJid) {
+                            $mentionNumber = str_replace(['@s.whatsapp.net', '@g.us'], '', $mentionJid);
+                            $displayText = str_replace('@' . $mentionNumber, '<span style="color:#027eb5;font-weight:500">@' . $mentionNumber . '</span>', $displayText);
+                        }
+                    }
+                    echo '<div class="whatsapp-message-text">' . $displayText . '</div>';
+                } else {
+                    echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                }
+            }
+            
+            // Renderizar reações (se houver)
+            if (!empty($msgReactions)) {
+                echo '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">';
+                // Agrupar reações por emoji
+                $emojiCounts = [];
+                foreach ($msgReactions as $reaction) {
+                    $emoji = $reaction['emoji'];
+                    if (!isset($emojiCounts[$emoji])) {
+                        $emojiCounts[$emoji] = 0;
+                    }
+                    $emojiCounts[$emoji]++;
+                }
+                foreach ($emojiCounts as $emoji => $count) {
+                    $countDisplay = $count > 1 ? ' ' . $count : '';
+                    echo '<span style="background:rgba(0,0,0,.05);border-radius:12px;padding:2px 6px;font-size:12px;cursor:default">' . $emoji . $countDisplay . '</span>';
+                }
+                echo '</div>';
             }
             
             echo '<div class="whatsapp-message-time">' . h($timestamp) . '</div>';

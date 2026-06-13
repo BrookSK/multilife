@@ -26,7 +26,10 @@ try {
 
     // Buscar mensagens novas desde o último timestamp
     $stmt = db()->prepare("
-        SELECT id, remote_jid, message_text, from_me, message_timestamp
+        SELECT id, remote_jid, message_text, from_me, message_timestamp,
+               message_type, media_url, media_mime_type, media_filename,
+               quoted_message_text, quoted_message_sender, mentioned_jids,
+               sender_name, external_message_id
         FROM chat_messages
         WHERE remote_jid = ?
           AND message_timestamp > ?

@@ -76,6 +76,20 @@ function ensureChatTables(): void {
         UNIQUE INDEX idx_remote_jid (remote_jid),
         INDEX idx_last_message (last_message_timestamp)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    db()->exec("CREATE TABLE IF NOT EXISTS chat_reactions (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        remote_jid VARCHAR(100) NOT NULL,
+        message_id VARCHAR(255) NOT NULL,
+        reactor_jid VARCHAR(100) NOT NULL,
+        emoji VARCHAR(20) NOT NULL,
+        reaction_timestamp INT UNSIGNED NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_message_id (message_id),
+        INDEX idx_remote_jid (remote_jid),
+        UNIQUE INDEX idx_unique_reaction (message_id, reactor_jid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 }
 
 // Normalizar JID para evitar duplicação de chats
@@ -231,7 +245,7 @@ function downloadMedia(string $externalUrl, string $filename, string $mimeType):
     }
 }
 
-function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp, array $mediaData = []): void {
+function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestamp, array $mediaData = [], array $extraData = []): void {
     ensureChatTables();
     
     // NORMALIZAR JID para evitar duplicação
@@ -245,6 +259,15 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $mediaSize = $mediaData['size'] ?? null;
     $audioTranscription = $mediaData['transcription'] ?? null;
     $thumbnailUrl = $mediaData['thumbnail'] ?? null;
+    
+    // Novos campos: quoted, mentions, sender, external_id
+    $quotedMessageId = $extraData['quoted_message_id'] ?? null;
+    $quotedMessageText = $extraData['quoted_message_text'] ?? null;
+    $quotedMessageSender = $extraData['quoted_message_sender'] ?? null;
+    $mentionedJids = $extraData['mentioned_jids'] ?? null; // JSON string
+    $senderName = $extraData['sender_name'] ?? null;
+    $participantJid = $extraData['participant_jid'] ?? null;
+    $externalMessageId = $extraData['external_message_id'] ?? null;
     
     // Se tem base64, salvar diretamente (mais confiável que URL)
     if ($messageType !== 'text' && !empty($base64Data)) {
@@ -319,8 +342,8 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     
     $stmt = db()->prepare("
         INSERT INTO chat_messages 
-        (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, thumbnail_url, from_me, message_timestamp) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, thumbnail_url, from_me, message_timestamp, quoted_message_id, quoted_message_text, quoted_message_sender, mentioned_jids, sender_name, participant_jid, external_message_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         $normalizedJid, 
@@ -333,7 +356,14 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
         $audioTranscription,
         $thumbnailUrl,
         $fromMe, 
-        $timestamp
+        $timestamp,
+        $quotedMessageId,
+        $quotedMessageText,
+        $quotedMessageSender,
+        $mentionedJids,
+        $senderName,
+        $participantJid,
+        $externalMessageId,
     ]);
     
     error_log("[SAVE_MSG] Mensagem salva no banco - ID: " . db()->lastInsertId());
@@ -375,13 +405,13 @@ function isSystemMessageType(array $message): bool {
         'protocolMessage',
         'ephemeralMessage',
         'senderKeyDistributionMessage',
-        'reactionMessage',
         'pollCreationMessage',
         'pollUpdateMessage',
         'callLogMessage',
         'requestPhoneNumberMessage',
         'encReactionMessage',
     ];
+    // reactionMessage removido - agora é processado como reação
     // messageContextInfo removido - é metadados de criptografia, não mensagem de sistema
     foreach ($systemTypes as $type) {
         if (isset($message[$type])) return true;
@@ -439,15 +469,111 @@ if ($event === 'messages.upsert') {
         $senderPn    = $messageData['key']['senderPn'] ?? ''; // Número real do remetente
         $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
         $participant = $messageData['key']['participant'] ?? '';
+        $externalMsgId = $messageData['key']['id'] ?? '';
+        $pushName    = $messageData['pushName'] ?? '';
         $msgPayload  = $messageData['message'] ?? [];
         $messageText = $msgPayload['conversation']
                        ?? $msgPayload['extendedTextMessage']['text']
                        ?? '';
         $timestamp   = (int)($messageData['messageTimestamp'] ?? time());
 
+        // ===== TRATAR REAÇÕES =====
+        if (isset($msgPayload['reactionMessage'])) {
+            $reaction = $msgPayload['reactionMessage'];
+            $reactionKey = $reaction['key'] ?? [];
+            $reactionMsgId = $reactionKey['id'] ?? '';
+            $reactionEmoji = $reaction['text'] ?? '';
+            $reactorJid = $fromMe ? 'me' : ($participant ?: $remoteJid);
+            
+            if (!empty($reactionMsgId)) {
+                try {
+                    ensureChatTables();
+                    $normalizedChatJid = normalizeJid($remoteJid);
+                    
+                    if (empty($reactionEmoji)) {
+                        // Reação vazia = remoção de reação
+                        $stmtDel = db()->prepare("DELETE FROM chat_reactions WHERE message_id = ? AND reactor_jid = ?");
+                        $stmtDel->execute([$reactionMsgId, $reactorJid]);
+                        error_log("[WEBHOOK] Reação removida: msg='$reactionMsgId' reactor='$reactorJid'");
+                    } else {
+                        // Inserir ou atualizar reação
+                        $stmtReact = db()->prepare("
+                            INSERT INTO chat_reactions (remote_jid, message_id, reactor_jid, emoji, reaction_timestamp)
+                            VALUES (?, ?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), reaction_timestamp = VALUES(reaction_timestamp)
+                        ");
+                        $stmtReact->execute([$normalizedChatJid, $reactionMsgId, $reactorJid, $reactionEmoji, $timestamp]);
+                        error_log("[WEBHOOK] Reação salva: emoji='$reactionEmoji' msg='$reactionMsgId' reactor='$reactorJid'");
+                    }
+                } catch (Exception $e) {
+                    error_log("[WEBHOOK] Erro ao salvar reação: " . $e->getMessage());
+                }
+            }
+            continue; // Reação processada, não salvar como mensagem
+        }
+
         // Extrair dados de mídia
         $mediaData = [];
         $messageType = 'text';
+        
+        // ===== EXTRAIR CONTEXTO (Quoted/Reply + Mentions) =====
+        $contextInfo = null;
+        $quotedMessageId = null;
+        $quotedMessageText = null;
+        $quotedMessageSender = null;
+        $mentionedJids = null;
+        
+        // contextInfo pode estar em extendedTextMessage, imageMessage, videoMessage, audioMessage, documentMessage, stickerMessage
+        $contextSources = ['extendedTextMessage', 'imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'];
+        foreach ($contextSources as $src) {
+            if (isset($msgPayload[$src]['contextInfo'])) {
+                $contextInfo = $msgPayload[$src]['contextInfo'];
+                break;
+            }
+        }
+        // Fallback: contextInfo direto no payload
+        if ($contextInfo === null && isset($msgPayload['contextInfo'])) {
+            $contextInfo = $msgPayload['contextInfo'];
+        }
+        
+        if ($contextInfo !== null) {
+            // Mensagem citada (reply/quoted)
+            $quotedMessageId = $contextInfo['stanzaId'] ?? null;
+            $quotedMessageSender = $contextInfo['participant'] ?? null;
+            
+            // Extrair texto da mensagem citada
+            $quotedMsg = $contextInfo['quotedMessage'] ?? [];
+            if (!empty($quotedMsg)) {
+                $quotedMessageText = $quotedMsg['conversation'] 
+                    ?? $quotedMsg['extendedTextMessage']['text'] 
+                    ?? $quotedMsg['imageMessage']['caption']
+                    ?? $quotedMsg['videoMessage']['caption']
+                    ?? $quotedMsg['documentMessage']['caption']
+                    ?? null;
+                
+                // Se não tem texto, indicar o tipo
+                if (empty($quotedMessageText)) {
+                    if (isset($quotedMsg['audioMessage'])) $quotedMessageText = '[Áudio]';
+                    elseif (isset($quotedMsg['imageMessage'])) $quotedMessageText = '[Imagem]';
+                    elseif (isset($quotedMsg['videoMessage'])) $quotedMessageText = '[Vídeo]';
+                    elseif (isset($quotedMsg['documentMessage'])) $quotedMessageText = '[Documento]';
+                    elseif (isset($quotedMsg['stickerMessage'])) $quotedMessageText = '[Sticker]';
+                }
+            }
+            
+            // Menções (@)
+            $mentions = $contextInfo['mentionedJid'] ?? [];
+            if (!empty($mentions) && is_array($mentions)) {
+                $mentionedJids = json_encode($mentions);
+            }
+            
+            if ($quotedMessageId) {
+                error_log("[WEBHOOK] REPLY detectado: quotedId='$quotedMessageId' quotedText='" . substr($quotedMessageText ?? '', 0, 30) . "'");
+            }
+            if ($mentionedJids) {
+                error_log("[WEBHOOK] MENÇÕES detectadas: $mentionedJids");
+            }
+        }
         
         // LOG COMPLETO DO PAYLOAD DE MÍDIA
         error_log("[WEBHOOK] === PROCESSANDO MENSAGEM ===");
@@ -558,6 +684,32 @@ if ($event === 'messages.upsert') {
             ];
             $messageText = $doc['caption'] ?? '[Documento]';
         }
+        // Sticker
+        elseif (isset($msgPayload['stickerMessage'])) {
+            $sticker = $msgPayload['stickerMessage'];
+            $messageType = 'sticker';
+            
+            $base64Data = null;
+            if (!empty($msgPayload['base64'])) {
+                $base64Data = $msgPayload['base64'];
+            } elseif (!empty($sticker['base64'])) {
+                $base64Data = $sticker['base64'];
+            } elseif (!empty($messageData['base64'])) {
+                $base64Data = $messageData['base64'];
+            }
+            
+            $rawUrl = $sticker['url'] ?? null;
+            error_log("[WEBHOOK] STICKER RAW URL: " . ($rawUrl ?? 'NULL'));
+            $mediaData = [
+                'type' => 'sticker',
+                'url' => $rawUrl,
+                'base64' => $base64Data,
+                'mime_type' => $sticker['mimetype'] ?? 'image/webp',
+                'filename' => 'sticker.webp',
+                'size' => $sticker['fileLength'] ?? null,
+            ];
+            $messageText = '[Sticker]';
+        }
 
         error_log("[WEBHOOK] Tipo de mensagem detectado: '$messageType' | URL extraída: " . ($mediaData['url'] ?? 'N/A'));
 
@@ -581,23 +733,33 @@ if ($event === 'messages.upsert') {
         $hasContent = !empty($messageText) || $messageType !== 'text';
         $isGroup = strpos($remoteJid, '@g.us') !== false;
 
-        // Salvar mensagem se:
-        // - Não é fromMe (mensagem recebida de outro contato)
-        // - OU é de grupo (mensagens em grupo são sempre relevantes, inclusive as próprias)
-        $shouldSave = (!$fromMe || $isGroup) && !empty($remoteJid) && $hasContent
+        // Salvar TODAS as mensagens relevantes:
+        // - Mensagens recebidas (fromMe=false)
+        // - Mensagens enviadas pelo próprio número via celular (fromMe=true)
+        // - Mensagens de grupo (todas)
+        // Exceções: broadcast, sistema, sem conteúdo
+        $shouldSave = !empty($remoteJid) && $hasContent
             && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg;
 
         if ($shouldSave) {
             try {
                 $fromMeInt = $fromMe ? 1 : 0;
-                saveMessage($remoteJid, $messageText, $fromMeInt, $timestamp, $mediaData);
-                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' fromMe=$fromMeInt text='" . substr($messageText,0,50) . "'");
+                $extraData = [
+                    'quoted_message_id' => $quotedMessageId,
+                    'quoted_message_text' => $quotedMessageText,
+                    'quoted_message_sender' => $quotedMessageSender,
+                    'mentioned_jids' => $mentionedJids,
+                    'sender_name' => $pushName ?: null,
+                    'participant_jid' => $participant ?: null,
+                    'external_message_id' => $externalMsgId ?: null,
+                ];
+                saveMessage($remoteJid, $messageText, $fromMeInt, $timestamp, $mediaData, $extraData);
+                error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' fromMe=$fromMeInt text='" . substr($messageText,0,50) . "'" . ($quotedMessageId ? " [REPLY to $quotedMessageId]" : ""));
             } catch (Exception $e) {
                 error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
             }
         } else {
             $reason = [];
-            if ($fromMe) $reason[] = 'fromMe';
             if (empty($remoteJid)) $reason[] = 'jid_vazio';
             if (!$hasContent) $reason[] = 'sem_conteudo';
             if ($isStatusBroadcast) $reason[] = 'broadcast';
@@ -685,7 +847,11 @@ if ($event === 'send.message') {
     if (!empty($remoteJid) && $hasContent
         && !$isStatusBroadcast && !isSystemMessageType($msgPayload) && !isSystemText($messageText)) {
         try {
-            saveMessage($remoteJid, $messageText, 1, $timestamp, $mediaData);
+            $sendExternalId = $messageData['key']['id'] ?? null;
+            $sendExtraData = [
+                'external_message_id' => $sendExternalId,
+            ];
+            saveMessage($remoteJid, $messageText, 1, $timestamp, $mediaData, $sendExtraData);
             error_log("[WEBHOOK] mensagem ENVIADA salva: jid='$remoteJid' type='$messageType'");
         } catch (Exception $e) {
             error_log("Webhook erro ao salvar mensagem enviada: " . $e->getMessage());
