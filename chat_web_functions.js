@@ -625,6 +625,17 @@ function clearMediaPreview() {
 document.addEventListener('DOMContentLoaded', function() {
   const sendForm = document.getElementById('sendMessageForm');
   if (sendForm) {
+    // Enter envia mensagem, Shift+Enter pula linha
+    const msgTextarea = sendForm.querySelector('textarea[name=message]');
+    if (msgTextarea) {
+      msgTextarea.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendForm.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+      });
+    }
+    
     sendForm.addEventListener('submit', async function(e) {
       e.preventDefault();
       

@@ -1808,7 +1808,42 @@ if (empty($selectedChat)) {
             if (!empty($quotedText)) {
                 $quotedSenderDisplay = '';
                 if (!empty($quotedSender)) {
-                    $quotedSenderDisplay = str_replace(['@s.whatsapp.net', '@g.us'], '', $quotedSender);
+                    // Tentar buscar nome do contato para exibir em vez do JID/LID
+                    $cleanSender = str_replace(['@s.whatsapp.net', '@g.us', '@lid', '@c.us'], '', $quotedSender);
+                    
+                    // Buscar nome no banco (chat_contacts ou sender_name das mensagens)
+                    try {
+                        // Primeiro tentar pelo pushName nas mensagens do mesmo chat
+                        $stmtName = db()->prepare("
+                            SELECT sender_name FROM chat_messages 
+                            WHERE remote_jid = ? AND participant_jid LIKE ? AND sender_name IS NOT NULL AND sender_name != ''
+                            ORDER BY message_timestamp DESC LIMIT 1
+                        ");
+                        $stmtName->execute([$selectedChat, '%' . $cleanSender . '%']);
+                        $nameRow = $stmtName->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($nameRow && !empty($nameRow['sender_name'])) {
+                            $quotedSenderDisplay = $nameRow['sender_name'];
+                        } else {
+                            // Tentar na tabela de contatos
+                            $stmtContact = db()->prepare("
+                                SELECT contact_name FROM chat_contacts 
+                                WHERE remote_jid LIKE ? AND contact_name IS NOT NULL AND contact_name != ''
+                                LIMIT 1
+                            ");
+                            $stmtContact->execute(['%' . $cleanSender . '%']);
+                            $contactRow = $stmtContact->fetch(PDO::FETCH_ASSOC);
+                            
+                            if ($contactRow && !empty($contactRow['contact_name'])) {
+                                $quotedSenderDisplay = $contactRow['contact_name'];
+                            } else {
+                                // Fallback: mostrar apenas o número limpo (sem @lid/@s.whatsapp.net)
+                                $quotedSenderDisplay = $cleanSender;
+                            }
+                        }
+                    } catch (Exception $e) {
+                        $quotedSenderDisplay = $cleanSender;
+                    }
                 }
                 echo '<div style="background:rgba(0,0,0,.05);border-left:4px solid #06cf9c;border-radius:4px;padding:6px 10px;margin-bottom:6px;font-size:12px;cursor:pointer">';
                 if (!empty($quotedSenderDisplay)) {
