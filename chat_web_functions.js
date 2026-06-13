@@ -928,10 +928,15 @@ function appendMessageToDOM(msg) {
     const optimisticMsgs = container.querySelectorAll('[data-optimistic="1"]');
     for (let i = 0; i < optimisticMsgs.length; i++) {
       const optText = optimisticMsgs[i].querySelector('.whatsapp-message-text');
-      if (optText && optText.textContent.trim() === (msg.message_text || '').trim()) {
-        // Remover a mensagem otimista — a versão real do servidor vai substituí-la
-        optimisticMsgs[i].remove();
-        break;
+      if (optText) {
+        // Comparar texto normalizado (sem quebras de linha e espaços extras)
+        const optNormalized = optText.textContent.trim().replace(/\s+/g, ' ');
+        const msgNormalized = (msg.message_text || '').trim().replace(/\s+/g, ' ');
+        if (optNormalized === msgNormalized) {
+          // Remover a mensagem otimista — a versão real do servidor vai substituí-la
+          optimisticMsgs[i].remove();
+          break;
+        }
       }
     }
   }
@@ -987,7 +992,7 @@ function appendMessageToDOM(msg) {
   } else if (messageType === 'sticker' && mediaUrl) {
     html += '<div style="margin-bottom:4px"><img src="' + escapeHtml(mediaUrl) + '" alt="Sticker" style="max-width:150px;max-height:150px"></div>';
   } else {
-    html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
+    html += '<div class="whatsapp-message-text">' + escapeHtml(text).replace(/\n/g, '<br>') + '</div>';
   }
   
   // Reações

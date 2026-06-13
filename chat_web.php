@@ -1916,7 +1916,7 @@ if (empty($selectedChat)) {
                 echo '<img src="' . h($mediaUrl) . '" alt="Sticker" style="max-width:150px;max-height:150px" onerror="this.alt=\'[Sticker]\';this.style.display=\'none\'">';
                 echo '</div>';
             } else {
-                // Texto com suporte a menções
+                // Texto com suporte a menções e quebras de linha
                 $displayText = $messageText;
                 if (!empty($msg['mentionedJids'])) {
                     $mentions = json_decode($msg['mentionedJids'], true);
@@ -1926,9 +1926,9 @@ if (empty($selectedChat)) {
                             $displayText = str_replace('@' . $mentionNumber, '<span style="color:#027eb5;font-weight:500">@' . $mentionNumber . '</span>', $displayText);
                         }
                     }
-                    echo '<div class="whatsapp-message-text">' . $displayText . '</div>';
+                    echo '<div class="whatsapp-message-text">' . nl2br($displayText) . '</div>';
                 } else {
-                    echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                    echo '<div class="whatsapp-message-text">' . nl2br(h($messageText)) . '</div>';
                 }
             }
             
