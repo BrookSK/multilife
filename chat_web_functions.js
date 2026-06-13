@@ -929,17 +929,30 @@ function appendMessageToDOM(msg) {
   
   const isFromMe = msg.from_me == 1 || msg.from_me === true;
   
-  // Se é uma mensagem from_me, verificar se já existe no DOM (evitar duplicata)
+  // Se é uma mensagem from_me, pular - mensagens enviadas pelo sistema já foram
+  // mostradas otimisticamente no momento do envio. Isso evita duplicação.
   if (isFromMe) {
-    // Verificar todas as mensagens .out no container com mesmo texto
-    const existingOutMsgs = container.querySelectorAll('.whatsapp-message.out');
-    const msgTextNormalized = (msg.message_text || '').trim();
-    for (let i = existingOutMsgs.length - 1; i >= Math.max(0, existingOutMsgs.length - 10); i--) {
-      const el = existingOutMsgs[i];
-      // Comparar via data-raw-text (otimistas) ou innerText (já renderizadas)
-      const rawText = el.getAttribute('data-raw-text');
-      if (rawText && rawText.trim() === msgTextNormalized) {
-        return; // Já existe, não adicionar
+    const msgTimestamp = parseInt(msg.message_timestamp) || 0;
+    const now = Math.floor(Date.now() / 1000);
+    // Se a mensagem foi enviada nos últimos 60 segundos, é provável que já está no DOM
+    if (now - msgTimestamp < 60) {
+      // Normalizar: remover \r, trim
+      const msgTextNorm = (msg.message_text || '').replace(/\r/g, '').trim();
+      const existingOutMsgs = container.querySelectorAll('.whatsapp-message.out');
+      for (let i = existingOutMsgs.length - 1; i >= Math.max(0, existingOutMsgs.length - 15); i--) {
+        const el = existingOutMsgs[i];
+        const rawText = (el.getAttribute('data-raw-text') || '').replace(/\r/g, '').trim();
+        if (rawText && rawText === msgTextNorm) {
+          return; // Já existe, não adicionar
+        }
+        // Comparar via innerText (para mensagens do page load que não têm data-raw-text)
+        const textEl = el.querySelector('.whatsapp-message-text');
+        if (textEl) {
+          const innerNorm = textEl.innerText.replace(/\r/g, '').trim();
+          if (innerNorm === msgTextNorm) {
+            return; // Já existe
+          }
+        }
       }
     }
   }
