@@ -102,12 +102,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             // WORKAROUND: Delay entre mensagens para o mesmo destinatário
             // A Evolution API tem um bug conhecido com grupos que retorna 400 se enviar muito rápido
+            // O JS já garante 6s de delay entre envios, mas como backup mantemos o check aqui
             $lastSendFile = sys_get_temp_dir() . '/evolution_last_send_' . md5($remoteJid);
             if (file_exists($lastSendFile)) {
                 $lastSend = (int)file_get_contents($lastSendFile);
                 $elapsed = time() - $lastSend;
-                if ($elapsed < 5) {
-                    $waitTime = 5 - $elapsed;
+                if ($elapsed < 6) {
+                    $waitTime = 6 - $elapsed;
                     error_log("[$debugId] DELAY {$waitTime}s para evitar erro 400 em grupo");
                     sleep($waitTime);
                 }

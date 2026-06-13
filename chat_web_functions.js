@@ -646,6 +646,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const sendBtn = sendForm.querySelector('button[type=submit]');
         if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
         
+        // Para grupos: garantir delay mínimo entre envios (evita erro 400 da Evolution API)
+        if (isGroup && window._lastGroupSendTime) {
+          const elapsed = Date.now() - window._lastGroupSendTime;
+          const minDelay = 6000; // 6 segundos entre mensagens para grupo
+          if (elapsed < minDelay) {
+            const waitMs = minDelay - elapsed;
+            console.log('Aguardando ' + waitMs + 'ms antes de enviar para grupo...');
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+          }
+        }
+        
         // Mostrar mensagem otimista
         const chatArea = document.querySelector('.whatsapp-messages');
         let msgDiv = null;
@@ -660,7 +671,7 @@ document.addEventListener('DOMContentLoaded', function() {
           chatArea.scrollTop = chatArea.scrollHeight;
         }
         
-        // Limpar campo
+        // Limpar campo imediatamente (UX melhor)
         textarea.value = '';
         textarea.style.height = 'auto';
         
@@ -674,62 +685,32 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {'X-Requested-With': 'XMLHttpRequest'},
             body: formData
           });
+          
+          // Marcar timestamp do envio para controle de delay
+          if (isGroup) {
+            window._lastGroupSendTime = Date.now();
+          }
+          
           const contentType = resp.headers.get('content-type') || '';
           if (contentType.indexOf('application/json') > -1) {
             const data = await resp.json();
             if (data.success) {
-              // Marcar a mensagem otimista como confirmada (double check)
+              // Marcar a mensagem otimista como confirmada
               if (msgDiv) {
                 const timeEl = msgDiv.querySelector('.whatsapp-message-time');
                 if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
               }
-              // Atualizar lastTimestamp para que o polling não duplique
-              // O polling vai buscar essa mensagem do banco, mas como o texto é igual
-              // e está marcada como optimistic, vamos removê-la quando o polling trouxer
               window._lastOptimisticText = message;
             } else {
-              // Erro no envio - tentar novamente uma vez após 3 segundos
-              if (!window._retryingMessage) {
-                window._retryingMessage = true;
-                console.log('Erro no primeiro envio, tentando novamente em 3s...');
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                
-                const retryFormData = new FormData(sendForm);
-                retryFormData.set('message', message);
-                
-                try {
-                  const retryResp = await fetch(sendUrl, {
-                    method: 'POST',
-                    headers: {'X-Requested-With': 'XMLHttpRequest'},
-                    body: retryFormData
-                  });
-                  const retryContentType = retryResp.headers.get('content-type') || '';
-                  if (retryContentType.indexOf('application/json') > -1) {
-                    const retryData = await retryResp.json();
-                    if (retryData.success) {
-                      if (msgDiv) {
-                        const timeEl = msgDiv.querySelector('.whatsapp-message-time');
-                        if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
-                      }
-                    } else {
-                      if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
-                      alert('Erro ao enviar: ' + (retryData.error || 'Erro desconhecido'));
-                    }
-                  }
-                } catch (retryErr) {
-                  if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
-                  alert('Erro ao enviar mensagem. Tente novamente.');
-                }
-                window._retryingMessage = false;
-              } else {
-                if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
-                alert('Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
-              }
+              // Erro no envio — remover mensagem otimista e mostrar erro
+              if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
+              alert('Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
             }
           }
           // Se não é JSON, mensagem provavelmente foi enviada (servidor redirecionou)
         } catch (err) {
           console.error('Erro no envio:', err);
+          if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
         } finally {
           if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = '1'; }
           if (textarea) textarea.focus();
