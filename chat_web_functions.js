@@ -649,10 +649,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Mostrar mensagem otimista
         const chatArea = document.querySelector('.whatsapp-messages');
         let msgDiv = null;
+        const optimisticId = 'optimistic-' + Date.now();
         if (chatArea) {
           msgDiv = document.createElement('div');
-          msgDiv.className = 'whatsapp-message sent';
-          msgDiv.innerHTML = '<div class="whatsapp-bubble sent"><div class="whatsapp-text">' + message.replace(/\n/g,'<br>') + '</div><div class="whatsapp-time">' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' \u2713</div></div>';
+          msgDiv.className = 'whatsapp-message out';
+          msgDiv.id = optimisticId;
+          msgDiv.setAttribute('data-optimistic', '1');
+          msgDiv.innerHTML = '<div class="whatsapp-message-bubble"><div class="whatsapp-message-text">' + message.replace(/\n/g,'<br>') + '</div><div class="whatsapp-message-time">' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ✓</div></div>';
           chatArea.appendChild(msgDiv);
           chatArea.scrollTop = chatArea.scrollHeight;
         }
@@ -675,10 +678,15 @@ document.addEventListener('DOMContentLoaded', function() {
           if (contentType.indexOf('application/json') > -1) {
             const data = await resp.json();
             if (data.success) {
+              // Marcar a mensagem otimista como confirmada (double check)
               if (msgDiv) {
-                const timeEl = msgDiv.querySelector('.whatsapp-time');
-                if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('\u2713','\u2713\u2713');
+                const timeEl = msgDiv.querySelector('.whatsapp-message-time');
+                if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
               }
+              // Atualizar lastTimestamp para que o polling não duplique
+              // O polling vai buscar essa mensagem do banco, mas como o texto é igual
+              // e está marcada como optimistic, vamos removê-la quando o polling trouxer
+              window._lastOptimisticText = message;
             } else {
               if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
               alert('Erro ao enviar: ' + (data.error || 'Erro desconhecido'));
@@ -878,13 +886,26 @@ function appendMessageToDOM(msg) {
   const container = document.getElementById('messagesContainer');
   if (!container) return;
   
-  // Verificar se mensagem já existe no DOM (evitar duplicatas)
+  // Verificar se mensagem já existe no DOM (evitar duplicatas por external_message_id)
   if (msg.external_message_id) {
     const existing = container.querySelector('[data-msg-id="' + msg.external_message_id + '"]');
     if (existing) return;
   }
   
   const isFromMe = msg.from_me == 1 || msg.from_me === true;
+  
+  // Se é uma mensagem from_me, verificar se já existe uma mensagem otimista equivalente
+  if (isFromMe) {
+    const optimisticMsgs = container.querySelectorAll('[data-optimistic="1"]');
+    for (let i = 0; i < optimisticMsgs.length; i++) {
+      const optText = optimisticMsgs[i].querySelector('.whatsapp-message-text');
+      if (optText && optText.textContent.trim() === (msg.message_text || '').trim()) {
+        // Remover a mensagem otimista — a versão real do servidor vai substituí-la
+        optimisticMsgs[i].remove();
+        break;
+      }
+    }
+  }
   const messageClass = isFromMe ? 'out' : 'in';
   const timestamp = msg.message_timestamp ? formatTimestamp(msg.message_timestamp) : '';
   const messageType = msg.message_type || 'text';
