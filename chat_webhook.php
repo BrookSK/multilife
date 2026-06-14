@@ -600,6 +600,34 @@ if ($event === 'messages.upsert') {
                                             $privRes = $api->sendText($phoneJid, $privateMsg, ['delay' => 1200]);
                                             $privCode = (int)($privRes['status'] ?? 0);
                                             error_log("[WEBHOOK] Msg privada enviada: $phoneJid (HTTP $privCode)");
+                                            
+                                            // Salvar mensagem no banco para aparecer no chat
+                                            if ($privCode >= 200 && $privCode < 300) {
+                                                $nowTs = time();
+                                                $normalizedPrivJid = normalizeJid($phoneJid);
+                                                try {
+                                                    $stmtSavePriv = db()->prepare("
+                                                        INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
+                                                        VALUES (?, ?, 1, ?)
+                                                    ");
+                                                    $stmtSavePriv->execute([$normalizedPrivJid, $privateMsg, $nowTs]);
+                                                    
+                                                    // Atualizar contato
+                                                    $stmtUpdContact = db()->prepare("
+                                                        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
+                                                        VALUES (?, ?, 0, ?, ?, 'text')
+                                                        ON DUPLICATE KEY UPDATE
+                                                            contact_name = CASE WHEN VALUES(contact_name) != '' AND contact_name IS NULL OR contact_name = '' OR contact_name REGEXP '^[0-9]+$' THEN VALUES(contact_name) ELSE contact_name END,
+                                                            last_message_timestamp = VALUES(last_message_timestamp),
+                                                            last_message_text = VALUES(last_message_text),
+                                                            updated_at = NOW()
+                                                    ");
+                                                    $contactDisplayName = $pushName ?: $cleanPhone;
+                                                    $stmtUpdContact->execute([$normalizedPrivJid, $contactDisplayName, $nowTs, substr($privateMsg, 0, 100)]);
+                                                } catch (Exception $dbErr) {
+                                                    error_log("[WEBHOOK] Erro ao salvar msg privada no banco: " . $dbErr->getMessage());
+                                                }
+                                            }
                                         } catch (Exception $privErr) {
                                             error_log("[WEBHOOK] Erro msg privada: " . $privErr->getMessage());
                                         }

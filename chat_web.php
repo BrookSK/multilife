@@ -1875,9 +1875,10 @@ if (empty($selectedChat)) {
     if (!empty($messages)) {
         $lastDateLabel = '';
         foreach ($messages as $msg) {
-            // Separador de dia
-            if (isset($msg['timestamp']) && $msg['timestamp'] > 0) {
-                $msgDate = date('Y-m-d', $msg['timestamp']);
+            // Separador de dia (só para timestamps válidos > Jan 2020)
+            $msgTs = (int)($msg['timestamp'] ?? 0);
+            if ($msgTs > 1577836800) { // > 01/01/2020
+                $msgDate = date('Y-m-d', $msgTs);
                 $today = date('Y-m-d');
                 $yesterday = date('Y-m-d', strtotime('-1 day'));
                 
@@ -1886,7 +1887,7 @@ if (empty($selectedChat)) {
                 } elseif ($msgDate === $yesterday) {
                     $dateLabel = 'Ontem';
                 } else {
-                    $dateLabel = date('d/m/Y', $msg['timestamp']);
+                    $dateLabel = date('d/m/Y', $msgTs);
                 }
                 
                 if ($dateLabel !== $lastDateLabel) {
