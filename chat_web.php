@@ -1780,6 +1780,46 @@ if (empty($selectedChat)) {
     $chatName = $selectedChatData['name'] ?? $selectedChat;
     $isGroup = strpos($selectedChat, '@g.us') !== false;
     $profilePic = $selectedChatData['profilePictureUrl'] ?? '';
+    
+    // Se chatName ainda é o JID bruto (número@s.whatsapp.net), tentar buscar nome real
+    if ($chatName === $selectedChat || preg_match('/^\d+@/', $chatName)) {
+        // Buscar na tabela de contatos
+        try {
+            $stmtName = db()->prepare("SELECT contact_name, profile_picture_url FROM chat_contacts WHERE remote_jid = ?");
+            $stmtName->execute([$selectedChat]);
+            $contactData = $stmtName->fetch(PDO::FETCH_ASSOC);
+            if ($contactData) {
+                $contactRealName = $contactData['contact_name'] ?? '';
+                $cleanJid = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $selectedChat);
+                // Só usar se não é apenas o número
+                if (!empty($contactRealName) && $contactRealName !== $cleanJid) {
+                    $chatName = $contactRealName;
+                }
+                if (empty($profilePic) && !empty($contactData['profile_picture_url'])) {
+                    $profilePic = $contactData['profile_picture_url'];
+                }
+            }
+        } catch (Exception $e) {}
+        
+        // Fallback: buscar na tabela users
+        if ($chatName === $selectedChat || preg_match('/^\d+@/', $chatName)) {
+            $cleanNum = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $selectedChat);
+            try {
+                $stmtUser = db()->prepare("SELECT name FROM users WHERE phone LIKE ? OR phone = ? LIMIT 1");
+                $phoneLike = '%' . substr($cleanNum, -8) . '%';
+                $stmtUser->execute([$phoneLike, $cleanNum]);
+                $userRow = $stmtUser->fetch(PDO::FETCH_ASSOC);
+                if ($userRow && !empty($userRow['name'])) {
+                    $chatName = $userRow['name'];
+                }
+            } catch (Exception $e) {}
+        }
+        
+        // Último fallback: mostrar só o número limpo
+        if ($chatName === $selectedChat) {
+            $chatName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $selectedChat);
+        }
+    }
 
     // Cabeçalho do chat
     echo '<div class="whatsapp-chat-header">';
@@ -1833,7 +1873,28 @@ if (empty($selectedChat)) {
     
     // Renderizar mensagens
     if (!empty($messages)) {
+        $lastDateLabel = '';
         foreach ($messages as $msg) {
+            // Separador de dia
+            if (isset($msg['timestamp']) && $msg['timestamp'] > 0) {
+                $msgDate = date('Y-m-d', $msg['timestamp']);
+                $today = date('Y-m-d');
+                $yesterday = date('Y-m-d', strtotime('-1 day'));
+                
+                if ($msgDate === $today) {
+                    $dateLabel = 'Hoje';
+                } elseif ($msgDate === $yesterday) {
+                    $dateLabel = 'Ontem';
+                } else {
+                    $dateLabel = date('d/m/Y', $msg['timestamp']);
+                }
+                
+                if ($dateLabel !== $lastDateLabel) {
+                    echo '<div style="text-align:center;margin:16px 0 8px;"><span style="background:#e1f3fb;color:#54656f;font-size:12px;padding:4px 12px;border-radius:8px;font-weight:500">' . h($dateLabel) . '</span></div>';
+                    $lastDateLabel = $dateLabel;
+                }
+            }
+            
             $isFromMe = $msg['fromMe'] ?? false;
             $messageClass = $isFromMe ? 'out' : 'in';
             $messageText = $msg['text'] ?? '';
