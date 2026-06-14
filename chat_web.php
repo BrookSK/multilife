@@ -589,7 +589,10 @@ try {
                     cc.profile_picture_url as profilePictureUrl,
                     cc.is_group,
                     cc.status,
-                    cc.last_message_timestamp as lastMsgTimestamp,
+                    COALESCE(
+                        (SELECT MAX(cm2.message_timestamp) FROM chat_messages cm2 WHERE cm2.remote_jid = cc.remote_jid),
+                        cc.last_message_timestamp
+                    ) as lastMsgTimestamp,
                     cc.last_message_text as lastMsgText,
                     cc.last_message_type as lastMsgType,
                     COUNT(CASE WHEN cm.from_me = 0 AND cm.is_read = 0 THEN 1 END) as unreadCount
@@ -602,7 +605,7 @@ try {
                 LEFT JOIN chat_messages cm ON cm.remote_jid = cc.remote_jid
                 $whereSQL
                 GROUP BY cc.remote_jid
-                ORDER BY cc.last_message_timestamp DESC
+                ORDER BY lastMsgTimestamp DESC
                 LIMIT 50
             ");
             $stmt->execute($params);
