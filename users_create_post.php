@@ -75,6 +75,23 @@ $stmt->execute([
 $id = (string)db()->lastInsertId();
 audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status]);
 
+// Atribuir role automaticamente se veio do chat (campo auto_role)
+$autoRole = trim((string)($_POST['auto_role'] ?? ''));
+if ($autoRole !== '') {
+    try {
+        $stmtRole = db()->prepare("SELECT id FROM roles WHERE slug = ?");
+        $stmtRole->execute([$autoRole]);
+        $roleRow = $stmtRole->fetch();
+        if ($roleRow) {
+            $stmtAssign = db()->prepare("INSERT IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)");
+            $stmtAssign->execute([(int)$id, (int)$roleRow['id']]);
+            error_log("[USER_CREATE] Role '$autoRole' atribuída automaticamente ao user #$id");
+        }
+    } catch (Exception $e) {
+        error_log("[USER_CREATE] Erro ao atribuir role: " . $e->getMessage());
+    }
+}
+
 page_history_log(
     '/users_list.php',
     'Usuários',

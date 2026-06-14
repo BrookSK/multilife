@@ -11,6 +11,11 @@ rbac_require_permission('users.manage');
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
 $specialties = $specialtiesStmt->fetchAll();
 
+// Parâmetros pré-preenchidos (vindos do chat)
+$prefName = trim((string)($_GET['name'] ?? ''));
+$prefPhone = trim((string)($_GET['phone'] ?? ''));
+$prefRole = trim((string)($_GET['role'] ?? ''));
+
 view_header('Novo usuário');
 
 echo '<div class="card">';
@@ -27,9 +32,12 @@ echo '</div>';
 echo '<div style="height:14px"></div>';
 
 echo '<form method="post" action="/users_create_post.php" style="display:grid;gap:12px;max-width:680px">';
-echo '<label>Nome<input name="name" required placeholder="Nome"></label>';
+if ($prefRole !== '') {
+    echo '<input type="hidden" name="auto_role" value="' . h($prefRole) . '">';
+}
+echo '<label>Nome<input name="name" required placeholder="Nome" value="' . h($prefName) . '"></label>';
 echo '<label>E-mail<input type="email" name="email" required placeholder="email@empresa.com"></label>';
-echo '<label>Telefone (para WhatsApp/Evolution)<input name="phone" maxlength="30" placeholder="5511999999999"></label>';
+echo '<label>Telefone (para WhatsApp/Evolution)<input name="phone" maxlength="30" placeholder="5511999999999" value="' . h($prefPhone) . '"></label>';
 echo '<label>Especialidade (para profissionais)<select name="specialty">';
 echo '<option value="">Nenhuma / Não é profissional</option>';
 foreach ($specialties as $spec) {

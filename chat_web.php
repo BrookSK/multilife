@@ -2747,10 +2747,10 @@ function cadastrarProfissional() {
     }
     
     // Extrair telefone do chat ID (remover @s.whatsapp.net)
-    const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "");
+    const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "").replace("@g.us", "");
     
-    // Redirecionar para página de cadastro de profissional com dados pré-preenchidos
-    const url = "/apply_professional.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
+    // Redirecionar para página de criação de usuário com role=profissional pré-marcada
+    const url = "/users_create.php?role=profissional&phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
     window.open(url, "_blank");
 }
 
