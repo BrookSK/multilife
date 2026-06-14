@@ -83,6 +83,10 @@ try {
     if ($req['demand_id'] !== null) {
         $stmt = $db->prepare("UPDATE demands SET status = 'admitido' WHERE id = :id");
         $stmt->execute(['id' => (int)$req['demand_id']]);
+        
+        // Notificar grupo e marcar profissional selecionado
+        require_once __DIR__ . '/app/demand_captation_handler.php';
+        demand_on_admitted((int)$req['demand_id'], (int)$req['professional_user_id']);
     }
 
     $stmt = $db->prepare(

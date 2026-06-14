@@ -259,6 +259,10 @@ try {
             'uid' => auth_user_id(),
             'note' => 'admissão confirmada via chat (agendamento criado)',
         ]);
+        
+        // Notificar grupo e marcar profissional selecionado
+        require_once __DIR__ . '/app/demand_captation_handler.php';
+        demand_on_admitted($demandIdDb, $professionalUserId);
     }
 
     // Enviar template WhatsApp de confirmação de pré-admissão

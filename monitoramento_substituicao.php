@@ -40,6 +40,14 @@ $stmtProfs = db()->prepare(
 $stmtProfs->execute(['current_id' => (int)($assignment['professional_user_id'] ?? 0)]);
 $professionals = $stmtProfs->fetchAll();
 
+// Buscar profissionais interessados via reação no WhatsApp (lista de espera)
+$interestedProfessionals = [];
+$demandId = (int)($assignment['demand_id'] ?? 0);
+if ($demandId > 0) {
+    require_once __DIR__ . '/app/demand_captation_handler.php';
+    $interestedProfessionals = demand_get_interested_professionals($demandId);
+}
+
 // Buscar outros atendimentos do mesmo paciente com o mesmo profissional
 $stmtOthers = db()->prepare(
     "SELECT pa.id, pa.specialty, pa.service_type, pa.session_frequency
@@ -96,6 +104,36 @@ echo '</section>';
 // Formulário
 echo '<section class="card col12">';
 echo '<div style="font-weight:900;margin-bottom:12px">Novo Profissional</div>';
+
+// Mostrar profissionais que demonstraram interesse (reagiram no grupo)
+if (!empty($interestedProfessionals)) {
+    $availableInterested = array_filter($interestedProfessionals, fn($p) => $p['status'] === 'interested');
+    if (!empty($availableInterested)) {
+        echo '<div style="padding:12px;background:hsla(142,76%,36%,.08);border:1px solid hsl(142,76%,36%);border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-weight:700;margin-bottom:8px;color:hsl(142,76%,36%)">💬 Profissionais que demonstraram interesse (via WhatsApp)</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:8px">Estes profissionais reagiram à mensagem de captação no grupo e estão disponíveis:</div>';
+        echo '<div style="display:grid;gap:6px">';
+        foreach ($availableInterested as $ip) {
+            $ipName = $ip['user_name'] ?? $ip['push_name'] ?? $ip['phone'];
+            $ipDate = $ip['reacted_at'] ? date('d/m H:i', strtotime($ip['reacted_at'])) : '';
+            $ipEmoji = $ip['emoji'] ?? '';
+            $ipUserId = $ip['user_id'] ?? '';
+            echo '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid hsl(var(--border))">';
+            echo '<span style="font-size:18px">' . h($ipEmoji) . '</span>';
+            echo '<div style="flex:1"><strong>' . h($ipName) . '</strong>';
+            if ($ip['phone']) echo ' <span style="color:hsl(var(--muted-foreground));font-size:12px">(' . h($ip['phone']) . ')</span>';
+            echo '<div style="font-size:11px;color:hsl(var(--muted-foreground))">Reagiu em ' . h($ipDate) . '</div>';
+            echo '</div>';
+            if ($ipUserId) {
+                echo '<button type="button" onclick="document.querySelector(\'select[name=new_professional_id]\').value=\'' . (int)$ipUserId . '\'" class="btn" style="padding:4px 10px;font-size:12px;background:#06cf9c;color:#fff;border:none">Selecionar</button>';
+            }
+            echo '</div>';
+        }
+        echo '</div>';
+        echo '</div>';
+    }
+}
+
 echo '<form method="post" action="/monitoramento_substituicao_post.php" style="display:grid;gap:12px">';
 echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
 

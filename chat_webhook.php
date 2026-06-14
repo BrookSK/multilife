@@ -515,7 +515,7 @@ if ($event === 'messages.upsert') {
                             try {
                                 // Buscar se a mensagem reagida é uma captação (pelo external_message_id)
                                 $stmtDispatch = db()->prepare("
-                                    SELECT dl.id, dl.demand_id, dl.capture_token, dl.confirmed_by_phone, d.title, d.specialty
+                                    SELECT dl.id, dl.demand_id, dl.capture_token, d.title, d.specialty, d.status as demand_status
                                     FROM demand_dispatch_logs dl
                                     LEFT JOIN demands d ON d.id = dl.demand_id
                                     WHERE dl.external_message_id = ?
@@ -525,90 +525,79 @@ if ($event === 'messages.upsert') {
                                 $dispatchRow = $stmtDispatch->fetch(PDO::FETCH_ASSOC);
                                 
                                 if (!$dispatchRow) {
-                                    error_log("[WEBHOOK] Reação em grupo mas msg '$reactionMsgId' NÃO é captação (não encontrada em demand_dispatch_logs)");
-                                } elseif (!empty($dispatchRow['confirmed_by_phone'])) {
-                                    error_log("[WEBHOOK] Captação #{$dispatchRow['demand_id']} já confirmada por: " . $dispatchRow['confirmed_by_phone']);
+                                    error_log("[WEBHOOK] Reação em grupo mas msg '$reactionMsgId' NÃO é captação");
+                                } elseif (in_array($dispatchRow['demand_status'], ['admitido', 'concluido', 'cancelado'])) {
+                                    error_log("[WEBHOOK] Captação #{$dispatchRow['demand_id']} já encerrada (status: {$dispatchRow['demand_status']})");
                                 } else {
-                                    // É uma captação e ainda não foi confirmada!
-                                    $reactorPhone = preg_replace('/[^0-9]/', '', $reactorJid);
+                                    // É uma captação ativa! Registrar interesse do profissional
                                     $demandId = (int)$dispatchRow['demand_id'];
                                     $demandTitle = $dispatchRow['title'] ?? 'Captação #' . $demandId;
                                     $specialty = $dispatchRow['specialty'] ?? '';
                                     
-                                    error_log("[WEBHOOK] 🎉 CAPTAÇÃO CONFIRMADA via reação! demand_id=$demandId reactor=$reactorPhone emoji=$reactionEmoji");
+                                    // Extrair telefone limpo do reactor
+                                    $cleanPhone = preg_replace('/[:@].+$/', '', $reactorJid);
+                                    $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
+                                    $phoneJid = $cleanPhone . '@s.whatsapp.net';
                                     
-                                    // Marcar como confirmada no banco
-                                    $stmtConfirm = db()->prepare("
-                                        UPDATE demand_dispatch_logs 
-                                        SET confirmed_by_phone = ?, confirmed_at = NOW()
-                                        WHERE id = ?
-                                    ");
-                                    $stmtConfirm->execute([$reactorPhone, $dispatchRow['id']]);
+                                    error_log("[WEBHOOK] 🎉 INTERESSE EM CAPTAÇÃO! demand_id=$demandId phone=$cleanPhone pushName='$pushName'");
                                     
-                                    // Buscar dados do profissional pelo telefone
-                                    $professionalName = '';
-                                    $stmtProf = db()->prepare("
-                                        SELECT id, name FROM users 
-                                        WHERE REPLACE(REPLACE(REPLACE(phone, '-', ''), ' ', ''), '(', '') LIKE ?
-                                        OR phone LIKE ?
-                                        LIMIT 1
-                                    ");
-                                    $phoneLike = '%' . substr($reactorPhone, -8) . '%';
-                                    $stmtProf->execute([$phoneLike, $phoneLike]);
-                                    $profRow = $stmtProf->fetch(PDO::FETCH_ASSOC);
-                                    if ($profRow) {
-                                        $professionalName = $profRow['name'];
-                                        // Atualizar confirmed_by_user_id
-                                        $stmtUpdUser = db()->prepare("UPDATE demand_dispatch_logs SET confirmed_by_user_id = ? WHERE id = ?");
-                                        $stmtUpdUser->execute([$profRow['id'], $dispatchRow['id']]);
-                                    }
-                                    
-                                    $displayName = $professionalName ?: $pushName ?: $reactorPhone;
-                                    
-                                    // Enviar mensagem no GRUPO confirmando (SEM expor nome do profissional)
+                                    // Buscar user_id do profissional pelo telefone
+                                    $profUserId = null;
                                     try {
-                                        $api = new EvolutionApiV1();
-                                        $groupMsg = "✅ *Captação assumida!*\n\n"
-                                            . "Um profissional confirmou interesse nesta captação.\n"
-                                            . "📋 {$demandTitle}\n\n"
-                                            . "O atendimento será tratado no privado. Obrigado!";
-                                        $api->sendText($remoteJid, $groupMsg, []);
-                                        error_log("[WEBHOOK] Mensagem de confirmação enviada no grupo: $remoteJid");
-                                    } catch (Exception $groupErr) {
-                                        error_log("[WEBHOOK] Erro ao enviar confirmação no grupo: " . $groupErr->getMessage());
-                                    }
+                                        $stmtProf = db()->prepare("
+                                            SELECT id FROM users 
+                                            WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ?
+                                            LIMIT 1
+                                        ");
+                                        $phoneLike = '%' . substr($cleanPhone, -8) . '%';
+                                        $stmtProf->execute([$phoneLike]);
+                                        $profRow = $stmtProf->fetch(PDO::FETCH_ASSOC);
+                                        if ($profRow) {
+                                            $profUserId = (int)$profRow['id'];
+                                        }
+                                    } catch (Exception $e) {}
                                     
-                                    // Enviar mensagem PRIVADA para o profissional
-                                    try {
-                                        $api = $api ?? new EvolutionApiV1();
-                                        // Limpar o telefone: remover sufixos como :38, @s.whatsapp.net, etc.
-                                        $cleanPhone = preg_replace('/[:@].+$/', '', $reactorJid);
-                                        $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
-                                        
-                                        if (strlen($cleanPhone) >= 10) {
-                                            $privateJid = $cleanPhone . '@s.whatsapp.net';
-                                            $privateMsg = "🎉 *Olá!*\n\n"
-                                                . "Vimos que você confirmou interesse na captação:\n"
+                                    // Registrar interesse (INSERT IGNORE para não duplicar)
+                                    $stmtInterest = db()->prepare("
+                                        INSERT IGNORE INTO demand_interested_professionals 
+                                        (demand_id, dispatch_log_id, phone, phone_jid, push_name, user_id, emoji, reacted_at)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                                    ");
+                                    $stmtInterest->execute([
+                                        $demandId,
+                                        $dispatchRow['id'],
+                                        $cleanPhone,
+                                        $phoneJid,
+                                        $pushName ?: null,
+                                        $profUserId,
+                                        $reactionEmoji,
+                                    ]);
+                                    
+                                    $wasInserted = $stmtInterest->rowCount() > 0;
+                                    
+                                    if ($wasInserted) {
+                                        // Primeira reação deste profissional - enviar mensagem privada
+                                        try {
+                                            $api = new EvolutionApiV1();
+                                            $privateMsg = "🎉 *Olá" . ($pushName ? ", {$pushName}" : "") . "!*\n\n"
+                                                . "Registramos seu interesse na captação:\n"
                                                 . "📋 *{$demandTitle}*\n"
                                                 . ($specialty ? "🏥 Especialidade: {$specialty}\n" : "")
                                                 . "\n"
-                                                . "Em breve um operador entrará em contato com mais detalhes sobre o atendimento.\n\n"
+                                                . "Em breve um operador entrará em contato com mais detalhes.\n\n"
                                                 . "Obrigado por fazer parte da equipe!\n"
                                                 . "Equipe MultiLife";
                                             
-                                            // Pequeno delay antes de enviar no privado
-                                            usleep(1500000); // 1.5s
-                                            
-                                            $privRes = $api->sendText($privateJid, $privateMsg, ['delay' => 1200]);
+                                            usleep(1500000); // 1.5s delay
+                                            $privRes = $api->sendText($phoneJid, $privateMsg, ['delay' => 1200]);
                                             $privCode = (int)($privRes['status'] ?? 0);
-                                            error_log("[WEBHOOK] Mensagem privada enviada para profissional: $privateJid (HTTP $privCode)");
-                                        } else {
-                                            error_log("[WEBHOOK] Telefone do reactor inválido: '$cleanPhone' (original: '$reactorJid')");
+                                            error_log("[WEBHOOK] Msg privada enviada: $phoneJid (HTTP $privCode)");
+                                        } catch (Exception $privErr) {
+                                            error_log("[WEBHOOK] Erro msg privada: " . $privErr->getMessage());
                                         }
-                                    } catch (Exception $privErr) {
-                                        error_log("[WEBHOOK] Erro ao enviar msg privada: " . $privErr->getMessage());
+                                    } else {
+                                        error_log("[WEBHOOK] Profissional $cleanPhone já havia registrado interesse na captação #$demandId");
                                     }
-                                    
                                 }
                             } catch (Exception $capErr) {
                                 error_log("[WEBHOOK] Erro ao verificar captação por reação: " . $capErr->getMessage());

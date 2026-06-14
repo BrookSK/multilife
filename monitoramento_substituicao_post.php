@@ -147,6 +147,17 @@ try {
     error_log('[SUBSTITUICAO] Erro ao notificar: ' . $e->getMessage());
 }
 
+// Atualizar lista de profissionais interessados (captação)
+$demandIdSubst = (int)($assignment['demand_id'] ?? 0);
+if ($demandIdSubst > 0) {
+    try {
+        require_once __DIR__ . '/app/demand_captation_handler.php';
+        demand_substitute_professional($demandIdSubst, $newProfessionalId, $reason);
+    } catch (Throwable $e) {
+        error_log('[SUBSTITUICAO] Erro ao atualizar captação: ' . $e->getMessage());
+    }
+}
+
 audit_log('update', 'patient_assignment_substitution', (string)$assignmentId, [
     'professional_user_id' => $oldProfId,
 ], [
