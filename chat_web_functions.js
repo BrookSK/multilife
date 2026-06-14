@@ -252,15 +252,20 @@ function syncEvolution() {
   const icon = document.getElementById("syncIcon");
   btn.disabled = true;
   icon.classList.add("rotating");
+  
+  // Sincronizar mensagens primeiro
   fetch("/chat_sync_evolution.php")
     .then(r => r.json())
     .then(data => {
-      if(data.success) {
-        alert("Sincronização concluída!");
-        location.reload();
-      } else {
-        alert("Erro na sincronização: " + (data.error || "Erro desconhecido"));
-      }
+      // Depois sincronizar contatos (nomes e fotos)
+      return fetch("/chat_sync_contacts.php?action=sync_all")
+        .then(r => r.json())
+        .then(contactData => {
+          const msgInfo = data.success ? "Mensagens OK" : "Erro msgs";
+          const contactInfo = contactData.success ? (contactData.updated + " contatos atualizados") : "Erro contatos";
+          alert("Sincronização concluída!\n" + msgInfo + "\n" + contactInfo);
+          location.reload();
+        });
     })
     .catch(err => {
       alert("Erro ao sincronizar: " + err.message);

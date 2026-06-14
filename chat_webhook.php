@@ -372,6 +372,9 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $isGroup = strpos($normalizedJid, '@g.us') !== false ? 1 : 0;
     $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $normalizedJid);
     
+    // Usar senderName (pushName) como nome do contato se disponível e não é grupo
+    $displayName = $senderName ?: $contactName;
+    
     $lastMessageText = $text;
     if ($messageType !== 'text' && empty($text)) {
         $lastMessageText = match($messageType) {
@@ -383,18 +386,23 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
         };
     }
 
-    error_log("[SAVE_CONTACT] Salvando/atualizando contato - normalizedJid: '$normalizedJid' | contactName: '$contactName' | isGroup: $isGroup");
+    error_log("[SAVE_CONTACT] Salvando/atualizando contato - normalizedJid: '$normalizedJid' | displayName: '$displayName' | isGroup: $isGroup");
 
     $stmtContact = db()->prepare("
         INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
         VALUES (?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
+            contact_name = CASE 
+                WHEN VALUES(contact_name) != '' AND VALUES(contact_name) != REPLACE(REPLACE(REPLACE(remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '')
+                THEN VALUES(contact_name) 
+                ELSE COALESCE(contact_name, VALUES(contact_name))
+            END,
             last_message_timestamp = VALUES(last_message_timestamp),
             last_message_text = VALUES(last_message_text),
             last_message_type = VALUES(last_message_type),
             updated_at = CURRENT_TIMESTAMP
     ");
-    $stmtContact->execute([$normalizedJid, $contactName, $isGroup, $timestamp, $lastMessageText, $messageType]);
+    $stmtContact->execute([$normalizedJid, $displayName, $isGroup, $timestamp, $lastMessageText, $messageType]);
     
     error_log("[SAVE_CONTACT] Contato salvo com sucesso - normalizedJid: '$normalizedJid'");
 }
