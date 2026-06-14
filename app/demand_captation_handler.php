@@ -10,16 +10,18 @@ declare(strict_types=1);
 /**
  * Chamado quando uma demanda é admitida (profissional selecionado).
  * - Marca o profissional selecionado como 'selected'
- * - NÃO notifica os outros como 'rejected' ainda (eles ficam como reserva/substituição)
+ * - Cria vínculo paciente-profissional automaticamente
  * - Envia mensagem no grupo informando que a captação foi preenchida
  * 
  * @param int $demandId ID da demanda
  * @param int $selectedProfessionalUserId ID do profissional selecionado
+ * @param int|null $patientId ID do paciente (se conhecido)
+ * @param string|null $specialty Especialidade (se conhecida)
  */
-function demand_on_admitted(int $demandId, int $selectedProfessionalUserId): void
+function demand_on_admitted(int $demandId, int $selectedProfessionalUserId, ?int $patientId = null, ?string $specialty = null): void
 {
     try {
-        // Marcar o profissional selecionado
+        // Marcar o profissional selecionado na lista de interessados
         $stmt = db()->prepare("
             UPDATE demand_interested_professionals 
             SET status = 'selected', selected_at = NOW()
@@ -41,6 +43,51 @@ function demand_on_admitted(int $demandId, int $selectedProfessionalUserId): voi
                     WHERE demand_id = ? AND phone LIKE ?
                 ");
                 $stmtUpdate->execute([$selectedProfessionalUserId, $demandId, '%' . $phoneSuffix . '%']);
+            }
+        }
+        
+        // Criar vínculo paciente-profissional automaticamente
+        if ($patientId === null) {
+            // Tentar buscar paciente da demanda via appointments ou authorization_requests
+            $stmtPatient = db()->prepare("
+                SELECT patient_id FROM appointments WHERE demand_id = ? AND patient_id IS NOT NULL ORDER BY id DESC LIMIT 1
+            ");
+            $stmtPatient->execute([$demandId]);
+            $patRow = $stmtPatient->fetch();
+            if ($patRow) {
+                $patientId = (int)$patRow['patient_id'];
+            } else {
+                // Tentar via authorization_requests
+                $stmtPatient2 = db()->prepare("
+                    SELECT patient_id FROM authorization_requests WHERE demand_id = ? AND patient_id IS NOT NULL ORDER BY id DESC LIMIT 1
+                ");
+                $stmtPatient2->execute([$demandId]);
+                $patRow2 = $stmtPatient2->fetch();
+                if ($patRow2) {
+                    $patientId = (int)$patRow2['patient_id'];
+                }
+            }
+        }
+        
+        if ($specialty === null) {
+            $stmtSpec = db()->prepare("SELECT specialty FROM demands WHERE id = ?");
+            $stmtSpec->execute([$demandId]);
+            $specRow = $stmtSpec->fetch();
+            if ($specRow) $specialty = $specRow['specialty'];
+        }
+        
+        if ($patientId !== null && $patientId > 0) {
+            try {
+                $stmtLink = db()->prepare("
+                    INSERT IGNORE INTO patient_professionals (patient_id, professional_user_id, specialty, is_active)
+                    VALUES (?, ?, ?, 1)
+                ");
+                $stmtLink->execute([$patientId, $selectedProfessionalUserId, $specialty]);
+                if ($stmtLink->rowCount() > 0) {
+                    error_log("[CAPTATION] Vínculo paciente #$patientId ↔ profissional #$selectedProfessionalUserId criado automaticamente");
+                }
+            } catch (Exception $e) {
+                error_log("[CAPTATION] Erro ao criar vínculo: " . $e->getMessage());
             }
         }
         

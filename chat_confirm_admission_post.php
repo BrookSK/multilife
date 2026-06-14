@@ -262,7 +262,7 @@ try {
         
         // Notificar grupo e marcar profissional selecionado
         require_once __DIR__ . '/app/demand_captation_handler.php';
-        demand_on_admitted($demandIdDb, $professionalUserId);
+        demand_on_admitted($demandIdDb, $professionalUserId, $patientId, $specialty);
     }
 
     // Enviar template WhatsApp de confirmação de pré-admissão

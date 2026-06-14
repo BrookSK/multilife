@@ -212,12 +212,13 @@ try {
         
         $stmt = $db->prepare(
             'UPDATE authorization_requests 
-             SET sent_at = :sent, response_deadline = :deadline 
+             SET sent_at = :sent, response_deadline = :deadline, sent_message_id = :msg_id
              WHERE id = :id'
         );
         $stmt->execute([
             'sent' => $sentAt,
             'deadline' => $responseDeadline,
+            'msg_id' => $messageId,
             'id' => $newAuthId
         ]);
         

@@ -86,7 +86,7 @@ try {
         
         // Notificar grupo e marcar profissional selecionado
         require_once __DIR__ . '/app/demand_captation_handler.php';
-        demand_on_admitted((int)$req['demand_id'], (int)$req['professional_user_id']);
+        demand_on_admitted((int)$req['demand_id'], (int)$req['professional_user_id'], (int)$req['patient_id']);
     }
 
     $stmt = $db->prepare(

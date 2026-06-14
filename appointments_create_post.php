@@ -255,7 +255,7 @@ try {
         
         // Notificar grupo e marcar profissional selecionado
         require_once __DIR__ . '/app/demand_captation_handler.php';
-        demand_on_admitted($demandIdDb, $professionalUserId);
+        demand_on_admitted($demandIdDb, $professionalUserId, $patientId ?? null);
     }
 
     audit_log('create', 'appointments', (string)$appointmentId, null, ['patient_id' => $patientId, 'professional_user_id' => $professionalUserId]);
