@@ -524,7 +524,11 @@ if ($event === 'messages.upsert') {
                                 $stmtDispatch->execute([$reactionMsgId]);
                                 $dispatchRow = $stmtDispatch->fetch(PDO::FETCH_ASSOC);
                                 
-                                if ($dispatchRow && empty($dispatchRow['confirmed_by_phone'])) {
+                                if (!$dispatchRow) {
+                                    error_log("[WEBHOOK] Reação em grupo mas msg '$reactionMsgId' NÃO é captação (não encontrada em demand_dispatch_logs)");
+                                } elseif (!empty($dispatchRow['confirmed_by_phone'])) {
+                                    error_log("[WEBHOOK] Captação #{$dispatchRow['demand_id']} já confirmada por: " . $dispatchRow['confirmed_by_phone']);
+                                } else {
                                     // É uma captação e ainda não foi confirmada!
                                     $reactorPhone = preg_replace('/[^0-9]/', '', $reactorJid);
                                     $demandId = (int)$dispatchRow['demand_id'];
@@ -605,8 +609,6 @@ if ($event === 'messages.upsert') {
                                         error_log("[WEBHOOK] Erro ao enviar msg privada: " . $privErr->getMessage());
                                     }
                                     
-                                } elseif ($dispatchRow && !empty($dispatchRow['confirmed_by_phone'])) {
-                                    error_log("[WEBHOOK] Captação já confirmada anteriormente por: " . $dispatchRow['confirmed_by_phone']);
                                 }
                             } catch (Exception $capErr) {
                                 error_log("[WEBHOOK] Erro ao verificar captação por reação: " . $capErr->getMessage());
