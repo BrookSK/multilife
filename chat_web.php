@@ -557,13 +557,19 @@ try {
         $params = [];
         
         if ($chatType === 'atendendo') {
-            $whereClauses[] = "cc.status = 'atendendo'";
-        } elseif ($chatType === 'aguardando') {
-            $whereClauses[] = "cc.status = 'aguardando'";
-        } elseif ($chatType === 'resolvidos') {
+            // Em Captação: profissionais com conversa ativa (atendendo ou aguardando)
+            $whereClauses[] = "(cc.status = 'atendendo' OR cc.status = 'aguardando')";
+            $whereClauses[] = "cc.is_group = 0";
+        } elseif ($chatType === 'concluidos') {
+            // Concluídos: conversas resolvidas
             $whereClauses[] = "cc.status = 'resolvido'";
-        } elseif ($chatType === 'organizacao') {
-            $whereClauses[] = "cc.contact_name LIKE '%Organização%' OR cc.contact_name LIKE '%Admin%'";
+            $whereClauses[] = "cc.is_group = 0";
+        } elseif ($chatType === 'lista_espera') {
+            // Lista de Espera: profissionais que reagiram mas ainda não foram selecionados
+            // Buscar da tabela demand_interested_professionals
+        } elseif ($chatType === 'todos') {
+            // Todos: mostra tudo (privados)
+            $whereClauses[] = "cc.is_group = 0";
         }
         
         if (!empty($searchQuery)) {
@@ -572,8 +578,8 @@ try {
             $params[] = '%' . $searchQuery . '%';
         }
         
-        // Não buscar chats se estiver na aba de grupos
-        if ($chatType !== 'grupos') {
+        // Não buscar chats se estiver na aba de grupos ou lista de espera
+        if ($chatType !== 'grupos' && $chatType !== 'lista_espera') {
             $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
             
             $stmt = db()->prepare("
@@ -1581,11 +1587,11 @@ echo '</div>';
 // Abas de navegação com ícones
 echo '<div class="whatsapp-tabs">';
 $tabs = [
-    'atendendo' => ['label' => 'Atendendo', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'],
-    'aguardando' => ['label' => 'Aguardando', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'],
-    'resolvidos' => ['label' => 'Resolvidos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'],
+    'atendendo' => ['label' => 'Em Captação', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'],
+    'concluidos' => ['label' => 'Concluídos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'],
+    'lista_espera' => ['label' => 'Lista de Espera', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'],
     'grupos' => ['label' => 'Grupos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'],
-    'organizacao' => ['label' => 'Interno', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>']
+    'todos' => ['label' => 'Todos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>']
 ];
 foreach ($tabs as $tabKey => $tabData) {
     $activeClass = ($chatType === $tabKey) ? 'active' : '';
@@ -1634,6 +1640,61 @@ if ($chatType === 'grupos') {
         echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;opacity:0.3"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>';
         echo '<p style="margin:0;font-weight:600">Nenhum grupo encontrado</p>';
         echo '<p style="margin:8px 0 0;font-size:13px">Crie um grupo para começar</p>';
+        echo '</div>';
+    }
+} elseif ($chatType === 'lista_espera') {
+    // Aba Lista de Espera: profissionais que reagiram mas ainda não foram selecionados
+    try {
+        $stmtWait = db()->prepare("
+            SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty
+            FROM demand_interested_professionals dip
+            INNER JOIN demands d ON d.id = dip.demand_id
+            WHERE dip.status = 'interested'
+            ORDER BY dip.reacted_at DESC
+            LIMIT 100
+        ");
+        $stmtWait->execute();
+        $waitingPros = $stmtWait->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $waitingPros = [];
+    }
+    
+    if (!empty($waitingPros)) {
+        // Agrupar por demanda
+        $byDemand = [];
+        foreach ($waitingPros as $wp) {
+            $byDemand[$wp['demand_id']][] = $wp;
+        }
+        
+        foreach ($byDemand as $dId => $pros) {
+            $demandTitle = $pros[0]['demand_title'] ?? "Captação #$dId";
+            $specialty = $pros[0]['specialty'] ?? '';
+            
+            echo '<div style="padding:8px 16px;background:#f0f2f5;border-bottom:1px solid #e0e0e0">';
+            echo '<div style="font-size:12px;font-weight:700;color:#00a884">📋 ' . h($demandTitle) . '</div>';
+            if ($specialty) echo '<div style="font-size:11px;color:#667781">' . h($specialty) . '</div>';
+            echo '</div>';
+            
+            foreach ($pros as $pro) {
+                $proName = $pro['push_name'] ?? $pro['phone'];
+                $proEmoji = $pro['emoji'] ?? '👤';
+                $proDate = $pro['reacted_at'] ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
+                $proJid = $pro['phone_jid'] ?? '';
+                
+                echo '<a href="' . (!empty($proJid) ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=lista_espera' : '#') . '" class="whatsapp-chat-item">';
+                echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
+                echo '<div class="whatsapp-chat-info">';
+                echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';
+                echo '<div class="whatsapp-chat-preview" style="font-size:12px;color:#667781">Reagiu em ' . h($proDate) . '</div>';
+                echo '</div>';
+                echo '</a>';
+            }
+        }
+    } else {
+        echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
+        echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;opacity:0.3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        echo '<p style="margin:0;font-weight:600">Nenhum profissional na lista de espera</p>';
+        echo '<p style="margin:8px 0 0;font-size:13px">Quando profissionais reagirem às captações nos grupos, aparecerão aqui</p>';
         echo '</div>';
     }
 } else {
