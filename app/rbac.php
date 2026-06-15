@@ -62,6 +62,20 @@ function rbac_require_permission(string $permissionSlug): void
     }
 
     if (!rbac_user_can($uid, $permissionSlug)) {
+        // Se é profissional tentando acessar área admin, redirecionar para área do profissional
+        $stmtRole = db()->prepare("
+            SELECT r.slug FROM user_roles ur 
+            INNER JOIN roles r ON r.id = ur.role_id 
+            WHERE ur.user_id = ?
+        ");
+        $stmtRole->execute([$uid]);
+        $roles = $stmtRole->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (in_array('profissional', $roles, true)) {
+            header('Location: /profissional_registros.php');
+            exit;
+        }
+        
         header('Location: /forbidden.php');
         exit;
     }

@@ -9,37 +9,88 @@ auth_require_login();
 $userId = auth_user_id();
 
 // Buscar estatísticas de recebimentos
+// Usar COALESCE para pegar o valor correto (agreed_value pode ser NULL)
 $statsStmt = db()->prepare("
     SELECT 
         COUNT(DISTINCT pa.id) as total_atendimentos,
-        SUM(pa.agreed_value * pa.session_quantity) as total_servicos,
-        SUM(CASE WHEN pa.status IN ('admitted', 'awaiting_financial_approval', 'approved') THEN pa.agreed_value * pa.session_quantity ELSE 0 END) as total_pendente,
-        SUM(CASE WHEN pa.status = 'completed' THEN pa.agreed_value * pa.session_quantity ELSE 0 END) as total_pago
+        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0) * pa.session_quantity) as total_servicos,
+        (SELECT COUNT(*) FROM billing_document_requirements bdr 
+         INNER JOIN patient_assignments pa2 ON pa2.id = bdr.assignment_id
+         WHERE pa2.professional_user_id = ? AND bdr.status IN ('approved', 'paid')) as sessoes_aprovadas,
+        (SELECT COUNT(*) FROM billing_document_requirements bdr 
+         INNER JOIN patient_assignments pa2 ON pa2.id = bdr.assignment_id
+         WHERE pa2.professional_user_id = ? AND bdr.status = 'pending') as sessoes_pendentes
     FROM patient_assignments pa
     WHERE pa.professional_user_id = ?
+    AND pa.status IN ('admitted', 'confirmed', 'approved', 'awaiting_documents', 'awaiting_financial_approval', 'completed')
 ");
-$statsStmt->execute([$userId]);
+$statsStmt->execute([$userId, $userId, $userId]);
 $stats = $statsStmt->fetch(PDO::FETCH_ASSOC);
 
-// Buscar histórico de pagamentos (atendimentos concluídos)
+// Calcular totais baseado nas sessões individuais (não no atendimento inteiro)
+$valorPorSessaoStmt = db()->prepare("
+    SELECT 
+        COALESCE(SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)), 0) as total_valor_sessao,
+        SUM(pa.session_quantity) as total_sessoes
+    FROM patient_assignments pa
+    WHERE pa.professional_user_id = ?
+    AND pa.status IN ('admitted', 'confirmed', 'approved', 'awaiting_documents', 'awaiting_financial_approval', 'completed')
+");
+$valorPorSessaoStmt->execute([$userId]);
+$valorData = $valorPorSessaoStmt->fetch(PDO::FETCH_ASSOC);
+
+$sessoesAprovadas = (int)($stats['sessoes_aprovadas'] ?? 0);
+$sessoesPendentes = (int)($stats['sessoes_pendentes'] ?? 0);
+
+// Calcular valor médio por sessão para estimar totais
+$totalSessoes = (int)($valorData['total_sessoes'] ?? 0);
+$valorMedioSessao = $totalSessoes > 0 ? (float)$valorData['total_valor_sessao'] / max(1, count(db()->prepare("SELECT DISTINCT id FROM patient_assignments WHERE professional_user_id = ?")->execute([$userId]) ? 1 : 1)) : 0;
+
+// Buscar valor real por sessão de cada atendimento
+$recebiveisStmt = db()->prepare("
+    SELECT 
+        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)) as total_por_sessao_aprovada
+    FROM patient_assignments pa
+    INNER JOIN billing_document_requirements bdr ON bdr.assignment_id = pa.id
+    WHERE pa.professional_user_id = ? AND bdr.status IN ('approved', 'paid')
+");
+$recebiveisStmt->execute([$userId]);
+$recebiveisRow = $recebiveisStmt->fetch(PDO::FETCH_ASSOC);
+
+$pagosStmt = db()->prepare("
+    SELECT 
+        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)) as total_pago
+    FROM patient_assignments pa
+    INNER JOIN billing_document_requirements bdr ON bdr.assignment_id = pa.id
+    WHERE pa.professional_user_id = ? AND bdr.status = 'paid'
+");
+$pagosStmt->execute([$userId]);
+$pagosRow = $pagosStmt->fetch(PDO::FETCH_ASSOC);
+
+$totalAtendimentos = (int)($stats['total_atendimentos'] ?? 0);
+$totalServicos = (float)($stats['total_servicos'] ?? 0);
+$totalPendente = (float)($recebiveisRow['total_por_sessao_aprovada'] ?? 0) - (float)($pagosRow['total_pago'] ?? 0);
+$totalPago = (float)($pagosRow['total_pago'] ?? 0);
+
+// Buscar histórico de pagamentos (sessões aprovadas/pagas)
 $paymentsStmt = db()->prepare("
     SELECT 
         pa.id,
         pa.patient_id,
         pa.specialty,
         pa.service_type,
-        pa.session_quantity,
-        pa.agreed_value,
-        pa.completed_at,
-        p.full_name as patient_name,
-        bi.paid_at,
-        bi.payment_reference
-    FROM patient_assignments pa
+        bdr.session_number,
+        bdr.session_date,
+        bdr.status as doc_status,
+        bdr.approved_at,
+        COALESCE(pa.agreed_value, pa.payment_value, 0) as valor_sessao,
+        p.full_name as patient_name
+    FROM billing_document_requirements bdr
+    INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
     INNER JOIN patients p ON p.id = pa.patient_id
-    LEFT JOIN billing_invoices bi ON bi.assignment_id = pa.id
     WHERE pa.professional_user_id = ?
-    AND pa.status = 'completed'
-    ORDER BY pa.completed_at DESC
+    AND bdr.status IN ('approved', 'paid')
+    ORDER BY bdr.approved_at DESC, bdr.session_date DESC
     LIMIT 50
 ");
 $paymentsStmt->execute([$userId]);
@@ -53,16 +104,18 @@ $pendingStmt = db()->prepare("
         pa.specialty,
         pa.service_type,
         pa.session_quantity,
-        pa.agreed_value,
+        COALESCE(pa.agreed_value, pa.payment_value, 0) as agreed_value,
         pa.status,
         pa.created_at,
         p.full_name as patient_name,
         (SELECT COUNT(*) FROM billing_document_requirements bdr 
-         WHERE bdr.assignment_id = pa.id AND bdr.status = 'pending') as pending_docs
+         WHERE bdr.assignment_id = pa.id AND bdr.status = 'pending') as pending_docs,
+        (SELECT COUNT(*) FROM billing_document_requirements bdr 
+         WHERE bdr.assignment_id = pa.id AND bdr.status IN ('approved', 'paid')) as approved_docs
     FROM patient_assignments pa
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE pa.professional_user_id = ?
-    AND pa.status IN ('admitted', 'awaiting_financial_approval', 'approved')
+    AND pa.status IN ('admitted', 'confirmed', 'awaiting_documents', 'awaiting_financial_approval', 'approved')
     ORDER BY pa.created_at DESC
 ");
 $pendingStmt->execute([$userId]);
@@ -206,27 +259,29 @@ echo '<h3>Histórico de Pagamentos</h3>';
 if (count($payments) === 0) {
     echo '<div style="padding:40px;text-align:center;color:#667781">';
     echo '<svg style="width:48px;height:48px;margin:0 auto 16px;opacity:0.3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 14H5V5h2v3h10V5h2v12z"/></svg>';
-    echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum pagamento ainda</div>';
-    echo '<div style="font-size:14px">Seu histórico de pagamentos aparecerá aqui</div>';
+    echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum documento aprovado ainda</div>';
+    echo '<div style="font-size:14px">Quando seus documentos de sessão forem aprovados, aparecerão aqui</div>';
     echo '</div>';
 } else {
     echo '<div style="overflow:auto">';
     echo '<table>';
     echo '<thead><tr>';
-    echo '<th>Paciente</th><th>Especialidade</th><th>Sessões</th><th>Valor Original</th><th>Data Conclusão</th><th>Data Pagamento</th><th>Referência</th>';
+    echo '<th>Paciente</th><th>Especialidade</th><th>Sessão</th><th>Data Sessão</th><th>Valor</th><th>Aprovado em</th><th>Status</th>';
     echo '</tr></thead><tbody>';
     
     foreach ($payments as $payment) {
-        $originalValue = (float)$payment['agreed_value'] * (int)$payment['session_quantity'];
+        $docStatus = (string)($payment['doc_status'] ?? 'approved');
+        $statusLabel = $docStatus === 'paid' ? 'Pago' : 'Aprovado';
+        $statusColor = $docStatus === 'paid' ? '#10b981' : '#0284c7';
         
         echo '<tr>';
         echo '<td style="font-weight:600">' . h($payment['patient_name']) . '</td>';
         echo '<td>' . h($payment['specialty'] ?? '-') . '</td>';
-        echo '<td>' . (int)$payment['session_quantity'] . '</td>';
-        echo '<td style="font-weight:700;color:#10b981">R$ ' . number_format($originalValue, 2, ',', '.') . '</td>';
-        echo '<td>' . ($payment['completed_at'] ? date('d/m/Y', strtotime($payment['completed_at'])) : '-') . '</td>';
-        echo '<td>' . ($payment['paid_at'] ? date('d/m/Y', strtotime($payment['paid_at'])) : '-') . '</td>';
-        echo '<td>' . h($payment['payment_reference'] ?? '-') . '</td>';
+        echo '<td>Sessão ' . (int)$payment['session_number'] . '</td>';
+        echo '<td>' . ($payment['session_date'] ? date('d/m/Y', strtotime($payment['session_date'])) : '-') . '</td>';
+        echo '<td style="font-weight:700;color:#10b981">R$ ' . number_format((float)$payment['valor_sessao'], 2, ',', '.') . '</td>';
+        echo '<td>' . ($payment['approved_at'] ? date('d/m/Y', strtotime($payment['approved_at'])) : '-') . '</td>';
+        echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusLabel . '</span></td>';
         echo '</tr>';
     }
     

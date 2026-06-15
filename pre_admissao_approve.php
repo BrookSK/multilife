@@ -10,6 +10,7 @@ rbac_require_permission('demands.manage');
 $assignmentId = isset($_POST['assignment_id']) ? (int)$_POST['assignment_id'] : 0;
 $demandId = isset($_POST['demand_id']) ? (int)$_POST['demand_id'] : 0;
 $weekdaysRaw = trim((string)($_POST['weekdays'] ?? ''));
+$sessionDatesRaw = trim((string)($_POST['session_dates'] ?? ''));
 
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
@@ -78,35 +79,42 @@ try {
         ) VALUES (?, ?, ?, ?, ?, 'pending', NOW())
     ");
     
-    // Calcular datas das sessões baseado nos dias da semana selecionados
+    // Calcular datas das sessões
+    // Prioridade 1: Datas vindas da proposta (session_dates)
+    // Prioridade 2: Dias da semana selecionados (weekdays) 
+    // Prioridade 3: Fallback semanal
     $sessionDates = [];
     $totalSessions = (int)$assignment['session_quantity'];
     $startDate = new DateTime(); // Hoje (data da aprovação)
     
-    if ($weekdaysJson !== null) {
+    // Tentar usar datas pré-calculadas da proposta
+    if ($sessionDatesRaw !== '') {
+        $sessionDates = array_filter(array_map('trim', explode(',', $sessionDatesRaw)));
+        // Validar que são datas válidas
+        $sessionDates = array_filter($sessionDates, function($d) {
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+        });
+        $sessionDates = array_values($sessionDates);
+    }
+    
+    // Se não veio da proposta, usar dias da semana
+    if (count($sessionDates) === 0 && $weekdaysJson !== null) {
         $weekdays = json_decode($weekdaysJson, true);
         if (is_array($weekdays) && count($weekdays) > 0) {
-            // Gerar datas baseado nos dias da semana selecionados
             $currentDate = clone $startDate;
             while (count($sessionDates) < $totalSessions) {
-                // PHP: 1=Monday ... 7=Sunday (ISO 8601, mesmo formato que usamos)
                 $dayOfWeek = (int)$currentDate->format('N');
                 if (in_array($dayOfWeek, $weekdays, true)) {
                     $sessionDates[] = $currentDate->format('Y-m-d');
                 }
                 $currentDate->modify('+1 day');
-                // Proteção contra loop infinito
-                if (count($sessionDates) === 0 && $currentDate->diff($startDate)->days > 14) {
-                    break;
-                }
-                if (count($sessionDates) > 0 && $currentDate->diff($startDate)->days > 365) {
-                    break;
-                }
+                if (count($sessionDates) === 0 && $currentDate->diff($startDate)->days > 14) break;
+                if (count($sessionDates) > 0 && $currentDate->diff($startDate)->days > 365) break;
             }
         }
     }
     
-    // Se não conseguiu calcular datas (sem weekdays), usar fallback semanal
+    // Fallback: semanal a partir de hoje
     if (count($sessionDates) === 0) {
         for ($i = 0; $i < $totalSessions; $i++) {
             $date = clone $startDate;

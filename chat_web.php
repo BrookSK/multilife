@@ -2197,12 +2197,7 @@ if (!empty($selectedChat)) {
                 SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, d.status
                 FROM demands d
                 WHERE d.assumed_by_user_id = :user_id
-                AND d.status IN ('tratamento_manual', 'em_captacao', 'admitido')
-                AND NOT EXISTS (
-                    SELECT 1 FROM patient_assignments pa 
-                    WHERE pa.demand_id = d.id 
-                    AND pa.status = 'confirmed'
-                )
+                AND d.status IN ('tratamento_manual', 'em_captacao', 'admitido', 'aguardando_autorizacao')
                 ORDER BY d.created_at DESC
                 LIMIT 50
             ");
@@ -2433,7 +2428,7 @@ async function openSelectProfessionalModal(professionalId = null) {
     document.getElementById("selectProfModalDemandId").value = demandId;
     document.getElementById("selectProfModalChatJid").value = chatId;
     
-    // Buscar dados da demanda para pré-preencher e-mail da operadora
+    // Buscar dados da demanda para pré-preencher campos
     try {
         const response = await fetch("/api/get_demand_data.php?demand_id=" + demandId);
         const data = await response.json();
@@ -2443,6 +2438,42 @@ async function openSelectProfessionalModal(professionalId = null) {
             const emailInput = document.querySelector("#selectProfessionalModal input[name=\'operator_email\']");
             if (emailInput && data.origin_email) {
                 emailInput.value = data.origin_email;
+            }
+            
+            // Pré-preencher especialidade
+            if (data.specialty_id) {
+                const specSelect = document.getElementById("selectProfSpecialtyId");
+                if (specSelect) {
+                    specSelect.value = data.specialty_id;
+                    // Carregar serviços da especialidade
+                    await loadSpecialtyServices();
+                }
+            }
+            
+            // Pré-preencher frequência
+            if (data.frequency) {
+                const freqSelect = document.getElementById("selectProfFrequency");
+                if (freqSelect) {
+                    // Tentar mapear o texto da frequência para o valor do select
+                    const freqMap = {
+                        "1x/semana": "weekly", "1 vez por semana": "weekly", "semanal": "weekly",
+                        "2x/semana": "weekly", "2 vezes por semana": "weekly",
+                        "3x/semana": "weekly", "3 vezes por semana": "weekly",
+                        "diário": "daily", "diaria": "daily",
+                        "quinzenal": "biweekly", "2x/mês": "biweekly",
+                        "mensal": "monthly", "1x/mês": "monthly"
+                    };
+                    const freqLower = data.frequency.toLowerCase();
+                    const mappedFreq = freqMap[freqLower] || "weekly";
+                    freqSelect.value = mappedFreq;
+                    
+                    // Extrair sessões por semana do texto (ex: "3 sessões por semana" → 3)
+                    const sessMatch = data.frequency.match(/(\d+)/);
+                    if (sessMatch) {
+                        const sessPerWeek = document.getElementById("selectProfSessionsPerWeek");
+                        if (sessPerWeek) sessPerWeek.value = sessMatch[1];
+                    }
+                }
             }
         }
     } catch (error) {

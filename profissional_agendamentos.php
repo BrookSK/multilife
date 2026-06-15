@@ -19,12 +19,10 @@ if ($currentYear < 2020 || $currentYear > 2030) {
 }
 
 // Buscar agendamentos do profissional (via patient_assignments)
-// Apenas agendamentos aprovados na pré-admissão
+// Expandir sessões para todas as semanas baseado na frequência
 $appointmentsStmt = db()->prepare("
     SELECT 
         pa.id,
-        DATE(pa.created_at) as appointment_date,
-        TIME(pa.created_at) as appointment_time,
         pa.created_at as first_at,
         pa.status,
         COALESCE(pa.agreed_value, pa.payment_value) as value_per_session,
@@ -40,13 +38,61 @@ $appointmentsStmt = db()->prepare("
     FROM patient_assignments pa
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE pa.professional_user_id = ?
-    AND YEAR(pa.created_at) = ?
-    AND MONTH(pa.created_at) = ?
-    AND pa.status = 'admitted'
+    AND pa.status IN ('admitted', 'confirmed', 'approved', 'awaiting_documents', 'awaiting_financial_approval')
     ORDER BY pa.created_at ASC
 ");
-$appointmentsStmt->execute([$userId, $currentYear, $currentMonth]);
-$appointments = $appointmentsStmt->fetchAll(PDO::FETCH_ASSOC);
+$appointmentsStmt->execute([$userId]);
+$rawAssignments = $appointmentsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Expandir cada atendimento em sessões individuais
+$appointments = [];
+foreach ($rawAssignments as $apt) {
+    $totalSessions = max(1, (int)($apt['session_quantity'] ?? 1));
+    $frequency = (string)($apt['session_frequency'] ?? 'weekly');
+    $startDate = new DateTime($apt['first_at']);
+    $startTime = $startDate->format('H:i');
+    
+    // Calcular intervalo entre sessões baseado na frequência
+    $intervalDays = match($frequency) {
+        'daily' => 1,
+        'weekly' => 7,
+        'biweekly' => 14,
+        'monthly' => 30,
+        default => 7,
+    };
+    
+    for ($i = 0; $i < $totalSessions; $i++) {
+        $sessionDate = clone $startDate;
+        $sessionDate->modify('+' . ($i * $intervalDays) . ' days');
+        
+        $dateStr = $sessionDate->format('Y-m-d');
+        $monthOfSession = (int)$sessionDate->format('m');
+        $yearOfSession = (int)$sessionDate->format('Y');
+        
+        // Só incluir sessões do mês atual
+        if ($monthOfSession === $currentMonth && $yearOfSession === $currentYear) {
+            $appointments[] = [
+                'id' => $apt['id'],
+                'appointment_date' => $dateStr,
+                'appointment_time' => $startTime,
+                'first_at' => $sessionDate->format('Y-m-d H:i:s'),
+                'status' => $apt['status'],
+                'value_per_session' => $apt['value_per_session'],
+                'notes' => $apt['notes'],
+                'patient_id' => $apt['patient_id'],
+                'patient_name' => $apt['patient_name'],
+                'patient_phone' => $apt['patient_phone'],
+                'patient_email' => $apt['patient_email'],
+                'specialty' => $apt['specialty'],
+                'service_type' => $apt['service_type'],
+                'session_number' => $i + 1,
+                'total_sessions' => $totalSessions,
+                'session_quantity' => $totalSessions,
+                'session_frequency' => $frequency,
+            ];
+        }
+    }
+}
 
 // Agrupar por data
 $appointmentsByDate = [];
@@ -208,7 +254,7 @@ if (count($appointments) === 0) {
     echo '<div style="overflow:auto">';
     echo '<table>';
     echo '<thead><tr>';
-    echo '<th>Data</th><th>Horário</th><th>Paciente</th><th>Telefone</th><th>Especialidade</th><th>Status</th><th>Observações</th>';
+    echo '<th>Data</th><th>Horário</th><th>Paciente</th><th>Sessão</th><th>Especialidade</th><th>Status</th>';
     echo '</tr></thead><tbody>';
     
     foreach ($appointments as $apt) {
@@ -216,27 +262,33 @@ if (count($appointments) === 0) {
             'confirmed' => '#10b981',
             'pending' => '#f59e0b',
             'approved' => '#0284c7',
+            'admitted' => '#0284c7',
             'completed' => '#667781',
-            'cancelled' => '#dc2626'
+            'cancelled' => '#dc2626',
+            'awaiting_documents' => '#f59e0b',
+            'awaiting_financial_approval' => '#f59e0b',
         ];
         $statusLabels = [
             'confirmed' => 'Confirmado',
             'pending' => 'Pendente',
             'approved' => 'Aprovado',
+            'admitted' => 'Admitido',
             'completed' => 'Concluído',
-            'cancelled' => 'Cancelado'
+            'cancelled' => 'Cancelado',
+            'awaiting_documents' => 'Aguardando Docs',
+            'awaiting_financial_approval' => 'Aguardando Financeiro',
         ];
         $statusColor = $statusColors[$apt['status']] ?? '#667781';
         $statusLabel = $statusLabels[$apt['status']] ?? $apt['status'];
+        $sessionLabel = isset($apt['session_number']) ? 'Sessão ' . $apt['session_number'] . '/' . $apt['total_sessions'] : '-';
         
         echo '<tr>';
         echo '<td style="font-weight:600">' . date('d/m/Y', strtotime($apt['appointment_date'])) . '</td>';
-        echo '<td>' . date('H:i', strtotime($apt['appointment_time'])) . '</td>';
+        echo '<td>' . h($apt['appointment_time']) . '</td>';
         echo '<td>' . h($apt['patient_name']) . '</td>';
-        echo '<td>' . h($apt['patient_phone'] ?? '-') . '</td>';
+        echo '<td>' . h($sessionLabel) . '</td>';
         echo '<td>' . h($apt['specialty'] ?? '-') . '</td>';
         echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusLabel . '</span></td>';
-        echo '<td>' . h($apt['notes'] ? substr($apt['notes'], 0, 50) . '...' : '-') . '</td>';
         echo '</tr>';
     }
     

@@ -55,6 +55,18 @@ audit_log('login_as_user', 'users', (string)$targetUserId,
 
 $_SESSION['success'] = 'Você está agora logado como: ' . $targetUser['name'];
 
-// Redirecionar para dashboard
-header('Location: /dashboard.php');
+// Redirecionar para página adequada ao perfil do usuário
+$stmtRoles = db()->prepare("
+    SELECT r.slug FROM user_roles ur 
+    INNER JOIN roles r ON r.id = ur.role_id 
+    WHERE ur.user_id = ?
+");
+$stmtRoles->execute([$targetUserId]);
+$userRoles = $stmtRoles->fetchAll(PDO::FETCH_COLUMN);
+
+if (in_array('profissional', $userRoles, true)) {
+    header('Location: /profissional_registros.php');
+} else {
+    header('Location: /dashboard.php');
+}
 exit;

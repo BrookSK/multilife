@@ -328,6 +328,48 @@ if ($selected) {
     $sessionFreq = (string)($selected['session_frequency'] ?? '-');
     $paymentValue = (float)($selected['payment_value'] ?? 0);
 
+    // Buscar dados da proposta/autorização original (se existir)
+    $authRequest = null;
+    try {
+        $stmtAuth = db()->prepare("
+            SELECT ar.start_date, ar.start_time, ar.end_time, ar.frequency, ar.frequency_details,
+                   ar.sessions_per_week, ar.total_sessions, ar.duration_weeks,
+                   ar.operator_email, ar.operator_name, ar.proposal_value, ar.agreed_value
+            FROM authorization_requests ar
+            WHERE ar.demand_id = ? AND ar.patient_id = (SELECT patient_id FROM patient_assignments WHERE id = ?)
+            ORDER BY ar.id DESC LIMIT 1
+        ");
+        $stmtAuth->execute([$demandId, $assignmentId]);
+        $authRequest = $stmtAuth->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+    
+    // Detectar operadora automaticamente pelo domínio do e-mail de origem
+    $detectedInsurer = $insurerName;
+    if ($detectedInsurer === 'Não informado' || empty($detectedInsurer)) {
+        $originEmail = (string)($selected['origin_email'] ?? '');
+        if (!empty($originEmail) && strpos($originEmail, '@') !== false) {
+            $emailDomain = strtolower(substr($originEmail, strpos($originEmail, '@') + 1));
+            try {
+                $stmtIns = db()->prepare("SELECT name FROM health_insurers WHERE status = 'active' AND email_domain = ? LIMIT 1");
+                $stmtIns->execute([$emailDomain]);
+                $insRow = $stmtIns->fetch();
+                if ($insRow) {
+                    $detectedInsurer = $insRow['name'];
+                } else {
+                    // Fallback: buscar por nome baseado no domínio
+                    $domainBase = explode('.', $emailDomain)[0];
+                    if (strlen($domainBase) >= 3) {
+                        $stmtIns2 = db()->prepare("SELECT name FROM health_insurers WHERE status = 'active' AND LOWER(name) LIKE ? LIMIT 1");
+                        $stmtIns2->execute(['%' . $domainBase . '%']);
+                        $insRow2 = $stmtIns2->fetch();
+                        if ($insRow2) $detectedInsurer = $insRow2['name'];
+                        else $detectedInsurer = ucfirst($domainBase) . ' (detectado)';
+                    }
+                }
+            } catch (Exception $e) {}
+        }
+    }
+
     echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
     echo '<a class="btn" href="/demands_view.php?id=' . $demandId . '">Abrir card</a>';
     echo '<a class="btn" href="/demands_edit.php?id=' . $demandId . '">Editar card</a>';
@@ -341,18 +383,18 @@ if ($selected) {
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($patientPhone) . '</div>';
     echo '<div style="font-weight:600;margin-top:8px">Profissional: ' . h($professionalName) . '</div>';
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($professionalPhone) . '</div>';
+    echo '<div style="font-weight:600;margin-top:8px">Operadora: ' . h($detectedInsurer) . '</div>';
     echo '</div>';
 
     echo '<div class="tabPanel isActive" data-panel="faturamento">';
     echo '<div style="display:grid;gap:12px">';
-    echo '<label>Empresa/Origem<input value="' . h((string)($selected['origin_email'] ?? '')) . '" readonly></label>';
+    echo '<label>Operadora/Convênio<input value="' . h($detectedInsurer) . '" readonly style="font-weight:600"></label>';
+    echo '<label>E-mail Origem<input value="' . h((string)($selected['origin_email'] ?? '')) . '" readonly></label>';
     echo '<label>Local<input value="' . h($locTxt) . '" readonly></label>';
     echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
     echo '<label>Tipo de Serviço<input value="' . h($serviceType) . '" readonly></label>';
     echo '<label>Sessões<input value="' . h($sessionQty . 'x - ' . $sessionFreq) . '" readonly></label>';
     echo '<label>Valor por Sessão<input value="R$ ' . h(number_format($paymentValue, 2, ',', '.')) . '" readonly></label>';
-    $insurerName = $selected['health_insurer_name'] ?? 'Não informado';
-    echo '<label>Operadora/Convênio<input value="' . h($insurerName) . '" readonly></label>';
     echo '<label>Dados financeiros<input placeholder="Nº contrato / autorização"></label>';
     echo '</div>';
     echo '</div>';
@@ -387,40 +429,60 @@ if ($selected) {
 
     echo '<div style="height:14px"></div>';
     
-    // Determinar quantos dias devem ser selecionados baseado na frequência
-    $freqToDays = [
-        '1x por semana' => 1, '2x por semana' => 2, '3x por semana' => 3,
-        '4x por semana' => 4, '5x por semana' => 5, '6x por semana' => 6,
-        'Diário' => 7, 'diario' => 7, 'daily' => 7, 'weekly' => 1,
-    ];
-    $requiredDays = 0;
-    foreach ($freqToDays as $fk => $fv) {
-        if (stripos($sessionFreq, $fk) !== false || strcasecmp($sessionFreq, $fk) === 0) {
-            $requiredDays = $fv;
-            break;
-        }
-    }
-    // Tentar extrair número da frequência (ex: "3x" ou "3 vezes")
-    if ($requiredDays === 0 && preg_match('/(\d+)\s*x/i', $sessionFreq, $m)) {
-        $requiredDays = (int)$m[1];
-    }
-    
-    // Seleção de dias da semana para o atendimento
+    // Mostrar datas das sessões (da proposta, se disponível)
     echo '<div style="margin-top:20px;padding:16px;border:1px solid hsl(var(--border));border-radius:10px;background:hsla(var(--primary)/.03)">';
-    echo '<div style="font-weight:900;margin-bottom:10px">📅 Dias da Semana do Atendimento</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:4px">Selecione os dias em que o atendimento será realizado:</div>';
-    if ($requiredDays > 0) {
-        echo '<div id="weekdaysHint" style="font-size:12px;color:hsl(var(--primary));font-weight:700;margin-bottom:12px">Frequência: ' . h($sessionFreq) . ' — selecione exatamente ' . $requiredDays . ' dia(s)</div>';
+    echo '<div style="font-weight:900;margin-bottom:10px">📅 Sessões Programadas</div>';
+    
+    $sessionDatesForApproval = [];
+    
+    if ($authRequest && !empty($authRequest['start_date'])) {
+        // Calcular datas a partir da proposta
+        $startDate = new DateTime($authRequest['start_date']);
+        $startTime = $authRequest['start_time'] ?? '08:00:00';
+        $endTime = $authRequest['end_time'] ?? '09:00:00';
+        $totalSess = (int)($authRequest['total_sessions'] ?? $sessionQty);
+        $freq = (string)($authRequest['frequency'] ?? 'weekly');
+        $sessPerWeek = (int)($authRequest['sessions_per_week'] ?? 1);
+        
+        $intervalDays = match($freq) {
+            'daily' => 1,
+            'weekly' => 7,
+            'biweekly' => 14,
+            'monthly' => 30,
+            default => 7,
+        };
+        
+        // Se tem mais de 1 sessão por semana, ajustar intervalo
+        if ($sessPerWeek > 1 && $freq === 'weekly') {
+            $intervalDays = (int)floor(7 / $sessPerWeek);
+        }
+        
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+        echo 'Início: <strong>' . $startDate->format('d/m/Y') . '</strong> | ';
+        echo 'Horário: <strong>' . substr($startTime, 0, 5) . ' às ' . substr($endTime, 0, 5) . '</strong> | ';
+        echo 'Total: <strong>' . $totalSess . ' sessões</strong>';
+        echo '</div>';
+        
+        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto">';
+        for ($i = 0; $i < $totalSess; $i++) {
+            $sessDate = clone $startDate;
+            $sessDate->modify('+' . ($i * $intervalDays) . ' days');
+            $sessionDatesForApproval[] = $sessDate->format('Y-m-d');
+            
+            $dayName = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][(int)$sessDate->format('w')];
+            echo '<div style="padding:6px 10px;background:#fff;border:1px solid hsl(var(--border));border-radius:6px;font-size:12px;display:flex;justify-content:space-between">';
+            echo '<span><strong>Sessão ' . ($i + 1) . '</strong></span>';
+            echo '<span>' . $dayName . ', ' . $sessDate->format('d/m/Y') . ' às ' . substr($startTime, 0, 5) . '</span>';
+            echo '</div>';
+        }
+        echo '</div>';
+    } else {
+        // Fallback: mostrar cálculo baseado na frequência do assignment
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:8px">';
+        echo 'Frequência: <strong>' . h($sessionFreq) . '</strong> | Total: <strong>' . $sessionQty . ' sessões</strong>';
+        echo '</div>';
+        echo '<div style="font-size:12px;color:hsl(var(--warning));margin-top:8px">⚠️ Datas serão calculadas a partir da data de aprovação.</div>';
     }
-    echo '<div id="weekdaysSelector" style="display:flex;gap:8px;flex-wrap:wrap">';
-    $diasSemana = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
-    foreach ($diasSemana as $num => $nome) {
-        echo '<label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
-        echo '<input type="checkbox" class="weekday-check" value="' . $num . '"> ' . $nome;
-        echo '</label>';
-    }
-    echo '</div>';
-    echo '<div id="weekdaysError" style="display:none;margin-top:8px;color:hsl(var(--destructive));font-size:13px;font-weight:700"></div>';
     echo '</div>';
     
     // Botão de aprovar atendimento
@@ -428,29 +490,9 @@ if ($selected) {
     echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
     echo '<input type="hidden" name="demand_id" value="' . $demandId . '">';
     echo '<input type="hidden" name="weekdays" id="weekdaysInput" value="">';
+    echo '<input type="hidden" name="session_dates" value="' . h(implode(',', $sessionDatesForApproval)) . '">';
     echo '<button class="btn btnPrimary" type="submit" style="width:100%" id="btnApprove">✅ Aprovar Atendimento</button>';
     echo '</form>';
-    
-    // Validação JavaScript
-    echo '<script>';
-    echo 'document.getElementById("approveForm").addEventListener("submit", function(e) {';
-    echo '  var checks = document.querySelectorAll(".weekday-check:checked");';
-    echo '  var required = ' . $requiredDays . ';';
-    echo '  document.getElementById("weekdaysInput").value = Array.from(checks).map(function(c){return c.value}).join(",");';
-    echo '  if (required > 0 && checks.length !== required) {';
-    echo '    e.preventDefault();';
-    echo '    document.getElementById("weekdaysError").style.display = "block";';
-    echo '    document.getElementById("weekdaysError").textContent = "Selecione exatamente " + required + " dia(s). Você selecionou " + checks.length + ".";';
-    echo '    return false;';
-    echo '  }';
-    echo '  if (checks.length === 0) {';
-    echo '    e.preventDefault();';
-    echo '    document.getElementById("weekdaysError").style.display = "block";';
-    echo '    document.getElementById("weekdaysError").textContent = "Selecione pelo menos 1 dia da semana.";';
-    echo '    return false;';
-    echo '  }';
-    echo '});';
-    echo '</script>';
 }
 
 echo '</div>';

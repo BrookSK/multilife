@@ -174,6 +174,12 @@ view_header('Configuração de Operadoras');
                 <input type="email" name="billing_email" id="insurerBillingEmail" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
             </div>
             
+            <div style="margin-bottom:16px">
+                <label style="display:block;margin-bottom:8px;font-weight:600">Domínio de E-mail</label>
+                <input type="text" name="email_domain" id="insurerEmailDomain" placeholder="ex: unimed.com.br, amil.com.br" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+                <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Usado para identificar automaticamente a operadora pelo e-mail de origem das captações</div>
+            </div>
+            
             <div style="margin-bottom:20px">
                 <label style="display:block;margin-bottom:8px;font-weight:600">Observações</label>
                 <textarea name="notes" id="insurerNotes" rows="3" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px;resize:vertical"></textarea>
@@ -205,6 +211,7 @@ function editInsurer(insurer) {
     document.getElementById('insurerPhone').value = insurer.contact_phone || '';
     document.getElementById('insurerEmail').value = insurer.contact_email || '';
     document.getElementById('insurerBillingEmail').value = insurer.billing_email || '';
+    document.getElementById('insurerEmailDomain').value = insurer.email_domain || '';
     document.getElementById('insurerNotes').value = insurer.notes || '';
     document.getElementById('insurerModal').style.display = 'block';
 }

@@ -222,12 +222,13 @@ function process_single_authorization(int $authId, int $emailId): array
                 "INSERT INTO patient_assignments 
                 (demand_id, patient_id, professional_user_id, assigned_by_user_id,
                  specialty, service_type, session_quantity, session_frequency, 
-                 payment_value, notes, status, created_at)
-                VALUES (:did, :pid, :puid, :abuid, :spec, :stype, :sq, :sfreq, :pv, :notes, 'confirmed', NOW())"
+                 payment_value, agreed_value, authorized_value, notes, status, created_at)
+                VALUES (:did, :pid, :puid, :abuid, :spec, :stype, :sq, :sfreq, :pv, :av, :authv, :notes, 'confirmed', NOW())"
             );
             
-            // Calcular valor total baseado em sessões
-            $paymentValue = $totalSessions > 0 ? ($agreedValue / $totalSessions) : $agreedValue;
+            // Valores por sessão
+            $agreedPerSession = $totalSessions > 0 ? ($agreedValue / $totalSessions) : $agreedValue;
+            $proposalPerSession = $totalSessions > 0 ? ($proposalValue / $totalSessions) : $proposalValue;
             
             $insAssignment->execute([
                 'did' => $demandId,
@@ -238,7 +239,9 @@ function process_single_authorization(int $authId, int $emailId): array
                 'stype' => (string)($demand['title'] ?? 'Atendimento'),
                 'sq' => $totalSessions,
                 'sfreq' => $frequency,
-                'pv' => $paymentValue,
+                'pv' => $agreedPerSession,
+                'av' => $agreedPerSession,        // Valor acordado com profissional (por sessão)
+                'authv' => $proposalPerSession,   // Valor proposto à operadora (por sessão) = RECEITA
                 'notes' => "Autorização aprovada automaticamente. Proposta: R$ " . number_format($proposalValue, 2, ',', '.') . " | Acordado: R$ " . number_format($agreedValue, 2, ',', '.')
             ]);
             $assignmentId = (int)$db->lastInsertId();
