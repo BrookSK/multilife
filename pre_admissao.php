@@ -440,29 +440,19 @@ if ($selected) {
     echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
     echo '<label>Tipo de Serviço<input value="' . h($serviceType) . '" readonly></label>';
     
-    // Buscar dados detalhados do card da captação
-    $demandDescription = (string)($selected['description'] ?? '');
-    $demandAiSummary = '';
+    // Buscar descrição resumida do card (o campo description que vai na mensagem de captação)
+    $demandDescription = '';
     try {
-        $stmtDemandFull = db()->prepare("SELECT description, ai_summary FROM demands WHERE id = ?");
+        $stmtDemandFull = db()->prepare("SELECT description FROM demands WHERE id = ?");
         $stmtDemandFull->execute([$demandId]);
         $demandFull = $stmtDemandFull->fetch(PDO::FETCH_ASSOC);
         if ($demandFull) {
-            $demandDescription = (string)($demandFull['description'] ?? $demandDescription);
-            $demandAiSummary = (string)($demandFull['ai_summary'] ?? '');
+            $demandDescription = trim((string)($demandFull['description'] ?? ''));
         }
     } catch (Exception $e) {}
     
-    if (!empty($demandAiSummary)) {
-        echo '<div style="padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px">';
-        echo '<div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:6px">🤖 Resumo da Necessidade (IA)</div>';
-        echo '<div style="font-size:13px;color:#1e3a5f;line-height:1.6">' . nl2br(h($demandAiSummary)) . '</div>';
-        echo '</div>';
-    }
-    
     if (!empty($demandDescription)) {
-        echo '<label>Descrição do Atendimento</label>';
-        echo '<div style="padding:12px;background:#f9fafb;border:1px solid hsl(var(--border));border-radius:8px;font-size:13px;line-height:1.6;max-height:200px;overflow-y:auto">' . nl2br(h($demandDescription)) . '</div>';
+        echo '<label>Descrição do Atendimento<input value="' . h($demandDescription) . '" readonly></label>';
     }
     
     echo '</div>';
