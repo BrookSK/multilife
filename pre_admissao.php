@@ -440,16 +440,35 @@ if ($selected) {
     echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
     echo '<label>Tipo de Serviço<input value="' . h($serviceType) . '" readonly></label>';
     
-    // Buscar descrição resumida do card (o campo description que vai na mensagem de captação)
+    // Buscar descrição específica da sub-solicitação (por especialidade)
     $demandDescription = '';
     try {
-        $stmtDemandFull = db()->prepare("SELECT description FROM demands WHERE id = ?");
-        $stmtDemandFull->execute([$demandId]);
-        $demandFull = $stmtDemandFull->fetch(PDO::FETCH_ASSOC);
-        if ($demandFull) {
-            $demandDescription = trim((string)($demandFull['description'] ?? ''));
+        // Primeiro tentar pela sub-solicitação da mesma especialidade
+        $stmtSubReq = db()->prepare("
+            SELECT description FROM demand_sub_requests 
+            WHERE demand_id = ? AND specialty = ? 
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmtSubReq->execute([$demandId, $specialty]);
+        $subReqRow = $stmtSubReq->fetch(PDO::FETCH_ASSOC);
+        if ($subReqRow && !empty($subReqRow['description'])) {
+            $demandDescription = trim((string)$subReqRow['description']);
         }
     } catch (Exception $e) {}
+    
+    // Fallback: descrição geral da demanda (mas só se não é o resumo completo da IA)
+    if (empty($demandDescription)) {
+        try {
+            $stmtDemandDesc = db()->prepare("SELECT description FROM demands WHERE id = ?");
+            $stmtDemandDesc->execute([$demandId]);
+            $demandDescRow = $stmtDemandDesc->fetch(PDO::FETCH_ASSOC);
+            $desc = trim((string)($demandDescRow['description'] ?? ''));
+            // Só usar se for curto (menos de 200 chars = provavelmente é resumo específico)
+            if (!empty($desc) && strlen($desc) < 200) {
+                $demandDescription = $desc;
+            }
+        } catch (Exception $e) {}
+    }
     
     if (!empty($demandDescription)) {
         echo '<label>Descrição do Atendimento<input value="' . h($demandDescription) . '" readonly></label>';
