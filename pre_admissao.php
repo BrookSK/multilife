@@ -344,7 +344,8 @@ if ($selected) {
     } catch (Exception $e) {}
     
     // Detectar operadora automaticamente pelo domínio do e-mail de origem
-    $detectedInsurer = $insurerName;
+    $insurerName = $selected['health_insurer_name'] ?? '';
+    $detectedInsurer = $insurerName ?: 'Não informado';
     if ($detectedInsurer === 'Não informado' || empty($detectedInsurer)) {
         $originEmail = (string)($selected['origin_email'] ?? '');
         if (!empty($originEmail) && strpos($originEmail, '@') !== false) {
