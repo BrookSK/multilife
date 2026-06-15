@@ -78,7 +78,7 @@ $paymentsStmt = db()->prepare("
         bdr.session_number,
         bdr.session_date,
         bdr.status as doc_status,
-        bdr.approved_at,
+        bdr.created_at as approved_at,
         COALESCE(pa.agreed_value, pa.payment_value, 0) as valor_sessao,
         p.full_name as patient_name
     FROM billing_document_requirements bdr
@@ -86,7 +86,7 @@ $paymentsStmt = db()->prepare("
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE pa.professional_user_id = ?
     AND bdr.status IN ('approved', 'paid')
-    ORDER BY bdr.approved_at DESC, bdr.session_date DESC
+    ORDER BY bdr.created_at DESC, bdr.session_date DESC
     LIMIT 50
 ");
 $paymentsStmt->execute([$userId]);
