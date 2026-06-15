@@ -165,6 +165,12 @@ try {
             'patient_phone' => '',
             'attendance_id' => (string)$assignmentId,
             'attendance_date' => date('d/m/Y'),
+            'attendance_link' => 'https://multilife.onsolutionsbrasil.com.br/profissional_registros.php',
+            'specialty' => $specialty,
+            'service_type' => $serviceTypeName ?? '',
+            'session_quantity' => (string)$sessionQuantity,
+            'session_frequency' => $sessionFrequency,
+            'agreed_value' => number_format($agreedValue, 2, ',', '.'),
         ]);
     } catch (Throwable $evtErr) {
         error_log('[DISPATCH_EVENT] Erro ao disparar attendance_assigned: ' . $evtErr->getMessage());

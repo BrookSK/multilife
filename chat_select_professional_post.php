@@ -385,29 +385,8 @@ try {
     $db->commit();
     error_log("✓ Transação commitada com sucesso");
     
-    // Disparar evento WhatsApp para notificar profissional
-    try {
-        $dispatcher = new WhatsAppEventDispatcher();
-        $dispatcher->dispatch('attendance_assigned', [
-            'professional_id' => $professionalUserId,
-            'professional_name' => $professional['name'] ?? '',
-            'professional_phone' => preg_replace('/\D+/', '', (string)($professional['phone'] ?? '')),
-            'patient_id' => $patientId,
-            'patient_name' => $patient['full_name'] ?? '',
-            'patient_phone' => preg_replace('/\D+/', '', (string)($patient['whatsapp'] ?? $patient['phone_primary'] ?? '')),
-            'attendance_id' => (string)$authRequestId,
-            'attendance_date' => date('d/m/Y'),
-            'attendance_link' => 'https://multilife.onsolutionsbrasil.com.br/profissional_registros.php',
-            'specialty' => $specialtyName,
-            'service_type' => $serviceName,
-            'session_quantity' => (string)$totalSessions,
-            'session_frequency' => $frequencyText ?? '',
-            'agreed_value' => number_format($agreedValue, 2, ',', '.'),
-        ]);
-        error_log("✓ Evento attendance_assigned disparado");
-    } catch (Throwable $evtErr) {
-        error_log('Erro ao disparar evento attendance_assigned: ' . $evtErr->getMessage());
-    }
+    // NÃO notificar profissional aqui — a proposta ainda precisa ser aprovada pela operadora
+    // O profissional será notificado APÓS a operadora aprovar (em process_single_authorization.php)
     
     // ============================================================================
     // ENVIAR E-MAIL PARA OPERADORA COM TEMPLATE HTML

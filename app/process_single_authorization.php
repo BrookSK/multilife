@@ -247,7 +247,7 @@ function process_single_authorization(int $authId, int $emailId): array
             $assignmentId = (int)$db->lastInsertId();
             error_log("[PROCESS_SINGLE_AUTH] ✓ Atendimento criado - ID: $assignmentId");
             
-            // Disparar evento WhatsApp attendance_assigned
+            // Disparar evento WhatsApp attendance_assigned (operadora APROVOU)
             try {
                 $profStmt = $db->prepare('SELECT name, phone FROM users WHERE id = :id');
                 $profStmt->execute(['id' => $professionalUserId]);
@@ -267,6 +267,12 @@ function process_single_authorization(int $authId, int $emailId): array
                     'patient_phone' => preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? '')),
                     'attendance_id' => (string)$assignmentId,
                     'attendance_date' => date('d/m/Y'),
+                    'attendance_link' => 'https://multilife.onsolutionsbrasil.com.br/profissional_registros.php',
+                    'specialty' => (string)($demand['specialty'] ?? ''),
+                    'service_type' => (string)($demand['title'] ?? ''),
+                    'session_quantity' => (string)$totalSessions,
+                    'session_frequency' => $frequency,
+                    'agreed_value' => number_format($agreedPerSession, 2, ',', '.'),
                 ]);
             } catch (Throwable $evtErr) {
                 error_log('[PROCESS_SINGLE_AUTH] Erro ao disparar evento: ' . $evtErr->getMessage());
