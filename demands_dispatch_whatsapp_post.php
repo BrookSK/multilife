@@ -190,6 +190,31 @@ if (count($groups) === 0) {
                 
                 error_log("[DISPATCH] ✅ Grupo criado automaticamente: '$groupName' (JID: $newGroupJid) com " . count($participants) . " participantes");
                 
+                // Configurar grupo para apenas admins enviarem mensagens
+                try {
+                    $settingsUrl = $baseUrl . '/group/updateSetting/' . urlencode($instanceName);
+                    $settingsPayload = json_encode([
+                        'groupJid' => $newGroupJid,
+                        'action' => 'announcement',
+                    ]);
+                    $chSettings = curl_init();
+                    curl_setopt_array($chSettings, [
+                        CURLOPT_URL => $settingsUrl,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_TIMEOUT => 15,
+                        CURLOPT_CUSTOMREQUEST => "PUT",
+                        CURLOPT_POSTFIELDS => $settingsPayload,
+                        CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+                        CURLOPT_SSL_VERIFYPEER => false,
+                    ]);
+                    $settingsResp = curl_exec($chSettings);
+                    $settingsCode = curl_getinfo($chSettings, CURLINFO_HTTP_CODE);
+                    curl_close($chSettings);
+                    error_log("[DISPATCH] Grupo configurado como 'somente admins': HTTP $settingsCode");
+                } catch (Exception $e) {
+                    error_log("[DISPATCH] Erro ao configurar grupo: " . $e->getMessage());
+                }
+                
                 // Pequeno delay para o grupo estabilizar antes de enviar mensagem
                 sleep(3);
             } else {

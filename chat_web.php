@@ -430,7 +430,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         }
                         
                         audit_log('create', 'chat_groups', $groupJid, null, ['group_name' => $groupName, 'specialty' => $specialty, 'region' => $location]);
-                        $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Agora você pode convidar participantes via chat.';
+                        
+                        // Configurar grupo para apenas admins enviarem mensagens
+                        try {
+                            $settingsUrl = $baseUrl . '/group/updateSetting/' . urlencode($instanceName);
+                            $settingsPayload = json_encode(['groupJid' => $groupJid, 'action' => 'announcement']);
+                            $chSettings = curl_init();
+                            curl_setopt_array($chSettings, [
+                                CURLOPT_URL => $settingsUrl,
+                                CURLOPT_RETURNTRANSFER => true,
+                                CURLOPT_TIMEOUT => 15,
+                                CURLOPT_CUSTOMREQUEST => "PUT",
+                                CURLOPT_POSTFIELDS => $settingsPayload,
+                                CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+                                CURLOPT_SSL_VERIFYPEER => false,
+                            ]);
+                            curl_exec($chSettings);
+                            curl_close($chSettings);
+                        } catch (Exception $e) {}
+                        
+                        $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Apenas admins podem enviar mensagens.';
                         $debugConsole[] = 'console.log("✅ GRUPO CRIADO - Nome: ' . addslashes($groupName) . ' | JID: ' . addslashes($groupJid) . '")';
                     } catch (Exception $e) {
                         error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
