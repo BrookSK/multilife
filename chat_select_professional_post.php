@@ -445,6 +445,8 @@ try {
         'value_per_session' => email_format_currency($proposalValue),
         'total_value' => email_format_currency($totalProposal),
         'session_schedule' => $sessionScheduleHtml,
+        'session_dates_array' => $sessionDates,
+        'notes' => $notes,
         'notes_section' => $notesSection,
     ];
     

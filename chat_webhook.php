@@ -36,7 +36,6 @@ $ignoredEvents = [
     'group.participants.update',
     'messages.set',
     'messages.update',
-    'messages.delete',
     'call',
     'new.jwt.token',
     'application.startup',
@@ -927,6 +926,29 @@ if ($event === 'messages.upsert') {
             error_log("[WEBHOOK] mensagem IGNORADA: " . implode(', ', $reason) . " | jid='$remoteJid'");
         }
     }
+}
+
+// Tratar mensagens apagadas
+if ($event === 'messages.delete') {
+    $deleteData = $data['data'] ?? [];
+    $deletedMsgId = $deleteData['key']['id'] ?? $deleteData['id'] ?? '';
+    $deletedJid = $deleteData['key']['remoteJid'] ?? $deleteData['remoteJid'] ?? '';
+    
+    if (!empty($deletedMsgId)) {
+        try {
+            // Deletar mensagem pelo external_message_id
+            $stmtDel = db()->prepare("DELETE FROM chat_messages WHERE external_message_id = ?");
+            $stmtDel->execute([$deletedMsgId]);
+            $deleted = $stmtDel->rowCount();
+            error_log("[WEBHOOK] messages.delete: msg_id='$deletedMsgId' jid='$deletedJid' deleted=$deleted");
+        } catch (Exception $e) {
+            error_log("[WEBHOOK] Erro ao deletar mensagem: " . $e->getMessage());
+        }
+    }
+    
+    http_response_code(200);
+    echo json_encode(['status' => 'ok']);
+    exit;
 }
 
 // Salvar mensagens enviadas via telefone (para mostrar no chat)

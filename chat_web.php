@@ -556,20 +556,23 @@ try {
         $whereClauses = [];
         $params = [];
         
+        // SEMPRE excluir grupos das abas de chat (grupos têm aba própria)
+        $whereClauses[] = "cc.is_group = 0";
+        
+        // SEMPRE excluir conversas arquivadas
+        $whereClauses[] = "(cc.status != 'arquivado' OR cc.status IS NULL)";
+        
         if ($chatType === 'atendendo') {
             // Em Captação: profissionais com conversa ativa (atendendo ou aguardando)
             $whereClauses[] = "(cc.status = 'atendendo' OR cc.status = 'aguardando')";
-            $whereClauses[] = "cc.is_group = 0";
         } elseif ($chatType === 'concluidos') {
             // Concluídos: conversas resolvidas
             $whereClauses[] = "cc.status = 'resolvido'";
-            $whereClauses[] = "cc.is_group = 0";
         } elseif ($chatType === 'lista_espera') {
             // Lista de Espera: profissionais que reagiram mas ainda não foram selecionados
             // Buscar da tabela demand_interested_professionals
         } elseif ($chatType === 'todos') {
-            // Todos: mostra tudo (privados)
-            $whereClauses[] = "cc.is_group = 0";
+            // Todos: mostra tudo (privados, não arquivados)
         }
         
         if (!empty($searchQuery)) {
