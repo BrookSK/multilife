@@ -39,15 +39,18 @@ $pendingDocsStmt = db()->prepare("
         bdr.session_date,
         bdr.status,
         pa.id as assignment_id,
+        pa.demand_id,
         p.full_name as patient_name,
-        pa.specialty
+        pa.specialty,
+        pa.service_type,
+        pa.session_quantity
     FROM billing_document_requirements bdr
     INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE bdr.professional_user_id = ?
     AND bdr.status IN ('pending', 'rejected')
-    ORDER BY bdr.created_at ASC
-    LIMIT 10
+    ORDER BY pa.id ASC, bdr.session_number ASC
+    LIMIT 30
 ");
 $pendingDocsStmt->execute([$userId]);
 $pendingDocs = $pendingDocsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -165,37 +168,57 @@ if (count($patients) === 0) {
 
 echo '</section>';
 
-// Documentos Pendentes Recentes
+// Documentos Pendentes
 if (count($pendingDocs) > 0) {
     echo '<section class="card col12">';
-    echo '<h3>Documentos Pendentes Recentes</h3>';
+    echo '<h3>Documentos Pendentes</h3>';
     
-    echo '<div style="overflow:auto">';
-    echo '<table>';
-    echo '<thead><tr>';
-    echo '<th>Paciente</th><th>Especialidade</th><th>Sessão</th><th>Data</th><th>Status</th><th style="text-align:right">Ações</th>';
-    echo '</tr></thead><tbody>';
-    
+    // Agrupar por atendimento (assignment_id)
+    $byAssignment = [];
     foreach ($pendingDocs as $doc) {
-        $statusColor = $doc['status'] === 'rejected' ? '#dc2626' : '#ef4444';
-        $statusText = $doc['status'] === 'rejected' ? 'Rejeitado' : 'Pendente';
-        
-        echo '<tr>';
-        echo '<td style="font-weight:600">' . h($doc['patient_name']) . '</td>';
-        echo '<td>' . h($doc['specialty'] ?? '-') . '</td>';
-        echo '<td>Sessão ' . (int)$doc['session_number'] . '</td>';
-        echo '<td>' . ($doc['session_date'] ? date('d/m/Y', strtotime($doc['session_date'])) : '-') . '</td>';
-        echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusText . '</span></td>';
-        echo '<td style="text-align:right">';
-        echo '<a class="btn btnPrimary" href="/faturamento_upload_doc.php?requirement_id=' . (int)$doc['id'] . '">Enviar</a>';
-        echo '</td>';
-        echo '</tr>';
+        $byAssignment[$doc['assignment_id']][] = $doc;
     }
     
-    echo '</tbody></table>';
-    echo '</div>';
+    foreach ($byAssignment as $assignId => $docs) {
+        $first = $docs[0];
+        $totalSess = (int)($first['session_quantity'] ?? count($docs));
+        $serviceLabel = $first['service_type'] ?? $first['specialty'] ?? 'Atendimento';
+        
+        // Header do atendimento
+        echo '<div style="margin-top:12px;padding:10px 14px;background:hsla(var(--primary)/.06);border-radius:8px 8px 0 0;border:1px solid hsl(var(--border));border-bottom:none">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center">';
+        echo '<div>';
+        echo '<strong style="font-size:14px">' . h($first['patient_name']) . '</strong>';
+        echo ' <span style="color:hsl(var(--muted-foreground));font-size:12px">— ' . h($serviceLabel) . '</span>';
+        echo '</div>';
+        echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">' . h($first['specialty'] ?? '') . ' • ' . $totalSess . ' sessões</span>';
+        echo '</div>';
+        echo '</div>';
+        
+        // Tabela de sessões deste atendimento
+        echo '<div style="overflow:auto;border:1px solid hsl(var(--border));border-radius:0 0 8px 8px;margin-bottom:16px">';
+        echo '<table style="margin:0">';
+        echo '<thead><tr><th>Sessão</th><th>Data</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead><tbody>';
+        
+        foreach ($docs as $doc) {
+            $statusColor = $doc['status'] === 'rejected' ? '#dc2626' : '#ef4444';
+            $statusText = $doc['status'] === 'rejected' ? 'Rejeitado' : 'Pendente';
+            
+            echo '<tr>';
+            echo '<td style="font-weight:600">Sessão ' . (int)$doc['session_number'] . '/' . $totalSess . '</td>';
+            echo '<td>' . ($doc['session_date'] ? date('d/m/Y', strtotime($doc['session_date'])) : '-') . '</td>';
+            echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusText . '</span></td>';
+            echo '<td style="text-align:right">';
+            echo '<a class="btn btnPrimary" href="/faturamento_upload_doc.php?requirement_id=' . (int)$doc['id'] . '" style="font-size:12px;padding:6px 12px">Enviar Documento</a>';
+            echo '</td>';
+            echo '</tr>';
+        }
+        
+        echo '</tbody></table>';
+        echo '</div>';
+    }
     
-    echo '<div style="margin-top:16px;text-align:center">';
+    echo '<div style="margin-top:8px;text-align:center">';
     echo '<a href="/faturamento_profissional.php" class="btn">Ver Todas as Pendências</a>';
     echo '</div>';
     
