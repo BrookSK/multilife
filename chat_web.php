@@ -1669,37 +1669,43 @@ if ($chatType === 'grupos') {
     }
     
     if (!empty($waitingPros)) {
-        // Agrupar por demanda + grupo (para separar especialidades diferentes)
-        $byKey = [];
+        // Agrupar por grupo primeiro, depois por demanda
+        $byGroup = [];
         foreach ($waitingPros as $wp) {
-            $key = $wp['demand_id'] . '_' . ($wp['dispatch_id'] ?? '0');
-            $byKey[$key][] = $wp;
+            $groupKey = $wp['group_name'] ?? 'Sem grupo';
+            $demandKey = $wp['demand_id'];
+            $byGroup[$groupKey][$demandKey][] = $wp;
         }
         
-        foreach ($byKey as $key => $pros) {
-            $demandTitle = $pros[0]['demand_title'] ?? "Captação #" . $pros[0]['demand_id'];
-            $groupName = $pros[0]['group_name'] ?? '';
-            $specialty = $pros[0]['specialty'] ?? '';
-            $displayLabel = $groupName ?: $demandTitle;
-            
-            echo '<div style="padding:8px 16px;background:#f0f2f5;border-bottom:1px solid #e0e0e0">';
-            echo '<div style="font-size:12px;font-weight:700;color:#00a884">📋 ' . h($displayLabel) . '</div>';
-            if ($specialty && !$groupName) echo '<div style="font-size:11px;color:#667781">' . h($specialty) . '</div>';
+        foreach ($byGroup as $groupName => $demands) {
+            // Header do grupo
+            echo '<div style="padding:8px 16px;background:#e8f5e9;border-bottom:1px solid #c8e6c9;position:sticky;top:0;z-index:2">';
+            echo '<div style="font-size:12px;font-weight:700;color:#2e7d32">👥 ' . h($groupName) . '</div>';
             echo '</div>';
             
-            foreach ($pros as $pro) {
-                $proName = $pro['push_name'] ?? $pro['phone'];
-                $proEmoji = $pro['emoji'] ?? '👤';
-                $proDate = $pro['reacted_at'] ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
-                $proJid = $pro['phone_jid'] ?? '';
+            foreach ($demands as $demandId => $pros) {
+                $demandTitle = $pros[0]['demand_title'] ?? "Captação #$demandId";
+                $specialty = $pros[0]['specialty'] ?? '';
                 
-                echo '<a href="' . (!empty($proJid) ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=lista_espera' : '#') . '" class="whatsapp-chat-item">';
-                echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
-                echo '<div class="whatsapp-chat-info">';
-                echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';
-                echo '<div class="whatsapp-chat-preview" style="font-size:12px;color:#667781">Reagiu em ' . h($proDate) . '</div>';
+                // Sub-header da demanda
+                echo '<div style="padding:6px 16px 6px 28px;background:#f9fafb;border-bottom:1px solid #e5e7eb">';
+                echo '<div style="font-size:11px;font-weight:600;color:#667781">📋 ' . h($demandTitle) . '</div>';
                 echo '</div>';
-                echo '</a>';
+                
+                foreach ($pros as $pro) {
+                    $proName = $pro['push_name'] ?? $pro['phone'];
+                    $proEmoji = $pro['emoji'] ?? '👤';
+                    $proDate = $pro['reacted_at'] ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
+                    $proJid = $pro['phone_jid'] ?? '';
+                    
+                    echo '<a href="' . (!empty($proJid) ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=lista_espera' : '#') . '" class="whatsapp-chat-item">';
+                    echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
+                    echo '<div class="whatsapp-chat-info">';
+                    echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';
+                    echo '<div class="whatsapp-chat-preview" style="font-size:12px;color:#667781">Reagiu em ' . h($proDate) . '</div>';
+                    echo '</div>';
+                    echo '</a>';
+                }
             }
         }
     } else {
