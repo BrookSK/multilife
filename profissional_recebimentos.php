@@ -88,10 +88,15 @@ $pagosStmt = db()->prepare("
 $pagosStmt->execute([$userId]);
 $pagosRow = $pagosStmt->fetch(PDO::FETCH_ASSOC);
 
+// DEBUG: mostrar resultado das queries no log
+error_log("[RECEBIMENTOS] user=$userId | aprovadas_qtd=" . ($recebiveisRow['qtd'] ?? 'NULL') . " soma=" . ($recebiveisRow['soma'] ?? 'NULL') . " | pagas_qtd=" . ($pagosRow['qtd'] ?? 'NULL') . " soma=" . ($pagosRow['soma'] ?? 'NULL'));
+
 $totalAtendimentos = (int)($stats['total_atendimentos'] ?? 0);
 $totalServicos = (float)($stats['total_servicos'] ?? 0);
 $totalPendente = (float)($recebiveisRow['soma'] ?? 0) - (float)($pagosRow['soma'] ?? 0);
 $totalPago = (float)($pagosRow['soma'] ?? 0);
+
+error_log("[RECEBIMENTOS] totalPendente=$totalPendente | totalPago=$totalPago | totalServicos=$totalServicos");
 
 // Buscar histórico de pagamentos (sessões aprovadas/pagas)
 $paymentsStmt = db()->prepare("
