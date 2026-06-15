@@ -127,8 +127,8 @@ echo '.paConnSpacer{width:40px}';
 echo '.paConn{height:2px;background:hsl(var(--border))}';  
 echo '.paConn.isDone{background:hsl(var(--primary))}';
 
-echo '.drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:60;display:none}';
-echo '.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:92vw;background:hsl(var(--card));border-left:1px solid hsl(var(--border));z-index:70;transform:translateX(100%);transition:transform .2s ease;box-shadow:var(--shadow-elevated);display:flex;flex-direction:column}';
+echo '.drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:10010;display:none}';
+echo '.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:92vw;background:hsl(var(--card));border-left:1px solid hsl(var(--border));z-index:10020;transform:translateX(100%);transition:transform .2s ease;box-shadow:var(--shadow-elevated);display:flex;flex-direction:column}';
 echo '.drawer.isOpen{transform:translateX(0)}';
 echo '.drawerHeader{padding:16px 16px 12px;border-bottom:1px solid hsl(var(--border))}';
 echo '.drawerTitle{font-size:16px;font-weight:900}';
@@ -291,7 +291,7 @@ if ($q !== '' || $status !== '') {
     if ($status !== '') $closeBtnParams[] = 'status=' . urlencode($status);
     $closeBtnUrl .= '?' . implode('&', $closeBtnParams);
 }
-echo '<a class="btn" href="' . h($closeBtnUrl) . '" id="drawerCloseBtn" style="height:34px">Fechar</a>';
+echo '<a class="btn" href="' . h($closeBtnUrl) . '" id="drawerCloseBtn" style="height:34px;position:relative;z-index:10030">✕ Fechar</a>';
 echo '</div>';
 
 echo '<div class="tabList" id="tabList">';
