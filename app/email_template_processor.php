@@ -128,6 +128,8 @@ function email_send_with_template(
  */
 function email_generate_default_proposal_html(array $vars): string
 {
+    require_once __DIR__ . '/email_base_template.php';
+    
     $patientName = $vars['patient_name'] ?? '';
     $patientEmail = $vars['patient_email'] ?? '';
     $patientPhone = $vars['patient_phone'] ?? '';
@@ -146,60 +148,55 @@ function email_generate_default_proposal_html(array $vars): string
     $durationWeeks = $vars['duration_weeks'] ?? '';
     $valuePerSession = $vars['value_per_session'] ?? '';
     $totalValue = $vars['total_value'] ?? '';
-    $sessionSchedule = $vars['session_schedule'] ?? '';
-    $notesSection = $vars['notes_section'] ?? '';
+    $sessionDates = $vars['session_dates_array'] ?? [];
+    $notes = $vars['notes'] ?? '';
 
-    return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;margin:0;padding:0">
-<div style="max-width:700px;margin:0 auto;padding:20px">
-<div style="background:#00a884;color:white;padding:24px;text-align:center;border-radius:8px 8px 0 0">
-<h1 style="margin:0;font-size:22px">Proposta de Atendimento</h1>
-<p style="margin:8px 0 0;opacity:0.9">MultiLife Care</p>
-</div>
-<div style="background:#f9fafb;padding:30px;border:1px solid #e5e7eb;border-top:none">
-<p>Prezado(a),</p>
-<p>Segue proposta de atendimento domiciliar para análise e autorização:</p>
-
-<div style="background:white;padding:20px;margin:20px 0;border-radius:8px;border-left:4px solid #00a884">
-<h3 style="margin:0 0 12px;color:#00a884">Dados do Paciente</h3>
-<p style="margin:4px 0"><strong>Nome:</strong> ' . htmlspecialchars($patientName) . '</p>
-<p style="margin:4px 0"><strong>E-mail:</strong> ' . htmlspecialchars($patientEmail) . '</p>
-<p style="margin:4px 0"><strong>Telefone:</strong> ' . htmlspecialchars($patientPhone) . '</p>
-<p style="margin:4px 0"><strong>Localização:</strong> ' . htmlspecialchars($location) . '</p>
-</div>
-
-<div style="background:white;padding:20px;margin:20px 0;border-radius:8px;border-left:4px solid #0284c7">
-<h3 style="margin:0 0 12px;color:#0284c7">Profissional Designado</h3>
-<p style="margin:4px 0"><strong>Nome:</strong> ' . htmlspecialchars($professionalName) . '</p>
-<p style="margin:4px 0"><strong>Especialidade:</strong> ' . htmlspecialchars($specialty) . '</p>
-<p style="margin:4px 0"><strong>Serviço:</strong> ' . htmlspecialchars($serviceName) . '</p>
-' . ($professionalCouncil ? '<p style="margin:4px 0"><strong>Registro:</strong> ' . htmlspecialchars($professionalCouncil) . '</p>' : '') . '
-</div>
-
-<div style="background:white;padding:20px;margin:20px 0;border-radius:8px;border-left:4px solid #7c3aed">
-<h3 style="margin:0 0 12px;color:#7c3aed">Detalhes do Atendimento</h3>
-<p style="margin:4px 0"><strong>Data de Início:</strong> ' . htmlspecialchars($startDate) . '</p>
-<p style="margin:4px 0"><strong>Horário:</strong> ' . htmlspecialchars($startTime) . ' às ' . htmlspecialchars($endTime) . '</p>
-<p style="margin:4px 0"><strong>Frequência:</strong> ' . htmlspecialchars($frequencyText) . '</p>
-<p style="margin:4px 0"><strong>Duração:</strong> ' . htmlspecialchars($durationWeeks) . ' semanas</p>
-<p style="margin:4px 0"><strong>Total de Sessões:</strong> ' . htmlspecialchars($totalSessions) . '</p>
-</div>
-
-<div style="background:#d1fae5;padding:20px;margin:20px 0;border-radius:8px;text-align:center">
-<p style="margin:0;font-size:14px;color:#065f46"><strong>Valor por Sessão:</strong> ' . htmlspecialchars($valuePerSession) . '</p>
-<p style="margin:8px 0 0;font-size:24px;font-weight:bold;color:#059669">VALOR TOTAL: ' . htmlspecialchars($totalValue) . '</p>
-</div>
-
-' . $sessionSchedule . '
-' . $notesSection . '
-
-<p style="margin-top:30px">Aguardamos retorno com a autorização ou eventuais ajustes necessários.</p>
-<p>Atenciosamente,<br><strong>MultiLife Care</strong></p>
-</div>
-<div style="text-align:center;padding:16px;color:#6b7280;font-size:12px">
-<p>Este é um e-mail automático. © 2026 MultiLife Care</p>
-</div>
-</div>
-</body></html>';
+    // Montar corpo do e-mail
+    $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
+    $body .= '<p style="font-size:14px;color:#4b5563">Encaminhamos proposta de atendimento domiciliar para análise e autorização conforme detalhes abaixo:</p>';
+    
+    // Seção: Paciente
+    $patientContent = email_data_row('Nome', $patientName);
+    $patientContent .= email_data_row('E-mail', $patientEmail);
+    $patientContent .= email_data_row('Telefone', $patientPhone);
+    $patientContent .= email_data_row('Localização', $location);
+    $body .= email_section('👤 Dados do Paciente', $patientContent, '#00a884');
+    
+    // Seção: Profissional
+    $profContent = email_data_row('Nome', $professionalName);
+    $profContent .= email_data_row('Especialidade', $specialty);
+    $profContent .= email_data_row('Serviço', $serviceName);
+    $profContent .= email_data_row('Registro Profissional', $professionalCouncil);
+    $profContent .= email_data_row('E-mail', $professionalEmail);
+    $profContent .= email_data_row('Telefone', $professionalPhone);
+    $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+    
+    // Seção: Agendamento
+    $schedContent = email_data_row('Data de Início', $startDate);
+    $schedContent .= email_data_row('Horário', $startTime . ' às ' . $endTime);
+    $schedContent .= email_data_row('Frequência', $frequencyText);
+    $schedContent .= email_data_row('Duração', $durationWeeks . ' semanas');
+    $schedContent .= email_data_row('Total de Sessões', $totalSessions);
+    $body .= email_section('📋 Agendamento Proposto', $schedContent, '#7c3aed');
+    
+    // Destaque: Valor
+    $body .= email_highlight_box('Valor por Sessão: R$ ' . $valuePerSession, 'R$ ' . $totalValue);
+    
+    // Tabela de sessões
+    if (!empty($sessionDates)) {
+        $body .= email_session_table($sessionDates);
+    }
+    
+    // Observações
+    $body .= email_notes_block($notes);
+    
+    // Call to action
+    $body .= email_divider();
+    $body .= '<p style="font-size:14px;color:#374151;margin-top:20px">Solicitamos gentilmente a <strong>análise e retorno</strong> sobre esta proposta.</p>';
+    $body .= '<p style="font-size:14px;color:#374151"><strong>Para autorizar ou solicitar ajustes, basta responder este e-mail.</strong></p>';
+    $body .= '<p style="font-size:14px;color:#6b7280;margin-top:24px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+    
+    return email_base_layout('Proposta de Atendimento Domiciliar', $body, 'Para autorizar, responda diretamente este e-mail.');
 }
 
 /**

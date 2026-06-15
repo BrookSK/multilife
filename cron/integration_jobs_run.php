@@ -317,7 +317,15 @@ foreach ($jobs as $j) {
             ];
 
             $subject = strtr($subjectTpl, $repl);
-            $body = strtr($bodyTpl, $repl);
+            
+            // Usar template HTML profissional
+            require_once __DIR__ . '/../app/email_html_generators.php';
+            $body = email_html_doc_approved(
+                (string)($row['professional_name'] ?? ''),
+                (string)$docId,
+                (string)($row['patient_ref'] ?? ''),
+                (string)($row['sessions_count'] ?? '')
+            );
 
             $client = new SmtpClient();
             $client->send($fromEmail, $fromName, $to, $subject, $body);
@@ -372,16 +380,10 @@ foreach ($jobs as $j) {
             $subjectKey = ($kind === 'before_due')
                 ? 'professional.docs_reminder_email_subject_template'
                 : 'professional.docs_overdue_email_subject_template';
-            $bodyKey = ($kind === 'before_due')
-                ? 'professional.docs_reminder_email_body_template'
-                : 'professional.docs_overdue_email_body_template';
 
             $subjectDefault = ($kind === 'before_due')
                 ? 'Lembrete: formulário pendente (Doc #{doc_id})'
                 : 'Atenção: formulário em atraso (Doc #{doc_id})';
-            $bodyDefault = ($kind === 'before_due')
-                ? "Olá {name},\n\nLembrete: você tem um formulário pendente (Doc #{doc_id}) para {patient_ref}.\nPrazo: {due_at}.\n\nAtenciosamente,\nMultiLife Care"
-                : "Olá {name},\n\nAtenção: formulário atrasado (Doc #{doc_id}) para {patient_ref}.\nPrazo: {due_at}.\nAtraso: {days_overdue} dias.\n\nAtenciosamente,\nMultiLife Care";
 
             $repl = [
                 '{name}' => (string)($u['name'] ?? ''),
@@ -392,9 +394,15 @@ foreach ($jobs as $j) {
             ];
 
             $subjectTpl = (string)admin_setting_get($subjectKey, $subjectDefault);
-            $bodyTpl = (string)admin_setting_get($bodyKey, $bodyDefault);
             $subject = strtr($subjectTpl, $repl);
-            $body = strtr($bodyTpl, $repl);
+            
+            // Usar template HTML profissional
+            require_once __DIR__ . '/../app/email_html_generators.php';
+            if ($kind === 'before_due') {
+                $body = email_html_doc_reminder((string)($u['name'] ?? ''), (string)$docId, $patientRef, $dueAt);
+            } else {
+                $body = email_html_doc_overdue((string)($u['name'] ?? ''), (string)$docId, $patientRef, $dueAt, (string)$daysOverdue);
+            }
 
             $client = new SmtpClient();
             $client->send($fromEmail, $fromName, $to, $subject, $body);
@@ -506,16 +514,10 @@ foreach ($jobs as $j) {
             $subjectKey = $kind === 'need_more_info'
                 ? 'professional.application_need_more_info_email_subject_template'
                 : 'professional.application_rejected_email_subject_template';
-            $bodyKey = $kind === 'need_more_info'
-                ? 'professional.application_need_more_info_email_body_template'
-                : 'professional.application_rejected_email_body_template';
 
             $subjectDefault = $kind === 'need_more_info'
                 ? 'Complemento necessário na sua candidatura #{application_id}'
                 : 'Retorno da sua candidatura #{application_id}';
-            $bodyDefault = $kind === 'need_more_info'
-                ? "Olá {name},\n\nPrecisamos de complemento na sua candidatura:\n\n{message}\n\nAtenciosamente,\nMultiLife Care"
-                : "Olá {name},\n\nSua candidatura não foi aprovada.\n\nMotivo:\n{message}\n\nAtenciosamente,\nMultiLife Care";
 
             $repl = [
                 '{name}' => (string)($pa['full_name'] ?? ''),
@@ -524,9 +526,15 @@ foreach ($jobs as $j) {
             ];
 
             $subjectTpl = (string)admin_setting_get($subjectKey, $subjectDefault);
-            $bodyTpl = (string)admin_setting_get($bodyKey, $bodyDefault);
             $subject = strtr($subjectTpl, $repl);
-            $body = strtr($bodyTpl, $repl);
+            
+            // Usar template HTML profissional
+            require_once __DIR__ . '/../app/email_html_generators.php';
+            if ($kind === 'need_more_info') {
+                $body = email_html_application_need_info((string)($pa['full_name'] ?? ''), (string)$applicationId, $message);
+            } else {
+                $body = email_html_application_rejected((string)($pa['full_name'] ?? ''), (string)$applicationId, $message);
+            }
 
             $client = new SmtpClient();
             $client->send($fromEmail, $fromName, $to, $subject, $body);
@@ -587,10 +595,6 @@ foreach ($jobs as $j) {
                 'appointments.email_subject_template',
                 'Agendamento confirmado #{appointment_id}'
             );
-            $bodyTpl = (string)admin_setting_get(
-                'appointments.email_body_template',
-                "Olá {patient_name},\n\nSeu agendamento foi confirmado.\n\nProfissional: {professional_name}\nData/hora: {first_at}\n\nAtenciosamente,\nMultiLife Care"
-            );
 
             $repl = [
                 '{appointment_id}' => (string)$appointmentId,
@@ -599,7 +603,15 @@ foreach ($jobs as $j) {
                 '{first_at}' => (string)($row['first_at'] ?? ''),
             ];
             $subject = strtr($subjectTpl, $repl);
-            $body = strtr($bodyTpl, $repl);
+            
+            // Usar template HTML profissional
+            require_once __DIR__ . '/../app/email_html_generators.php';
+            $body = email_html_appointment_confirmation(
+                (string)($row['patient_name'] ?? ''),
+                (string)($row['professional_name'] ?? ''),
+                (string)($row['first_at'] ?? ''),
+                (string)$appointmentId
+            );
 
             $client = new SmtpClient();
 
@@ -708,18 +720,12 @@ foreach ($jobs as $j) {
                 'professional.onboarding_email_subject_template',
                 'Acesso aprovado - MultiLife Care'
             );
-            $bodyTpl = (string)admin_setting_get(
-                'professional.onboarding_email_body_template',
-                "Olá {name},\n\nSeu acesso ao MultiLife Care foi aprovado.\n\nLogin: {email}\nSenha provisória: {password}\nAcesso: {login_url}\n\nTroque sua senha após entrar."
-            );
-            $repl = [
-                '{name}' => $name,
-                '{email}' => $email,
-                '{password}' => $tmpPassword,
-                '{login_url}' => $loginUrl,
-            ];
-            $subject = strtr($subjectTpl, $repl);
-            $body = strtr($bodyTpl, $repl);
+            $subject = strtr($subjectTpl, ['{name}' => $name]);
+            
+            // Usar template HTML profissional
+            require_once __DIR__ . '/../app/email_html_generators.php';
+            $fullLoginUrl = 'https://multilife.onsolutionsbrasil.com.br' . $loginUrl;
+            $body = email_html_onboarding($name, $email, $tmpPassword, $fullLoginUrl);
 
             $client = new SmtpClient();
             $client->send($fromEmail, $fromName, $email, $subject, $body);
