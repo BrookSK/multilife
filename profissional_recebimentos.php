@@ -72,6 +72,16 @@ $qtdPagas = (int)($pagosRow['qtd'] ?? 0);
 $totalAtendimentos = (int)($stats['total_atendimentos'] ?? 0);
 $totalServicos = (float)($stats['total_servicos'] ?? 0);
 
+// Se valorSessao é 0, calcular a partir do Total em Serviços
+if ($valorSessao <= 0 && $totalServicos > 0) {
+    // Total de sessões de todos os atendimentos
+    $totalSessoesStmt = db()->prepare("SELECT SUM(session_quantity) as total FROM patient_assignments WHERE professional_user_id = ?");
+    $totalSessoesStmt->execute([$userId]);
+    $totalSessoesRow = $totalSessoesStmt->fetch(PDO::FETCH_ASSOC);
+    $totalSessoesAll = (int)($totalSessoesRow['total'] ?? 1);
+    $valorSessao = $totalSessoesAll > 0 ? $totalServicos / $totalSessoesAll : 0;
+}
+
 // Total pago e pendente
 $totalPago = $qtdPagas * $valorSessao;
 $totalPendente = ($qtdAprovadas - $qtdPagas) * $valorSessao;
