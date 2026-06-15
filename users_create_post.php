@@ -75,16 +75,22 @@ $stmt->execute([
 $id = (string)db()->lastInsertId();
 audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status]);
 
-// Atribuir roles selecionadas no formulário
-$selectedRoles = $_POST['roles'] ?? [];
+// Atribuir role selecionada no formulário
+$selectedRoles = [];
+$selectedRole = trim((string)($_POST['role'] ?? ''));
 $autoRole = trim((string)($_POST['auto_role'] ?? ''));
 
-// Se veio auto_role (do chat) e não selecionou roles manualmente, usar auto_role
-if (empty($selectedRoles) && $autoRole !== '') {
+// Prioridade: campo radio > auto_role (do chat)
+if ($selectedRole !== '') {
+    $selectedRoles = [$selectedRole];
+} elseif ($autoRole !== '') {
     $selectedRoles = [$autoRole];
+} elseif (!empty($_POST['roles']) && is_array($_POST['roles'])) {
+    // Fallback para formato antigo (checkbox)
+    $selectedRoles = [(string)$_POST['roles'][0]];
 }
 
-if (!empty($selectedRoles) && is_array($selectedRoles)) {
+if (!empty($selectedRoles)) {
     foreach ($selectedRoles as $roleSlug) {
         $roleSlug = trim((string)$roleSlug);
         if ($roleSlug === '') continue;

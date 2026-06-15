@@ -53,13 +53,13 @@ echo '</select></label>';
 
 // Seção de Perfis/Roles
 echo '<div style="margin-top:8px;padding:16px;border:1px solid hsl(var(--border));border-radius:8px;background:hsla(var(--primary)/.03)">';
-echo '<div style="font-weight:700;margin-bottom:10px">Perfis de Acesso</div>';
+echo '<div style="font-weight:700;margin-bottom:10px">Perfil de Acesso</div>';
 echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
 foreach ($roles as $role) {
     $checked = ($prefRole === $role['slug']) ? ' checked' : '';
     $roleLabel = ucfirst($role['name'] ?? $role['slug']);
     echo '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:6px;cursor:pointer;font-size:13px">';
-    echo '<input type="checkbox" name="roles[]" value="' . h($role['slug']) . '"' . $checked . '>';
+    echo '<input type="radio" name="role" value="' . h($role['slug']) . '"' . $checked . '>';
     echo '<strong>' . h($roleLabel) . '</strong>';
     echo '</label>';
 }
