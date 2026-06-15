@@ -288,7 +288,7 @@ if (count($entries) === 0) {
         echo '<td>' . h($entry['cost_center'] ?? '-') . '</td>';
         echo '<td>' . h($entry['patient_name'] ?? '-') . '</td>';
         echo '<td>' . h($entry['professional_name'] ?? '-') . '</td>';
-        echo '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . h($entry['description'] ?? '-') . '</td>';
+        echo '<td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:normal;font-size:12px;line-height:1.4">' . h($entry['description'] ?? '-') . '</td>';
         echo '<td style="text-align:right;font-weight:600;color:' . $typeColor . '">R$ ' . number_format((float)$entry['amount'], 2, ',', '.') . '</td>';
         echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . h($entry['status']) . '</span></td>';
         echo '<td>' . h($entry['created_by_name'] ?? '-') . '</td>';
