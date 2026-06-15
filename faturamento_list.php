@@ -125,7 +125,7 @@ if (count($assignments) === 0) {
     echo '<div style="overflow:auto">';
     echo '<table>';
     echo '<thead><tr>';
-    echo '<th>Paciente</th><th>Profissional</th><th>Especialidade</th><th>Sessões</th><th>Valor/Sessão</th><th>Total</th>';
+    echo '<th>Paciente</th><th>Profissional</th><th>Especialidade</th><th>Serviço</th><th>Sessões</th><th>Valor/Sessão</th><th>Total</th>';
     
     if ($tab === 'awaiting_documents') {
         echo '<th>Documentos</th>';
@@ -143,6 +143,7 @@ if (count($assignments) === 0) {
         echo '<td style="font-weight:600">' . h($assignment['patient_name']) . '</td>';
         echo '<td>' . h($assignment['professional_name']) . '</td>';
         echo '<td>' . h($assignment['specialty'] ?? '-') . '</td>';
+        echo '<td style="font-size:12px;color:hsl(var(--muted-foreground))">' . h($assignment['service_type'] ?? '-') . '</td>';
         echo '<td>' . (int)$assignment['session_quantity'] . '</td>';
         echo '<td>R$ ' . number_format((float)$assignment['payment_value'], 2, ',', '.') . '</td>';
         echo '<td style="font-weight:600">R$ ' . number_format($totalValue, 2, ',', '.') . '</td>';

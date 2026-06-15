@@ -126,38 +126,44 @@ if (count($pendingDocs) === 0) {
     echo '<div style="font-size:14px">Você está em dia com o envio de documentos</div>';
     echo '</div>';
 } else {
-    echo '<div style="overflow:auto">';
-    echo '<table>';
-    echo '<thead><tr>';
-    echo '<th>Paciente</th><th>Especialidade</th><th>Sessão</th><th>Data</th><th>Status</th><th style="text-align:right">Ações</th>';
-    echo '</tr></thead><tbody>';
-    
+    // Agrupar por atendimento
+    $byAssignment = [];
     foreach ($pendingDocs as $doc) {
-        $statusColor = $doc['status'] === 'rejected' ? '#dc2626' : '#ef4444';
-        $statusText = $doc['status'] === 'rejected' ? 'Rejeitado - Reenviar' : 'Pendente';
-        
-        echo '<tr>';
-        echo '<td style="font-weight:600">' . h($doc['patient_name']) . '</td>';
-        echo '<td>' . h($doc['specialty'] ?? '-') . '</td>';
-        echo '<td>Sessão ' . (int)$doc['session_number'] . '</td>';
-        echo '<td>' . ($doc['session_date'] ? date('d/m/Y', strtotime($doc['session_date'])) : '-') . '</td>';
-        echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusText . '</span></td>';
-        echo '<td style="text-align:right">';
-        echo '<a class="btn btnPrimary" href="/faturamento_upload_doc.php?requirement_id=' . (int)$doc['id'] . '">Enviar Documento</a>';
-        echo '</td>';
-        echo '</tr>';
-        
-        if ($doc['status'] === 'rejected' && $doc['rejection_reason']) {
-            echo '<tr>';
-            echo '<td colspan="6" style="background:#fef2f2;padding:12px;border-left:3px solid #dc2626">';
-            echo '<strong>Motivo da rejeição:</strong> ' . h($doc['rejection_reason']);
-            echo '</td>';
-            echo '</tr>';
-        }
+        $byAssignment[$doc['assignment_id']][] = $doc;
     }
     
-    echo '</tbody></table>';
-    echo '</div>';
+    foreach ($byAssignment as $assignId => $docs) {
+        $first = $docs[0];
+        $totalSess = (int)($first['session_quantity'] ?? count($docs));
+        $serviceLabel = $first['service_type'] ?? $first['specialty'] ?? 'Atendimento';
+        
+        echo '<div style="margin-top:12px;padding:10px 14px;background:hsla(var(--primary)/.06);border-radius:8px 8px 0 0;border:1px solid hsl(var(--border));border-bottom:none">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center">';
+        echo '<div><strong>' . h($first['patient_name']) . '</strong> <span style="color:hsl(var(--muted-foreground));font-size:12px">— ' . h($serviceLabel) . '</span></div>';
+        echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">' . h($first['specialty'] ?? '') . ' • ' . $totalSess . ' sessões</span>';
+        echo '</div></div>';
+        
+        echo '<div style="overflow:auto;border:1px solid hsl(var(--border));border-radius:0 0 8px 8px;margin-bottom:16px">';
+        echo '<table style="margin:0"><thead><tr><th>Sessão</th><th>Data</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead><tbody>';
+        
+        foreach ($docs as $doc) {
+            $statusColor = $doc['status'] === 'rejected' ? '#dc2626' : '#ef4444';
+            $statusText = $doc['status'] === 'rejected' ? 'Rejeitado - Reenviar' : 'Pendente';
+            
+            echo '<tr>';
+            echo '<td style="font-weight:600">Sessão ' . (int)$doc['session_number'] . '/' . $totalSess . '</td>';
+            echo '<td>' . ($doc['session_date'] ? date('d/m/Y', strtotime($doc['session_date'])) : '-') . '</td>';
+            echo '<td><span style="color:' . $statusColor . ';font-weight:600">' . $statusText . '</span></td>';
+            echo '<td style="text-align:right"><a class="btn btnPrimary" href="/faturamento_upload_doc.php?requirement_id=' . (int)$doc['id'] . '" style="font-size:12px;padding:6px 12px">Enviar Documento</a></td>';
+            echo '</tr>';
+            
+            if ($doc['status'] === 'rejected' && $doc['rejection_reason']) {
+                echo '<tr><td colspan="4" style="background:#fef2f2;padding:8px 12px;border-left:3px solid #dc2626;font-size:13px"><strong>Motivo:</strong> ' . h($doc['rejection_reason']) . '</td></tr>';
+            }
+        }
+        
+        echo '</tbody></table></div>';
+    }
 }
 
 echo '</section>';
