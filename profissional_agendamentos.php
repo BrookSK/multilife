@@ -34,7 +34,10 @@ $appointmentsStmt = db()->prepare("
         pa.specialty,
         pa.service_type,
         pa.session_quantity,
-        pa.session_frequency
+        pa.session_frequency,
+        pa.demand_id,
+        (SELECT ar.start_date FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.patient_id = pa.patient_id ORDER BY ar.id DESC LIMIT 1) as proposal_start_date,
+        (SELECT ar.start_time FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.patient_id = pa.patient_id ORDER BY ar.id DESC LIMIT 1) as proposal_start_time
     FROM patient_assignments pa
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE pa.professional_user_id = ?
@@ -49,8 +52,15 @@ $appointments = [];
 foreach ($rawAssignments as $apt) {
     $totalSessions = max(1, (int)($apt['session_quantity'] ?? 1));
     $frequency = (string)($apt['session_frequency'] ?? 'weekly');
-    $startDate = new DateTime($apt['first_at']);
-    $startTime = $startDate->format('H:i');
+    
+    // Usar data de início da proposta (se disponível), senão usar created_at
+    if (!empty($apt['proposal_start_date'])) {
+        $startDate = new DateTime($apt['proposal_start_date']);
+        $startTime = !empty($apt['proposal_start_time']) ? substr($apt['proposal_start_time'], 0, 5) : $startDate->format('H:i');
+    } else {
+        $startDate = new DateTime($apt['first_at']);
+        $startTime = $startDate->format('H:i');
+    }
     
     // Calcular intervalo entre sessões baseado na frequência
     $intervalDays = match($frequency) {
