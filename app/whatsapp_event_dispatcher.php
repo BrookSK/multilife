@@ -114,24 +114,36 @@ class WhatsAppEventDispatcher
      */
     private function processTemplate(string $template, array $data): string
     {
+        // Gerar link de acesso baseado no attendance_id
+        $baseUrl = 'https://multilife.onsolutionsbrasil.com.br';
+        $attendanceId = $data['attendance_id'] ?? '';
+        $attendanceLink = $attendanceId !== '' ? $baseUrl . '/monitoramento.php' : '';
+        
         $variables = [
             '{{profissional_nome}}' => $data['professional_name'] ?? '',
             '{{profissional_telefone}}' => $data['professional_phone'] ?? '',
             '{{paciente_nome}}' => $data['patient_name'] ?? '',
             '{{paciente_telefone}}' => $data['patient_phone'] ?? '',
             '{{id_atendimento}}' => $data['attendance_id'] ?? '',
-            '{{data_atendimento}}' => $data['attendance_date'] ?? '',
+            '{{data_atendimento}}' => $data['attendance_date'] ?? date('d/m/Y'),
             '{{data_consulta}}' => $data['appointment_date'] ?? '',
             '{{horario_consulta}}' => $data['appointment_time'] ?? '',
-            '{{link_atendimento}}' => $data['attendance_link'] ?? '',
-            '{{link_consulta}}' => $data['appointment_link'] ?? '',
-            '{{id_preadmissao}}' => $data['preadmission_id'] ?? '',
-            '{{data_inicio}}' => $data['start_date'] ?? '',
-            '{{data_aprovacao}}' => $data['approval_date'] ?? '',
+            '{{link_atendimento}}' => $data['attendance_link'] ?? $attendanceLink,
+            '{{link_consulta}}' => $data['appointment_link'] ?? $attendanceLink,
+            '{{id_preadmissao}}' => $data['preadmission_id'] ?? $data['id_preadmissao'] ?? $data['attendance_id'] ?? '',
+            '{{data_inicio}}' => $data['start_date'] ?? $data['attendance_date'] ?? '',
+            '{{data_aprovacao}}' => $data['approval_date'] ?? $data['data_aprovacao'] ?? date('d/m/Y H:i'),
             '{{data_prazo}}' => $data['deadline_date'] ?? '',
-            '{{id_paciente}}' => $data['patient_id'] ?? '',
-            '{{data_cadastro}}' => $data['registration_date'] ?? '',
+            '{{id_paciente}}' => (string)($data['patient_id'] ?? ''),
+            '{{data_cadastro}}' => $data['registration_date'] ?? date('d/m/Y'),
             '{{motivo_cancelamento}}' => $data['cancellation_reason'] ?? '',
+            // Variáveis extras úteis
+            '{{especialidade}}' => $data['specialty'] ?? '',
+            '{{servico}}' => $data['service_type'] ?? '',
+            '{{sessoes}}' => $data['session_quantity'] ?? '',
+            '{{frequencia}}' => $data['session_frequency'] ?? '',
+            '{{valor_acordado}}' => $data['agreed_value'] ?? '',
+            '{{valor_autorizado}}' => $data['authorized_value'] ?? '',
         ];
         
         $message = $template;
@@ -139,7 +151,10 @@ class WhatsAppEventDispatcher
             $message = str_replace($var, (string)$value, $message);
         }
         
-        return $message;
+        // Limpar variáveis não substituídas (que ficaram como {{xxx}})
+        $message = preg_replace('/\{\{[^}]+\}\}/', '', $message);
+        
+        return trim($message);
     }
     
     /**

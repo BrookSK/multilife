@@ -397,6 +397,12 @@ try {
             'patient_phone' => preg_replace('/\D+/', '', (string)($patient['whatsapp'] ?? $patient['phone_primary'] ?? '')),
             'attendance_id' => (string)$authRequestId,
             'attendance_date' => date('d/m/Y'),
+            'attendance_link' => 'https://multilife.onsolutionsbrasil.com.br/profissional_registros.php',
+            'specialty' => $specialtyName,
+            'service_type' => $serviceName,
+            'session_quantity' => (string)$totalSessions,
+            'session_frequency' => $frequencyText ?? '',
+            'agreed_value' => number_format($agreedValue, 2, ',', '.'),
         ]);
         error_log("✓ Evento attendance_assigned disparado");
     } catch (Throwable $evtErr) {

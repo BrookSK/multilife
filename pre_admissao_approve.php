@@ -203,8 +203,12 @@ try {
             'patient_phone' => $patPhone,
             'attendance_id' => (string)$assignmentId,
             'attendance_date' => date('d/m/Y'),
-            'id_preadmissao' => (string)$assignmentId,
-            'data_aprovacao' => date('d/m/Y H:i'),
+            'preadmission_id' => (string)$assignmentId,
+            'approval_date' => date('d/m/Y H:i'),
+            'specialty' => $assignment['specialty'] ?? '',
+            'service_type' => $assignment['service_type'] ?? '',
+            'session_quantity' => (string)($assignment['session_quantity'] ?? ''),
+            'session_frequency' => $assignment['session_frequency'] ?? '',
         ]);
     } catch (Throwable $evtErr) {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
