@@ -585,20 +585,34 @@ if ($event === 'messages.upsert') {
                                     if ($wasInserted) {
                                         // Primeira reação deste profissional - enviar mensagem privada
                                         try {
-                                            $api = new EvolutionApiV1();
-                                            $privateMsg = "🎉 *Olá" . ($pushName ? ", {$pushName}" : "") . "!*\n\n"
-                                                . "Registramos seu interesse na captação:\n"
-                                                . "📋 *{$demandTitle}*\n"
-                                                . ($specialty ? "🏥 Especialidade: {$specialty}\n" : "")
-                                                . "\n"
-                                                . "Em breve um operador entrará em contato com mais detalhes.\n\n"
-                                                . "Obrigado por fazer parte da equipe!\n"
-                                                . "Equipe MultiLife";
+                                            // Rate limit: não enviar para o mesmo número em menos de 10s
+                                            $lockFile = sys_get_temp_dir() . '/ml_msg_' . md5($phoneJid);
+                                            $canSend = true;
+                                            if (file_exists($lockFile)) {
+                                                $lastSend = (int)file_get_contents($lockFile);
+                                                if (time() - $lastSend < 10) {
+                                                    $canSend = false;
+                                                    error_log("[WEBHOOK] Rate limit: msg para $phoneJid bloqueada (enviada há " . (time() - $lastSend) . "s)");
+                                                }
+                                            }
                                             
-                                            usleep(1500000); // 1.5s delay
-                                            $privRes = $api->sendText($phoneJid, $privateMsg, ['delay' => 1200]);
-                                            $privCode = (int)($privRes['status'] ?? 0);
-                                            error_log("[WEBHOOK] Msg privada enviada: $phoneJid (HTTP $privCode)");
+                                            if ($canSend) {
+                                                file_put_contents($lockFile, (string)time());
+                                                
+                                                $api = new EvolutionApiV1();
+                                                $privateMsg = "🎉 *Olá" . ($pushName ? ", {$pushName}" : "") . "!*\n\n"
+                                                    . "Registramos seu interesse na captação:\n"
+                                                    . "📋 *{$demandTitle}*\n"
+                                                    . ($specialty ? "🏥 Especialidade: {$specialty}\n" : "")
+                                                    . "\n"
+                                                    . "Em breve um operador entrará em contato com mais detalhes.\n\n"
+                                                    . "Obrigado por fazer parte da equipe!\n"
+                                                    . "Equipe MultiLife";
+                                                
+                                                sleep(3); // 3s delay antes de enviar
+                                                $privRes = $api->sendText($phoneJid, $privateMsg, ['delay' => 2000]);
+                                                $privCode = (int)($privRes['status'] ?? 0);
+                                                error_log("[WEBHOOK] Msg privada enviada: $phoneJid (HTTP $privCode)");
                                             
                                             // Salvar mensagem no banco para aparecer no chat
                                             if ($privCode >= 200 && $privCode < 300) {
@@ -627,6 +641,7 @@ if ($event === 'messages.upsert') {
                                                     error_log("[WEBHOOK] Erro ao salvar msg privada no banco: " . $dbErr->getMessage());
                                                 }
                                             }
+                                            } // fim if ($canSend)
                                         } catch (Exception $privErr) {
                                             error_log("[WEBHOOK] Erro msg privada: " . $privErr->getMessage());
                                         }
