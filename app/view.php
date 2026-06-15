@@ -350,18 +350,19 @@ function view_header(string $title): void
         
         // Alerta quando admin está logado como outro usuário
         if (isset($_SESSION['original_admin_id'])) {
-            echo '<div style="background:#667eea;color:white;padding:8px 24px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #5a67d8">';
+            echo '<div style="background:#667eea;color:white;padding:8px 24px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #5a67d8;position:relative;z-index:10000">';
             echo '<svg style="width:18px;height:18px;flex-shrink:0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
             echo '<div style="flex:1">';
             echo '<span style="font-weight:700">Modo Administrador</span>';
             echo ' <span style="font-size:13px;opacity:0.9">— Logado como: ' . h((string)$user['name']) . '</span>';
             echo '</div>';
-            echo '<a href="/logout_as_user.php" style="background:white;color:#667eea;font-weight:700;padding:6px 16px;border-radius:6px;text-decoration:none;font-size:13px;white-space:nowrap">↩ Voltar para Admin</a>';
+            echo '<a href="/logout_as_user.php" style="background:white;color:#667eea;font-weight:700;padding:6px 16px;border-radius:6px;text-decoration:none;font-size:13px;white-space:nowrap;z-index:10001">↩ Voltar para Admin</a>';
             echo '</div>';
         }
         
         // Botões flutuantes no canto superior direito
-        echo '<div style="position:fixed;top:12px;right:20px;z-index:9999;display:flex;align-items:center;gap:14px">';
+        $topOffset = isset($_SESSION['original_admin_id']) ? '52px' : '12px';
+        echo '<div style="position:fixed;top:' . $topOffset . ';right:20px;z-index:9999;display:flex;align-items:center;gap:14px">';
         
         // Ícone de histórico da página
         echo '<button class="notifBell" id="pageHistoryBtn" onclick="openPageHistory()" title="Histórico desta página">';

@@ -42,10 +42,6 @@ $valorData = $valorPorSessaoStmt->fetch(PDO::FETCH_ASSOC);
 $sessoesAprovadas = (int)($stats['sessoes_aprovadas'] ?? 0);
 $sessoesPendentes = (int)($stats['sessoes_pendentes'] ?? 0);
 
-// Calcular valor médio por sessão para estimar totais
-$totalSessoes = (int)($valorData['total_sessoes'] ?? 0);
-$valorMedioSessao = $totalSessoes > 0 ? (float)$valorData['total_valor_sessao'] / max(1, count(db()->prepare("SELECT DISTINCT id FROM patient_assignments WHERE professional_user_id = ?")->execute([$userId]) ? 1 : 1)) : 0;
-
 // Buscar valor real por sessão de cada atendimento
 $recebiveisStmt = db()->prepare("
     SELECT 
