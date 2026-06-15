@@ -130,8 +130,8 @@ echo '.paConn.isDone{background:hsl(var(--primary))}';
 echo '.drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:10010;display:none}';
 echo '.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:92vw;background:hsl(var(--card));border-left:1px solid hsl(var(--border));z-index:10020;transform:translateX(100%);transition:transform .2s ease;box-shadow:var(--shadow-elevated);display:flex;flex-direction:column}';
 echo '.drawer.isOpen{transform:translateX(0)}';
-echo '.drawerHeader{padding:16px 16px 12px;border-bottom:1px solid hsl(var(--border))}';
-echo '.drawerTitle{font-size:16px;font-weight:900}';
+echo '.drawer.isOpen ~ script + div[style*="position:fixed"]{display:none !important}';
+echo '.drawerHeader{padding:16px 16px 12px;border-bottom:1px solid hsl(var(--border));position:relative;z-index:10030}';echo '.drawerTitle{font-size:16px;font-weight:900}';
 echo '.drawerBody{padding:16px;overflow:auto;flex:1 1 auto}';
 echo '.tabList{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}';
 echo '.tabBtn{border:1px solid hsl(var(--border));background:hsla(var(--secondary)/.50);border-radius:10px;padding:8px 8px;font-size:11px;font-weight:900;color:hsl(var(--muted-foreground));cursor:pointer}';
@@ -387,9 +387,33 @@ if ($selected) {
     echo '<div style="font-weight:600;margin-top:8px">Operadora: ' . h($detectedInsurer) . '</div>';
     echo '</div>';
 
+    // Buscar operadoras para dropdown
+    $insurersStmt = db()->query("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
+    $insurersList = $insurersStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Detectar ID da operadora (se identificada)
+    $detectedInsurerId = 0;
+    if ($detectedInsurer !== 'Não informado' && !empty($detectedInsurer)) {
+        foreach ($insurersList as $ins) {
+            if (strcasecmp($ins['name'], $detectedInsurer) === 0) {
+                $detectedInsurerId = (int)$ins['id'];
+                break;
+            }
+        }
+    }
+
     echo '<div class="tabPanel isActive" data-panel="faturamento">';
     echo '<div style="display:grid;gap:12px">';
-    echo '<label>Operadora/Convênio<input value="' . h($detectedInsurer) . '" readonly style="font-weight:600"></label>';
+    
+    // Dropdown de operadora (pré-seleciona se identificada)
+    echo '<label>Operadora/Convênio *<select name="health_insurer_id" form="approveForm" required style="font-weight:600">';
+    echo '<option value="">Selecione a operadora...</option>';
+    foreach ($insurersList as $ins) {
+        $sel = ((int)$ins['id'] === $detectedInsurerId) ? ' selected' : '';
+        echo '<option value="' . (int)$ins['id'] . '"' . $sel . '>' . h($ins['name']) . '</option>';
+    }
+    echo '</select></label>';
+    
     echo '<label>E-mail Origem<input value="' . h((string)($selected['origin_email'] ?? '')) . '" readonly></label>';
     echo '<label>Local<input value="' . h($locTxt) . '" readonly></label>';
     echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
@@ -503,7 +527,9 @@ echo '</aside>';
 echo '<script>';
 echo '(function(){var drawer=document.getElementById("drawer");var overlay=document.getElementById("drawerOverlay");if(!drawer||!overlay)return;';
 echo 'var open=' . ($drawerOpen ? 'true' : 'false') . ';';
-echo 'var setOpen=function(v){open=v; if(v){drawer.classList.add("isOpen"); overlay.style.display="block";} else {drawer.classList.remove("isOpen"); overlay.style.display="none";}};';
+echo 'var floatingBtns=document.querySelector("div[style*=\'position:fixed\'][style*=\'z-index:9999\']");';
+echo 'var setOpen=function(v){open=v; if(v){drawer.classList.add("isOpen"); overlay.style.display="block"; if(floatingBtns)floatingBtns.style.display="none";} else {drawer.classList.remove("isOpen"); overlay.style.display="none"; if(floatingBtns)floatingBtns.style.display="flex";}};';
+echo 'if(open && floatingBtns) floatingBtns.style.display="none";';
 $closeUrl = '/pre_admissao.php';
 if ($q !== '' || $status !== '') {
     $closeParams = [];

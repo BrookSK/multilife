@@ -11,6 +11,7 @@ $assignmentId = isset($_POST['assignment_id']) ? (int)$_POST['assignment_id'] : 
 $demandId = isset($_POST['demand_id']) ? (int)$_POST['demand_id'] : 0;
 $weekdaysRaw = trim((string)($_POST['weekdays'] ?? ''));
 $sessionDatesRaw = trim((string)($_POST['session_dates'] ?? ''));
+$healthInsurerId = isset($_POST['health_insurer_id']) ? (int)$_POST['health_insurer_id'] : null;
 
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
@@ -45,7 +46,7 @@ try {
     // Atualizar status da atribuição para 'admitted' (aguardando documentos)
     $updateAssignmentStmt = $db->prepare("
         UPDATE patient_assignments 
-        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW(), weekdays = ?
+        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW(), weekdays = ?, health_insurer_id = ?
         WHERE id = ?
     ");
     $weekdaysJson = null;
@@ -56,7 +57,7 @@ try {
             $weekdaysJson = json_encode(array_values($weekdaysArr));
         }
     }
-    $updateAssignmentStmt->execute([auth_user_id(), $weekdaysJson, $assignmentId]);
+    $updateAssignmentStmt->execute([auth_user_id(), $weekdaysJson, $healthInsurerId, $assignmentId]);
     
     // Atualizar status do card de captação para 'admitido'
     $updateDemandStmt = $db->prepare("
