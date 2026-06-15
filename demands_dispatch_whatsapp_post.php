@@ -89,16 +89,126 @@ if (count($groups) === 0 && trim($specialty) !== '') {
 }
 
 if (count($groups) === 0) {
-    // Mostrar debug com dados do banco para facilitar diagnóstico
-    $allGroups = db()->query('SELECT id, name, specialty, city, state, status, evolution_group_jid FROM whatsapp_groups ORDER BY id DESC LIMIT 10')->fetchAll();
-    $groupsDebug = [];
-    foreach ($allGroups as $g) {
-        $groupsDebug[] = '#' . $g['id'] . ' "' . $g['name'] . '" spec="' . ($g['specialty'] ?? 'NULL') . '" state="' . ($g['state'] ?? 'NULL') . '" status="' . $g['status'] . '" jid="' . ($g['evolution_group_jid'] ? 'SIM' : 'NÃO') . '"';
+    // NENHUM GRUPO ENCONTRADO — Criar automaticamente
+    error_log("[DISPATCH] Nenhum grupo encontrado para spec='$specialty' city='$city' state='$state'. Criando automaticamente...");
+    
+    try {
+        $api = new EvolutionApiV1();
+        
+        // Gerar nome do grupo: Especialidade - Cidade/UF - N
+        $location = trim($city !== '' ? ($city . ($state !== '' ? '/' . $state : '')) : $state);
+        if ($location === '') $location = 'Geral';
+        
+        // Contar grupos existentes para gerar número sequencial
+        $countStmt = db()->prepare('SELECT COUNT(*) FROM whatsapp_groups WHERE specialty = ?');
+        $countStmt->execute([$specialty]);
+        $groupNumber = (int)$countStmt->fetchColumn() + 1;
+        
+        $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
+        
+        // Buscar profissionais da especialidade para adicionar ao grupo
+        $profsStmt = db()->prepare("
+            SELECT u.phone FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            INNER JOIN roles r ON r.id = ur.role_id
+            WHERE u.status = 'active' AND r.slug = 'profissional'
+            AND (u.specialty = ? OR u.specialty LIKE ?)
+            AND u.phone IS NOT NULL AND u.phone != ''
+        ");
+        $profsStmt->execute([$specialty, '%' . $specialty . '%']);
+        $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Limpar telefones (apenas dígitos)
+        $participants = [];
+        foreach ($profPhones as $phone) {
+            $clean = preg_replace('/\D+/', '', $phone);
+            if (strlen($clean) >= 10) {
+                $participants[] = $clean;
+            }
+        }
+        
+        // Garantir pelo menos 1 participante (o próprio admin)
+        if (empty($participants)) {
+            $adminPhone = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
+            $participants[] = $adminPhone;
+        }
+        
+        // Criar grupo via Evolution API
+        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $instanceName = (string)admin_setting_get('evolution.instance', '');
+        
+        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
+        $createPayload = json_encode([
+            'subject' => $groupName,
+            'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
+            'participants' => $participants,
+        ]);
+        
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $createUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => $createPayload,
+            CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        
+        $createResponse = curl_exec($ch);
+        $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($createHttpCode === 200 || $createHttpCode === 201) {
+            $createData = json_decode($createResponse, true);
+            $newGroupJid = $createData['id'] ?? '';
+            
+            if (!empty($newGroupJid)) {
+                // Salvar grupo no banco
+                $stmtNewGroup = db()->prepare(
+                    'INSERT INTO whatsapp_groups (name, evolution_group_jid, contacts_count, specialty, city, state, status) VALUES (:n, :jid, :cnt, :sp, :city, :st, \'active\') ON DUPLICATE KEY UPDATE name = VALUES(name)'
+                );
+                $stmtNewGroup->execute([
+                    'n' => $groupName,
+                    'jid' => $newGroupJid,
+                    'cnt' => count($participants),
+                    'sp' => $specialty,
+                    'city' => $city,
+                    'st' => $state,
+                ]);
+                $newGroupDbId = (int)db()->lastInsertId();
+                
+                // Também salvar na chat_groups
+                try {
+                    db()->prepare("INSERT IGNORE INTO chat_groups (group_jid, group_name, specialty, region, created_at) VALUES (?, ?, ?, ?, NOW())")
+                        ->execute([$newGroupJid, $groupName, $specialty, $location]);
+                } catch (Exception $e) {}
+                
+                // Usar o grupo recém-criado para o dispatch
+                $groups = [['id' => $newGroupDbId, 'name' => $groupName, 'evolution_group_jid' => $newGroupJid]];
+                
+                error_log("[DISPATCH] ✅ Grupo criado automaticamente: '$groupName' (JID: $newGroupJid) com " . count($participants) . " participantes");
+                
+                // Pequeno delay para o grupo estabilizar antes de enviar mensagem
+                sleep(3);
+            } else {
+                flash_set('error', 'Erro ao criar grupo automaticamente: API não retornou JID.');
+                header('Location: /demands_view.php?id=' . $id);
+                exit;
+            }
+        } else {
+            $errorMsg = substr($createResponse, 0, 200);
+            error_log("[DISPATCH] Erro ao criar grupo: HTTP $createHttpCode - $errorMsg");
+            flash_set('error', 'Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
+            header('Location: /demands_view.php?id=' . $id);
+            exit;
+        }
+    } catch (Exception $e) {
+        flash_set('error', 'Erro ao criar grupo: ' . $e->getMessage());
+        header('Location: /demands_view.php?id=' . $id);
+        exit;
     }
-    $debugInfo = "Buscando: Especialidade=\"$specialty\", Cidade=\"$city\", Estado=\"$state\". Grupos no banco: " . implode(' | ', $groupsDebug);
-    flash_set('error', 'Nenhum grupo compatível encontrado. ' . $debugInfo);
-    header('Location: /demands_view.php?id=' . $id);
-    exit;
 }
 
 $tpl = trim((string)admin_setting_get(
