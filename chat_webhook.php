@@ -583,68 +583,9 @@ if ($event === 'messages.upsert') {
                                     $wasInserted = $stmtInterest->rowCount() > 0;
                                     
                                     if ($wasInserted) {
-                                        // Primeira reação deste profissional - enviar mensagem privada
-                                        try {
-                                            // Rate limit: não enviar para o mesmo número em menos de 10s
-                                            $lockFile = sys_get_temp_dir() . '/ml_msg_' . md5($phoneJid);
-                                            $canSend = true;
-                                            if (file_exists($lockFile)) {
-                                                $lastSend = (int)file_get_contents($lockFile);
-                                                if (time() - $lastSend < 10) {
-                                                    $canSend = false;
-                                                    error_log("[WEBHOOK] Rate limit: msg para $phoneJid bloqueada (enviada há " . (time() - $lastSend) . "s)");
-                                                }
-                                            }
-                                            
-                                            if ($canSend) {
-                                                file_put_contents($lockFile, (string)time());
-                                                
-                                                $api = new EvolutionApiV1();
-                                                $privateMsg = "🎉 *Olá" . ($pushName ? ", {$pushName}" : "") . "!*\n\n"
-                                                    . "Registramos seu interesse na captação:\n"
-                                                    . "📋 *{$demandTitle}*\n"
-                                                    . ($specialty ? "🏥 Especialidade: {$specialty}\n" : "")
-                                                    . "\n"
-                                                    . "Em breve um operador entrará em contato com mais detalhes.\n\n"
-                                                    . "Obrigado por fazer parte da equipe!\n"
-                                                    . "Equipe MultiLife";
-                                                
-                                                sleep(3); // 3s delay antes de enviar
-                                                $privRes = $api->sendText($phoneJid, $privateMsg, ['delay' => 2000]);
-                                                $privCode = (int)($privRes['status'] ?? 0);
-                                                error_log("[WEBHOOK] Msg privada enviada: $phoneJid (HTTP $privCode)");
-                                            
-                                            // Salvar mensagem no banco para aparecer no chat
-                                            if ($privCode >= 200 && $privCode < 300) {
-                                                $nowTs = time();
-                                                $normalizedPrivJid = normalizeJid($phoneJid);
-                                                try {
-                                                    $stmtSavePriv = db()->prepare("
-                                                        INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
-                                                        VALUES (?, ?, 1, ?)
-                                                    ");
-                                                    $stmtSavePriv->execute([$normalizedPrivJid, $privateMsg, $nowTs]);
-                                                    
-                                                    // Atualizar contato
-                                                    $stmtUpdContact = db()->prepare("
-                                                        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
-                                                        VALUES (?, ?, 0, ?, ?, 'text')
-                                                        ON DUPLICATE KEY UPDATE
-                                                            contact_name = CASE WHEN VALUES(contact_name) != '' AND contact_name IS NULL OR contact_name = '' OR contact_name REGEXP '^[0-9]+$' THEN VALUES(contact_name) ELSE contact_name END,
-                                                            last_message_timestamp = VALUES(last_message_timestamp),
-                                                            last_message_text = VALUES(last_message_text),
-                                                            updated_at = NOW()
-                                                    ");
-                                                    $contactDisplayName = $pushName ?: $cleanPhone;
-                                                    $stmtUpdContact->execute([$normalizedPrivJid, $contactDisplayName, $nowTs, substr($privateMsg, 0, 100)]);
-                                                } catch (Exception $dbErr) {
-                                                    error_log("[WEBHOOK] Erro ao salvar msg privada no banco: " . $dbErr->getMessage());
-                                                }
-                                            }
-                                            } // fim if ($canSend)
-                                        } catch (Exception $privErr) {
-                                            error_log("[WEBHOOK] Erro msg privada: " . $privErr->getMessage());
-                                        }
+                                        // Interesse registrado — NÃO enviar mensagem privada
+                                        // Os atendentes vão entrar em contato pelo chat via lista de espera
+                                        error_log("[WEBHOOK] Interesse registrado para $cleanPhone na captação #$demandId (sem envio de msg privada)");
                                     } else {
                                         error_log("[WEBHOOK] Profissional $cleanPhone já havia registrado interesse na captação #$demandId");
                                     }
