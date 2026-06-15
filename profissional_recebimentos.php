@@ -65,26 +65,33 @@ $pagosStmt = db()->prepare("
 $pagosStmt->execute([$userId]);
 $pagosRow = $pagosStmt->fetch(PDO::FETCH_ASSOC);
 
-$valorSessao = (float)($recebiveisRow['valor_sessao'] ?? 0);
-$qtdAprovadas = (int)($recebiveisRow['qtd'] ?? 0);
-$qtdPagas = (int)($pagosRow['qtd'] ?? 0);
+// Buscar valor total de sessões aprovadas
+$recebiveisStmt = db()->prepare("
+    SELECT 
+        COUNT(*) as qtd,
+        COALESCE(SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)), 0) as soma
+    FROM billing_document_requirements bdr
+    INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
+    WHERE pa.professional_user_id = ? AND bdr.status IN ('approved', 'paid')
+");
+$recebiveisStmt->execute([$userId]);
+$recebiveisRow = $recebiveisStmt->fetch(PDO::FETCH_ASSOC);
+
+$pagosStmt = db()->prepare("
+    SELECT 
+        COUNT(*) as qtd,
+        COALESCE(SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)), 0) as soma
+    FROM billing_document_requirements bdr
+    INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
+    WHERE pa.professional_user_id = ? AND bdr.status = 'paid'
+");
+$pagosStmt->execute([$userId]);
+$pagosRow = $pagosStmt->fetch(PDO::FETCH_ASSOC);
 
 $totalAtendimentos = (int)($stats['total_atendimentos'] ?? 0);
 $totalServicos = (float)($stats['total_servicos'] ?? 0);
-
-// Se valorSessao é 0, calcular a partir do Total em Serviços
-if ($valorSessao <= 0 && $totalServicos > 0) {
-    // Total de sessões de todos os atendimentos
-    $totalSessoesStmt = db()->prepare("SELECT SUM(session_quantity) as total FROM patient_assignments WHERE professional_user_id = ?");
-    $totalSessoesStmt->execute([$userId]);
-    $totalSessoesRow = $totalSessoesStmt->fetch(PDO::FETCH_ASSOC);
-    $totalSessoesAll = (int)($totalSessoesRow['total'] ?? 1);
-    $valorSessao = $totalSessoesAll > 0 ? $totalServicos / $totalSessoesAll : 0;
-}
-
-// Total pago e pendente
-$totalPago = $qtdPagas * $valorSessao;
-$totalPendente = ($qtdAprovadas - $qtdPagas) * $valorSessao;
+$totalPendente = (float)($recebiveisRow['soma'] ?? 0) - (float)($pagosRow['soma'] ?? 0);
+$totalPago = (float)($pagosRow['soma'] ?? 0);
 
 // Buscar histórico de pagamentos (sessões aprovadas/pagas)
 $paymentsStmt = db()->prepare("
