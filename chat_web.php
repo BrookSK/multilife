@@ -1652,11 +1652,14 @@ if ($chatType === 'grupos') {
     // Aba Lista de Espera: profissionais que reagiram mas ainda não foram selecionados
     try {
         $stmtWait = db()->prepare("
-            SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty
+            SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty,
+                   dl.id as dispatch_id, wg.name as group_name
             FROM demand_interested_professionals dip
             INNER JOIN demands d ON d.id = dip.demand_id
+            LEFT JOIN demand_dispatch_logs dl ON dl.id = dip.dispatch_log_id
+            LEFT JOIN whatsapp_groups wg ON wg.id = dl.group_id
             WHERE dip.status = 'interested'
-            ORDER BY dip.reacted_at DESC
+            ORDER BY d.id DESC, dip.reacted_at DESC
             LIMIT 100
         ");
         $stmtWait->execute();
@@ -1666,19 +1669,22 @@ if ($chatType === 'grupos') {
     }
     
     if (!empty($waitingPros)) {
-        // Agrupar por demanda
-        $byDemand = [];
+        // Agrupar por demanda + grupo (para separar especialidades diferentes)
+        $byKey = [];
         foreach ($waitingPros as $wp) {
-            $byDemand[$wp['demand_id']][] = $wp;
+            $key = $wp['demand_id'] . '_' . ($wp['dispatch_id'] ?? '0');
+            $byKey[$key][] = $wp;
         }
         
-        foreach ($byDemand as $dId => $pros) {
-            $demandTitle = $pros[0]['demand_title'] ?? "Captação #$dId";
+        foreach ($byKey as $key => $pros) {
+            $demandTitle = $pros[0]['demand_title'] ?? "Captação #" . $pros[0]['demand_id'];
+            $groupName = $pros[0]['group_name'] ?? '';
             $specialty = $pros[0]['specialty'] ?? '';
+            $displayLabel = $groupName ?: $demandTitle;
             
             echo '<div style="padding:8px 16px;background:#f0f2f5;border-bottom:1px solid #e0e0e0">';
-            echo '<div style="font-size:12px;font-weight:700;color:#00a884">📋 ' . h($demandTitle) . '</div>';
-            if ($specialty) echo '<div style="font-size:11px;color:#667781">' . h($specialty) . '</div>';
+            echo '<div style="font-size:12px;font-weight:700;color:#00a884">📋 ' . h($displayLabel) . '</div>';
+            if ($specialty && !$groupName) echo '<div style="font-size:11px;color:#667781">' . h($specialty) . '</div>';
             echo '</div>';
             
             foreach ($pros as $pro) {
