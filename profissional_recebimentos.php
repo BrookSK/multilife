@@ -46,7 +46,7 @@ $sessoesPendentes = (int)($stats['sessoes_pendentes'] ?? 0);
 $recebiveisStmt = db()->prepare("
     SELECT 
         COUNT(*) as qtd_aprovadas,
-        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)) as total_por_sessao_aprovada
+        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0) / GREATEST(pa.session_quantity, 1)) as total_por_sessao_aprovada
     FROM patient_assignments pa
     INNER JOIN billing_document_requirements bdr ON bdr.assignment_id = pa.id
     WHERE pa.professional_user_id = ? AND bdr.status IN ('approved', 'paid')
@@ -58,7 +58,7 @@ $recebiveisRow = $recebiveisStmt->fetch(PDO::FETCH_ASSOC);
 $pagosStmt = db()->prepare("
     SELECT 
         COUNT(*) as qtd_pagas,
-        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)) as total_pago
+        SUM(COALESCE(pa.agreed_value, pa.payment_value, 0) / GREATEST(pa.session_quantity, 1)) as total_pago
     FROM patient_assignments pa
     INNER JOIN billing_document_requirements bdr ON bdr.assignment_id = pa.id
     WHERE pa.professional_user_id = ? AND bdr.status = 'paid'
