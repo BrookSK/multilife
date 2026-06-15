@@ -437,9 +437,34 @@ if ($selected) {
     echo '<div class="tabPanel" data-panel="prontuario">';
     echo '<div style="display:grid;gap:12px">';
     echo '<label>Paciente<input value="' . h($patientName) . '" readonly></label>';
-    echo '<label>Diagnóstico principal<input placeholder="CID / Diagnóstico"></label>';
-    echo '<label>Medicamentos<input placeholder="Medicações em uso"></label>';
-    echo '<label>Observações clínicas<textarea placeholder="Notas" rows="3"></textarea></label>';
+    echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
+    echo '<label>Tipo de Serviço<input value="' . h($serviceType) . '" readonly></label>';
+    
+    // Buscar dados detalhados do card da captação
+    $demandDescription = (string)($selected['description'] ?? '');
+    $demandAiSummary = '';
+    try {
+        $stmtDemandFull = db()->prepare("SELECT description, ai_summary FROM demands WHERE id = ?");
+        $stmtDemandFull->execute([$demandId]);
+        $demandFull = $stmtDemandFull->fetch(PDO::FETCH_ASSOC);
+        if ($demandFull) {
+            $demandDescription = (string)($demandFull['description'] ?? $demandDescription);
+            $demandAiSummary = (string)($demandFull['ai_summary'] ?? '');
+        }
+    } catch (Exception $e) {}
+    
+    if (!empty($demandAiSummary)) {
+        echo '<div style="padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px">';
+        echo '<div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:6px">🤖 Resumo da Necessidade (IA)</div>';
+        echo '<div style="font-size:13px;color:#1e3a5f;line-height:1.6">' . nl2br(h($demandAiSummary)) . '</div>';
+        echo '</div>';
+    }
+    
+    if (!empty($demandDescription)) {
+        echo '<label>Descrição do Atendimento</label>';
+        echo '<div style="padding:12px;background:#f9fafb;border:1px solid hsl(var(--border));border-radius:8px;font-size:13px;line-height:1.6;max-height:200px;overflow-y:auto">' . nl2br(h($demandDescription)) . '</div>';
+    }
+    
     echo '</div>';
     echo '</div>';
 
