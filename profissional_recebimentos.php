@@ -147,11 +147,6 @@ $pendingStmt = db()->prepare("
 $pendingStmt->execute([$userId]);
 $pendingPayments = $pendingStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$totalAtendimentos = (int)($stats['total_atendimentos'] ?? 0);
-$totalServicos = (float)($stats['total_servicos'] ?? 0);
-$totalPendente = (float)($stats['total_pendente'] ?? 0);
-$totalPago = (float)($stats['total_pago'] ?? 0);
-
 view_header('Recebimentos');
 
 echo '<div class="grid">';
