@@ -1926,11 +1926,6 @@ if (empty($selectedChat)) {
                 $mediaUrl = $protocol . '://' . $host . $mediaUrl;
             }
             
-            // DEBUG: Log de cada mensagem
-            if ($messageType !== 'text') {
-                error_log("[RENDER] Tipo: $messageType | URL: '$mediaUrl' | Text: '$messageText'");
-            }
-            
             echo '<div class="whatsapp-message ' . $messageClass . '"' . (!empty($msg['externalMessageId']) ? ' data-msg-id="' . h($msg['externalMessageId']) . '"' : '') . '>';
             echo '<div class="whatsapp-message-bubble">';
             
