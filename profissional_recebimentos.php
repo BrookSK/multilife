@@ -42,9 +42,10 @@ $valorData = $valorPorSessaoStmt->fetch(PDO::FETCH_ASSOC);
 $sessoesAprovadas = (int)($stats['sessoes_aprovadas'] ?? 0);
 $sessoesPendentes = (int)($stats['sessoes_pendentes'] ?? 0);
 
-// Buscar valor real por sessão de cada atendimento
+// Buscar valor de sessões aprovadas (pendentes de pagamento)
 $recebiveisStmt = db()->prepare("
     SELECT 
+        COUNT(*) as qtd_aprovadas,
         SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)) as total_por_sessao_aprovada
     FROM patient_assignments pa
     INNER JOIN billing_document_requirements bdr ON bdr.assignment_id = pa.id
@@ -53,8 +54,10 @@ $recebiveisStmt = db()->prepare("
 $recebiveisStmt->execute([$userId]);
 $recebiveisRow = $recebiveisStmt->fetch(PDO::FETCH_ASSOC);
 
+// Buscar valor de sessões já pagas
 $pagosStmt = db()->prepare("
     SELECT 
+        COUNT(*) as qtd_pagas,
         SUM(COALESCE(pa.agreed_value, pa.payment_value, 0)) as total_pago
     FROM patient_assignments pa
     INNER JOIN billing_document_requirements bdr ON bdr.assignment_id = pa.id
@@ -65,8 +68,17 @@ $pagosRow = $pagosStmt->fetch(PDO::FETCH_ASSOC);
 
 $totalAtendimentos = (int)($stats['total_atendimentos'] ?? 0);
 $totalServicos = (float)($stats['total_servicos'] ?? 0);
-$totalPendente = (float)($recebiveisRow['total_por_sessao_aprovada'] ?? 0) - (float)($pagosRow['total_pago'] ?? 0);
+
+// Total pendente = sessões aprovadas (não pagas) × valor por sessão
+$qtdAprovadas = (int)($recebiveisRow['qtd_aprovadas'] ?? 0);
+$totalAprovado = (float)($recebiveisRow['total_por_sessao_aprovada'] ?? 0);
+
+// Total pago = sessões pagas × valor por sessão
+$qtdPagas = (int)($pagosRow['qtd_pagas'] ?? 0);
 $totalPago = (float)($pagosRow['total_pago'] ?? 0);
+
+// Pendente = aprovado mas não pago
+$totalPendente = $totalAprovado - $totalPago;
 
 // Buscar histórico de pagamentos (sessões aprovadas/pagas)
 $paymentsStmt = db()->prepare("
