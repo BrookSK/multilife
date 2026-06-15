@@ -154,6 +154,22 @@ try {
     $recordNotes .= "\nAprovado por: " . $approvedByName . "\n";
     $recordNotes .= "Data de Aprovação: " . date('d/m/Y H:i:s');
     
+    // Criar vínculo paciente-profissional automaticamente
+    try {
+        $stmtLink = $db->prepare("
+            INSERT IGNORE INTO patient_professionals (patient_id, professional_user_id, specialty, is_active)
+            VALUES (?, ?, ?, 1)
+        ");
+        $stmtLink->execute([
+            $assignment['patient_id'],
+            $assignment['professional_user_id'],
+            $assignment['specialty']
+        ]);
+        error_log("DEBUG APROVAÇÃO: Vínculo paciente-profissional criado/confirmado");
+    } catch (Exception $e) {
+        error_log("DEBUG APROVAÇÃO: Erro ao criar vínculo: " . $e->getMessage());
+    }
+    
     error_log("DEBUG APROVAÇÃO: Registrando no prontuário - patient_id: {$assignment['patient_id']}, professional_user_id: {$assignment['professional_user_id']}, sessions: {$assignment['session_quantity']}");
     
     $prontuarioStmt = $db->prepare("
