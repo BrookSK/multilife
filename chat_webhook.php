@@ -946,16 +946,43 @@ if ($event === 'messages.upsert') {
 // Tratar mensagens apagadas
 if ($event === 'messages.delete') {
     $deleteData = $data['data'] ?? [];
-    $deletedMsgId = $deleteData['key']['id'] ?? $deleteData['id'] ?? '';
+    
+    // Formato pode variar: key.id ou messageId ou array de IDs
+    $deletedMsgId = $deleteData['key']['id'] ?? $deleteData['id'] ?? $deleteData['messageId'] ?? '';
     $deletedJid = $deleteData['key']['remoteJid'] ?? $deleteData['remoteJid'] ?? '';
     
+    // Pode vir como array de mensagens deletadas
+    $idsToDelete = [];
     if (!empty($deletedMsgId)) {
+        $idsToDelete[] = $deletedMsgId;
+    }
+    // Formato alternativo: data = [id1, id2, ...]
+    if (is_array($deleteData) && isset($deleteData[0]) && is_string($deleteData[0])) {
+        $idsToDelete = array_merge($idsToDelete, $deleteData);
+    }
+    // Formato: data.message.id ou data.messages = [...]
+    if (isset($deleteData['message']['id'])) {
+        $idsToDelete[] = $deleteData['message']['id'];
+    }
+    if (isset($deleteData['messages']) && is_array($deleteData['messages'])) {
+        foreach ($deleteData['messages'] as $msg) {
+            if (is_string($msg)) $idsToDelete[] = $msg;
+            elseif (isset($msg['id'])) $idsToDelete[] = $msg['id'];
+            elseif (isset($msg['key']['id'])) $idsToDelete[] = $msg['key']['id'];
+        }
+    }
+    
+    $idsToDelete = array_unique(array_filter($idsToDelete));
+    
+    error_log("[WEBHOOK] messages.delete: jid='$deletedJid' ids=" . json_encode($idsToDelete) . " raw_keys=" . json_encode(array_keys($deleteData)));
+    
+    if (!empty($idsToDelete)) {
         try {
-            // Deletar mensagem pelo external_message_id
-            $stmtDel = db()->prepare("DELETE FROM chat_messages WHERE external_message_id = ?");
-            $stmtDel->execute([$deletedMsgId]);
+            $placeholders = implode(',', array_fill(0, count($idsToDelete), '?'));
+            $stmtDel = db()->prepare("DELETE FROM chat_messages WHERE external_message_id IN ($placeholders)");
+            $stmtDel->execute(array_values($idsToDelete));
             $deleted = $stmtDel->rowCount();
-            error_log("[WEBHOOK] messages.delete: msg_id='$deletedMsgId' jid='$deletedJid' deleted=$deleted");
+            error_log("[WEBHOOK] messages.delete: deletadas=$deleted");
         } catch (Exception $e) {
             error_log("[WEBHOOK] Erro ao deletar mensagem: " . $e->getMessage());
         }
