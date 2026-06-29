@@ -90,10 +90,12 @@ $totalProfit = $totalRevenue - $totalCost;                                // LUC
 
 view_header('Detalhes do Faturamento');
 
-// Contar total de arquivos
+// Contar total de arquivos (excluindo rejeitados)
 $totalProdFiles = 0;
 $totalFatFiles = 0;
 foreach ($documentRequirements as $req) {
+    // Não mostrar arquivos de sessões rejeitadas
+    if ($req['status'] === 'rejected') continue;
     foreach ($req['files'] as $file) {
         if ($file['document_type'] === 'produtividade') {
             $totalProdFiles++;
@@ -191,6 +193,7 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
         
         foreach ($documentRequirements as $req) {
+            if ($req['status'] === 'rejected') continue;
             foreach ($req['files'] as $file) {
                 if ($file['document_type'] === 'produtividade') {
                     echo '<div style="position:relative;border:2px solid #10b981;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
@@ -214,6 +217,7 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
         
         foreach ($documentRequirements as $req) {
+            if ($req['status'] === 'rejected') continue;
             foreach ($req['files'] as $file) {
                 if ($file['document_type'] === 'faturamento') {
                     echo '<div style="position:relative;border:2px solid #0284c7;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
