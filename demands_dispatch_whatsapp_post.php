@@ -241,9 +241,37 @@ $tpl = trim((string)admin_setting_get(
     ''
 ));
 
-// Se template vazio ou não configurado, usar padrão
+// Se template vazio ou não configurado, usar padrão com endereço completo
 if ($tpl === '') {
-    $tpl = "[CAPTAÇÃO #{id}]\n{title}\nLocal: {city}/{state}\nEspecialidade: {specialty}\nFrequência: {frequency}\n\n{description}\nOrigem: {origin}";
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{address}\n{city}/{state}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{description}\n\n_Origem: {origin}_";
+}
+
+// Montar endereço completo (rua, número, bairro)
+$street = (string)($subRequest ? ($subRequest['location_street'] ?? $d['location_street'] ?? '') : ($d['location_street'] ?? ''));
+$neighborhood = (string)($subRequest ? ($subRequest['location_neighborhood'] ?? $d['location_neighborhood'] ?? '') : ($d['location_neighborhood'] ?? ''));
+$number = (string)($subRequest ? ($subRequest['location_number'] ?? $d['location_number'] ?? '') : ($d['location_number'] ?? ''));
+$complement = (string)($subRequest ? ($subRequest['location_complement'] ?? $d['location_complement'] ?? '') : ($d['location_complement'] ?? ''));
+
+$addressParts = [];
+if (trim($street) !== '') {
+    $addr = trim($street);
+    if (trim($number) !== '') $addr .= ', ' . trim($number);
+    $addressParts[] = $addr;
+}
+if (trim($complement) !== '') $addressParts[] = trim($complement);
+if (trim($neighborhood) !== '') $addressParts[] = trim($neighborhood);
+$fullAddress = count($addressParts) > 0 ? implode(' - ', $addressParts) : '';
+
+// Frequência: usar helper se disponível
+$freqRaw = $subRequest && trim((string)($subRequest['frequency'] ?? '')) !== '' 
+    ? (string)$subRequest['frequency'] 
+    : (trim((string)($d['frequency'] ?? '')) !== '' ? (string)$d['frequency'] : '');
+$freqDisplay = $freqRaw;
+if ($freqRaw !== '' && function_exists('frequency_get_label')) {
+    $normalized = frequency_normalize($freqRaw);
+    if ($normalized !== '') {
+        $freqDisplay = frequency_get_label($normalized) . ' (' . frequency_get_weekday_description($normalized) . ')';
+    }
 }
 
 $repl = [
@@ -251,8 +279,11 @@ $repl = [
     '{title}' => (string)$d['title'],
     '{city}' => $city !== '' ? $city : '-',
     '{state}' => $state !== '' ? $state : '-',
+    '{address}' => $fullAddress !== '' ? $fullAddress : '',
+    '{street}' => $street !== '' ? $street : '-',
+    '{neighborhood}' => $neighborhood !== '' ? $neighborhood : '-',
     '{specialty}' => $specialty !== '' ? $specialty : '-',
-    '{frequency}' => $subRequest && trim((string)($subRequest['frequency'] ?? '')) !== '' ? (string)$subRequest['frequency'] : (trim((string)($d['frequency'] ?? '')) !== '' ? (string)$d['frequency'] : '-'),
+    '{frequency}' => $freqDisplay !== '' ? $freqDisplay : '-',
     '{description}' => $subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? ''),
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];

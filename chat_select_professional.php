@@ -160,11 +160,15 @@ echo '<div class="grid">';
 echo '<div class="col6">';
 echo '<label>Profissional<select name="professional_user_id" id="professionalSelect" required>';
 echo '<option value="">Selecione</option>';
-foreach ($professionals as $u) {
+foreach ($professionals as $idx => $u) {
     $sel = ((int)$u['id'] === $prefProfessionalUserId) ? ' selected' : '';
-    echo '<option value="' . (int)$u['id'] . '"' . $sel . '>' . h((string)$u['name']) . ' — ' . h((string)$u['email']) . '</option>';
+    // Seleção anônima: exibir apenas código + especialidade (sem nome/email)
+    // Dados completos só são revelados após confirmação da contratação
+    $profLabel = 'Profissional #' . str_pad((string)($idx + 1), 3, '0', STR_PAD_LEFT);
+    echo '<option value="' . (int)$u['id'] . '"' . $sel . ' data-name="' . h((string)$u['name']) . '">' . $profLabel . '</option>';
 }
 echo '</select></label>';
+echo '<div class="helpText">Identidade revelada somente após confirmação da contratação</div>';
 echo '</div>';
 
 echo '<div class="col6">';
@@ -192,13 +196,25 @@ echo '</div>';
 
 echo '<div class="col6">';
 echo '<label>Frequência<select name="frequency" id="frequencySelect" required>';
-echo '<option value="single">Atendimento Único</option>';
-echo '<option value="daily">Diário</option>';
-echo '<option value="weekly" selected>Semanal</option>';
-echo '<option value="biweekly">Quinzenal</option>';
-echo '<option value="monthly">Mensal</option>';
-echo '<option value="custom">Personalizado</option>';
+// Usando tabela padronizada de frequência/dias
+if (function_exists('frequency_get_options')) {
+    $freqOptions = frequency_get_options();
+    echo '<option value="">Selecione a frequência</option>';
+    foreach ($freqOptions as $fo) {
+        $selected = $fo['code'] === '1x_semana' ? ' selected' : '';
+        echo '<option value="' . h($fo['code']) . '"' . $selected . ' data-weekdays=\'' . json_encode($fo['weekdays']) . '\'>';
+        echo h($fo['label']) . ' — ' . h($fo['description']);
+        echo '</option>';
+    }
+} else {
+    echo '<option value="single">Atendimento Único</option>';
+    echo '<option value="weekly" selected>Semanal</option>';
+    echo '<option value="biweekly">Quinzenal</option>';
+    echo '<option value="monthly">Mensal</option>';
+    echo '<option value="custom">Personalizado</option>';
+}
 echo '</select></label>';
+echo '<div class="helpText" id="frequencyHelp"></div>';
 echo '</div>';
 
 echo '<div class="col6">';

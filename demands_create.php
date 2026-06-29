@@ -33,6 +33,10 @@ echo '<label>Título<input name="title" required maxlength="200" placeholder="No
 echo '<div class="grid">';
 echo '<div class="col6"><label>Cidade<input name="location_city" maxlength="120" placeholder="Ex: São Paulo"></label></div>';
 echo '<div class="col6"><label>UF<input name="location_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
+echo '<div class="col8"><label>Rua / Logradouro<input name="location_street" maxlength="200" placeholder="Ex: Rua das Flores"></label></div>';
+echo '<div class="col4"><label>Número<input name="location_number" maxlength="20" placeholder="123"></label></div>';
+echo '<div class="col6"><label>Bairro<input name="location_neighborhood" maxlength="120" placeholder="Ex: Centro"></label></div>';
+echo '<div class="col6"><label>Complemento<input name="location_complement" maxlength="120" placeholder="Apto, Bloco, etc."></label></div>';
 echo '<div class="col6"><label>Especialidade<select name="specialty">';
 echo '<option value="">Selecione...</option>';
 foreach ($specialties as $spec) {
@@ -40,6 +44,13 @@ foreach ($specialties as $spec) {
 }
 echo '</select></label></div>';
 echo '<div class="col6"><label>Origem (e-mail)<input type="email" name="origin_email" maxlength="190" placeholder="origem@empresa.com"></label></div>';
+echo '<div class="col6"><label>Frequência<select name="frequency">';
+echo '<option value="">Selecione...</option>';
+$freqOpts = function_exists('frequency_get_options') ? frequency_get_options() : [];
+foreach ($freqOpts as $fo) {
+    echo '<option value="' . h($fo['code']) . '">' . h($fo['label']) . ' — ' . h($fo['description']) . '</option>';
+}
+echo '</select></label></div>';
 echo '</div>';
 
 echo '<label>Descrição<textarea name="description" rows="5" placeholder="Observações..."></textarea></label>';

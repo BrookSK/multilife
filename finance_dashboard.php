@@ -5,7 +5,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('finance.manage');
+// Aceita finance.manage (escrita) ou finance.view (somente leitura)
+$uid = auth_user_id();
+if (!rbac_user_can($uid, 'finance.manage') && !rbac_user_can($uid, 'finance.view')) {
+    rbac_require_permission('finance.manage'); // Vai exibir "Acesso Negado"
+}
 
 $period = isset($_GET['period']) ? (string)$_GET['period'] : 'month';
 $professionalId = isset($_GET['professional_id']) ? (int)$_GET['professional_id'] : 0;

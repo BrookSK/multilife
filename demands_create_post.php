@@ -10,7 +10,12 @@ rbac_require_permission('demands.manage');
 $title = trim((string)($_POST['title'] ?? ''));
 $city = trim((string)($_POST['location_city'] ?? ''));
 $state = strtoupper(trim((string)($_POST['location_state'] ?? '')));
+$street = trim((string)($_POST['location_street'] ?? ''));
+$neighborhood = trim((string)($_POST['location_neighborhood'] ?? ''));
+$number = trim((string)($_POST['location_number'] ?? ''));
+$complement = trim((string)($_POST['location_complement'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
+$frequency = trim((string)($_POST['frequency'] ?? ''));
 $originEmail = trim((string)($_POST['origin_email'] ?? ''));
 $description = trim((string)($_POST['description'] ?? ''));
 $status = (string)($_POST['status'] ?? 'aguardando_captacao');
@@ -38,12 +43,17 @@ if ($originEmail !== '' && !filter_var($originEmail, FILTER_VALIDATE_EMAIL)) {
     exit;
 }
 
-$stmt = db()->prepare('INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status) VALUES (:t,:c,:s,:sp,:d,:o,:st)');
+$stmt = db()->prepare('INSERT INTO demands (title, location_city, location_state, location_street, location_neighborhood, location_number, location_complement, specialty, frequency, description, origin_email, status) VALUES (:t,:c,:s,:street,:neighborhood,:number,:complement,:sp,:freq,:d,:o,:st)');
 $stmt->execute([
     't' => $title,
     'c' => $city !== '' ? $city : null,
     's' => $state !== '' ? $state : null,
+    'street' => $street !== '' ? $street : null,
+    'neighborhood' => $neighborhood !== '' ? $neighborhood : null,
+    'number' => $number !== '' ? $number : null,
+    'complement' => $complement !== '' ? $complement : null,
     'sp' => $specialty !== '' ? $specialty : null,
+    'freq' => $frequency !== '' ? $frequency : null,
     'd' => $description !== '' ? $description : null,
     'o' => $originEmail !== '' ? $originEmail : null,
     'st' => $status,
