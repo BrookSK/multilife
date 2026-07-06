@@ -1224,10 +1224,11 @@ function waCheckStatus(){
     else if(data.instanceState) state = data.instanceState;
     if(state === "open" || state === "connected"){
       waShowConnected();
-    } else if(state === "connecting"){
-      waShowConnecting();
     } else {
       waShowDisconnected();
+      if(state === "connecting"){
+        waConnect();
+      }
     }
   })
   .catch(function(e){
