@@ -30,6 +30,57 @@ try {
     
     switch ($action) {
         case 'connect':
+            // Antes de conectar, garantir que webhook está configurado
+            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
+            if ($publicUrl === '') {
+                $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+                    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            }
+            $whUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
+            
+            $whPayload = json_encode([
+                'enabled' => true,
+                'url' => $whUrl,
+                'webhook_by_events' => false,
+                'webhook_base64' => true,
+                'events' => [
+                    'MESSAGES_UPSERT',
+                    'SEND_MESSAGE',
+                    'CONTACTS_UPSERT',
+                    'CONTACTS_UPDATE',
+                    'CONNECTION_UPDATE',
+                    'GROUPS_UPSERT',
+                    'GROUP_UPDATE',
+                    'GROUP_PARTICIPANTS_UPDATE',
+                    'QRCODE_UPDATED',
+                ],
+            ]);
+            $whSetUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
+            $chWh = curl_init($whSetUrl);
+            curl_setopt($chWh, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($chWh, CURLOPT_POST, true);
+            curl_setopt($chWh, CURLOPT_POSTFIELDS, $whPayload);
+            curl_setopt($chWh, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($chWh, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($chWh, CURLOPT_TIMEOUT, 10);
+            curl_exec($chWh);
+            $whHttpCode = curl_getinfo($chWh, CURLINFO_HTTP_CODE);
+            curl_close($chWh);
+            
+            // Se POST falhou, tentar PUT
+            if ($whHttpCode < 200 || $whHttpCode >= 300) {
+                $whPayload2 = json_encode(['webhook' => json_decode($whPayload, true)]);
+                $chWh2 = curl_init($whSetUrl);
+                curl_setopt($chWh2, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($chWh2, CURLOPT_CUSTOMREQUEST, 'PUT');
+                curl_setopt($chWh2, CURLOPT_POSTFIELDS, $whPayload2);
+                curl_setopt($chWh2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+                curl_setopt($chWh2, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($chWh2, CURLOPT_TIMEOUT, 10);
+                curl_exec($chWh2);
+                curl_close($chWh2);
+            }
+            
             $url = $baseUrl . '/instance/connect/' . urlencode($instanceName);
             break;
 
@@ -89,6 +140,7 @@ try {
             $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
             
             $webhookPayload = [
+                'enabled' => true,
                 'url' => $webhookUrl,
                 'webhook_by_events' => false,
                 'webhook_base64' => true,
@@ -105,6 +157,7 @@ try {
                 ],
             ];
             
+            // Tentar POST primeiro
             $webhookSetUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
             $ch2 = curl_init($webhookSetUrl);
             curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
@@ -116,6 +169,39 @@ try {
             $whResp = curl_exec($ch2);
             $whCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
             curl_close($ch2);
+            
+            // Se POST falhou, tentar PUT com wrapper
+            if ($whCode < 200 || $whCode >= 300) {
+                $webhookPayload2 = [
+                    'webhook' => [
+                        'enabled' => true,
+                        'url' => $webhookUrl,
+                        'events' => [
+                            'MESSAGES_UPSERT',
+                            'SEND_MESSAGE',
+                            'CONTACTS_UPSERT',
+                            'CONTACTS_UPDATE',
+                            'CONNECTION_UPDATE',
+                            'GROUPS_UPSERT',
+                            'GROUP_UPDATE',
+                            'GROUP_PARTICIPANTS_UPDATE',
+                            'QRCODE_UPDATED',
+                        ],
+                        'webhook_by_events' => false,
+                        'webhook_base64' => true,
+                    ]
+                ];
+                $ch3 = curl_init($webhookSetUrl);
+                curl_setopt($ch3, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch3, CURLOPT_CUSTOMREQUEST, 'PUT');
+                curl_setopt($ch3, CURLOPT_POSTFIELDS, json_encode($webhookPayload2));
+                curl_setopt($ch3, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+                curl_setopt($ch3, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch3, CURLOPT_TIMEOUT, 30);
+                $whResp = curl_exec($ch3);
+                $whCode = curl_getinfo($ch3, CURLINFO_HTTP_CODE);
+                curl_close($ch3);
+            }
             
             $decoded = json_decode($response, true);
             echo json_encode([
