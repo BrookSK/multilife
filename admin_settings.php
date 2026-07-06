@@ -1165,12 +1165,15 @@ foreach ($sections as $sectionTitle => $sectionData) {
 (function(){
 var waCheckInterval = null;
 var waInstance = {$jsInstance};
+var waProvisioning = false;
 
 var htmlConnected = '<div style="padding:30px"><div style="color:hsl(142,76%,36%);margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div style="font-size:20px;font-weight:700;color:hsl(142,76%,36%);margin-bottom:8px">WhatsApp Conectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Instância <strong>' + waInstance + '</strong> está ativa e funcionando.</div><button type="button" class="btn" onclick="waDisconnect()" style="background:#ef4444;color:white;border:none">Desconectar</button></div>';
 
 var htmlDisconnected = '<div style="padding:30px"><div style="color:#ef4444;margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div><div style="font-size:20px;font-weight:700;color:#ef4444;margin-bottom:8px">WhatsApp Desconectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Escaneie o QR Code para conectar a instância <strong>' + waInstance + '</strong>.</div><button type="button" class="btn btnPrimary" onclick="waConnect()">Conectar (QR Code)</button></div>';
 
 var htmlConnecting = '<div style="padding:30px"><div style="color:#0ea5e9;margin-bottom:16px"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg></div><div style="font-size:18px;font-weight:700;color:#0ea5e9;margin-bottom:8px">Conectando...</div><div style="font-size:14px;color:#666">Aguarde a sincronização do WhatsApp.</div></div>';
+
+var htmlProvisioning = '<div style="padding:30px"><div style="color:#f59e0b;margin-bottom:16px"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg></div><div style="font-size:18px;font-weight:700;color:#f59e0b;margin-bottom:8px">Criando instância...</div><div style="font-size:14px;color:#666">Configurando automaticamente a instância <strong>' + waInstance + '</strong> com webhooks.</div></div>';
 
 function waShowConnected(){
   document.getElementById("wa-status-area").innerHTML = htmlConnected;
@@ -1180,16 +1183,41 @@ function waShowConnected(){
 
 function waShowDisconnected(){
   document.getElementById("wa-status-area").innerHTML = htmlDisconnected;
+  document.getElementById("wa-qr-area").style.display = "none";
 }
 
 function waShowConnecting(){
   document.getElementById("wa-status-area").innerHTML = htmlConnecting;
 }
 
+function waProvision(){
+  if(waProvisioning) return;
+  waProvisioning = true;
+  document.getElementById("wa-status-area").innerHTML = htmlProvisioning;
+  fetch("/evolution_proxy.php?action=provision&instance=" + encodeURIComponent(waInstance))
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    waProvisioning = false;
+    if(data.success){
+      waShowDisconnected();
+    } else {
+      document.getElementById("wa-status-area").innerHTML = '<div style="padding:30px;text-align:center"><div style="color:red;font-weight:600;margin-bottom:8px">Erro ao criar instância</div><div style="font-size:13px;color:#666">' + (data.error || 'Erro desconhecido') + '</div><div style="margin-top:16px"><button type="button" class="btn btnPrimary" onclick="waProvision()">Tentar Novamente</button></div></div>';
+    }
+  })
+  .catch(function(e){
+    waProvisioning = false;
+    document.getElementById("wa-status-area").innerHTML = '<div style="padding:30px;text-align:center"><div style="color:red;font-weight:600">Erro: ' + e.message + '</div><div style="margin-top:16px"><button type="button" class="btn btnPrimary" onclick="waProvision()">Tentar Novamente</button></div></div>';
+  });
+}
+
 function waCheckStatus(){
   fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
   .then(function(r){ return r.json(); })
   .then(function(data){
+    if(data.error === "instance_not_found" || data.code === 404){
+      waProvision();
+      return;
+    }
     var state = null;
     if(data.state) state = data.state;
     else if(data.instance && data.instance.state) state = data.instance.state;
@@ -1216,6 +1244,11 @@ window.waConnect = function(){
   .then(function(r){ return r.json(); })
   .then(function(data){
     var container = document.getElementById("wa-qr-container");
+    if(data.error === "instance_not_found" || data.code === 404){
+      document.getElementById("wa-qr-area").style.display = "none";
+      waProvision();
+      return;
+    }
     if(data.instance && data.instance.state === "open"){
       waShowConnected();
       return;

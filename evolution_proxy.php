@@ -12,8 +12,8 @@ header('Content-Type: application/json');
 $action = $_GET['action'] ?? '';
 $instanceName = $_GET['instance'] ?? '';
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
+$baseUrl = trim((string)admin_setting_get('evolution.base_url', ''));
+$apiKey = trim((string)admin_setting_get('evolution.api_key', ''));
 
 if (empty($baseUrl) || empty($apiKey)) {
     echo json_encode(['error' => 'Evolution API não configurada']);
@@ -32,9 +32,11 @@ try {
         case 'connect':
             $url = $baseUrl . '/instance/connect/' . urlencode($instanceName);
             break;
+
         case 'status':
             $url = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
             break;
+
         case 'logout':
             $url = $baseUrl . '/instance/logout/' . urlencode($instanceName);
             $ch = curl_init($url);
@@ -52,15 +54,66 @@ try {
                 echo json_encode(['success' => false, 'error' => 'Erro ao desconectar. Código: ' . $httpCode]);
             }
             exit;
+
+        case 'provision':
+            // Criar instância automaticamente com webhook configurado
+            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
+            if ($publicUrl === '') {
+                $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+                    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            }
+            $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
+            
+            $createPayload = [
+                'instanceName' => $instanceName,
+                'qrcode' => true,
+                'integration' => 'WHATSAPP-BAILEYS',
+                'webhook' => $webhookUrl,
+                'webhook_by_events' => false,
+                'webhook_base64' => true,
+                'events' => [
+                    'MESSAGES_UPSERT',
+                    'SEND_MESSAGE',
+                    'CONTACTS_UPSERT',
+                    'CONTACTS_UPDATE',
+                    'CONNECTION_UPDATE',
+                    'GROUPS_UPSERT',
+                    'GROUP_UPDATE',
+                    'GROUP_PARTICIPANTS_UPDATE',
+                    'QRCODE_UPDATED',
+                ],
+            ];
+            
+            $createUrl = $baseUrl . '/instance/create';
+            $ch = curl_init($createUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($createPayload));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode >= 200 && $httpCode < 300) {
+                $decoded = json_decode($response, true);
+                echo json_encode(['success' => true, 'instance' => $instanceName, 'data' => $decoded]);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Falha ao criar instância. Código: ' . $httpCode, 'response' => $response]);
+            }
+            exit;
+
         default:
             echo json_encode(['error' => 'Ação inválida']);
             exit;
     }
     
+    // Executar request para connect/status
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Para desenvolvimento
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     
     $response = curl_exec($ch);
@@ -68,12 +121,10 @@ try {
     $curlError = curl_error($ch);
     curl_close($ch);
     
-    if ($httpCode === 200) {
-        // Para ação de status, normalizar a resposta para incluir 'state' no nível raiz
+    if ($httpCode >= 200 && $httpCode < 300) {
         if ($action === 'status') {
             $decoded = json_decode($response, true);
             if (is_array($decoded)) {
-                // Se a resposta tem instance.state, extrair para o nível raiz
                 if (isset($decoded['instance']['state'])) {
                     $decoded['state'] = $decoded['instance']['state'];
                 }
@@ -84,15 +135,16 @@ try {
         } else {
             echo $response;
         }
+    } elseif ($httpCode === 404) {
+        // Instância não existe — sinalizar para o frontend criar
+        echo json_encode(['error' => 'instance_not_found', 'code' => 404, 'instance' => $instanceName]);
     } else {
-        // Debug detalhado
-        $errorData = [
+        echo json_encode([
             'error' => 'Erro na API Evolution. Código: ' . $httpCode,
             'url' => $url,
             'response' => $response,
             'curl_error' => $curlError
-        ];
-        echo json_encode($errorData);
+        ]);
     }
 } catch (Exception $e) {
     echo json_encode(['error' => 'Erro ao conectar: ' . $e->getMessage()]);
