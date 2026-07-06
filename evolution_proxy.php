@@ -38,7 +38,7 @@ try {
             }
             $whUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
             
-            $whPayload = json_encode([
+            $whPayloadData = [
                 'enabled' => true,
                 'url' => $whUrl,
                 'webhook_by_events' => false,
@@ -54,31 +54,63 @@ try {
                     'GROUP_PARTICIPANTS_UPDATE',
                     'QRCODE_UPDATED',
                 ],
-            ]);
+            ];
+            
+            $whConfigured = false;
+            
+            // Tentar POST /webhook/set/{instance}
             $whSetUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
             $chWh = curl_init($whSetUrl);
             curl_setopt($chWh, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($chWh, CURLOPT_POST, true);
-            curl_setopt($chWh, CURLOPT_POSTFIELDS, $whPayload);
+            curl_setopt($chWh, CURLOPT_POSTFIELDS, json_encode($whPayloadData));
             curl_setopt($chWh, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
             curl_setopt($chWh, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($chWh, CURLOPT_TIMEOUT, 10);
-            curl_exec($chWh);
-            $whHttpCode = curl_getinfo($chWh, CURLINFO_HTTP_CODE);
+            $whResp1 = curl_exec($chWh);
+            $whCode1 = curl_getinfo($chWh, CURLINFO_HTTP_CODE);
             curl_close($chWh);
             
-            // Se POST falhou, tentar PUT
-            if ($whHttpCode < 200 || $whHttpCode >= 300) {
-                $whPayload2 = json_encode(['webhook' => json_decode($whPayload, true)]);
+            if ($whCode1 >= 200 && $whCode1 < 300) {
+                $whConfigured = true;
+            }
+            
+            // Se POST falhou, tentar PUT /webhook/set/{instance} com wrapper
+            if (!$whConfigured) {
+                $whPayload2 = ['webhook' => $whPayloadData];
                 $chWh2 = curl_init($whSetUrl);
                 curl_setopt($chWh2, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($chWh2, CURLOPT_CUSTOMREQUEST, 'PUT');
-                curl_setopt($chWh2, CURLOPT_POSTFIELDS, $whPayload2);
+                curl_setopt($chWh2, CURLOPT_POSTFIELDS, json_encode($whPayload2));
                 curl_setopt($chWh2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
                 curl_setopt($chWh2, CURLOPT_SSL_VERIFYPEER, false);
                 curl_setopt($chWh2, CURLOPT_TIMEOUT, 10);
-                curl_exec($chWh2);
+                $whResp2 = curl_exec($chWh2);
+                $whCode2 = curl_getinfo($chWh2, CURLINFO_HTTP_CODE);
                 curl_close($chWh2);
+                
+                if ($whCode2 >= 200 && $whCode2 < 300) {
+                    $whConfigured = true;
+                }
+            }
+            
+            // Se ambos falharam, tentar PUT /webhook/{instance} (sem /set/)
+            if (!$whConfigured) {
+                $whUrl3 = $baseUrl . '/webhook/' . urlencode($instanceName);
+                $chWh3 = curl_init($whUrl3);
+                curl_setopt($chWh3, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($chWh3, CURLOPT_CUSTOMREQUEST, 'PUT');
+                curl_setopt($chWh3, CURLOPT_POSTFIELDS, json_encode($whPayloadData));
+                curl_setopt($chWh3, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+                curl_setopt($chWh3, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($chWh3, CURLOPT_TIMEOUT, 10);
+                $whResp3 = curl_exec($chWh3);
+                $whCode3 = curl_getinfo($chWh3, CURLINFO_HTTP_CODE);
+                curl_close($chWh3);
+                
+                if ($whCode3 >= 200 && $whCode3 < 300) {
+                    $whConfigured = true;
+                }
             }
             
             $url = $baseUrl . '/instance/connect/' . urlencode($instanceName);
@@ -87,6 +119,90 @@ try {
         case 'status':
             $url = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
             break;
+
+        case 'debug_webhook':
+            // Testa todos os endpoints possíveis de webhook e retorna os resultados
+            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
+            if ($publicUrl === '') {
+                $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+                    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            }
+            $whUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
+            $results = [];
+            
+            $whPayloadData = [
+                'enabled' => true,
+                'url' => $whUrl,
+                'webhook_by_events' => false,
+                'webhook_base64' => true,
+                'events' => [
+                    'MESSAGES_UPSERT',
+                    'SEND_MESSAGE',
+                    'CONTACTS_UPSERT',
+                    'CONTACTS_UPDATE',
+                    'CONNECTION_UPDATE',
+                    'GROUPS_UPSERT',
+                    'GROUP_UPDATE',
+                    'GROUP_PARTICIPANTS_UPDATE',
+                    'QRCODE_UPDATED',
+                ],
+            ];
+            
+            // Teste 1: POST /webhook/set/{instance}
+            $testUrl1 = $baseUrl . '/webhook/set/' . urlencode($instanceName);
+            $ch1 = curl_init($testUrl1);
+            curl_setopt($ch1, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch1, CURLOPT_POST, true);
+            curl_setopt($ch1, CURLOPT_POSTFIELDS, json_encode($whPayloadData));
+            curl_setopt($ch1, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($ch1, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch1, CURLOPT_TIMEOUT, 10);
+            $r1 = curl_exec($ch1);
+            $c1 = curl_getinfo($ch1, CURLINFO_HTTP_CODE);
+            curl_close($ch1);
+            $results[] = ['method' => 'POST', 'url' => $testUrl1, 'code' => $c1, 'response' => $r1];
+            
+            // Teste 2: PUT /webhook/set/{instance}
+            $ch2 = curl_init($testUrl1);
+            curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch2, CURLOPT_CUSTOMREQUEST, 'PUT');
+            curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($whPayloadData));
+            curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch2, CURLOPT_TIMEOUT, 10);
+            $r2 = curl_exec($ch2);
+            $c2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+            curl_close($ch2);
+            $results[] = ['method' => 'PUT', 'url' => $testUrl1, 'code' => $c2, 'response' => $r2];
+            
+            // Teste 3: POST /webhook/{instance} (sem /set/)
+            $testUrl3 = $baseUrl . '/webhook/' . urlencode($instanceName);
+            $ch3 = curl_init($testUrl3);
+            curl_setopt($ch3, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch3, CURLOPT_POST, true);
+            curl_setopt($ch3, CURLOPT_POSTFIELDS, json_encode($whPayloadData));
+            curl_setopt($ch3, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($ch3, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch3, CURLOPT_TIMEOUT, 10);
+            $r3 = curl_exec($ch3);
+            $c3 = curl_getinfo($ch3, CURLINFO_HTTP_CODE);
+            curl_close($ch3);
+            $results[] = ['method' => 'POST', 'url' => $testUrl3, 'code' => $c3, 'response' => $r3];
+            
+            // Teste 4: GET /webhook/find/{instance} (ver webhook atual)
+            $testUrl4 = $baseUrl . '/webhook/find/' . urlencode($instanceName);
+            $ch4 = curl_init($testUrl4);
+            curl_setopt($ch4, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch4, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+            curl_setopt($ch4, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch4, CURLOPT_TIMEOUT, 10);
+            $r4 = curl_exec($ch4);
+            $c4 = curl_getinfo($ch4, CURLINFO_HTTP_CODE);
+            curl_close($ch4);
+            $results[] = ['method' => 'GET', 'url' => $testUrl4, 'code' => $c4, 'response' => $r4];
+            
+            echo json_encode(['webhook_url' => $whUrl, 'results' => $results], JSON_PRETTY_PRINT);
+            exit;
 
         case 'logout':
             $url = $baseUrl . '/instance/logout/' . urlencode($instanceName);
