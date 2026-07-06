@@ -56,7 +56,31 @@ try {
             exit;
 
         case 'provision':
-            // Criar instância automaticamente com webhook configurado
+            // 1. Criar instância com payload mínimo (v2 da Evolution API)
+            $createPayload = [
+                'instanceName' => $instanceName,
+                'qrcode' => true,
+                'integration' => 'WHATSAPP-BAILEYS',
+            ];
+            
+            $createUrl = $baseUrl . '/instance/create';
+            $ch = curl_init($createUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($createPayload));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode < 200 || $httpCode >= 300) {
+                echo json_encode(['success' => false, 'error' => 'Falha ao criar instância. Código: ' . $httpCode, 'response' => $response]);
+                exit;
+            }
+            
+            // 2. Configurar webhook separadamente via /webhook/set/{instance}
             $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
             if ($publicUrl === '') {
                 $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
@@ -64,11 +88,8 @@ try {
             }
             $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
             
-            $createPayload = [
-                'instanceName' => $instanceName,
-                'qrcode' => true,
-                'integration' => 'WHATSAPP-BAILEYS',
-                'webhook' => $webhookUrl,
+            $webhookPayload = [
+                'url' => $webhookUrl,
                 'webhook_by_events' => false,
                 'webhook_base64' => true,
                 'events' => [
@@ -84,24 +105,26 @@ try {
                 ],
             ];
             
-            $createUrl = $baseUrl . '/instance/create';
-            $ch = curl_init($createUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($createPayload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $webhookSetUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
+            $ch2 = curl_init($webhookSetUrl);
+            curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch2, CURLOPT_POST, true);
+            curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode($webhookPayload));
+            curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+            curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch2, CURLOPT_TIMEOUT, 30);
+            $whResp = curl_exec($ch2);
+            $whCode = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+            curl_close($ch2);
             
-            if ($httpCode >= 200 && $httpCode < 300) {
-                $decoded = json_decode($response, true);
-                echo json_encode(['success' => true, 'instance' => $instanceName, 'data' => $decoded]);
-            } else {
-                echo json_encode(['success' => false, 'error' => 'Falha ao criar instância. Código: ' . $httpCode, 'response' => $response]);
-            }
+            $decoded = json_decode($response, true);
+            echo json_encode([
+                'success' => true,
+                'instance' => $instanceName,
+                'data' => $decoded,
+                'webhook_configured' => ($whCode >= 200 && $whCode < 300),
+                'webhook_url' => $webhookUrl,
+            ]);
             exit;
 
         default:
