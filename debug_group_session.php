@@ -66,7 +66,7 @@ echo "\n=== 3. TESTE ENVIO DIRETO (curl raw) ===\n";
 $sendUrl = $baseUrl . '/message/sendText/' . urlencode($instanceName);
 $payload = json_encode([
     'number' => $groupJid,
-    'textMessage' => ['text' => 'Teste de sessão - ' . date('H:i:s')],
+    'text' => 'Teste de sessão - ' . date('H:i:s'),
 ]);
 echo "URL: $sendUrl\n";
 echo "Payload: $payload\n\n";

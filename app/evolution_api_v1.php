@@ -211,7 +211,7 @@ final class EvolutionApiV1
     {
         $body = [
             'number' => $number,
-            'textMessage' => ['text' => $text],
+            'text' => $text,
         ];
         // Só incluir options se não estiver vazio (evitar enviar options:{} que pode causar 400 em grupos)
         if (!empty($options)) {
@@ -230,7 +230,7 @@ final class EvolutionApiV1
         // Formato 1: JID completo (padrão)
         $body = [
             'number' => $groupJid,
-            'textMessage' => ['text' => $text],
+            'text' => $text,
         ];
         $res = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body);
         
@@ -246,7 +246,7 @@ final class EvolutionApiV1
         $groupId = str_replace('@g.us', '', $groupJid);
         $body2 = [
             'number' => $groupId,
-            'textMessage' => ['text' => $text],
+            'text' => $text,
         ];
         
         // Delay antes de tentar novamente
@@ -264,7 +264,7 @@ final class EvolutionApiV1
         // Formato 3: Usando campo "options" com "delay" pode forçar novo lookup
         $body3 = [
             'number' => $groupJid,
-            'textMessage' => ['text' => $text],
+            'text' => $text,
             'options' => (object)['delay' => 2000],
         ];
         

@@ -35,6 +35,23 @@ try {
         case 'status':
             $url = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
             break;
+        case 'logout':
+            $url = $baseUrl . '/instance/logout/' . urlencode($instanceName);
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($httpCode >= 200 && $httpCode < 300) {
+                echo json_encode(['success' => true, 'message' => 'Desconectado com sucesso']);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Erro ao desconectar. Código: ' . $httpCode]);
+            }
+            exit;
         default:
             echo json_encode(['error' => 'Ação inválida']);
             exit;
