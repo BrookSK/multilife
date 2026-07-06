@@ -1159,118 +1159,109 @@ foreach ($sections as $sectionTitle => $sectionData) {
             
             echo '<style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>';
             
-            echo '<script>';
-            echo '(function(){';
-            echo 'var waCheckInterval = null;';
-            echo 'var waInstance = ' . json_encode($instanceNameWA) . ';';
-            echo '';
-            echo 'function waShowConnected(){';
-            echo '  document.getElementById("wa-status-area").innerHTML = \'';
-            echo '<div style="padding:30px">';
-            echo '<div style="color:hsl(142,76%,36%);margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>';
-            echo '<div style="font-size:20px;font-weight:700;color:hsl(142,76%,36%);margin-bottom:8px">WhatsApp Conectado</div>';
-            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px">Instância <strong>\' + waInstance + \'</strong> está ativa e funcionando.</div>';
-            echo '<button type="button" class="btn" onclick="waDisconnect()" style="background:#ef4444;color:white;border:none">Desconectar</button>';
-            echo '</div>\';';
-            echo '  document.getElementById("wa-qr-area").style.display = "none";';
-            echo '  if(waCheckInterval) { clearInterval(waCheckInterval); waCheckInterval = null; }';
-            echo '}';
-            echo '';
-            echo 'function waShowDisconnected(){';
-            echo '  document.getElementById("wa-status-area").innerHTML = \'';
-            echo '<div style="padding:30px">';
-            echo '<div style="color:#ef4444;margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>';
-            echo '<div style="font-size:20px;font-weight:700;color:#ef4444;margin-bottom:8px">WhatsApp Desconectado</div>';
-            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground));margin-bottom:20px">Escaneie o QR Code para conectar a instância <strong>\' + waInstance + \'</strong>.</div>';
-            echo '<button type="button" class="btn btnPrimary" onclick="waConnect()">Conectar (QR Code)</button>';
-            echo '</div>\';';
-            echo '}';
-            echo '';
-            echo 'function waShowConnecting(){';
-            echo '  document.getElementById("wa-status-area").innerHTML = \'';
-            echo '<div style="padding:30px">';
-            echo '<div style="color:hsl(var(--primary));margin-bottom:16px"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg></div>';
-            echo '<div style="font-size:18px;font-weight:700;color:hsl(var(--primary));margin-bottom:8px">Conectando...</div>';
-            echo '<div style="font-size:14px;color:hsl(var(--muted-foreground))">Aguarde a sincronização do WhatsApp.</div>';
-            echo '</div>\';';
-            echo '}';
-            echo '';
-            echo 'function waCheckStatus(){';
-            echo '  fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))';
-            echo '  .then(function(r){ return r.json(); })';
-            echo '  .then(function(data){';
-            echo '    var state = null;';
-            echo '    if(data.state) state = data.state;';
-            echo '    else if(data.instance && data.instance.state) state = data.instance.state;';
-            echo '    else if(data.instanceState) state = data.instanceState;';
-            echo '    if(state === "open" || state === "connected"){';
-            echo '      waShowConnected();';
-            echo '    } else if(state === "connecting"){';
-            echo '      waShowConnecting();';
-            echo '    } else {';
-            echo '      waShowDisconnected();';
-            echo '    }';
-            echo '  })';
-            echo '  .catch(function(e){';
-            echo '    console.error("Erro ao verificar status:", e);';
-            echo '    waShowDisconnected();';
-            echo '  });';
-            echo '}';
-            echo '';
-            echo 'window.waConnect = function(){';
-            echo '  document.getElementById("wa-qr-area").style.display = "block";';
-            echo '  document.getElementById("wa-qr-container").innerHTML = \'<div style="color:#666;padding:40px">Gerando QR Code...</div>\';';
-            echo '  document.getElementById("wa-qr-message").textContent = "";';
-            echo '  fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(waInstance))';
-            echo '  .then(function(r){ return r.json(); })';
-            echo '  .then(function(data){';
-            echo '    var container = document.getElementById("wa-qr-container");';
-            echo '    if(data.instance && data.instance.state === "open"){';
-            echo '      waShowConnected();';
-            echo '      return;';
-            echo '    }';
-            echo '    var qrImg = data.base64 || (data.qrcode && data.qrcode.base64) || (data.qrcode && data.qrcode.code) || null;';
-            echo '    if(qrImg){';
-            echo '      container.innerHTML = \'<img src="\' + qrImg + \'" alt="QR Code" style="max-width:300px;width:100%">\';';
-            echo '      document.getElementById("wa-qr-message").innerHTML = \'<span style="color:hsl(var(--primary));font-weight:600">📱 Escaneie o QR Code com seu WhatsApp</span>\';';
-            echo '      waCheckInterval = setInterval(function(){';
-            echo '        fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))';
-            echo '        .then(function(r){ return r.json(); })';
-            echo '        .then(function(d){';
-            echo '          var s = d.state || (d.instance && d.instance.state) || d.instanceState || null;';
-            echo '          if(s === "open" || s === "connected"){';
-            echo '            waShowConnected();';
-            echo '          }';
-            echo '        });';
-            echo '      }, 3000);';
-            echo '    } else if(data.error){';
-            echo '      container.innerHTML = \'<div style="color:red;padding:20px">\' + data.error + \'</div>\';';
-            echo '    } else {';
-            echo '      container.innerHTML = \'<div style="color:orange;padding:20px">Resposta inesperada da API. Verifique o console.</div>\';';
-            echo '      console.error("Resposta QR:", data);';
-            echo '    }';
-            echo '  })';
-            echo '  .catch(function(e){';
-            echo '    document.getElementById("wa-qr-container").innerHTML = \'<div style="color:red;padding:20px">Erro: \' + e.message + \'</div>\';';
-            echo '  });';
-            echo '};';
-            echo '';
-            echo 'window.waDisconnect = function(){';
-            echo '  if(!confirm("Deseja realmente desconectar o WhatsApp?")) return;';
-            echo '  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(waInstance))';
-            echo '  .then(function(r){ return r.json(); })';
-            echo '  .then(function(data){';
-            echo '    waShowDisconnected();';
-            echo '  })';
-            echo '  .catch(function(e){';
-            echo '    alert("Erro ao desconectar: " + e.message);';
-            echo '  });';
-            echo '};';
-            echo '';
-            echo '// Verificar status ao carregar a página';
-            echo 'waCheckStatus();';
-            echo '})();';
-            echo '</script>';
+            $jsInstance = json_encode($instanceNameWA);
+            echo <<<WAJS
+<script>
+(function(){
+var waCheckInterval = null;
+var waInstance = {$jsInstance};
+
+var htmlConnected = '<div style="padding:30px"><div style="color:hsl(142,76%,36%);margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div style="font-size:20px;font-weight:700;color:hsl(142,76%,36%);margin-bottom:8px">WhatsApp Conectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Instância <strong>' + waInstance + '</strong> está ativa e funcionando.</div><button type="button" class="btn" onclick="waDisconnect()" style="background:#ef4444;color:white;border:none">Desconectar</button></div>';
+
+var htmlDisconnected = '<div style="padding:30px"><div style="color:#ef4444;margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div><div style="font-size:20px;font-weight:700;color:#ef4444;margin-bottom:8px">WhatsApp Desconectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Escaneie o QR Code para conectar a instância <strong>' + waInstance + '</strong>.</div><button type="button" class="btn btnPrimary" onclick="waConnect()">Conectar (QR Code)</button></div>';
+
+var htmlConnecting = '<div style="padding:30px"><div style="color:#0ea5e9;margin-bottom:16px"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg></div><div style="font-size:18px;font-weight:700;color:#0ea5e9;margin-bottom:8px">Conectando...</div><div style="font-size:14px;color:#666">Aguarde a sincronização do WhatsApp.</div></div>';
+
+function waShowConnected(){
+  document.getElementById("wa-status-area").innerHTML = htmlConnected;
+  document.getElementById("wa-qr-area").style.display = "none";
+  if(waCheckInterval){ clearInterval(waCheckInterval); waCheckInterval = null; }
+}
+
+function waShowDisconnected(){
+  document.getElementById("wa-status-area").innerHTML = htmlDisconnected;
+}
+
+function waShowConnecting(){
+  document.getElementById("wa-status-area").innerHTML = htmlConnecting;
+}
+
+function waCheckStatus(){
+  fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    var state = null;
+    if(data.state) state = data.state;
+    else if(data.instance && data.instance.state) state = data.instance.state;
+    else if(data.instanceState) state = data.instanceState;
+    if(state === "open" || state === "connected"){
+      waShowConnected();
+    } else if(state === "connecting"){
+      waShowConnecting();
+    } else {
+      waShowDisconnected();
+    }
+  })
+  .catch(function(e){
+    console.error("Erro ao verificar status:", e);
+    waShowDisconnected();
+  });
+}
+
+window.waConnect = function(){
+  document.getElementById("wa-qr-area").style.display = "block";
+  document.getElementById("wa-qr-container").innerHTML = '<div style="color:#666;padding:40px">Gerando QR Code...</div>';
+  document.getElementById("wa-qr-message").textContent = "";
+  fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(waInstance))
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    var container = document.getElementById("wa-qr-container");
+    if(data.instance && data.instance.state === "open"){
+      waShowConnected();
+      return;
+    }
+    var qrImg = data.base64 || (data.qrcode && data.qrcode.base64) || (data.qrcode && data.qrcode.code) || null;
+    if(qrImg){
+      container.innerHTML = '<img src="' + qrImg + '" alt="QR Code" style="max-width:300px;width:100%">';
+      document.getElementById("wa-qr-message").innerHTML = '<span style="color:#0ea5e9;font-weight:600">Escaneie o QR Code com seu WhatsApp</span>';
+      waCheckInterval = setInterval(function(){
+        fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          var s = d.state || (d.instance && d.instance.state) || d.instanceState || null;
+          if(s === "open" || s === "connected"){
+            waShowConnected();
+          }
+        });
+      }, 3000);
+    } else if(data.error){
+      container.innerHTML = '<div style="color:red;padding:20px">' + data.error + '</div>';
+    } else {
+      container.innerHTML = '<div style="color:orange;padding:20px">Resposta inesperada da API. Verifique o console.</div>';
+      console.error("Resposta QR:", data);
+    }
+  })
+  .catch(function(e){
+    document.getElementById("wa-qr-container").innerHTML = '<div style="color:red;padding:20px">Erro: ' + e.message + '</div>';
+  });
+};
+
+window.waDisconnect = function(){
+  if(!confirm("Deseja realmente desconectar o WhatsApp?")) return;
+  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(waInstance))
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    waShowDisconnected();
+  })
+  .catch(function(e){
+    alert("Erro ao desconectar: " + e.message);
+  });
+};
+
+waCheckStatus();
+})();
+</script>
+WAJS;
         }
         
         echo '</div>';
