@@ -32,6 +32,7 @@ function view_header(string $title): void
             ['title' => 'Meus Registros', 'path' => '/profissional_registros.php'],
             ['title' => 'Agendamentos', 'path' => '/profissional_agendamentos.php'],
             ['title' => 'Recebimentos', 'path' => '/profissional_recebimentos.php'],
+            ['title' => 'Minha Conta', 'path' => '/my_account.php'],
         ];
     } else {
         $menuItems = [
