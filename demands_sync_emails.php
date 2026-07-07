@@ -164,10 +164,10 @@ try {
     if ($openaiUrl === '' || $openaiKey === '') {
         $results['extraction'] = ['error' => 'OpenAI not configured'];
     } else {
-        // Buscar e-mails pendentes (não processados)
+        // Buscar e-mails pendentes ou com erro (para reprocessar)
         $pendingStmt = db()->prepare(
             "SELECT id, from_email, from_address, subject, body_text, body_html, received_at "
-            . "FROM inbound_emails WHERE status = 'pending' ORDER BY id ASC LIMIT 5"
+            . "FROM inbound_emails WHERE status IN ('pending', 'error') ORDER BY id ASC LIMIT 5"
         );
         $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
@@ -216,6 +216,7 @@ try {
 
                 if ($httpCode < 200 || $httpCode >= 300) {
                     db()->prepare("UPDATE inbound_emails SET status = 'error' WHERE id = :id")->execute(['id' => $em['id']]);
+                    error_log('[DEMAND_SYNC] OpenAI erro HTTP ' . $httpCode . ' para email #' . $em['id'] . ': ' . substr($resp, 0, 300));
                     continue;
                 }
 
@@ -229,6 +230,7 @@ try {
                 $parsed = json_decode($raw, true);
                 if (!is_array($parsed)) {
                     db()->prepare("UPDATE inbound_emails SET status = 'error' WHERE id = :id")->execute(['id' => $em['id']]);
+                    error_log('[DEMAND_SYNC] OpenAI resposta inválida para email #' . $em['id'] . ': ' . substr($raw, 0, 300));
                     continue;
                 }
 
@@ -262,8 +264,14 @@ try {
                 $demandId = (int)db()->lastInsertId();
 
                 // Marcar e-mail como processado
-                $updateStmt = db()->prepare("UPDATE inbound_emails SET status = 'processed', linked_demand_id = :did WHERE id = :id");
-                $updateStmt->execute(['did' => $demandId, 'id' => $em['id']]);
+                try {
+                    $updateStmt = db()->prepare("UPDATE inbound_emails SET status = 'processed', linked_demand_id = :did WHERE id = :id");
+                    $updateStmt->execute(['did' => $demandId, 'id' => $em['id']]);
+                } catch (Throwable $e2) {
+                    // Se coluna linked_demand_id não existe, tentar sem ela
+                    $updateStmt = db()->prepare("UPDATE inbound_emails SET status = 'processed' WHERE id = :id");
+                    $updateStmt->execute(['id' => $em['id']]);
+                }
 
                 $extracted++;
             }
