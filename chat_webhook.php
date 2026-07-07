@@ -53,6 +53,7 @@ if (in_array($event, $ignoredEvents)) {
 // =============================================
 if ($event === 'chats.update') {
     $chatData = $data['data'] ?? [];
+    error_log("[WEBHOOK] chats.update handler ativado, data count: " . (is_array($chatData) ? count($chatData) : 'not_array'));
     if (is_array($chatData) && count($chatData) > 0) {
         try {
             $api = new EvolutionApiV1();
@@ -62,9 +63,15 @@ if ($event === 'chats.update') {
                     continue;
                 }
                 
+                error_log("[WEBHOOK] chats.update: buscando mensagens para JID: $remoteJid");
+                
                 // Buscar últimas mensagens dessa conversa
                 $res = $api->findMessages($remoteJid);
+                $httpCode = (int)($res['status'] ?? 0);
+                error_log("[WEBHOOK] chats.update: findMessages HTTP $httpCode para $remoteJid");
+                
                 if (!isset($res['json']) || !is_array($res['json'])) {
+                    error_log("[WEBHOOK] chats.update: findMessages sem json válido para $remoteJid");
                     continue;
                 }
                 
