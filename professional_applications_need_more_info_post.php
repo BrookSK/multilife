@@ -78,6 +78,7 @@ $whatsappSent = false;
 $emailSent = false;
 
 // Envio síncrono WhatsApp
+$whatsappError = '';
 if ($appData) {
     $digits = preg_replace('/\D+/', '', (string)($appData['phone'] ?? ''));
     if ($digits !== '') {
@@ -97,9 +98,16 @@ if ($appData) {
             $api = new EvolutionApiV1();
             $res = $api->sendText($digits, $msg);
             $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+            if (!$whatsappSent) {
+                $whatsappError = 'HTTP ' . ($res['status'] ?? '?') . ' - ' . json_encode($res['json'] ?? $res['body_raw'] ?? '');
+                error_log('[SYNC_NOTIFY] WhatsApp erro: ' . $whatsappError);
+            }
         } catch (Throwable $e) {
-            error_log('[SYNC_NOTIFY] WhatsApp falhou: ' . $e->getMessage());
+            $whatsappError = $e->getMessage();
+            error_log('[SYNC_NOTIFY] WhatsApp exceção: ' . $whatsappError);
         }
+    } else {
+        $whatsappError = 'Telefone vazio';
     }
 
     // Envio síncrono E-mail
@@ -136,11 +144,11 @@ if (!$emailSent) {
 }
 
 $notifStatus = [];
-if ($whatsappSent) $notifStatus[] = 'WhatsApp enviado';
-if ($emailSent) $notifStatus[] = 'E-mail enviado';
-if (!$whatsappSent) $notifStatus[] = 'WhatsApp enfileirado';
+if ($whatsappSent) $notifStatus[] = 'WhatsApp enviado ✓';
+if ($emailSent) $notifStatus[] = 'E-mail enviado ✓';
+if (!$whatsappSent) $notifStatus[] = 'WhatsApp falhou (' . ($whatsappError ?: 'enfileirado') . ')';
 if (!$emailSent) $notifStatus[] = 'E-mail enfileirado';
 
-flash_set('success', 'Complemento solicitado. ' . implode(', ', $notifStatus) . '.');
+flash_set('success', 'Complemento solicitado. ' . implode(' | ', $notifStatus) . '.');
 header('Location: /professional_applications_view.php?id=' . $id);
 exit;
