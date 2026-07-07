@@ -166,8 +166,7 @@ try {
     } else {
         // Buscar e-mails pendentes ou com erro (para reprocessar)
         $pendingStmt = db()->prepare(
-            "SELECT id, from_email, from_address, subject, body_text, body_html, received_at "
-            . "FROM inbound_emails WHERE status IN ('pending', 'error') ORDER BY id ASC LIMIT 5"
+            "SELECT * FROM inbound_emails WHERE status IN ('pending', 'error') ORDER BY id ASC LIMIT 5"
         );
         $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
@@ -179,9 +178,10 @@ try {
             $results['extraction'] = ['success' => true, 'demands_created' => 0, 'message' => 'No pending emails'];
         } else {
             foreach ($pendingEmails as $em) {
-                $emailContent = trim((string)$em['body_text']);
+                $fromEmail = (string)($em['from_email'] ?? $em['from_address'] ?? '');
+                $emailContent = trim((string)($em['body_text'] ?? ''));
                 if ($emailContent === '') {
-                    $emailContent = strip_tags((string)$em['body_html']);
+                    $emailContent = strip_tags((string)($em['body_html'] ?? ''));
                 }
                 if (trim($emailContent) === '') {
                     db()->prepare("UPDATE inbound_emails SET status = 'skipped' WHERE id = :id")->execute(['id' => $em['id']]);
@@ -193,7 +193,7 @@ try {
 
                 $messages = [
                     ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => "ASSUNTO: " . (string)$em['subject'] . "\n\nCORPO:\n" . mb_substr($emailContent, 0, 4000)],
+                    ['role' => 'user', 'content' => "ASSUNTO: " . (string)($em['subject'] ?? '') . "\n\nCORPO:\n" . mb_substr($emailContent, 0, 4000)],
                 ];
 
                 $ch = curl_init($openaiUrl . '/chat/completions');
@@ -247,7 +247,7 @@ try {
                 );
                 $insertDemand->execute([
                     'title' => $title,
-                    'origin' => (string)$em['from_email'],
+                    'origin' => $fromEmail,
                     'pname' => (string)($parsed['patient_name'] ?? ''),
                     'pemail' => (string)($parsed['patient_email'] ?? ''),
                     'pphone' => (string)($parsed['patient_phone'] ?? ''),
