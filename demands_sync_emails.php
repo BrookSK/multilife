@@ -164,17 +164,19 @@ try {
     if ($openaiUrl === '' || $openaiKey === '') {
         $results['extraction'] = ['error' => 'OpenAI not configured'];
     } else {
-        // Se force=1, resetar e-mails processados para reprocessar
-        if (isset($_GET['force']) && $_GET['force'] === '1') {
-            $resetStmt = db()->prepare("UPDATE inbound_emails SET status = 'pending' WHERE status IN ('processed', 'error')");
-            $resetStmt->execute();
-            $resetCount = $resetStmt->rowCount();
-        }
+        // Se force=1, reprocessar todos os e-mails (ignorar status)
+        $forceMode = isset($_GET['force']) && $_GET['force'] === '1';
 
-        // Buscar e-mails que ainda não foram processados com sucesso
-        $pendingStmt = db()->prepare(
-            "SELECT * FROM inbound_emails WHERE status = 'pending' ORDER BY id ASC LIMIT 5"
-        );
+        // Buscar e-mails para processar
+        if ($forceMode) {
+            $pendingStmt = db()->prepare(
+                "SELECT * FROM inbound_emails ORDER BY id ASC LIMIT 5"
+            );
+        } else {
+            $pendingStmt = db()->prepare(
+                "SELECT * FROM inbound_emails WHERE status IN ('pending', 'received', 'error') ORDER BY id ASC LIMIT 5"
+            );
+        }
         $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
 
