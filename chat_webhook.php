@@ -58,8 +58,8 @@ if ($event === 'chats.update') {
             $api = new EvolutionApiV1();
             foreach ($chatData as $chat) {
                 $remoteJid = (string)($chat['remoteJid'] ?? '');
-                if ($remoteJid === '' || str_contains($remoteJid, '@lid')) {
-                    continue; // Ignorar JIDs internos (lid = linked id)
+                if ($remoteJid === '') {
+                    continue;
                 }
                 
                 // Buscar últimas mensagens dessa conversa
