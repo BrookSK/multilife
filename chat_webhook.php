@@ -78,16 +78,18 @@ if ($event === 'chats.update') {
                 $messages = $res['json'];
                 error_log("[WEBHOOK] chats.update: resposta keys=" . json_encode(array_keys($messages)) . " count=" . count($messages));
                 if (isset($messages['messages'])) {
-                    $messages = $messages['messages'];
-                    error_log("[WEBHOOK] chats.update: usando messages[] com " . count($messages) . " itens");
+                    $msgData = $messages['messages'];
+                    // Formato paginado: { total, pages, records: [...] }
+                    if (isset($msgData['records']) && is_array($msgData['records'])) {
+                        $messages = $msgData['records'];
+                    } elseif (is_array($msgData) && isset($msgData[0])) {
+                        $messages = $msgData;
+                    } else {
+                        $messages = [];
+                    }
                 }
                 
-                // Se a resposta é um array indexado (lista de mensagens direto)
-                if (isset($messages[0]) && is_array($messages[0])) {
-                    error_log("[WEBHOOK] chats.update: formato lista direta, " . count($messages) . " msgs");
-                } else {
-                    error_log("[WEBHOOK] chats.update: formato desconhecido, sample=" . substr(json_encode($messages), 0, 300));
-                }
+                error_log("[WEBHOOK] chats.update: " . count($messages) . " mensagens para processar");
                 
                 // Pegar apenas as últimas 5 mensagens (para não sobrecarregar)
                 $messages = array_slice($messages, 0, 5);
@@ -101,6 +103,9 @@ if ($event === 'chats.update') {
                         continue; // Ignorar mensagens enviadas por nós
                     }
                     
+                    // Usar remoteJidAlt (formato @s.whatsapp.net) se disponível
+                    $msgRemoteJid = (string)($key['remoteJidAlt'] ?? $key['remoteJid'] ?? $remoteJid);
+                    
                     // Verificar se já existe no banco
                     $checkStmt = db()->prepare("SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1");
                     $checkStmt->execute([$msgId]);
@@ -108,11 +113,16 @@ if ($event === 'chats.update') {
                         continue; // Já existe
                     }
                     
-                    // Extrair texto
+                    // Extrair texto — formato pode ser msg['message'] ou msg['message']['conversation']
                     $msgPayload = $msg['message'] ?? [];
-                    $messageText = (string)($msgPayload['conversation'] ?? '');
-                    if ($messageText === '' && isset($msgPayload['extendedTextMessage']['text'])) {
-                        $messageText = (string)$msgPayload['extendedTextMessage']['text'];
+                    $messageText = '';
+                    if (is_string($msgPayload)) {
+                        $messageText = $msgPayload;
+                    } elseif (is_array($msgPayload)) {
+                        $messageText = (string)($msgPayload['conversation'] ?? '');
+                        if ($messageText === '' && isset($msgPayload['extendedTextMessage']['text'])) {
+                            $messageText = (string)$msgPayload['extendedTextMessage']['text'];
+                        }
                     }
                     
                     $timestamp = (int)($msg['messageTimestamp'] ?? time());
@@ -121,11 +131,13 @@ if ($event === 'chats.update') {
                     
                     // Determinar tipo
                     $messageType = 'text';
-                    if (isset($msgPayload['imageMessage'])) $messageType = 'image';
-                    elseif (isset($msgPayload['videoMessage'])) $messageType = 'video';
-                    elseif (isset($msgPayload['audioMessage'])) $messageType = 'audio';
-                    elseif (isset($msgPayload['documentMessage'])) $messageType = 'document';
-                    elseif (isset($msgPayload['stickerMessage'])) $messageType = 'sticker';
+                    if (is_array($msgPayload)) {
+                        if (isset($msgPayload['imageMessage'])) $messageType = 'image';
+                        elseif (isset($msgPayload['videoMessage'])) $messageType = 'video';
+                        elseif (isset($msgPayload['audioMessage'])) $messageType = 'audio';
+                        elseif (isset($msgPayload['documentMessage'])) $messageType = 'document';
+                        elseif (isset($msgPayload['stickerMessage'])) $messageType = 'sticker';
+                    }
                     
                     if ($messageText === '' && $messageType === 'text') {
                         continue; // Mensagem vazia e não é mídia
@@ -137,7 +149,7 @@ if ($event === 'chats.update') {
                         . "VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())"
                     );
                     $insertStmt->execute([
-                        $remoteJid,
+                        $msgRemoteJid,
                         $messageText,
                         $timestamp,
                         $messageType,
@@ -146,7 +158,7 @@ if ($event === 'chats.update') {
                         $msgId,
                     ]);
                     
-                    error_log("[WEBHOOK] chats.update: nova mensagem salva de '$pushName' em $remoteJid (msgId: $msgId)");
+                    error_log("[WEBHOOK] chats.update: NOVA MENSAGEM salva de '$pushName' em $msgRemoteJid (msgId: $msgId, text: " . substr($messageText, 0, 50) . ")");
                     
                     // Atualizar contato
                     $contactStmt = db()->prepare(
@@ -154,8 +166,8 @@ if ($event === 'chats.update') {
                         . "VALUES (?, ?, ?, ?) "
                         . "ON DUPLICATE KEY UPDATE last_message_timestamp = VALUES(last_message_timestamp), contact_name = COALESCE(VALUES(contact_name), contact_name)"
                     );
-                    $isGroup = str_contains($remoteJid, '@g.us') ? 1 : 0;
-                    $contactStmt->execute([$remoteJid, $pushName, $isGroup, $timestamp]);
+                    $isGroup = str_contains($msgRemoteJid, '@g.us') ? 1 : 0;
+                    $contactStmt->execute([$msgRemoteJid, $pushName, $isGroup, $timestamp]);
                 }
             }
         } catch (Throwable $e) {
@@ -1172,11 +1184,16 @@ if ($event === 'contacts.upsert' || $event === 'contacts.update') {
     if (!is_array($contacts)) $contacts = [$contacts];
 
     foreach ($contacts as $contact) {
-        $jid  = $contact['id'] ?? '';
-        $name = $contact['name'] ?? $contact['pushName'] ?? '';
-        $pic  = $contact['profilePictureUrl'] ?? null;
+        $jid  = (string)($contact['id'] ?? $contact['remoteJid'] ?? '');
+        $name = (string)($contact['name'] ?? $contact['pushName'] ?? $contact['verifiedName'] ?? '');
+        $pic  = $contact['profilePictureUrl'] ?? $contact['profilePicUrl'] ?? null;
 
         if (empty($jid)) continue;
+        
+        // Se JID é @lid, tentar pegar o alternativo
+        if (str_contains($jid, '@lid') && !empty($contact['remoteJidAlt'])) {
+            $jid = (string)$contact['remoteJidAlt'];
+        }
 
         try {
             ensureChatTables();
@@ -1190,6 +1207,12 @@ if ($event === 'contacts.upsert' || $event === 'contacts.update') {
                     updated_at = CURRENT_TIMESTAMP
             ");
             $stmt->execute([$jid, $name, $pic, $isGroup]);
+            
+            // Se tem @lid, salvar com o JID original também para mapeamento
+            $lidJid = (string)($contact['remoteJid'] ?? $contact['id'] ?? '');
+            if ($lidJid !== '' && $lidJid !== $jid && str_contains($lidJid, '@lid')) {
+                $stmt->execute([$lidJid, $name, $pic, $isGroup]);
+            }
         } catch (Exception $e) {
             error_log("Webhook erro ao atualizar contato: " . $e->getMessage());
         }
