@@ -195,7 +195,13 @@ if (count($groups) === 0) {
                     $api2 = new EvolutionApiV1();
                     $settingsResult = $api2->updateGroupSetting($newGroupJid, 'announcement');
                     $settingsCode = $settingsResult['status'] ?? 0;
-                    error_log("[DISPATCH] Grupo configurado como 'somente admins': HTTP $settingsCode");
+                    $settingsJson = $settingsResult['json'] ?? $settingsResult['body_raw'] ?? '';
+                    error_log("[DISPATCH] Grupo configurado como 'somente admins': HTTP $settingsCode | Response: " . json_encode($settingsJson));
+                    
+                    if ($settingsCode < 200 || $settingsCode >= 300) {
+                        error_log("[DISPATCH] ⚠️ FALHA ao configurar grupo como announcement! HTTP $settingsCode");
+                        error_log("[DISPATCH] groupJid usado: $newGroupJid");
+                    }
                 } catch (Exception $e) {
                     error_log("[DISPATCH] Erro ao configurar grupo: " . $e->getMessage());
                 }

@@ -435,6 +435,21 @@ final class EvolutionApiV1
 
     public function updateGroupSetting(string $groupJid, string $action): array
     {
+        // Tentar formato 1: groupJid no body (Evolution API v2.3+)
+        $result = $this->request(
+            'PUT',
+            '/group/updateSetting/' . urlencode($this->inst()),
+            [],
+            ['groupJid' => $groupJid, 'action' => $action]
+        );
+        
+        $httpCode = (int)($result['status'] ?? 0);
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return $result;
+        }
+        
+        // Tentar formato 2: groupJid como query parameter (Evolution API v2.0-2.2)
+        error_log("[EVOLUTION] updateGroupSetting formato 1 falhou (HTTP $httpCode), tentando formato 2 (query param)");
         return $this->request(
             'PUT',
             '/group/updateSetting/' . urlencode($this->inst()),
