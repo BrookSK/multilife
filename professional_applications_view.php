@@ -76,20 +76,17 @@ if ($hasCouncil) {
         . '</button>';
 }
 
-echo '<form method="post" action="/professional_applications_approve_post.php" style="display:inline">';
-echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
-echo '<button class="btn btnPrimary" type="submit" onclick="return confirm(\'Aprovar e criar acesso?\')">Aprovar</button>';
-echo '</form>';
+$appStatus = (string)($pa['status'] ?? '');
+if ($appStatus === 'pending' || $appStatus === 'need_more_info') {
+    echo '<form method="post" action="/professional_applications_approve_post.php" style="display:inline">';
+    echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
+    echo '<button class="btn btnPrimary" type="submit" onclick="return confirm(\'Aprovar e criar acesso?\')">Aprovar</button>';
+    echo '</form>';
 
-echo '<form method="post" action="/professional_applications_need_more_info_post.php" style="display:inline">';
-echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
-echo '<a class="btn" href="/professional_applications_need_more_info.php?id=' . (int)$pa['id'] . '">Solicitar complemento</a>';
-echo '</form>';
+    echo '<a class="btn" href="/professional_applications_need_more_info.php?id=' . (int)$pa['id'] . '">Solicitar complemento</a>';
 
-echo '<form method="post" action="/professional_applications_reject_post.php" style="display:inline">';
-echo '<input type="hidden" name="id" value="' . (int)$pa['id'] . '">';
-echo '<a class="btn" href="/professional_applications_reject.php?id=' . (int)$pa['id'] . '">Reprovar</a>';
-echo '</form>';
+    echo '<a class="btn" href="/professional_applications_reject.php?id=' . (int)$pa['id'] . '">Reprovar</a>';
+}
 
 echo '</div>';
 echo '</div>';
