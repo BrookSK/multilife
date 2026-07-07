@@ -129,6 +129,12 @@ $tablesToTruncate = [
     // WhatsApp instances tracking
     'whatsapp_instances',
     
+    // WhatsApp grupos
+    'whatsapp_groups',
+    'chat_groups',
+    'chat_group_participants',
+    'demand_dispatch_logs',
+    
     // RH
     'hr_employees',
     'hr_employee_dependents',
@@ -150,10 +156,10 @@ $tablesToTruncate = [
 $results = [];
 foreach ($tablesToTruncate as $table) {
     try {
-        $db->exec("TRUNCATE TABLE `$table`");
-        $results[] = "✅ $table — truncada";
+        $db->exec("DELETE FROM `$table`");
+        $db->exec("ALTER TABLE `$table` AUTO_INCREMENT = 1");
+        $results[] = "✅ $table — limpa";
     } catch (\PDOException $e) {
-        // Tabela pode não existir
         if (str_contains($e->getMessage(), "doesn't exist") || str_contains($e->getMessage(), 'Base table')) {
             $results[] = "⏭️ $table — não existe (ignorada)";
         } else {
