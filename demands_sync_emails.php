@@ -171,11 +171,23 @@ try {
         $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
 
+        // Debug: mostrar total de e-mails na tabela
+        $totalStmt = db()->query("SELECT COUNT(*) as total FROM inbound_emails");
+        $totalRow = $totalStmt->fetch();
+        $statusStmt = db()->query("SELECT status, COUNT(*) as cnt FROM inbound_emails GROUP BY status");
+        $statusCounts = $statusStmt->fetchAll(PDO::FETCH_ASSOC);
+
         $extracted = 0;
         $extractPrompt = (string)admin_setting_get('openai.extract_prompt', '');
 
         if (count($pendingEmails) === 0) {
-            $results['extraction'] = ['success' => true, 'demands_created' => 0, 'message' => 'No pending emails'];
+            $results['extraction'] = [
+                'success' => true,
+                'demands_created' => 0,
+                'message' => 'No pending emails',
+                'total_in_table' => (int)($totalRow['total'] ?? 0),
+                'status_breakdown' => $statusCounts,
+            ];
         } else {
             foreach ($pendingEmails as $em) {
                 $fromEmail = (string)($em['from_email'] ?? $em['from_address'] ?? '');
