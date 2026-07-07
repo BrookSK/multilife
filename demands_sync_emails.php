@@ -164,9 +164,9 @@ try {
     if ($openaiUrl === '' || $openaiKey === '') {
         $results['extraction'] = ['error' => 'OpenAI not configured'];
     } else {
-        // Buscar e-mails pendentes ou com erro (para reprocessar)
+        // Buscar e-mails não processados com sucesso
         $pendingStmt = db()->prepare(
-            "SELECT * FROM inbound_emails WHERE status IN ('pending', 'error') ORDER BY id ASC LIMIT 5"
+            "SELECT * FROM inbound_emails WHERE status NOT IN ('processed', 'skipped', 'ai_processed') ORDER BY id ASC LIMIT 5"
         );
         $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
