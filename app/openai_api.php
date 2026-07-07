@@ -58,7 +58,9 @@ final class OpenAiApi
             'messages' => $messages,
         ], $extra);
 
-        return $this->request('POST', '/v1/chat/completions', $payload);
+        // Se baseUrl já termina com /v1, não duplicar
+        $path = str_ends_with($this->baseUrl, '/v1') ? '/chat/completions' : '/v1/chat/completions';
+        return $this->request('POST', $path, $payload);
     }
 
     /**
@@ -73,7 +75,8 @@ final class OpenAiApi
             throw new RuntimeException("Arquivo de áudio não encontrado: $audioFilePath");
         }
 
-        $url = $this->baseUrl . '/v1/audio/transcriptions';
+        $basePath = str_ends_with($this->baseUrl, '/v1') ? '' : '/v1';
+        $url = $this->baseUrl . $basePath . '/audio/transcriptions';
         
         // Criar multipart/form-data manualmente
         $boundary = '----WebKitFormBoundary' . uniqid();
