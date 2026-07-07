@@ -431,13 +431,13 @@ echo '.kanbanPaginationInfo{font-size:13px;font-weight:600;color:hsl(var(--foreg
 echo '.kanbanColHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}';
 echo '</style>';
 
-// Sincronizar e-mails em background ao carregar a página
+// Sincronizar e-mails em background ao carregar (apenas IMAP poll, extração é via CRON)
 echo '<script>';
 echo '(function(){';
 echo '  fetch("/demands_sync_emails.php").then(function(r){ return r.json(); }).then(function(data){';
-echo '    var newDemands = (data.extraction && data.extraction.demands_created) || 0;';
-echo '    if(newDemands > 0){';
-echo '      location.reload();';
+echo '    var newEmails = (data.imap && data.imap.new_emails) || 0;';
+echo '    if(newEmails > 0){';
+echo '      console.log("Novos e-mails: " + newEmails + ". CRON vai processar em breve.");';
 echo '    }';
 echo '  }).catch(function(e){ console.log("Sync emails:", e); });';
 echo '})();';

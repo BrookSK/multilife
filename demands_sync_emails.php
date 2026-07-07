@@ -138,27 +138,12 @@ try {
 // 2. EXTRAÇÃO — Acionar processamento de e-mails
 // =============================================
 if (!$forceMode) {
-    // Modo normal: acionar o CRON de extração via HTTP (evita duplicação)
+    // Modo normal: apenas informa quantos e-mails estão pendentes
+    // A extração é feita exclusivamente pelo CRON (evita duplicação)
     try {
-        $cronToken = trim((string)admin_setting_get('cron.token', ''));
-        if ($cronToken === '') {
-            $results['extraction'] = ['error' => 'cron.token not configured'];
-        } else {
-            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
-            if ($publicUrl === '') {
-                $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-                    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-            }
-            $cronUrl = rtrim($publicUrl, '/') . '/cron/openai_extract_email_to_demand.php?token=' . urlencode($cronToken);
-            $ch = curl_init($cronUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 50);
-            $cronResp = curl_exec($ch);
-            $cronCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            $results['extraction'] = ['triggered_cron' => true, 'cron_http' => $cronCode];
-        }
+        $countStmt = db()->query("SELECT COUNT(*) as cnt FROM inbound_emails WHERE status IN ('received', 'ai_pending', 'pending')");
+        $pendingCount = (int)$countStmt->fetch()['cnt'];
+        $results['extraction'] = ['pending_for_cron' => $pendingCount];
     } catch (Throwable $e) {
         $results['extraction'] = ['error' => $e->getMessage()];
     }
