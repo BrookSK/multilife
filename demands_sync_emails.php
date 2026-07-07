@@ -166,12 +166,14 @@ try {
     } else {
         // Se force=1, resetar e-mails processados para reprocessar
         if (isset($_GET['force']) && $_GET['force'] === '1') {
-            db()->exec("UPDATE inbound_emails SET status = 'pending' WHERE status IN ('processed', 'error')");
+            $resetStmt = db()->prepare("UPDATE inbound_emails SET status = 'pending' WHERE status IN ('processed', 'error')");
+            $resetStmt->execute();
+            $resetCount = $resetStmt->rowCount();
         }
 
         // Buscar e-mails que ainda não foram processados com sucesso
         $pendingStmt = db()->prepare(
-            "SELECT * FROM inbound_emails WHERE status NOT IN ('skipped', 'ai_processed', 'processed') ORDER BY id ASC LIMIT 5"
+            "SELECT * FROM inbound_emails WHERE status = 'pending' ORDER BY id ASC LIMIT 5"
         );
         $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
