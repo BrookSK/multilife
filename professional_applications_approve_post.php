@@ -118,30 +118,17 @@ try {
         }
     }
 
-    // Envio síncrono E-mail (onboarding com credenciais)
     $toEmail = trim((string)$pa['email']);
     if ($toEmail !== '' && filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
         try {
             $fromEmail = (string)admin_setting_get('smtp.out.from_email', '');
             $fromName = (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care');
             if ($fromEmail !== '' && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
-                $subjectTpl = (string)admin_setting_get('professional.onboarding_email_subject_template', 'Bem-vindo(a) à MultiLife Care - Acesso aprovado');
-                if (trim($subjectTpl) === '') $subjectTpl = 'Bem-vindo(a) à MultiLife Care - Acesso aprovado';
-                $subject = strtr($subjectTpl, ['{name}' => (string)$pa['full_name'], '{email}' => (string)$pa['email'], '{login_url}' => $loginUrl]);
-
-                $bodyTpl = (string)admin_setting_get('professional.onboarding_email_body_template', '');
-                if (trim($bodyTpl) === '') {
-                    $bodyTpl = "Olá {name},\n\nSua candidatura foi aprovada!\n\nAcesse o sistema:\n{login_url}\n\nE-mail: {email}\nSenha provisória: {password}\n\nAltere sua senha no primeiro acesso.\n\nAtenciosamente,\nEquipe MultiLife Care";
-                }
-                $body = strtr($bodyTpl, [
-                    '{name}' => (string)$pa['full_name'],
-                    '{email}' => (string)$pa['email'],
-                    '{password}' => $tmpPassword,
-                    '{login_url}' => $loginUrl,
-                ]);
-
+                require_once __DIR__ . '/app/email_html_generators.php';
+                $subject = 'Bem-vindo(a) à MultiLife Care - Acesso aprovado';
+                $htmlBody = email_html_onboarding((string)$pa['full_name'], (string)$pa['email'], $tmpPassword, $loginUrl);
                 $client = new SmtpClient();
-                $client->send($fromEmail, $fromName, $toEmail, $subject, nl2br(htmlspecialchars($body)));
+                $client->send($fromEmail, $fromName, $toEmail, $subject, $htmlBody);
                 $emailSent = true;
             }
         } catch (Throwable $e) {

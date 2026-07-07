@@ -148,9 +148,8 @@ if ($appData) {
             $fromName = (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care');
             if ($fromEmail !== '' && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
                 require_once __DIR__ . '/app/email_html_generators.php';
-                $htmlBody = function_exists('email_html_application_need_info')
-                    ? email_html_application_need_info((string)($appData['full_name'] ?? ''), (string)$id, $message)
-                    : nl2br(htmlspecialchars($body));
+                $subject = 'Candidatura #' . $id . ' - Complemento necessário';
+                $htmlBody = email_html_application_need_info((string)($appData['full_name'] ?? ''), (string)$id, $message);
                 $client = new SmtpClient();
                 $client->send($fromEmail, $fromName, $email, $subject, $htmlBody);
                 $emailSent = true;
