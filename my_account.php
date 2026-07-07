@@ -40,7 +40,15 @@ echo '<input type="hidden" name="action" value="update_profile">';
 echo '<label>Nome completo<input name="name" value="' . h((string)$user['name']) . '" required></label>';
 echo '<label>E-mail<input type="email" name="email" value="' . h((string)$user['email']) . '" required></label>';
 echo '<label>Telefone<input name="phone" value="' . h((string)$user['phone']) . '" placeholder="(00) 00000-0000"></label>';
-echo '<label>Especialidade<input name="specialty" value="' . h((string)($user['specialty'] ?? '')) . '" placeholder="Ex: Enfermagem, Fisioterapia"></label>';
+echo '<label>Especialidade<select name="specialty">';
+echo '<option value="">Selecione...</option>';
+$specStmt = db()->query('SELECT id, name FROM specialties WHERE status = \'active\' ORDER BY name ASC');
+$specialties = $specStmt->fetchAll();
+foreach ($specialties as $spec) {
+    $selected = ((string)$user['specialty'] === (string)$spec['name']) ? ' selected' : '';
+    echo '<option value="' . h((string)$spec['name']) . '"' . $selected . '>' . h((string)$spec['name']) . '</option>';
+}
+echo '</select></label>';
 
 echo '<div style="display:flex;justify-content:flex-end">';
 echo '<button class="btn btnPrimary" type="submit">Salvar Alterações</button>';
