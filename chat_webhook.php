@@ -76,8 +76,17 @@ if ($event === 'chats.update') {
                 }
                 
                 $messages = $res['json'];
+                error_log("[WEBHOOK] chats.update: resposta keys=" . json_encode(array_keys($messages)) . " count=" . count($messages));
                 if (isset($messages['messages'])) {
                     $messages = $messages['messages'];
+                    error_log("[WEBHOOK] chats.update: usando messages[] com " . count($messages) . " itens");
+                }
+                
+                // Se a resposta é um array indexado (lista de mensagens direto)
+                if (isset($messages[0]) && is_array($messages[0])) {
+                    error_log("[WEBHOOK] chats.update: formato lista direta, " . count($messages) . " msgs");
+                } else {
+                    error_log("[WEBHOOK] chats.update: formato desconhecido, sample=" . substr(json_encode($messages), 0, 300));
                 }
                 
                 // Pegar apenas as últimas 5 mensagens (para não sobrecarregar)
