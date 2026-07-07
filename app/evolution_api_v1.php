@@ -435,13 +435,68 @@ final class EvolutionApiV1
 
     public function updateGroupSetting(string $groupJid, string $action): array
     {
-        // Evolution API v2.3+: POST /group/settingUpdate/{instance}
-        return $this->request(
-            'POST',
-            '/group/settingUpdate/' . urlencode($this->inst()),
+        // Evolution API v2.3.7 - Tentar múltiplos formatos de endpoint
+        // Formato 1: PUT /group/updateSetting/{instance} (documentação oficial v2)
+        $result = $this->request(
+            'PUT',
+            '/group/updateSetting/' . urlencode($this->inst()),
             [],
             ['groupJid' => $groupJid, 'action' => $action]
         );
+        
+        $httpCode = (int)($result['status'] ?? 0);
+        if ($httpCode >= 200 && $httpCode < 300) {
+            error_log("[EVOLUTION] updateGroupSetting OK com PUT /group/updateSetting (body)");
+            return $result;
+        }
+        
+        // Formato 2: PUT com groupJid como query param
+        error_log("[EVOLUTION] Formato 1 falhou (HTTP $httpCode), tentando formato 2");
+        $result2 = $this->request(
+            'PUT',
+            '/group/updateSetting/' . urlencode($this->inst()),
+            ['groupJid' => $groupJid],
+            ['action' => $action]
+        );
+        
+        $httpCode2 = (int)($result2['status'] ?? 0);
+        if ($httpCode2 >= 200 && $httpCode2 < 300) {
+            error_log("[EVOLUTION] updateGroupSetting OK com PUT /group/updateSetting (query)");
+            return $result2;
+        }
+        
+        // Formato 3: POST /group/updateSetting/{instance}
+        error_log("[EVOLUTION] Formato 2 falhou (HTTP $httpCode2), tentando formato 3 (POST)");
+        $result3 = $this->request(
+            'POST',
+            '/group/updateSetting/' . urlencode($this->inst()),
+            [],
+            ['groupJid' => $groupJid, 'action' => $action]
+        );
+        
+        $httpCode3 = (int)($result3['status'] ?? 0);
+        if ($httpCode3 >= 200 && $httpCode3 < 300) {
+            error_log("[EVOLUTION] updateGroupSetting OK com POST /group/updateSetting");
+            return $result3;
+        }
+        
+        // Formato 4: PUT /group/setting/{instance}
+        error_log("[EVOLUTION] Formato 3 falhou (HTTP $httpCode3), tentando formato 4");
+        $result4 = $this->request(
+            'PUT',
+            '/group/setting/' . urlencode($this->inst()),
+            [],
+            ['groupJid' => $groupJid, 'action' => $action]
+        );
+        
+        $httpCode4 = (int)($result4['status'] ?? 0);
+        if ($httpCode4 >= 200 && $httpCode4 < 300) {
+            error_log("[EVOLUTION] updateGroupSetting OK com PUT /group/setting");
+            return $result4;
+        }
+
+        error_log("[EVOLUTION] TODOS OS FORMATOS FALHARAM para updateGroupSetting. Códigos: $httpCode, $httpCode2, $httpCode3, $httpCode4");
+        return $result; // retorna o primeiro resultado
     }
 
     public function updateGroupSubject(string $groupJid, string $subject): array

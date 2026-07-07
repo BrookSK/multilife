@@ -32,6 +32,14 @@ if (count($groups) === 0) {
 
 echo "Encontrados " . count($groups) . " grupo(s) ativo(s).\n\n";
 
+// Tentar descobrir endpoints disponíveis
+echo "=== VERIFICANDO ENDPOINTS DISPONÍVEIS ===\n";
+$baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+$apiKeyVal = (string)admin_setting_get('evolution.api_key', '');
+$instanceName = (string)admin_setting_get('evolution.instance', '');
+echo "Base URL: $baseUrl\n";
+echo "Instance: $instanceName\n\n";
+
 $api = new EvolutionApiV1();
 $updated = 0;
 $errors = 0;
