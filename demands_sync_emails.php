@@ -164,20 +164,16 @@ try {
     if ($openaiUrl === '' || $openaiKey === '') {
         $results['extraction'] = ['error' => 'OpenAI not configured'];
     } else {
-        // Buscar e-mails que ainda não têm demanda criada
-        // Inclui processed sem linked_demand_id (falhou antes) e pending/error/received
-        $pendingStmt = db()->prepare(
-            "SELECT * FROM inbound_emails WHERE (status NOT IN ('skipped', 'ai_processed') AND (linked_demand_id IS NULL OR linked_demand_id = 0)) ORDER BY id ASC LIMIT 5"
-        );
-        try {
-            $pendingStmt->execute();
-        } catch (Throwable $e) {
-            // Se linked_demand_id não existe, buscar sem ela
-            $pendingStmt = db()->prepare(
-                "SELECT * FROM inbound_emails WHERE status NOT IN ('skipped', 'ai_processed', 'processed') ORDER BY id ASC LIMIT 5"
-            );
-            $pendingStmt->execute();
+        // Se force=1, resetar e-mails processados para reprocessar
+        if (isset($_GET['force']) && $_GET['force'] === '1') {
+            db()->exec("UPDATE inbound_emails SET status = 'pending' WHERE status IN ('processed', 'error')");
         }
+
+        // Buscar e-mails que ainda não foram processados com sucesso
+        $pendingStmt = db()->prepare(
+            "SELECT * FROM inbound_emails WHERE status NOT IN ('skipped', 'ai_processed', 'processed') ORDER BY id ASC LIMIT 5"
+        );
+        $pendingStmt->execute();
         $pendingEmails = $pendingStmt->fetchAll();
 
         // Debug: mostrar total de e-mails na tabela
@@ -286,14 +282,7 @@ try {
                 $demandId = (int)db()->lastInsertId();
 
                 // Marcar e-mail como processado
-                try {
-                    $updateStmt = db()->prepare("UPDATE inbound_emails SET status = 'processed', linked_demand_id = :did WHERE id = :id");
-                    $updateStmt->execute(['did' => $demandId, 'id' => $em['id']]);
-                } catch (Throwable $e2) {
-                    // Se coluna linked_demand_id não existe, tentar sem ela
-                    $updateStmt = db()->prepare("UPDATE inbound_emails SET status = 'processed' WHERE id = :id");
-                    $updateStmt->execute(['id' => $em['id']]);
-                }
+                db()->prepare("UPDATE inbound_emails SET status = 'processed' WHERE id = :id")->execute(['id' => $em['id']]);
 
                 $extracted++;
             }
