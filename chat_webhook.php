@@ -28,7 +28,6 @@ $ignoredEvents = [
     'presence.update',
     'chats.set',
     'chats.upsert',
-    'chats.update',
     'chats.delete',
     'contacts.set',
     'groups.update',
@@ -43,6 +42,111 @@ $ignoredEvents = [
 ];
 
 if (in_array($event, $ignoredEvents)) {
+    http_response_code(200);
+    echo json_encode(['status' => 'ok']);
+    exit;
+}
+
+// =============================================
+// Handler: chats.update — Buscar mensagens recentes via API
+// (Workaround para Evolution v2.3+ que não dispara messages.upsert)
+// =============================================
+if ($event === 'chats.update') {
+    $chatData = $data['data'] ?? [];
+    if (is_array($chatData) && count($chatData) > 0) {
+        try {
+            $api = new EvolutionApiV1();
+            foreach ($chatData as $chat) {
+                $remoteJid = (string)($chat['remoteJid'] ?? '');
+                if ($remoteJid === '' || str_contains($remoteJid, '@lid')) {
+                    continue; // Ignorar JIDs internos (lid = linked id)
+                }
+                
+                // Buscar últimas mensagens dessa conversa
+                $res = $api->findMessages($remoteJid);
+                if (!isset($res['json']) || !is_array($res['json'])) {
+                    continue;
+                }
+                
+                $messages = $res['json'];
+                if (isset($messages['messages'])) {
+                    $messages = $messages['messages'];
+                }
+                
+                // Pegar apenas as últimas 5 mensagens (para não sobrecarregar)
+                $messages = array_slice($messages, 0, 5);
+                
+                foreach ($messages as $msg) {
+                    $key = $msg['key'] ?? [];
+                    $msgId = (string)($key['id'] ?? '');
+                    $fromMe = (bool)($key['fromMe'] ?? false);
+                    
+                    if ($msgId === '' || $fromMe) {
+                        continue; // Ignorar mensagens enviadas por nós
+                    }
+                    
+                    // Verificar se já existe no banco
+                    $checkStmt = db()->prepare("SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1");
+                    $checkStmt->execute([$msgId]);
+                    if ($checkStmt->fetch()) {
+                        continue; // Já existe
+                    }
+                    
+                    // Extrair texto
+                    $msgPayload = $msg['message'] ?? [];
+                    $messageText = (string)($msgPayload['conversation'] ?? '');
+                    if ($messageText === '' && isset($msgPayload['extendedTextMessage']['text'])) {
+                        $messageText = (string)$msgPayload['extendedTextMessage']['text'];
+                    }
+                    
+                    $timestamp = (int)($msg['messageTimestamp'] ?? time());
+                    $pushName = (string)($msg['pushName'] ?? '');
+                    $participant = (string)($key['participant'] ?? '');
+                    
+                    // Determinar tipo
+                    $messageType = 'text';
+                    if (isset($msgPayload['imageMessage'])) $messageType = 'image';
+                    elseif (isset($msgPayload['videoMessage'])) $messageType = 'video';
+                    elseif (isset($msgPayload['audioMessage'])) $messageType = 'audio';
+                    elseif (isset($msgPayload['documentMessage'])) $messageType = 'document';
+                    elseif (isset($msgPayload['stickerMessage'])) $messageType = 'sticker';
+                    
+                    if ($messageText === '' && $messageType === 'text') {
+                        continue; // Mensagem vazia e não é mídia
+                    }
+                    
+                    // Inserir no banco
+                    $insertStmt = db()->prepare(
+                        "INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, message_type, sender_name, participant_jid, external_message_id, created_at) "
+                        . "VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())"
+                    );
+                    $insertStmt->execute([
+                        $remoteJid,
+                        $messageText,
+                        $timestamp,
+                        $messageType,
+                        $pushName,
+                        $participant,
+                        $msgId,
+                    ]);
+                    
+                    error_log("[WEBHOOK] chats.update: nova mensagem salva de '$pushName' em $remoteJid (msgId: $msgId)");
+                    
+                    // Atualizar contato
+                    $contactStmt = db()->prepare(
+                        "INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp) "
+                        . "VALUES (?, ?, ?, ?) "
+                        . "ON DUPLICATE KEY UPDATE last_message_timestamp = VALUES(last_message_timestamp), contact_name = COALESCE(VALUES(contact_name), contact_name)"
+                    );
+                    $isGroup = str_contains($remoteJid, '@g.us') ? 1 : 0;
+                    $contactStmt->execute([$remoteJid, $pushName, $isGroup, $timestamp]);
+                }
+            }
+        } catch (Throwable $e) {
+            error_log("[WEBHOOK] chats.update erro ao buscar mensagens: " . $e->getMessage());
+        }
+    }
+    
     http_response_code(200);
     echo json_encode(['status' => 'ok']);
     exit;
