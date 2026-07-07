@@ -117,9 +117,9 @@ $logoUrl = (string)admin_setting_get('app.logo_url', '');
             </div>
 
             <div id="field-file" style="display:none">
-                <label for="file">Selecione o arquivo</label>
-                <input type="file" name="file" id="file" accept="*/*">
-                <p style="font-size:12px;color:#64748b;margin-top:-10px;margin-bottom:16px">Máximo 10MB. Formatos aceitos: PDF, DOC, DOCX, JPG, PNG, etc.</p>
+                <label for="file">Selecione o(s) arquivo(s)</label>
+                <input type="file" name="files[]" id="file" accept="*/*" multiple>
+                <p style="font-size:12px;color:#64748b;margin-top:-10px;margin-bottom:16px">Máximo 10MB por arquivo. Pode selecionar vários de uma vez.</p>
             </div>
 
             <button type="submit" class="btn">Enviar</button>

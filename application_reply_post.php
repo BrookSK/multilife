@@ -32,76 +32,89 @@ if (!in_array($replyType, ['text', 'image', 'file'], true)) {
     $replyType = 'text';
 }
 
-$content = null;
-$filePath = null;
-$fileName = null;
-$fileSize = null;
-
 if ($replyType === 'text') {
     $content = trim((string)($_POST['content'] ?? ''));
     if ($content === '') {
         header('Location: /application_reply.php?token=' . urlencode($token) . '&error=empty');
         exit;
     }
+    
+    // Salvar resposta de texto
+    $insertStmt = db()->prepare(
+        'INSERT INTO professional_application_replies (application_id, reply_type, content, file_path, file_name, file_size) '
+        . 'VALUES (:app_id, :type, :content, NULL, NULL, NULL)'
+    );
+    $insertStmt->execute([
+        'app_id' => $appId,
+        'type' => 'text',
+        'content' => $content,
+    ]);
 } else {
-    // Upload de arquivo/imagem
-    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+    // Upload de arquivo(s)/imagem(ns)
+    if (!isset($_FILES['files']) || !is_array($_FILES['files']['name'])) {
         header('Location: /application_reply.php?token=' . urlencode($token) . '&error=upload');
         exit;
     }
 
-    $file = $_FILES['file'];
-    $maxSize = 10 * 1024 * 1024; // 10MB
-
-    if ((int)$file['size'] > $maxSize) {
-        header('Location: /application_reply.php?token=' . urlencode($token) . '&error=size');
-        exit;
-    }
-
-    $fileName = basename((string)$file['name']);
-    $fileSize = (int)$file['size'];
-
-    // Diretório de upload
+    $maxSize = 10 * 1024 * 1024; // 10MB por arquivo
     $uploadDir = __DIR__ . '/uploads/application_replies/' . $appId;
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0755, true);
     }
 
-    // Nome único
-    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-    $uniqueName = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-    $destPath = $uploadDir . '/' . $uniqueName;
+    $filesCount = count($_FILES['files']['name']);
+    $uploaded = 0;
 
-    if (!move_uploaded_file($file['tmp_name'], $destPath)) {
-        header('Location: /application_reply.php?token=' . urlencode($token) . '&error=save');
+    for ($i = 0; $i < $filesCount; $i++) {
+        if ($_FILES['files']['error'][$i] !== UPLOAD_ERR_OK) {
+            continue;
+        }
+        if ((int)$_FILES['files']['size'][$i] > $maxSize) {
+            continue;
+        }
+
+        $fileName = basename((string)$_FILES['files']['name'][$i]);
+        $fileSize = (int)$_FILES['files']['size'][$i];
+        $tmpPath = (string)$_FILES['files']['tmp_name'][$i];
+
+        $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        $uniqueName = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        $destPath = $uploadDir . '/' . $uniqueName;
+
+        if (!move_uploaded_file($tmpPath, $destPath)) {
+            continue;
+        }
+
+        $filePath = '/uploads/application_replies/' . $appId . '/' . $uniqueName;
+
+        // Determinar tipo
+        $itemType = $replyType;
+        if ($replyType === 'image') {
+            $imageInfo = @getimagesize($destPath);
+            if ($imageInfo === false) {
+                $itemType = 'file';
+            }
+        }
+
+        $insertStmt = db()->prepare(
+            'INSERT INTO professional_application_replies (application_id, reply_type, content, file_path, file_name, file_size) '
+            . 'VALUES (:app_id, :type, NULL, :file_path, :file_name, :file_size)'
+        );
+        $insertStmt->execute([
+            'app_id' => $appId,
+            'type' => $itemType,
+            'file_path' => $filePath,
+            'file_name' => $fileName,
+            'file_size' => $fileSize,
+        ]);
+        $uploaded++;
+    }
+
+    if ($uploaded === 0) {
+        header('Location: /application_reply.php?token=' . urlencode($token) . '&error=upload');
         exit;
     }
-
-    $filePath = '/uploads/application_replies/' . $appId . '/' . $uniqueName;
-
-    // Se é imagem, verificar se é válida
-    if ($replyType === 'image') {
-        $imageInfo = @getimagesize($destPath);
-        if ($imageInfo === false) {
-            // Não é imagem válida, tratar como arquivo
-            $replyType = 'file';
-        }
-    }
 }
-
-// Salvar no banco
-$insertStmt = db()->prepare(
-    'INSERT INTO professional_application_replies (application_id, reply_type, content, file_path, file_name, file_size) '
-    . 'VALUES (:app_id, :type, :content, :file_path, :file_name, :file_size)'
-);
-$insertStmt->execute([
-    'app_id' => $appId,
-    'type' => $replyType,
-    'content' => $content,
-    'file_path' => $filePath,
-    'file_name' => $fileName,
-    'file_size' => $fileSize,
-]);
 
 // Criar notificação interna para o admin
 try {
