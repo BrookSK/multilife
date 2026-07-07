@@ -112,8 +112,8 @@ $updErr = $db->prepare(
 );
 
 $insDemand = $db->prepare(
-    'INSERT INTO demands (title, location_city, location_state, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests)'
-    . ' VALUES (:t,:c,:s,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr)'
+    'INSERT INTO demands (title, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests)'
+    . ' VALUES (:t,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr)'
 );
 $insDemandLog = $db->prepare(
     'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)'
@@ -258,11 +258,14 @@ foreach ($emails as $e) {
         . "ATENÇÃO: Um e-mail pode conter MÚLTIPLAS solicitações de especialidades diferentes para o mesmo paciente.\n"
         . "Exemplo: 'Preciso de psicóloga, fisioterapeuta e fonoaudióloga' = 3 solicitações.\n\n"
         . "Retorne um JSON válido no formato:\n"
-        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null,\"requests\":array}\n\n"
+        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"location_street\":string|null,\"location_neighborhood\":string|null,\"location_number\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null,\"requests\":array}\n\n"
         . "Campos principais (dados gerais do e-mail):\n"
         . "- title: Título curto e objetivo (máx 60 caracteres)\n"
         . "- location_city: Cidade do atendimento\n"
         . "- location_state: UF com 2 letras maiúsculas (ex: SP, RJ)\n"
+        . "- location_street: Rua/Logradouro do local de atendimento (se mencionado)\n"
+        . "- location_neighborhood: Bairro do local de atendimento (se mencionado)\n"
+        . "- location_number: Número do endereço (se mencionado)\n"
         . "- specialty: Especialidade principal (a primeira identificada)\n"
         . "- procedure_value: Valor em reais como número decimal (ex: 1500.00) - valor da primeira solicitação ou geral\n"
         . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n"
@@ -346,6 +349,9 @@ foreach ($emails as $e) {
         $title = trim((string)($parsed1['title'] ?? ''));
         $city = trim((string)($parsed1['location_city'] ?? ''));
         $state = strtoupper(trim((string)($parsed1['location_state'] ?? '')));
+        $street = trim((string)($parsed1['location_street'] ?? ''));
+        $neighborhood = trim((string)($parsed1['location_neighborhood'] ?? ''));
+        $locationNumber = trim((string)($parsed1['location_number'] ?? ''));
         $specialty = trim((string)($parsed1['specialty'] ?? ''));
         $procedureValue = isset($parsed1['procedure_value']) && $parsed1['procedure_value'] !== null ? (float)$parsed1['procedure_value'] : null;
         $urgency = trim((string)($parsed1['urgency'] ?? ''));
@@ -493,6 +499,9 @@ foreach ($emails as $e) {
                 't' => $title,
                 'c' => $city !== '' ? $city : null,
                 's' => $state !== '' ? $state : null,
+                'street' => $street !== '' ? $street : null,
+                'neighborhood' => $neighborhood !== '' ? $neighborhood : null,
+                'number' => $locationNumber !== '' ? $locationNumber : null,
                 'sp' => $specialty !== '' ? $specialty : null,
                 'd' => $desc !== '' ? $desc : null,
                 'o' => $fromEmail !== '' ? $fromEmail : null,

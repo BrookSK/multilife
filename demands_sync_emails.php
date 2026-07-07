@@ -229,8 +229,8 @@ if (!$forceMode) {
                     if ($patientInfo !== '') $description = $patientInfo . "\n" . $description;
 
                     $insertDemand = db()->prepare(
-                        "INSERT INTO demands (title, status, origin_email, specialty, location_city, location_state, frequency, description) "
-                        . "VALUES (:title, 'aguardando_captacao', :origin, :spec, :city, :state, :freq, :desc)"
+                        "INSERT INTO demands (title, status, origin_email, specialty, location_city, location_state, location_street, location_neighborhood, location_number, frequency, description) "
+                        . "VALUES (:title, 'aguardando_captacao', :origin, :spec, :city, :state, :street, :neighborhood, :number, :freq, :desc)"
                     );
                     $insertDemand->execute([
                         'title' => $title,
@@ -238,6 +238,9 @@ if (!$forceMode) {
                         'spec' => (string)($parsed['specialty'] ?? ''),
                         'city' => (string)($parsed['location_city'] ?? ''),
                         'state' => (string)($parsed['location_state'] ?? ''),
+                        'street' => (string)($parsed['location_street'] ?? ''),
+                        'neighborhood' => (string)($parsed['location_neighborhood'] ?? ''),
+                        'number' => (string)($parsed['location_number'] ?? ''),
                         'freq' => (string)($parsed['frequency'] ?? ''),
                         'desc' => $description,
                     ]);

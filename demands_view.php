@@ -74,7 +74,21 @@ function format_status_label(string $status): string {
 
 $loc = trim((string)($d['location_city'] ?? ''));
 $uf = trim((string)($d['location_state'] ?? ''));
-$locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
+$street = trim((string)($d['location_street'] ?? ''));
+$neighborhood = trim((string)($d['location_neighborhood'] ?? ''));
+$locNumber = trim((string)($d['location_number'] ?? ''));
+
+// Montar texto do local com endereço completo
+$locParts = [];
+if ($street !== '') {
+    $addr = $street;
+    if ($locNumber !== '') $addr .= ', ' . $locNumber;
+    $locParts[] = $addr;
+}
+if ($neighborhood !== '') $locParts[] = $neighborhood;
+$cityState = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : ($uf !== '' ? $uf : '');
+if ($cityState !== '') $locParts[] = $cityState;
+$locTxt = count($locParts) > 0 ? implode(' — ', $locParts) : '-';
 $assumedBy = $d['assumed_by_name'] ? (string)$d['assumed_by_name'] : '-';
 
 view_header('Demanda #' . (string)$d['id']);
