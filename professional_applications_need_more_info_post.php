@@ -90,11 +90,17 @@ if ($appData) {
             $tplKey = 'professional.application_need_more_info_whatsapp_template';
             $default = "Olá {name}!\n\nPrecisamos de complemento na sua candidatura:\n{message}\n\nApós enviar, retornaremos com a avaliação.";
             $tpl = (string)admin_setting_get($tplKey, $default);
+            if (trim($tpl) === '') {
+                $tpl = $default;
+            }
             $msg = strtr($tpl, [
                 '{name}' => (string)($appData['full_name'] ?? ''),
                 '{message}' => $message,
                 '{application_id}' => (string)$id,
             ]);
+            if (trim($msg) === '') {
+                $msg = "Olá " . (string)($appData['full_name'] ?? '') . "!\n\nPrecisamos de complemento na sua candidatura:\n" . $message;
+            }
             $api = new EvolutionApiV1();
             $res = $api->sendText($digits, $msg);
             $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
