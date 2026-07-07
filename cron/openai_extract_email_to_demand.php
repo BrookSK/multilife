@@ -269,14 +269,14 @@ foreach ($emails as $e) {
         . "- specialty: Especialidade principal (a primeira identificada)\n"
         . "- procedure_value: Valor em reais como número decimal (ex: 1500.00) - valor da primeira solicitação ou geral\n"
         . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n"
-        . "- frequency: Frequência do atendimento (ex: '3 sessões por semana', '2x ao dia', 'diário')\n\n"
+        . "- frequency: Frequência do atendimento usando CÓDIGOS PADRONIZADOS: '1x_semana', '2x_semana', '3x_semana', '4x_semana', '5x_semana', '6x_semana', '7x_semana', 'quinzenal', 'mensal'. Exemplo: se o e-mail diz '3 sessões por semana' retorne '3x_semana'. Se diz 'diário' ou 'visitas diárias' retorne '7x_semana'. Se diz 'quinzenal' retorne 'quinzenal'.\n\n"
         . "Campo requests (OBRIGATÓRIO - lista de TODAS as solicitações identificadas):\n"
         . "- requests: Array de objetos, cada um com: {\"specialty\":string,\"description\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null}\n"
         . "  - specialty: Especialidade desta solicitação específica\n"
         . "  - description: Descrição/detalhes específicos desta solicitação (extraídos do e-mail)\n"
         . "  - procedure_value: Valor específico desta solicitação (se mencionado)\n"
         . "  - urgency: Urgência específica desta solicitação (se diferente da geral)\n"
-        . "  - frequency: Frequência específica desta solicitação (ex: '3x por semana', '50 min/sessão')\n\n"
+        . "  - frequency: Frequência usando CÓDIGOS PADRONIZADOS: '1x_semana', '2x_semana', '3x_semana', '4x_semana', '5x_semana', '6x_semana', '7x_semana', 'quinzenal', 'mensal'\n\n"
         . "Regras:\n"
         . "- Se houver apenas 1 solicitação, retorne requests com 1 item\n"
         . "- Se houver múltiplas especialidades, retorne cada uma como item separado em requests\n"
@@ -356,6 +356,14 @@ foreach ($emails as $e) {
         $procedureValue = isset($parsed1['procedure_value']) && $parsed1['procedure_value'] !== null ? (float)$parsed1['procedure_value'] : null;
         $urgency = trim((string)($parsed1['urgency'] ?? ''));
         $frequency = trim((string)($parsed1['frequency'] ?? ''));
+        
+        // Normalizar frequência para código padronizado (caso IA retorne texto livre)
+        if ($frequency !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$frequency])) {
+            $normalized = frequency_normalize($frequency);
+            if ($normalized !== '') {
+                $frequency = $normalized;
+            }
+        }
 
         // Extrair múltiplas solicitações (se houver)
         $subRequests = [];
@@ -364,12 +372,18 @@ foreach ($emails as $e) {
                 if (!is_array($req)) continue;
                 $reqSpecialty = trim((string)($req['specialty'] ?? ''));
                 if ($reqSpecialty === '') continue;
+                $reqFreq = trim((string)($req['frequency'] ?? ''));
+                // Normalizar frequência da sub-solicitação
+                if ($reqFreq !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$reqFreq])) {
+                    $normFreq = frequency_normalize($reqFreq);
+                    if ($normFreq !== '') $reqFreq = $normFreq;
+                }
                 $subRequests[] = [
                     'specialty' => $reqSpecialty,
                     'description' => trim((string)($req['description'] ?? '')),
                     'procedure_value' => isset($req['procedure_value']) && $req['procedure_value'] !== null ? (float)$req['procedure_value'] : null,
                     'urgency' => trim((string)($req['urgency'] ?? '')),
-                    'frequency' => trim((string)($req['frequency'] ?? '')),
+                    'frequency' => $reqFreq,
                 ];
             }
         }
