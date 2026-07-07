@@ -530,6 +530,9 @@ foreach ($jobs as $j) {
             ];
 
             $subjectTpl = (string)admin_setting_get($subjectKey, $subjectDefault);
+            if (trim($subjectTpl) === '') {
+                $subjectTpl = $subjectDefault;
+            }
             $subject = strtr($subjectTpl, $repl);
             
             // Usar template HTML profissional

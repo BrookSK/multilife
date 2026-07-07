@@ -88,6 +88,9 @@ if ($appData) {
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
         try {
             $subjectTpl = (string)admin_setting_get('professional.application_rejected_email_subject_template', 'Candidatura #{application_id} - Resultado');
+            if (trim($subjectTpl) === '') {
+                $subjectTpl = 'Candidatura #{application_id} - Resultado';
+            }
             $bodyTpl = (string)admin_setting_get('professional.application_rejected_email_body_template', "Olá {name},\n\nSua candidatura não foi aprovada.\nMotivo:\n{message}\n\nVocê pode se candidatar novamente quando desejar.\n\nAtenciosamente,\nEquipe Multilife");
             $subject = strtr($subjectTpl, ['{name}' => (string)($appData['full_name'] ?? ''), '{application_id}' => (string)$id]);
             $body = strtr($bodyTpl, ['{name}' => (string)($appData['full_name'] ?? ''), '{message}' => $reason, '{application_id}' => (string)$id]);

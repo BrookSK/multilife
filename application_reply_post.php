@@ -121,7 +121,7 @@ try {
     $notifStmt = db()->prepare(
         "INSERT INTO notifications (user_id, type, title, body, link, created_at) "
         . "SELECT id, 'info', :title, :body, :link, NOW() FROM users WHERE id IN "
-        . "(SELECT DISTINCT user_id FROM role_user WHERE role_id IN (SELECT id FROM roles WHERE slug = 'admin'))"
+        . "(SELECT DISTINCT user_id FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE slug = 'admin'))"
     );
     $notifStmt->execute([
         'title' => 'Candidatura #' . $appId . ' - Resposta recebida',

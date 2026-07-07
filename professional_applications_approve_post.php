@@ -91,6 +91,64 @@ try {
     integration_job_enqueue('evolution', 'professional_onboarding_credentials', $payload, null);
     integration_job_enqueue('smtp', 'professional_onboarding_email', $payload, null);
 
+    // Envio síncrono WhatsApp (onboarding com credenciais)
+    $whatsappSent = false;
+    $emailSent = false;
+    $digits = preg_replace('/\D+/', '', (string)$pa['phone']);
+    if ($digits !== '') {
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55' . $digits;
+        }
+        try {
+            $tplKey = 'professional.onboarding_whatsapp_template';
+            $defaultTpl = "Olá {name}! 🎉\n\nSua candidatura foi aprovada!\n\nAcesse o sistema:\n{login_url}\n\nE-mail: {email}\nSenha provisória: {password}\n\nAltere sua senha no primeiro acesso.";
+            $tpl = (string)admin_setting_get($tplKey, $defaultTpl);
+            if (trim($tpl) === '') $tpl = $defaultTpl;
+            $msg = strtr($tpl, [
+                '{name}' => (string)$pa['full_name'],
+                '{email}' => (string)$pa['email'],
+                '{password}' => $tmpPassword,
+                '{login_url}' => $loginUrl,
+            ]);
+            $api = new EvolutionApiV1();
+            $res = $api->sendText($digits, $msg);
+            $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+        } catch (Throwable $e) {
+            error_log('[SYNC_ONBOARD] WhatsApp falhou: ' . $e->getMessage());
+        }
+    }
+
+    // Envio síncrono E-mail (onboarding com credenciais)
+    $toEmail = trim((string)$pa['email']);
+    if ($toEmail !== '' && filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        try {
+            $fromEmail = (string)admin_setting_get('smtp.out.from_email', '');
+            $fromName = (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+            if ($fromEmail !== '' && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                $subjectTpl = (string)admin_setting_get('professional.onboarding_email_subject_template', 'Bem-vindo(a) à MultiLife Care - Acesso aprovado');
+                if (trim($subjectTpl) === '') $subjectTpl = 'Bem-vindo(a) à MultiLife Care - Acesso aprovado';
+                $subject = strtr($subjectTpl, ['{name}' => (string)$pa['full_name'], '{email}' => (string)$pa['email'], '{login_url}' => $loginUrl]);
+
+                $bodyTpl = (string)admin_setting_get('professional.onboarding_email_body_template', '');
+                if (trim($bodyTpl) === '') {
+                    $bodyTpl = "Olá {name},\n\nSua candidatura foi aprovada!\n\nAcesse o sistema:\n{login_url}\n\nE-mail: {email}\nSenha provisória: {password}\n\nAltere sua senha no primeiro acesso.\n\nAtenciosamente,\nEquipe MultiLife Care";
+                }
+                $body = strtr($bodyTpl, [
+                    '{name}' => (string)$pa['full_name'],
+                    '{email}' => (string)$pa['email'],
+                    '{password}' => $tmpPassword,
+                    '{login_url}' => $loginUrl,
+                ]);
+
+                $client = new SmtpClient();
+                $client->send($fromEmail, $fromName, $toEmail, $subject, nl2br(htmlspecialchars($body)));
+                $emailSent = true;
+            }
+        } catch (Throwable $e) {
+            error_log('[SYNC_ONBOARD] E-mail falhou: ' . $e->getMessage());
+        }
+    }
+
     // Pendência de acompanhamento
     $stmt = $db->prepare(
         "INSERT INTO pending_items (type, status, title, detail, related_table, related_id, assigned_user_id)"
@@ -107,7 +165,13 @@ try {
 
     $db->commit();
     
-    flash_set('success', 'Aprovado. Credenciais foram enfileiradas para envio por WhatsApp/e-mail.');
+    $notifStatus = [];
+    if ($whatsappSent) $notifStatus[] = 'WhatsApp enviado ✓';
+    else $notifStatus[] = 'WhatsApp enfileirado';
+    if ($emailSent) $notifStatus[] = 'E-mail enviado ✓';
+    else $notifStatus[] = 'E-mail enfileirado';
+    
+    flash_set('success', 'Aprovado. Credenciais: ' . implode(' | ', $notifStatus) . '.');
     header('Location: /professional_applications_view.php?id=' . $id);
     exit;
 } catch (Throwable $e) {

@@ -138,6 +138,9 @@ if ($appData) {
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
         try {
             $subjectTpl = (string)admin_setting_get('professional.application_need_more_info_email_subject_template', 'Candidatura #{application_id} - Complemento necessário');
+            if (trim($subjectTpl) === '') {
+                $subjectTpl = 'Candidatura #{application_id} - Complemento necessário';
+            }
             $bodyTpl = (string)admin_setting_get('professional.application_need_more_info_email_body_template', "Olá {name},\n\nPrecisamos de complemento na sua candidatura:\n\n{message}\n\nApós enviar, retornaremos com a avaliação.\n\nAtenciosamente,\nEquipe Multilife");
             $subject = strtr($subjectTpl, ['{name}' => (string)($appData['full_name'] ?? ''), '{message}' => $message, '{application_id}' => (string)$id]);
             $body = strtr($bodyTpl, ['{name}' => (string)($appData['full_name'] ?? ''), '{message}' => $message, '{application_id}' => (string)$id]);
