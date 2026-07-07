@@ -247,30 +247,31 @@ try {
                 }
 
                 // Criar demanda
-                $title = trim((string)($parsed['title'] ?? (string)$em['subject']));
+                $title = trim((string)($parsed['title'] ?? (string)($em['subject'] ?? '')));
                 if ($title === '') $title = 'Demanda via e-mail #' . $em['id'];
 
+                $description = trim((string)($parsed['description'] ?? ''));
+                // Incluir dados do paciente na descrição se existirem
+                $patientInfo = '';
+                if (!empty($parsed['patient_name'])) $patientInfo .= "Paciente: " . $parsed['patient_name'] . "\n";
+                if (!empty($parsed['patient_email'])) $patientInfo .= "E-mail: " . $parsed['patient_email'] . "\n";
+                if (!empty($parsed['patient_phone'])) $patientInfo .= "Telefone: " . $parsed['patient_phone'] . "\n";
+                if ($patientInfo !== '') {
+                    $description = $patientInfo . "\n" . $description;
+                }
+
                 $insertDemand = db()->prepare(
-                    "INSERT INTO demands (title, status, origin_email, patient_name, patient_email, patient_phone, "
-                    . "specialty, location_city, location_state, location_address, location_street, location_neighborhood, "
-                    . "frequency, description, source) "
-                    . "VALUES (:title, 'recebimento_email', :origin, :pname, :pemail, :pphone, "
-                    . ":spec, :city, :state, :addr, :street, :neighborhood, :freq, :desc, 'email')"
+                    "INSERT INTO demands (title, status, origin_email, specialty, location_city, location_state, frequency, description) "
+                    . "VALUES (:title, 'aguardando_captacao', :origin, :spec, :city, :state, :freq, :desc)"
                 );
                 $insertDemand->execute([
                     'title' => $title,
                     'origin' => $fromEmail,
-                    'pname' => (string)($parsed['patient_name'] ?? ''),
-                    'pemail' => (string)($parsed['patient_email'] ?? ''),
-                    'pphone' => (string)($parsed['patient_phone'] ?? ''),
                     'spec' => (string)($parsed['specialty'] ?? ''),
                     'city' => (string)($parsed['location_city'] ?? ''),
                     'state' => (string)($parsed['location_state'] ?? ''),
-                    'addr' => (string)($parsed['location_address'] ?? ''),
-                    'street' => (string)($parsed['location_street'] ?? ''),
-                    'neighborhood' => (string)($parsed['location_neighborhood'] ?? ''),
                     'freq' => (string)($parsed['frequency'] ?? ''),
-                    'desc' => (string)($parsed['description'] ?? ''),
+                    'desc' => $description,
                 ]);
 
                 $demandId = (int)db()->lastInsertId();
