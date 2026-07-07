@@ -444,6 +444,10 @@ foreach ($jobs as $j) {
             if ($digits === '') {
                 throw new RuntimeException('Candidato sem telefone cadastrado.');
             }
+            // Adicionar DDI 55 (Brasil) se não tiver
+            if (strlen($digits) === 10 || strlen($digits) === 11) {
+                $digits = '55' . $digits;
+            }
 
             $tplKey = $kind === 'need_more_info'
                 ? 'professional.application_need_more_info_whatsapp_template'

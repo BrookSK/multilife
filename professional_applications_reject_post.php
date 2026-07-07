@@ -63,6 +63,10 @@ $emailSent = false;
 if ($appData) {
     $digits = preg_replace('/\D+/', '', (string)($appData['phone'] ?? ''));
     if ($digits !== '') {
+        // Adicionar DDI 55 (Brasil) se não tiver
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55' . $digits;
+        }
         try {
             $tplKey = 'professional.application_rejected_whatsapp_template';
             $default = "Olá {name}!\n\nSua candidatura não foi aprovada.\nMotivo:\n{message}\n\nVocê pode se candidatar novamente quando desejar.";
