@@ -47,42 +47,42 @@ $specialty = (string)($subRequest ? ($subRequest['specialty'] ?? '') : ($d['spec
 $groups = [];
 $jidFilter = ' AND evolution_group_jid LIKE \'%@g.us\'';
 
-// Tentativa 1: Match exato por especialidade + estado + cidade
+// Tentativa 1: Match exato por especialidade + estado + cidade (case-insensitive)
 if (trim($specialty) !== '' && count($groups) === 0) {
     $sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter;
     $conditions = [];
     $params = [];
     
-    $conditions[] = '(specialty = :sp)';
+    $conditions[] = '(LOWER(specialty) = LOWER(:sp))';
     $params['sp'] = $specialty;
     
     if (trim($state) !== '') {
-        $conditions[] = '(state IS NULL OR state = \'\' OR state = :st)';
+        $conditions[] = '(state IS NULL OR state = \'\' OR LOWER(state) = LOWER(:st))';
         $params['st'] = $state;
     }
     
     if (trim($city) !== '') {
-        $conditions[] = '(city IS NULL OR city = \'\' OR city = :city)';
+        $conditions[] = '(city IS NULL OR city = \'\' OR LOWER(city) = LOWER(:city))';
         $params['city'] = $city;
     }
     
-    $sql .= ' AND ' . implode(' AND ', $conditions) . ' ORDER BY id DESC';
+    $sql .= ' AND ' . implode(' AND ', $conditions) . ' ORDER BY id DESC LIMIT 1';
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     $groups = $stmt->fetchAll();
 }
 
-// Tentativa 2: Só por especialidade (ignorar localização)
+// Tentativa 2: Só por especialidade (ignorar localização, case-insensitive)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND specialty = :sp ORDER BY id DESC';
+    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND LOWER(specialty) = LOWER(:sp) ORDER BY id DESC LIMIT 1';
     $stmt2 = db()->prepare($sql2);
     $stmt2->execute(['sp' => $specialty]);
     $groups = $stmt2->fetchAll();
 }
 
-// Tentativa 3: Especialidade com LIKE (caso tenha diferença de acentuação/case)
+// Tentativa 3: Especialidade com LIKE (caso tenha diferença de acentuação)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND (specialty LIKE :sp_like OR name LIKE :name_like) ORDER BY id DESC';
+    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND (specialty LIKE :sp_like OR name LIKE :name_like) ORDER BY id DESC LIMIT 1';
     $stmt3 = db()->prepare($sql3);
     $stmt3->execute(['sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%']);
     $groups = $stmt3->fetchAll();
