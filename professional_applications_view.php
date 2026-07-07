@@ -305,4 +305,56 @@ foreach ($sections as $title => $fields) {
 
 echo '</div>';
 
+// --- Respostas do candidato (complemento) ---
+$repliesStmt = db()->prepare('SELECT * FROM professional_application_replies WHERE application_id = :id ORDER BY created_at ASC');
+$repliesStmt->execute(['id' => $id]);
+$replies = $repliesStmt->fetchAll();
+
+if (count($replies) > 0 || (string)($pa['status'] ?? '') === 'need_more_info') {
+    echo '<div class="grid" style="margin-top:20px">';
+    echo '<section class="card col12">';
+    echo '<div style="font-size:18px;font-weight:900;margin-bottom:16px">📩 Respostas do Candidato (' . count($replies) . ')</div>';
+    
+    if (count($replies) === 0) {
+        echo '<div style="padding:20px;text-align:center;color:hsl(var(--muted-foreground))">';
+        echo 'Aguardando resposta do candidato...';
+        if (!empty($pa['reply_token'])) {
+            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
+            if ($publicUrl === '') $publicUrl = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            $replyLink = rtrim($publicUrl, '/') . '/application_reply.php?token=' . urlencode((string)$pa['reply_token']);
+            echo '<br><small style="margin-top:8px;display:inline-block">Link enviado: <a href="' . h($replyLink) . '" target="_blank" style="color:hsl(var(--primary))">' . h($replyLink) . '</a></small>';
+        }
+        echo '</div>';
+    } else {
+        echo '<div style="display:grid;gap:12px">';
+        foreach ($replies as $reply) {
+            $rType = (string)$reply['reply_type'];
+            $rDate = date('d/m/Y H:i', strtotime((string)$reply['created_at']));
+            $badgeColor = $rType === 'text' ? '#3b82f6' : ($rType === 'image' ? '#10b981' : '#f59e0b');
+            $badgeLabel = $rType === 'text' ? '📝 Texto' : ($rType === 'image' ? '📷 Imagem' : '📎 Arquivo');
+            
+            echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:12px">';
+            echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+            echo '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:' . $badgeColor . '20;color:' . $badgeColor . '">' . $badgeLabel . '</span>';
+            echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">' . $rDate . '</span>';
+            echo '</div>';
+            
+            if ($rType === 'text') {
+                echo '<div style="font-size:14px;line-height:1.6">' . nl2br(h((string)$reply['content'])) . '</div>';
+            } elseif ($rType === 'image') {
+                echo '<a href="' . h((string)$reply['file_path']) . '" target="_blank"><img src="' . h((string)$reply['file_path']) . '" style="max-width:300px;border-radius:8px;margin-top:4px" alt="Imagem"></a>';
+            } else {
+                echo '<a href="' . h((string)$reply['file_path']) . '" target="_blank" style="color:hsl(var(--primary));font-weight:600">📎 ' . h((string)$reply['file_name']) . '</a>';
+                echo ' <span style="font-size:12px;color:hsl(var(--muted-foreground))">(' . number_format(((int)$reply['file_size']) / 1024, 0) . ' KB)</span>';
+            }
+            
+            echo '</div>';
+        }
+        echo '</div>';
+    }
+    
+    echo '</section>';
+    echo '</div>';
+}
+
 view_footer();

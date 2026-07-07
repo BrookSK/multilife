@@ -34,13 +34,18 @@ $old = $stmt->fetch();
 $db = db();
 $db->beginTransaction();
 try {
+    $note = 'Solicitação de complemento: ' . $message;
+    
+    // Gerar token único para o candidato responder
+    $replyToken = bin2hex(random_bytes(32));
+    
     $stmt = $db->prepare(
         'UPDATE professional_applications '
-        . 'SET status = \'need_more_info\', reviewed_by_user_id = :rid, reviewed_at = NOW(), admin_note = :note '
+        . 'SET status = \'need_more_info\', reviewed_by_user_id = :rid, reviewed_at = NOW(), admin_note = :note, '
+        . 'reply_token = :token, reply_token_created_at = NOW() '
         . 'WHERE id = :id'
     );
-    $note = 'Solicitação de complemento: ' . $message;
-    $stmt->execute(['rid' => auth_user_id(), 'id' => $id, 'note' => $note]);
+    $stmt->execute(['rid' => auth_user_id(), 'id' => $id, 'note' => $note, 'token' => $replyToken]);
 
     // Pendência interna
     $stmt = $db->prepare(
@@ -87,19 +92,31 @@ if ($appData) {
             $digits = '55' . $digits;
         }
         try {
+            // Gerar URL pública de resposta
+            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
+            if ($publicUrl === '') {
+                $publicUrl = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            }
+            $replyUrl = rtrim($publicUrl, '/') . '/application_reply.php?token=' . urlencode($replyToken);
+
             $tplKey = 'professional.application_need_more_info_whatsapp_template';
-            $default = "Olá {name}!\n\nPrecisamos de complemento na sua candidatura:\n{message}\n\nApós enviar, retornaremos com a avaliação.";
+            $default = "Olá {name}!\n\nPrecisamos de complemento na sua candidatura:\n{message}\n\nResponda pelo link abaixo:\n{reply_link}\n\nApós enviar, retornaremos com a avaliação.";
             $tpl = (string)admin_setting_get($tplKey, $default);
             if (trim($tpl) === '') {
                 $tpl = $default;
+            }
+            // Se o template não tem {reply_link}, adicionar no final
+            if (strpos($tpl, '{reply_link}') === false) {
+                $tpl .= "\n\nResponda aqui: {reply_link}";
             }
             $msg = strtr($tpl, [
                 '{name}' => (string)($appData['full_name'] ?? ''),
                 '{message}' => $message,
                 '{application_id}' => (string)$id,
+                '{reply_link}' => $replyUrl,
             ]);
             if (trim($msg) === '') {
-                $msg = "Olá " . (string)($appData['full_name'] ?? '') . "!\n\nPrecisamos de complemento na sua candidatura:\n" . $message;
+                $msg = "Olá " . (string)($appData['full_name'] ?? '') . "!\n\nPrecisamos de complemento na sua candidatura:\n" . $message . "\n\nResponda aqui: " . $replyUrl;
             }
             $api = new EvolutionApiV1();
             $res = $api->sendText($digits, $msg);
