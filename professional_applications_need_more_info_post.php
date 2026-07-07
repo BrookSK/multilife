@@ -62,15 +62,81 @@ try {
     throw $e;
 }
 
-// Notificações (WhatsApp + e-mail) via jobs
+// Notificações (WhatsApp + e-mail) — envio síncrono + job como backup
 $payload = [
     'application_id' => $id,
     'kind' => 'need_more_info',
     'message' => $message,
 ];
-integration_job_enqueue('evolution', 'professional_application_notify', $payload, null);
-integration_job_enqueue('smtp', 'professional_application_notify_email', $payload, null);
 
-flash_set('success', 'Complemento solicitado. Notificações (WhatsApp/e-mail) enfileiradas.');
+// Buscar dados do candidato
+$appStmt = db()->prepare('SELECT full_name, phone, email FROM professional_applications WHERE id = :id');
+$appStmt->execute(['id' => $id]);
+$appData = $appStmt->fetch();
+
+$whatsappSent = false;
+$emailSent = false;
+
+// Envio síncrono WhatsApp
+if ($appData) {
+    $digits = preg_replace('/\D+/', '', (string)($appData['phone'] ?? ''));
+    if ($digits !== '') {
+        try {
+            $tplKey = 'professional.application_need_more_info_whatsapp_template';
+            $default = "Olá {name}!\n\nPrecisamos de complemento na sua candidatura:\n{message}\n\nApós enviar, retornaremos com a avaliação.";
+            $tpl = (string)admin_setting_get($tplKey, $default);
+            $msg = strtr($tpl, [
+                '{name}' => (string)($appData['full_name'] ?? ''),
+                '{message}' => $message,
+                '{application_id}' => (string)$id,
+            ]);
+            $api = new EvolutionApiV1();
+            $res = $api->sendText($digits, $msg);
+            $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+        } catch (Throwable $e) {
+            error_log('[SYNC_NOTIFY] WhatsApp falhou: ' . $e->getMessage());
+        }
+    }
+
+    // Envio síncrono E-mail
+    $email = trim((string)($appData['email'] ?? ''));
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        try {
+            $subjectTpl = (string)admin_setting_get('professional.application_need_more_info_email_subject_template', 'Candidatura #{application_id} - Complemento necessário');
+            $bodyTpl = (string)admin_setting_get('professional.application_need_more_info_email_body_template', "Olá {name},\n\nPrecisamos de complemento na sua candidatura:\n\n{message}\n\nApós enviar, retornaremos com a avaliação.\n\nAtenciosamente,\nEquipe Multilife");
+            $subject = strtr($subjectTpl, ['{name}' => (string)($appData['full_name'] ?? ''), '{message}' => $message, '{application_id}' => (string)$id]);
+            $body = strtr($bodyTpl, ['{name}' => (string)($appData['full_name'] ?? ''), '{message}' => $message, '{application_id}' => (string)$id]);
+            $fromEmail = (string)admin_setting_get('smtp.out.from_email', '');
+            $fromName = (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+            if ($fromEmail !== '' && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                require_once __DIR__ . '/app/email_html_generators.php';
+                $htmlBody = function_exists('email_html_application_need_info')
+                    ? email_html_application_need_info((string)($appData['full_name'] ?? ''), (string)$id, $message)
+                    : nl2br(htmlspecialchars($body));
+                $client = new SmtpClient();
+                $client->send($fromEmail, $fromName, $email, $subject, $htmlBody);
+                $emailSent = true;
+            }
+        } catch (Throwable $e) {
+            error_log('[SYNC_NOTIFY] E-mail falhou: ' . $e->getMessage());
+        }
+    }
+}
+
+// Enfileirar como backup caso envio síncrono tenha falhado
+if (!$whatsappSent) {
+    integration_job_enqueue('evolution', 'professional_application_notify', $payload, null);
+}
+if (!$emailSent) {
+    integration_job_enqueue('smtp', 'professional_application_notify_email', $payload, null);
+}
+
+$notifStatus = [];
+if ($whatsappSent) $notifStatus[] = 'WhatsApp enviado';
+if ($emailSent) $notifStatus[] = 'E-mail enviado';
+if (!$whatsappSent) $notifStatus[] = 'WhatsApp enfileirado';
+if (!$emailSent) $notifStatus[] = 'E-mail enfileirado';
+
+flash_set('success', 'Complemento solicitado. ' . implode(', ', $notifStatus) . '.');
 header('Location: /professional_applications_view.php?id=' . $id);
 exit;
