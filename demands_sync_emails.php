@@ -164,11 +164,20 @@ try {
     if ($openaiUrl === '' || $openaiKey === '') {
         $results['extraction'] = ['error' => 'OpenAI not configured'];
     } else {
-        // Buscar e-mails não processados com sucesso
+        // Buscar e-mails que ainda não têm demanda criada
+        // Inclui processed sem linked_demand_id (falhou antes) e pending/error/received
         $pendingStmt = db()->prepare(
-            "SELECT * FROM inbound_emails WHERE status NOT IN ('processed', 'skipped', 'ai_processed') ORDER BY id ASC LIMIT 5"
+            "SELECT * FROM inbound_emails WHERE (status NOT IN ('skipped', 'ai_processed') AND (linked_demand_id IS NULL OR linked_demand_id = 0)) ORDER BY id ASC LIMIT 5"
         );
-        $pendingStmt->execute();
+        try {
+            $pendingStmt->execute();
+        } catch (Throwable $e) {
+            // Se linked_demand_id não existe, buscar sem ela
+            $pendingStmt = db()->prepare(
+                "SELECT * FROM inbound_emails WHERE status NOT IN ('skipped', 'ai_processed', 'processed') ORDER BY id ASC LIMIT 5"
+            );
+            $pendingStmt->execute();
+        }
         $pendingEmails = $pendingStmt->fetchAll();
 
         // Debug: mostrar total de e-mails na tabela
