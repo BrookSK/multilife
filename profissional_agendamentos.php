@@ -35,9 +35,11 @@ $appointmentsStmt = db()->prepare("
         pa.service_type,
         pa.session_quantity,
         pa.session_frequency,
+        pa.weekdays,
         pa.demand_id,
         (SELECT ar.start_date FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.patient_id = pa.patient_id ORDER BY ar.id DESC LIMIT 1) as proposal_start_date,
-        (SELECT ar.start_time FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.patient_id = pa.patient_id ORDER BY ar.id DESC LIMIT 1) as proposal_start_time
+        (SELECT ar.start_time FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.patient_id = pa.patient_id ORDER BY ar.id DESC LIMIT 1) as proposal_start_time,
+        (SELECT ar.sessions_per_week FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.patient_id = pa.patient_id ORDER BY ar.id DESC LIMIT 1) as sessions_per_week
     FROM patient_assignments pa
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE pa.professional_user_id = ?
@@ -47,11 +49,32 @@ $appointmentsStmt = db()->prepare("
 $appointmentsStmt->execute([$userId]);
 $rawAssignments = $appointmentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Pré-carregar datas de billing_document_requirements para cada assignment
+$billingDatesStmt = db()->prepare("
+    SELECT assignment_id, session_number, session_date 
+    FROM billing_document_requirements 
+    WHERE professional_user_id = ? AND session_date IS NOT NULL
+    ORDER BY assignment_id, session_number
+");
+$billingDatesStmt->execute([$userId]);
+$billingDatesRaw = $billingDatesStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Agrupar por assignment_id
+$billingDatesByAssignment = [];
+foreach ($billingDatesRaw as $bd) {
+    $aid = (int)$bd['assignment_id'];
+    if (!isset($billingDatesByAssignment[$aid])) {
+        $billingDatesByAssignment[$aid] = [];
+    }
+    $billingDatesByAssignment[$aid][] = $bd['session_date'];
+}
+
 // Expandir cada atendimento em sessões individuais
 $appointments = [];
 foreach ($rawAssignments as $apt) {
     $totalSessions = max(1, (int)($apt['session_quantity'] ?? 1));
     $frequency = (string)($apt['session_frequency'] ?? 'weekly');
+    $assignmentId = (int)$apt['id'];
     
     // Usar data de início da proposta (se disponível), senão usar created_at
     if (!empty($apt['proposal_start_date'])) {
@@ -62,11 +85,33 @@ foreach ($rawAssignments as $apt) {
         $startTime = $startDate->format('H:i');
     }
     
-    // Gerar datas usando tabela padronizada de frequência
+    // PRIORIDADE 1: Usar datas do billing_document_requirements (fonte mais confiável)
     $sessionDates = [];
+    if (isset($billingDatesByAssignment[$assignmentId]) && count($billingDatesByAssignment[$assignmentId]) > 0) {
+        foreach ($billingDatesByAssignment[$assignmentId] as $dateStr) {
+            $sessionDates[] = new DateTime($dateStr);
+        }
+    }
     
-    if (function_exists('frequency_normalize') && function_exists('frequency_generate_session_dates')) {
-        // Tentar converter frequência para código padronizado
+    // PRIORIDADE 2: Usar weekdays do assignment
+    if (count($sessionDates) === 0 && !empty($apt['weekdays'])) {
+        $weekdays = json_decode((string)$apt['weekdays'], true);
+        if (is_array($weekdays) && count($weekdays) > 0) {
+            $currentDate = clone $startDate;
+            sort($weekdays);
+            while (count($sessionDates) < $totalSessions) {
+                $dayOfWeek = (int)$currentDate->format('N');
+                if (in_array($dayOfWeek, $weekdays, true)) {
+                    $sessionDates[] = clone $currentDate;
+                }
+                $currentDate->modify('+1 day');
+                if ($currentDate->diff($startDate)->days > 365) break;
+            }
+        }
+    }
+    
+    // PRIORIDADE 3: Tabela padronizada de frequência
+    if (count($sessionDates) === 0 && function_exists('frequency_normalize')) {
         $freqCode = '';
         if (isset(FREQUENCY_WEEKDAYS_MAP[$frequency])) {
             $freqCode = $frequency;
@@ -74,8 +119,9 @@ foreach ($rawAssignments as $apt) {
             $freqCode = frequency_normalize($frequency);
         }
         
-        // Se não encontrou por normalização, tentar pelo sessions_per_week
+        // Tentar pelo sessions_per_week
         if ($freqCode === '') {
+            $sessPerWeek = (int)($apt['sessions_per_week'] ?? 0);
             $sessionsMap = [1 => '1x_semana', 2 => '2x_semana', 3 => '3x_semana', 4 => '4x_semana', 5 => '5x_semana', 6 => '6x_semana', 7 => '7x_semana'];
             if ($frequency === 'daily') {
                 $freqCode = '7x_semana';
@@ -83,6 +129,12 @@ foreach ($rawAssignments as $apt) {
                 $freqCode = 'quinzenal';
             } elseif ($frequency === 'monthly') {
                 $freqCode = 'mensal';
+            } elseif ($sessPerWeek >= 1 && $sessPerWeek <= 7) {
+                $freqCode = $sessionsMap[$sessPerWeek] ?? '';
+            } elseif ($frequency === 'weekly' && $totalSessions > 1) {
+                // Se é "weekly" mas tem várias sessões, inferir pela quantidade total / duração
+                // Heurística: se session_quantity > 4, provavelmente não é 1x/semana
+                $freqCode = $sessionsMap[min($totalSessions, 7)] ?? '1x_semana';
             }
         }
         
@@ -94,7 +146,7 @@ foreach ($rawAssignments as $apt) {
         }
     }
     
-    // Fallback: lógica antiga com intervalo fixo
+    // PRIORIDADE 4: Fallback semanal
     if (count($sessionDates) === 0) {
         $intervalDays = match($frequency) {
             'daily' => 1,
