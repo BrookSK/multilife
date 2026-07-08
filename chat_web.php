@@ -2131,7 +2131,41 @@ if (empty($selectedChat)) {
     // Botões de anexo de mídia
     echo '<div style="display:flex;gap:4px;align-items:center">';
     
-    // Botão de áudio
+    // Botão de áudio (gravação direta)
+    echo '<script>
+var _mediaRecorder=null,_audioChunks=[];
+function toggleAudioRecording(){
+  if(_mediaRecorder&&_mediaRecorder.state==="recording"){
+    _mediaRecorder.stop();
+    var btn=document.getElementById("audioRecordBtn");
+    if(btn){btn.style.background="";btn.style.color="";}
+    var ind=document.getElementById("recInd");if(ind)ind.remove();
+  }else{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert("Navegador não suporta gravação");return;}
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+      _mediaRecorder=new MediaRecorder(stream);
+      _audioChunks=[];
+      _mediaRecorder.addEventListener("dataavailable",function(e){_audioChunks.push(e.data);});
+      _mediaRecorder.addEventListener("stop",function(){
+        stream.getTracks().forEach(function(t){t.stop();});
+        var blob=new Blob(_audioChunks,{type:"audio/webm"});
+        var file=new File([blob],"audio.webm",{type:"audio/webm"});
+        var dt=new DataTransfer();dt.items.add(file);
+        var inp=document.getElementById("audioInput");
+        if(inp){inp.files=dt.files;inp.dispatchEvent(new Event("change",{bubbles:true}));}
+      });
+      _mediaRecorder.start();
+      var btn=document.getElementById("audioRecordBtn");
+      if(btn){btn.style.background="#dc2626";btn.style.color="white";btn.style.borderRadius="50%";}
+      var ind=document.createElement("div");ind.id="recInd";
+      ind.style.cssText="position:fixed;bottom:80px;right:20px;background:#dc2626;color:white;padding:12px 20px;border-radius:24px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000";
+      ind.textContent="🔴 Gravando... (clique no mic para parar)";
+      document.body.appendChild(ind);
+      setTimeout(function(){if(_mediaRecorder&&_mediaRecorder.state==="recording")toggleAudioRecording();},60000);
+    }).catch(function(e){alert("Erro ao acessar microfone: "+e.message);});
+  }
+}
+</script>';
     echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" data-media-type="audio">';
     echo '<button type="button" id="audioRecordBtn" onclick="toggleAudioRecording()" class="whatsapp-action-btn" title="Gravar áudio (clique para iniciar/parar)">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
@@ -2400,9 +2434,8 @@ echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window
 
 // Marcar mensagens como lidas quando chat for aberto
 if (!empty($selectedChat)) {
-    echo '
-// Marcar mensagens como lidas automaticamente
-if (window.chatId) {
+    echo 'if (window.chatId) {
+    fetch("/chat_mark_read.php", {
     fetch("/chat_mark_read.php", {
         method: "POST",
         headers: {
