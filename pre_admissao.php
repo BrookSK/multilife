@@ -495,7 +495,7 @@ if ($selected) {
     $sessionDatesForApproval = [];
     
     if ($authRequest && !empty($authRequest['start_date'])) {
-        // Calcular datas a partir da proposta
+        // Calcular datas a partir da proposta usando tabela padronizada
         $startDate = new DateTime($authRequest['start_date']);
         $startTime = $authRequest['start_time'] ?? '08:00:00';
         $endTime = $authRequest['end_time'] ?? '09:00:00';
@@ -503,38 +503,84 @@ if ($selected) {
         $freq = (string)($authRequest['frequency'] ?? 'weekly');
         $sessPerWeek = (int)($authRequest['sessions_per_week'] ?? 1);
         
-        $intervalDays = match($freq) {
-            'daily' => 1,
-            'weekly' => 7,
-            'biweekly' => 14,
-            'monthly' => 30,
-            default => 7,
-        };
-        
-        // Se tem mais de 1 sessão por semana, ajustar intervalo
-        if ($sessPerWeek > 1 && $freq === 'weekly') {
-            $intervalDays = (int)floor(7 / $sessPerWeek);
+        // Usar tabela padronizada de frequência
+        $usePadronizada = false;
+        if (function_exists('frequency_normalize') && function_exists('frequency_generate_session_dates')) {
+            $freqCode = '';
+            if (isset(FREQUENCY_WEEKDAYS_MAP[$freq])) {
+                $freqCode = $freq;
+            } else {
+                $sessionsMap = [1 => '1x_semana', 2 => '2x_semana', 3 => '3x_semana', 4 => '4x_semana', 5 => '5x_semana', 6 => '6x_semana', 7 => '7x_semana'];
+                if ($freq === 'daily' || $sessPerWeek >= 7) {
+                    $freqCode = '7x_semana';
+                } elseif ($freq === 'biweekly') {
+                    $freqCode = 'quinzenal';
+                } elseif ($freq === 'monthly') {
+                    $freqCode = 'mensal';
+                } elseif ($sessPerWeek >= 1 && $sessPerWeek <= 7) {
+                    $freqCode = $sessionsMap[$sessPerWeek] ?? '';
+                }
+            }
+            
+            if ($freqCode !== '') {
+                $generatedDates = frequency_generate_session_dates($freqCode, $startDate, $totalSess);
+                if (count($generatedDates) > 0) {
+                    $usePadronizada = true;
+                    
+                    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+                    echo 'Início: <strong>' . $startDate->format('d/m/Y') . '</strong> | ';
+                    echo 'Horário: <strong>' . substr($startTime, 0, 5) . ' às ' . substr($endTime, 0, 5) . '</strong> | ';
+                    echo 'Total: <strong>' . $totalSess . ' sessões</strong>';
+                    echo '</div>';
+                    
+                    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto">';
+                    foreach ($generatedDates as $idx => $sessDateTime) {
+                        $sessionDatesForApproval[] = $sessDateTime->format('Y-m-d');
+                        $dayName = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][(int)$sessDateTime->format('w')];
+                        echo '<div style="padding:6px 10px;background:#fff;border:1px solid hsl(var(--border));border-radius:6px;font-size:12px;display:flex;justify-content:space-between">';
+                        echo '<span><strong>Sessão ' . ($idx + 1) . '</strong></span>';
+                        echo '<span>' . $dayName . ', ' . $sessDateTime->format('d/m/Y') . ' às ' . substr($startTime, 0, 5) . '</span>';
+                        echo '</div>';
+                    }
+                    echo '</div>';
+                }
+            }
         }
         
-        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
-        echo 'Início: <strong>' . $startDate->format('d/m/Y') . '</strong> | ';
-        echo 'Horário: <strong>' . substr($startTime, 0, 5) . ' às ' . substr($endTime, 0, 5) . '</strong> | ';
-        echo 'Total: <strong>' . $totalSess . ' sessões</strong>';
-        echo '</div>';
-        
-        echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto">';
-        for ($i = 0; $i < $totalSess; $i++) {
-            $sessDate = clone $startDate;
-            $sessDate->modify('+' . ($i * $intervalDays) . ' days');
-            $sessionDatesForApproval[] = $sessDate->format('Y-m-d');
+        // Fallback se não usou tabela padronizada
+        if (!$usePadronizada) {
+            $intervalDays = match($freq) {
+                'daily' => 1,
+                'weekly' => 7,
+                'biweekly' => 14,
+                'monthly' => 30,
+                default => 7,
+            };
             
-            $dayName = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][(int)$sessDate->format('w')];
-            echo '<div style="padding:6px 10px;background:#fff;border:1px solid hsl(var(--border));border-radius:6px;font-size:12px;display:flex;justify-content:space-between">';
-            echo '<span><strong>Sessão ' . ($i + 1) . '</strong></span>';
-            echo '<span>' . $dayName . ', ' . $sessDate->format('d/m/Y') . ' às ' . substr($startTime, 0, 5) . '</span>';
+            if ($sessPerWeek > 1 && $freq === 'weekly') {
+                $intervalDays = (int)floor(7 / $sessPerWeek);
+            }
+            
+            echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">';
+            echo 'Início: <strong>' . $startDate->format('d/m/Y') . '</strong> | ';
+            echo 'Horário: <strong>' . substr($startTime, 0, 5) . ' às ' . substr($endTime, 0, 5) . '</strong> | ';
+            echo 'Total: <strong>' . $totalSess . ' sessões</strong>';
+            echo '</div>';
+            
+            echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto">';
+            for ($i = 0; $i < $totalSess; $i++) {
+                $sessDate = clone $startDate;
+                $sessDate->modify('+' . ($i * $intervalDays) . ' days');
+                $sessionDatesForApproval[] = $sessDate->format('Y-m-d');
+                
+                $dayName = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][(int)$sessDate->format('w')];
+                echo '<div style="padding:6px 10px;background:#fff;border:1px solid hsl(var(--border));border-radius:6px;font-size:12px;display:flex;justify-content:space-between">';
+                echo '<span><strong>Sessão ' . ($i + 1) . '</strong></span>';
+                echo '<span>' . $dayName . ', ' . $sessDate->format('d/m/Y') . ' às ' . substr($startTime, 0, 5) . '</span>';
+                echo '</div>';
+            }
             echo '</div>';
         }
-        echo '</div>';
     } else {
         // Fallback: mostrar cálculo baseado na frequência do assignment
         echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:8px">';
