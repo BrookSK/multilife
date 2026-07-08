@@ -370,6 +370,22 @@ if ($event === 'chats.update') {
                 $demandId = (int)$dispatchRow['demand_id'];
                 $profPhone = preg_replace('/@.*/', '', $reactorJid);
                 
+                // Se o telefone é um LID (formato interno), tentar resolver para número real
+                if (strlen($profPhone) > 13 || !preg_match('/^\d+$/', $profPhone)) {
+                    // Buscar pelo pushName na tabela users
+                    if ($pushName !== '') {
+                        $stmtResolve = db()->prepare("SELECT phone FROM users WHERE name LIKE ? AND phone IS NOT NULL AND phone != '' LIMIT 1");
+                        $stmtResolve->execute(['%' . $pushName . '%']);
+                        $resolved = $stmtResolve->fetch();
+                        if ($resolved) {
+                            $profPhone = preg_replace('/\D+/', '', (string)$resolved['phone']);
+                            if (strlen($profPhone) === 10 || strlen($profPhone) === 11) {
+                                $profPhone = '55' . $profPhone;
+                            }
+                        }
+                    }
+                }
+                
                 // Buscar user_id pelo telefone
                 $profUserId = null;
                 if (strlen($profPhone) >= 8) {
