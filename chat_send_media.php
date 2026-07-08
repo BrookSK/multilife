@@ -161,33 +161,37 @@ try {
     // Enviar mídia via Evolution API
     $api = new EvolutionApiV1();
     
-    // Preparar URL completa do arquivo
+    // Converter arquivo para base64 (mais confiável que URL, pois Evolution pode não acessar nosso servidor)
+    $fileContent = file_get_contents($destinationPath);
+    $base64Media = base64_encode($fileContent);
+    $dataUri = 'data:' . $fileMime . ';base64,' . $base64Media;
+    
+    // Preparar URL completa do arquivo (fallback)
     $fullMediaUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') 
                     . '://' . $_SERVER['HTTP_HOST'] . $mediaUrl;
     
-    error_log("[$debugId] URL completa para Evolution API: $fullMediaUrl");
-    error_log("[$debugId] Enviando mídia via Evolution API - Tipo: $mediaType | JID: $remoteJid");
+    error_log("[$debugId] Enviando mídia via Evolution API - Tipo: $mediaType | JID: $remoteJid | base64 size: " . strlen($base64Media));
     
     // Enviar baseado no tipo
     $apiResponse = null;
     switch ($mediaType) {
         case 'audio':
-            error_log("[$debugId] Chamando sendAudio()");
-            $apiResponse = $api->sendAudio($remoteJid, $fullMediaUrl);
+            error_log("[$debugId] Chamando sendAudio() com base64");
+            $apiResponse = $api->sendWhatsAppAudio($remoteJid, $dataUri);
             break;
         case 'image':
             $caption = trim($_POST['caption'] ?? '');
-            error_log("[$debugId] Chamando sendImage() - Caption: '$caption'");
-            $apiResponse = $api->sendImage($remoteJid, $fullMediaUrl, $caption);
+            error_log("[$debugId] Chamando sendImage() com base64 - Caption: '$caption'");
+            $apiResponse = $api->sendImage($remoteJid, $dataUri, $caption !== '' ? $caption : null);
             break;
         case 'video':
             $caption = trim($_POST['caption'] ?? '');
-            error_log("[$debugId] Chamando sendVideo() - Caption: '$caption'");
-            $apiResponse = $api->sendVideo($remoteJid, $fullMediaUrl, $caption);
+            error_log("[$debugId] Chamando sendVideo() com base64");
+            $apiResponse = $api->sendVideo($remoteJid, $dataUri, $caption !== '' ? $caption : null);
             break;
         case 'document':
-            error_log("[$debugId] Chamando sendDocument()");
-            $apiResponse = $api->sendDocument($remoteJid, $fullMediaUrl, $fileName);
+            error_log("[$debugId] Chamando sendDocument() com base64");
+            $apiResponse = $api->sendDocument($remoteJid, $dataUri, $fileName);
             break;
     }
     
