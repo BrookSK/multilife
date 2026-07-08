@@ -2150,7 +2150,7 @@ function toggleAudioRecording(){
         stream.getTracks().forEach(function(t){t.stop();});
         var blob=new Blob(_audioChunks,{type:"audio/webm"});
         var file=new File([blob],"audio.webm",{type:"audio/webm"});
-        var chatId=window.chatId||document.querySelector("[name=remote_jid]")&&document.querySelector("[name=remote_jid]").value||"";
+        var chatId=window.chatId||new URLSearchParams(window.location.search).get("chat")||"";
         if(!chatId){alert("Chat não selecionado");return;}
         var fd=new FormData();
         fd.append("media",file);
