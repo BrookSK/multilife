@@ -164,18 +164,16 @@ if ($event === 'chats.update') {
                         // Se tem base64 no payload
                         $base64 = (string)($msgPayload['base64'] ?? $msg['base64'] ?? '');
                         if ($base64 !== '' && $mediaUrl === '') {
-                            // Salvar base64 como arquivo
-                            $ext = match($messageType) {
-                                'image' => 'jpg',
-                                'video' => 'mp4',
-                                'audio' => 'ogg',
-                                'document' => 'pdf',
-                                'sticker' => 'webp',
-                                default => 'bin',
-                            };
+                            $ext = 'bin';
+                            if ($messageType === 'image') $ext = 'jpg';
+                            elseif ($messageType === 'video') $ext = 'mp4';
+                            elseif ($messageType === 'audio') $ext = 'ogg';
+                            elseif ($messageType === 'document') $ext = 'pdf';
+                            elseif ($messageType === 'sticker') $ext = 'webp';
+                            
                             $dir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
                             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-                            $filename = 'media_' . $msgId . '.' . $ext;
+                            $filename = 'media_' . substr($msgId, 0, 16) . '_' . time() . '.' . $ext;
                             $binaryData = base64_decode($base64);
                             if ($binaryData !== false && strlen($binaryData) > 0) {
                                 file_put_contents($dir . '/' . $filename, $binaryData);
@@ -183,40 +181,45 @@ if ($event === 'chats.update') {
                             }
                         }
                         
-                        // Se não tem URL nem base64, tentar baixar via API
+                        // Se não tem URL nem base64, baixar via API getBase64FromMediaMessage
                         if ($mediaUrl === '' && $msgId !== '') {
                             try {
                                 $mediaEndpoint = rtrim($api->getBaseUrl(), '/') . '/chat/getBase64FromMediaMessage/' . urlencode($api->getInstance());
                                 $chMedia = curl_init($mediaEndpoint);
                                 curl_setopt($chMedia, CURLOPT_RETURNTRANSFER, true);
                                 curl_setopt($chMedia, CURLOPT_POST, true);
-                                curl_setopt($chMedia, CURLOPT_POSTFIELDS, json_encode(['message' => ['key' => $key], 'convertToMp4' => false]));
+                                curl_setopt($chMedia, CURLOPT_POSTFIELDS, json_encode(['message' => $msg, 'convertToMp4' => false]));
                                 curl_setopt($chMedia, CURLOPT_HTTPHEADER, ['apikey: ' . $api->getApiKey(), 'Content-Type: application/json']);
                                 curl_setopt($chMedia, CURLOPT_SSL_VERIFYPEER, false);
-                                curl_setopt($chMedia, CURLOPT_TIMEOUT, 15);
+                                curl_setopt($chMedia, CURLOPT_TIMEOUT, 20);
                                 $mediaResp = curl_exec($chMedia);
                                 $mediaCode = curl_getinfo($chMedia, CURLINFO_HTTP_CODE);
                                 curl_close($chMedia);
                                 
-                                if ($mediaCode === 200) {
+                                if ($mediaCode >= 200 && $mediaCode < 300) {
                                     $mediaData = json_decode($mediaResp, true);
                                     $b64 = (string)($mediaData['base64'] ?? '');
                                     if ($b64 !== '') {
-                                        $ext = match($messageType) {
-                                            'image' => 'jpg',
-                                            'video' => 'mp4',
-                                            'audio' => 'ogg',
-                                            'document' => 'pdf',
-                                            'sticker' => 'webp',
-                                            default => 'bin',
-                                        };
+                                        $mimeType = (string)($mediaData['mimetype'] ?? '');
+                                        $origFilename = (string)($mediaData['fileName'] ?? '');
+                                        $ext = 'bin';
+                                        if (str_contains($mimeType, 'image/jpeg') || str_contains($mimeType, 'image/jpg')) $ext = 'jpg';
+                                        elseif (str_contains($mimeType, 'image/png')) $ext = 'png';
+                                        elseif (str_contains($mimeType, 'image/webp')) $ext = 'webp';
+                                        elseif (str_contains($mimeType, 'video/mp4')) $ext = 'mp4';
+                                        elseif (str_contains($mimeType, 'audio/ogg')) $ext = 'ogg';
+                                        elseif (str_contains($mimeType, 'audio/mp4')) $ext = 'm4a';
+                                        elseif (str_contains($mimeType, 'application/pdf')) $ext = 'pdf';
+                                        elseif ($origFilename !== '') $ext = strtolower(pathinfo($origFilename, PATHINFO_EXTENSION)) ?: 'bin';
+                                        
                                         $dir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
                                         if (!is_dir($dir)) @mkdir($dir, 0755, true);
-                                        $filename = 'media_' . $msgId . '.' . $ext;
+                                        $filename = 'media_' . substr($msgId, 0, 16) . '_' . time() . '.' . $ext;
                                         $binaryData = base64_decode($b64);
                                         if ($binaryData !== false && strlen($binaryData) > 0) {
                                             file_put_contents($dir . '/' . $filename, $binaryData);
                                             $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $filename;
+                                            error_log("[WEBHOOK] chats.update: mídia baixada OK ($ext, " . strlen($binaryData) . " bytes)");
                                         }
                                     }
                                 }
