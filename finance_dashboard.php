@@ -59,17 +59,12 @@ $whereClause = implode(' AND ', $baseWhere);
 
 $db = db();
 
-// Receitas: soma dos valores autorizados dos atendimentos aprovados/finalizados
-$stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
-     FROM patient_assignments pa
-     INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('confirmed', 'approved', 'completed', 'paid') AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
-);
-$stmt->execute($params);
-$receitasAtendimentos = (float)$stmt->fetchColumn();
+// ============================================================================
+// FONTE ÚNICA DE VERDADE: financial_entries
+// Receitas e despesas são calculadas apenas da tabela financial_entries
+// para evitar contagem dupla (patient_assignments + financial_entries)
+// ============================================================================
 
-// Receitas de lançamentos financeiros adicionais
 $dateFilterFinancial = '';
 switch ($period) {
     case 'day':
@@ -86,59 +81,48 @@ switch ($period) {
         break;
 }
 
+// Receitas (income): tudo que foi aprovado no faturamento
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(fe.amount), 0) AS total
      FROM financial_entries fe
-     WHERE fe.entry_type = 'income' AND fe.status IN ('pending', 'paid') AND $dateFilterFinancial"
+     WHERE fe.entry_type = 'income' AND fe.status IN ('pending', 'paid') AND fe.is_active = 1 AND $dateFilterFinancial"
 );
 $stmt->execute();
-$receitasLancamentos = (float)$stmt->fetchColumn();
+$faturamentoTotal = (float)$stmt->fetchColumn();
 
-$faturamentoTotal = $receitasAtendimentos + $receitasLancamentos;
-
-// Despesas: soma dos valores acordados (custos)
-$stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
-     FROM patient_assignments pa
-     INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status IN ('confirmed', 'approved', 'completed', 'paid') AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
-);
-$stmt->execute($params);
-$despesasAtendimentos = (float)$stmt->fetchColumn();
-
-// Despesas de lançamentos financeiros adicionais (incluindo folha de pagamento)
+// Despesas (expense): custos com profissionais + outras despesas
 $stmt = $db->prepare(
     "SELECT COALESCE(SUM(fe.amount), 0) AS total
      FROM financial_entries fe
-     WHERE fe.entry_type = 'expense' AND fe.status IN ('pending', 'paid') AND $dateFilterFinancial"
+     WHERE fe.entry_type = 'expense' AND fe.status IN ('pending', 'paid') AND fe.is_active = 1 AND $dateFilterFinancial"
 );
 $stmt->execute();
-$despesasLancamentos = (float)$stmt->fetchColumn();
-
-$custoAtendimentos = $despesasAtendimentos + $despesasLancamentos;
+$custoAtendimentos = (float)$stmt->fetchColumn();
 
 $margemOperacional = $faturamentoTotal - $custoAtendimentos;
 $lucroLiquido = $margemOperacional;
 
 // Valores JÁ RECEBIDOS (apenas status 'paid')
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.authorized_value), 0) AS total
-     FROM patient_assignments pa
-     INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status = 'paid' AND pa.authorized_value IS NOT NULL AND pa.authorized_value > 0 AND $whereClause"
+    "SELECT COALESCE(SUM(fe.amount), 0) AS total
+     FROM financial_entries fe
+     WHERE fe.entry_type = 'income' AND fe.status = 'paid' AND fe.is_active = 1 AND $dateFilterFinancial"
 );
-$stmt->execute($params);
-$valoresRecebidos = (float)$stmt->fetchColumn();
+$stmt->execute();
+$recebidoTotal = (float)$stmt->fetchColumn();
 
 // Valores JÁ PAGOS (apenas status 'paid')
 $stmt = $db->prepare(
-    "SELECT COALESCE(SUM(pa.agreed_value), 0) AS total
-     FROM patient_assignments pa
-     INNER JOIN patients p ON p.id = pa.patient_id
-     WHERE pa.status = 'paid' AND pa.agreed_value IS NOT NULL AND pa.agreed_value > 0 AND $whereClause"
+    "SELECT COALESCE(SUM(fe.amount), 0) AS total
+     FROM financial_entries fe
+     WHERE fe.entry_type = 'expense' AND fe.status = 'paid' AND fe.is_active = 1 AND $dateFilterFinancial"
 );
-$stmt->execute($params);
-$valoresPagos = (float)$stmt->fetchColumn();
+$stmt->execute();
+$pagoTotal = (float)$stmt->fetchColumn();
+
+// Compat: manter variáveis antigas usadas na view
+$valoresRecebidos = $recebidoTotal;
+$valoresPagos = $pagoTotal;
 
 // Número de atendimentos
 $stmt = $db->prepare(

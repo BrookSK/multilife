@@ -18,97 +18,50 @@ if (!in_array($tab, $allowedTabs, true)) {
 // Definir status baseado na aba
 $status = ($tab === 'pendentes') ? 'pendente' : 'pago';
 
-// Contas a pagar de atendimentos (patient_assignments)
-$sql = 'SELECT pa.id, 
-               pa.agreed_value as amount,
-               pa.created_at as due_at,
+// ============================================================================
+// FONTE ÚNICA: financial_entries (evita contagem dupla com patient_assignments)
+// ============================================================================
+$sql = 'SELECT fe.id, fe.amount, 
+               COALESCE(fe.due_date, fe.entry_date) as due_at, 
                CASE 
-                   WHEN pa.status = "paid" THEN "pago"
-                   WHEN pa.status IN ("approved", "completed") THEN "pendente"
+                   WHEN fe.status = "paid" THEN "pago"
+                   WHEN fe.status = "pending" THEN "pendente"
                    ELSE "pendente"
-               END as status,
-               NULL as paid_at,
-               pa.id AS appointment_id,
-               pa.created_at as first_at,
-               u.name AS professional_name,
-               "patient_assignment" as source,
-               pa.specialty,
-               pa.service_type,
-               p.full_name as patient_name,
-               "Fluxo Operacional" as cost_center,
-               COALESCE(hi.name, "Não informado") as operadora
-        FROM patient_assignments pa
-        LEFT JOIN users u ON u.id = pa.professional_user_id
-        LEFT JOIN patients p ON p.id = pa.patient_id
-        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
-        WHERE pa.agreed_value IS NOT NULL AND pa.agreed_value > 0';
+               END as status, 
+               fe.paid_date as paid_at,
+               COALESCE(fe.assignment_id, 0) as appointment_id, 
+               fe.created_at as first_at,
+               COALESCE(u.name, "-") AS professional_name,
+               "financial_entry" as source,
+               fe.description,
+               fe.category as specialty,
+               fe.payment_type as service_type,
+               COALESCE(p.full_name, fe.supplier_name, "-") as patient_name,
+               COALESCE(fe.cost_center, "-") as cost_center,
+               NULL as operadora
+        FROM financial_entries fe
+        LEFT JOIN users u ON u.id = fe.professional_user_id
+        LEFT JOIN patients p ON p.id = fe.patient_id
+        WHERE fe.entry_type = "expense" AND fe.is_active = 1';
 
 $params = [];
 
 if ($status === 'pago') {
-    $sql .= ' AND pa.status = "paid"';
+    $sql .= ' AND fe.status = "paid"';
 } elseif ($status === 'pendente') {
-    $sql .= ' AND pa.status IN ("approved", "completed", "confirmed")';
+    $sql .= ' AND fe.status = "pending"';
 }
 
 if ($q !== '') {
-    $sql .= ' AND (u.name LIKE :q OR pa.specialty LIKE :q OR p.full_name LIKE :q)';
+    $sql .= ' AND (u.name LIKE :q OR fe.description LIKE :q OR p.full_name LIKE :q)';
     $params['q'] = '%' . $q . '%';
 }
 
-$sql .= ' ORDER BY pa.id DESC';
+$sql .= ' ORDER BY fe.id DESC';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
-
-// Despesas de lançamentos financeiros manuais
-$sqlFaturamento = 'SELECT fe.id, fe.amount, 
-                          COALESCE(fe.due_date, fe.entry_date) as due_at, 
-                          CASE 
-                              WHEN fe.status = "paid" THEN "pago"
-                              WHEN fe.status = "pending" THEN "pendente"
-                              ELSE "pendente"
-                          END as status, 
-                          fe.paid_date as paid_at,
-                          COALESCE(fe.assignment_id, 0) as appointment_id, 
-                          fe.created_at as first_at,
-                          COALESCE(u.name, "-") AS professional_name,
-                          "financial_entry" as source,
-                          fe.description,
-                          fe.category as specialty,
-                          fe.payment_type as service_type,
-                          COALESCE(fe.supplier_name, "-") as patient_name,
-                          COALESCE(fe.cost_center, "-") as cost_center,
-                          NULL as operadora
-                   FROM financial_entries fe
-                   LEFT JOIN users u ON u.id = fe.professional_user_id
-                   WHERE fe.entry_type = "expense" AND fe.is_active = 1';
-
-$paramsFat = [];
-
-if ($status !== '') {
-    // Mapear status: pending/paid para pendente/pago
-    $statusMap = ['pendente' => 'pending', 'pago' => 'paid'];
-    if (isset($statusMap[$status])) {
-        $sqlFaturamento .= ' AND fe.status = :status';
-        $paramsFat['status'] = $statusMap[$status];
-    }
-}
-
-if ($q !== '') {
-    $sqlFaturamento .= ' AND (u.name LIKE :q OR fe.description LIKE :q)';
-    $paramsFat['q'] = '%' . $q . '%';
-}
-
-$sqlFaturamento .= ' ORDER BY fe.id DESC';
-
-$stmtFat = db()->prepare($sqlFaturamento);
-$stmtFat->execute($paramsFat);
-$rowsFaturamento = $stmtFat->fetchAll();
-
-// Combinar ambos os arrays
-$rows = array_merge($rows, $rowsFaturamento);
 
 // Calcular resumo financeiro
 $totalPendente = 0;
