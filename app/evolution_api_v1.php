@@ -289,20 +289,17 @@ final class EvolutionApiV1
 
     public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = []): array
     {
-        $msg = [
-            'mediatype' => $mediaType,  // Evolution API espera minúsculo
+        $body = [
+            'number' => $number,
+            'mediatype' => $mediaType,
             'fileName' => $fileName,
             'media' => $media,
         ];
         if ($caption !== null && $caption !== '') {
-            $msg['caption'] = $caption;
+            $body['caption'] = $caption;
         }
 
-        return $this->request('POST', '/message/sendMedia/' . urlencode($this->inst()), [], [
-            'number' => $number,
-            'mediaMessage' => $msg,
-            'options' => (object)$options,
-        ]);
+        return $this->request('POST', '/message/sendMedia/' . urlencode($this->inst()), [], $body);
     }
 
     public function sendContact(string $number, array $contactMessage, array $options = []): array
