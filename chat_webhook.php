@@ -99,8 +99,8 @@ if ($event === 'chats.update') {
                     $msgId = (string)($key['id'] ?? '');
                     $fromMe = (bool)($key['fromMe'] ?? false);
                     
-                    if ($msgId === '' || $fromMe) {
-                        continue; // Ignorar mensagens enviadas por nós
+                    if ($msgId === '') {
+                        continue;
                     }
                     
                     // Usar remoteJidAlt (formato @s.whatsapp.net) se disponível
@@ -113,7 +113,7 @@ if ($event === 'chats.update') {
                         $reactionKey = $reaction['key'] ?? [];
                         $reactionMsgId = (string)($reactionKey['id'] ?? '');
                         $reactionEmoji = (string)($reaction['text'] ?? '');
-                        $reactorJid = (string)($key['participant'] ?? $msgRemoteJid);
+                        $reactorJid = (string)($key['participant'] ?? $reactionKey['participant'] ?? $msgRemoteJid);
                         $timestamp = (int)($msg['messageTimestamp'] ?? time());
                         $pushName = (string)($msg['pushName'] ?? '');
                         
@@ -173,6 +173,12 @@ if ($event === 'chats.update') {
                     $checkStmt->execute([$msgId]);
                     if ($checkStmt->fetch()) {
                         continue; // Já existe
+                    }
+                    
+                    // Ignorar mensagens enviadas por nós (apenas para msgs normais, não reações)
+                    $fromMe = (bool)($key['fromMe'] ?? false);
+                    if ($fromMe) {
+                        continue;
                     }
                     
                     // Extrair texto — formato pode ser msg['message'] ou msg['message']['conversation']
@@ -299,6 +305,82 @@ if ($event === 'chats.update') {
         } catch (Throwable $e) {
             error_log("[WEBHOOK] chats.update erro ao buscar mensagens: " . $e->getMessage());
         }
+    }
+    
+    // Verificar reações em grupos de captação ativos (independente do JID que acionou)
+    try {
+        $api = $api ?? new EvolutionApiV1();
+        $activeGroupsStmt = db()->query("
+            SELECT DISTINCT wg.evolution_group_jid 
+            FROM demand_dispatch_logs ddl
+            INNER JOIN whatsapp_groups wg ON wg.id = ddl.group_id
+            INNER JOIN demands d ON d.id = ddl.demand_id
+            WHERE d.status IN ('aguardando_captacao', 'em_captacao')
+            AND wg.evolution_group_jid IS NOT NULL
+            AND ddl.created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+            LIMIT 5
+        ");
+        $activeGroups = $activeGroupsStmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        foreach ($activeGroups as $groupJid) {
+            $grpRes = $api->findMessages($groupJid);
+            $grpMessages = $grpRes['json']['messages']['records'] ?? [];
+            
+            foreach ($grpMessages as $grpMsg) {
+                $grpPayload = $grpMsg['message'] ?? [];
+                if (!is_array($grpPayload) || !isset($grpPayload['reactionMessage'])) continue;
+                
+                $reaction = $grpPayload['reactionMessage'];
+                $reactionKey = $reaction['key'] ?? [];
+                $reactionMsgId = (string)($reactionKey['id'] ?? '');
+                $reactionEmoji = (string)($reaction['text'] ?? '');
+                $grpKey = $grpMsg['key'] ?? [];
+                $reactorJid = (string)($grpKey['participant'] ?? $reactionKey['participant'] ?? '');
+                $pushName = (string)($grpMsg['pushName'] ?? '');
+                $timestamp = (int)($grpMsg['messageTimestamp'] ?? time());
+                
+                if (empty($reactionMsgId) || empty($reactionEmoji)) continue;
+                
+                // Verificar se é reação a uma mensagem de captação
+                $stmtDispatch = db()->prepare("
+                    SELECT ddl.demand_id, d.status as demand_status
+                    FROM demand_dispatch_logs ddl
+                    INNER JOIN demands d ON d.id = ddl.demand_id
+                    WHERE ddl.evolution_message_id = ?
+                    LIMIT 1
+                ");
+                $stmtDispatch->execute([$reactionMsgId]);
+                $dispatchRow = $stmtDispatch->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$dispatchRow || in_array($dispatchRow['demand_status'], ['admitido', 'concluido', 'cancelado'])) continue;
+                
+                $demandId = (int)$dispatchRow['demand_id'];
+                $profPhone = preg_replace('/@.*/', '', $reactorJid);
+                
+                // Buscar user_id pelo telefone
+                $profUserId = null;
+                if (strlen($profPhone) >= 8) {
+                    $stmtUser = db()->prepare("SELECT id FROM users WHERE phone LIKE ? LIMIT 1");
+                    $stmtUser->execute(['%' . substr($profPhone, -8) . '%']);
+                    $profUser = $stmtUser->fetch();
+                    if ($profUser) $profUserId = (int)$profUser['id'];
+                }
+                
+                // Inserir interesse (IGNORE para não duplicar)
+                $stmtInsert = db()->prepare("
+                    INSERT IGNORE INTO demand_interested_professionals 
+                    (demand_id, phone, push_name, user_id, emoji, reacted_at)
+                    VALUES (?, ?, ?, ?, ?, NOW())
+                ");
+                $stmtInsert->execute([$demandId, $profPhone, $pushName, $profUserId, $reactionEmoji]);
+                
+                if ($stmtInsert->rowCount() > 0) {
+                    error_log("[WEBHOOK] REAÇÃO CAPTAÇÃO detectada! Demanda #$demandId prof='$pushName' phone='$profPhone' emoji='$reactionEmoji'");
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log("[WEBHOOK] Erro ao verificar reações em grupos: " . $e->getMessage());
     }
     
     http_response_code(200);
