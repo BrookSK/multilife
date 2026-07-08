@@ -1095,6 +1095,18 @@ function updateChatListPreview(lastMsg) {
 // Iniciar polling se houver chat selecionado
 // (Será iniciado pelo inline script que define window.chatId)
 function startChatPolling() {
+  // Fallback: pegar chatId da URL se window.chatId não estiver definido
+  if (!window.chatId) {
+    var params = new URLSearchParams(window.location.search);
+    var chatParam = params.get('chat');
+    if (chatParam) {
+      window.chatId = chatParam;
+    }
+  }
+  if (!window.lastTimestamp) {
+    window.lastTimestamp = Math.floor(Date.now() / 1000) - 60; // último minuto
+  }
+  
   if (window.chatId && !window._pollingStarted) {
     window._pollingStarted = true;
     setInterval(checkForNewMessages, 3000);
