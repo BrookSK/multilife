@@ -15,15 +15,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $contactPhone = trim($_POST['contact_phone'] ?? '');
         $contactEmail = trim($_POST['contact_email'] ?? '');
         $billingEmail = trim($_POST['billing_email'] ?? '');
+        $emailDomain = trim($_POST['email_domain'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
         
         if ($name !== '') {
             try {
                 $stmt = $db->prepare("
-                    INSERT INTO health_insurers (name, cnpj, contact_phone, contact_email, billing_email, notes)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO health_insurers (name, cnpj, contact_phone, contact_email, billing_email, email_domain, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $notes]);
+                $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes]);
                 $_SESSION['success'] = 'Operadora cadastrada com sucesso!';
             } catch (PDOException $e) {
                 $_SESSION['error'] = 'Erro ao cadastrar operadora: ' . $e->getMessage();
@@ -40,16 +41,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $contactPhone = trim($_POST['contact_phone'] ?? '');
         $contactEmail = trim($_POST['contact_email'] ?? '');
         $billingEmail = trim($_POST['billing_email'] ?? '');
+        $emailDomain = trim($_POST['email_domain'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
         
         if ($id > 0 && $name !== '') {
             try {
                 $stmt = $db->prepare("
                     UPDATE health_insurers 
-                    SET name = ?, cnpj = ?, contact_phone = ?, contact_email = ?, billing_email = ?, notes = ?
+                    SET name = ?, cnpj = ?, contact_phone = ?, contact_email = ?, billing_email = ?, email_domain = ?, notes = ?
                     WHERE id = ?
                 ");
-                $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $notes, $id]);
+                $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes, $id]);
                 $_SESSION['success'] = 'Operadora atualizada com sucesso!';
             } catch (PDOException $e) {
                 $_SESSION['error'] = 'Erro ao atualizar operadora: ' . $e->getMessage();
