@@ -24,10 +24,6 @@ final class EvolutionApiV1
         return $this->baseUrl . '/' . ltrim($path, '/');
     }
 
-    public function getBaseUrl(): string { return $this->baseUrl; }
-    public function getApiKey(): string { return $this->apiKey; }
-    public function getInstance(): string { return $this->instance; }
-
     private function inst(?string $instanceName = null): string
     {
         $i = (string)($instanceName ?? $this->instance);
@@ -289,17 +285,20 @@ final class EvolutionApiV1
 
     public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = []): array
     {
-        $body = [
-            'number' => $number,
-            'mediatype' => $mediaType,
+        $msg = [
+            'mediatype' => $mediaType,  // Evolution API espera minúsculo
             'fileName' => $fileName,
             'media' => $media,
         ];
         if ($caption !== null && $caption !== '') {
-            $body['caption'] = $caption;
+            $msg['caption'] = $caption;
         }
 
-        return $this->request('POST', '/message/sendMedia/' . urlencode($this->inst()), [], $body);
+        return $this->request('POST', '/message/sendMedia/' . urlencode($this->inst()), [], [
+            'number' => $number,
+            'mediaMessage' => $msg,
+            'options' => (object)$options,
+        ]);
     }
 
     public function sendContact(string $number, array $contactMessage, array $options = []): array
@@ -315,7 +314,8 @@ final class EvolutionApiV1
     {
         return $this->request('POST', '/message/sendWhatsAppAudio/' . urlencode($this->inst()), [], [
             'number' => $number,
-            'audio' => $audio,
+            'audioMessage' => ['audio' => $audio],
+            'options' => (object)$options,
         ]);
     }
 

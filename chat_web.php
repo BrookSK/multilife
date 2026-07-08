@@ -1672,13 +1672,12 @@ if ($chatType === 'grupos') {
     try {
         $stmtWait = db()->prepare("
             SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty,
-                   wg.name as group_name
+                   dl.id as dispatch_id, wg.name as group_name
             FROM demand_interested_professionals dip
             INNER JOIN demands d ON d.id = dip.demand_id
-            LEFT JOIN demand_dispatch_logs dl ON dl.demand_id = dip.demand_id
+            LEFT JOIN demand_dispatch_logs dl ON dl.id = dip.dispatch_log_id
             LEFT JOIN whatsapp_groups wg ON wg.id = dl.group_id
             WHERE dip.status = 'interested'
-            GROUP BY dip.id
             ORDER BY d.id DESC, dip.reacted_at DESC
             LIMIT 100
         ");
@@ -1713,20 +1712,12 @@ if ($chatType === 'grupos') {
                 echo '</div>';
                 
                 foreach ($pros as $pro) {
-                    $proName = $pro['push_name'] ?? $pro['phone'] ?? '?';
+                    $proName = $pro['push_name'] ?? $pro['phone'];
                     $proEmoji = $pro['emoji'] ?? '👤';
-                    $proDate = !empty($pro['reacted_at']) ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
+                    $proDate = $pro['reacted_at'] ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
+                    $proJid = $pro['phone_jid'] ?? '';
                     
-                    // Construir JID para link do chat privado
-                    $proPhone = preg_replace('/\D+/', '', (string)($pro['phone'] ?? ''));
-                    if (strlen($proPhone) >= 10 && strlen($proPhone) <= 11) {
-                        $proPhone = '55' . $proPhone;
-                    }
-                    $proJid = $proPhone !== '' ? $proPhone . '@s.whatsapp.net' : '';
-                    
-                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' : '#';
-                    
-                    echo '<a href="' . $linkHref . '" class="whatsapp-chat-item">';
+                    echo '<a href="' . (!empty($proJid) ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=lista_espera' : '#') . '" class="whatsapp-chat-item">';
                     echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
                     echo '<div class="whatsapp-chat-info">';
                     echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';
@@ -2140,53 +2131,9 @@ if (empty($selectedChat)) {
     // Botões de anexo de mídia
     echo '<div style="display:flex;gap:4px;align-items:center">';
     
-    // Botão de áudio (gravação direta)
-    echo '<script>
-var _mediaRecorder=null,_audioChunks=[];
-function toggleAudioRecording(){
-  if(_mediaRecorder&&_mediaRecorder.state==="recording"){
-    _mediaRecorder.stop();
-    var btn=document.getElementById("audioRecordBtn");
-    if(btn){btn.style.background="";btn.style.color="";}
-    var ind=document.getElementById("recInd");if(ind)ind.remove();
-  }else{
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert("Navegador não suporta gravação");return;}
-    navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
-      _mediaRecorder=new MediaRecorder(stream);
-      _audioChunks=[];
-      _mediaRecorder.addEventListener("dataavailable",function(e){_audioChunks.push(e.data);});
-      _mediaRecorder.addEventListener("stop",function(){
-        stream.getTracks().forEach(function(t){t.stop();});
-        var blob=new Blob(_audioChunks,{type:"audio/webm"});
-        var file=new File([blob],"audio.webm",{type:"audio/webm"});
-        var chatId=window.chatId||new URLSearchParams(window.location.search).get("chat")||"";
-        if(!chatId){alert("Chat não selecionado");return;}
-        var fd=new FormData();
-        fd.append("media",file);
-        fd.append("remote_jid",chatId);
-        fd.append("media_type","audio");
-        fetch("/chat_send_media.php",{method:"POST",body:fd})
-        .then(function(r){return r.json();})
-        .then(function(data){
-          if(data.success){location.reload();}
-          else{alert("Erro ao enviar áudio: "+(data.error||"Erro desconhecido"));}
-        })
-        .catch(function(e){alert("Erro: "+e.message);});
-      });
-      _mediaRecorder.start();
-      var btn=document.getElementById("audioRecordBtn");
-      if(btn){btn.style.background="#dc2626";btn.style.color="white";btn.style.borderRadius="50%";}
-      var ind=document.createElement("div");ind.id="recInd";
-      ind.style.cssText="position:fixed;bottom:80px;right:20px;background:#dc2626;color:white;padding:12px 20px;border-radius:24px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000";
-      ind.textContent="Gravando... (clique no mic para parar)";
-      document.body.appendChild(ind);
-      setTimeout(function(){if(_mediaRecorder&&_mediaRecorder.state==="recording")toggleAudioRecording();},60000);
-    }).catch(function(e){alert("Erro ao acessar microfone: "+e.message);});
-  }
-}
-</script>';
+    // Botão de áudio
     echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" data-media-type="audio">';
-    echo '<button type="button" id="audioRecordBtn" onclick="toggleAudioRecording()" class="whatsapp-action-btn" title="Gravar áudio (clique para iniciar/parar)">';
+    echo '<button type="button" onclick="document.getElementById(\'audioInput\').click()" class="whatsapp-action-btn" title="Enviar áudio">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     echo '</button>';
     
@@ -2453,7 +2400,9 @@ echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window
 
 // Marcar mensagens como lidas quando chat for aberto
 if (!empty($selectedChat)) {
-    echo 'if (window.chatId) {
+    echo '
+// Marcar mensagens como lidas automaticamente
+if (window.chatId) {
     fetch("/chat_mark_read.php", {
         method: "POST",
         headers: {
