@@ -64,28 +64,41 @@ $db = db();
 $db->exec('SET FOREIGN_KEY_CHECKS = 0');
 
 $tablesToTruncate = [
-    // Pacientes
+    // Pacientes - todos os dados relacionados
     'patients',
     'patient_assignments',
     'patient_documents',
+    'patient_prontuario_entries',
     'patient_prontuarios',
     'patient_access_logs',
     'patient_frequency_changes',
     'patient_professional_substitutions',
+    'patient_professionals',
+    'patient_allergies',
+    'patient_chronic_conditions',
+    'patient_family_history',
+    'patient_medications',
+    'patient_medical_history',
+    'patient_legal_guardians',
     
     // Demandas / Captação
     'demands',
+    'demand_sub_requests',
     'demand_interested_professionals',
+    'demand_dispatch_logs',
+    'demand_status_logs',
     'authorization_requests',
     'authorization_request_history',
     
-    // Profissionais
+    // Profissionais - candidaturas e respostas
     'professional_applications',
+    'professional_application_replies',
     'professional_documents',
     
     // Agendamentos
     'appointments',
     'appointment_value_authorizations',
+    'appointment_patient_feedback',
     
     // Financeiro
     'financial_entries',
@@ -102,38 +115,29 @@ $tablesToTruncate = [
     'chat_reactions',
     'chat_capture_info',
     
+    // WhatsApp grupos
+    'whatsapp_groups',
+    'whatsapp_instances',
+    'whatsapp_event_logs',
+    
     // Documentos
     'documents',
     'document_versions',
     
-    // Notificações
+    // Notificações e Pendências
     'notifications',
-    
-    // Pendências
     'pending_items',
     
-    // Logs
+    // Logs e Auditoria
     'audit_logs',
     'tech_logs',
     'integration_jobs',
     'council_validation_cache',
     'council_validation_logs',
     
-    // E-mail recebido
+    // E-mail
     'inbound_emails',
-    
-    // WhatsApp logs de envio
-    'whatsapp_event_logs',
     'email_event_logs',
-    
-    // WhatsApp instances tracking
-    'whatsapp_instances',
-    
-    // WhatsApp grupos
-    'whatsapp_groups',
-    'chat_groups',
-    'chat_group_participants',
-    'demand_dispatch_logs',
     
     // RH
     'hr_employees',
@@ -145,7 +149,7 @@ $tablesToTruncate = [
     // Monitoramento
     'pre_admissao_requests',
     
-    // Tabelas de backup de testes anteriores
+    // Tabelas de backup
     'patient_assignments_backup_antes_zerar',
     'financial_entries_backup_antes_zerar',
     'billing_invoices_backup_antes_zerar',
@@ -170,24 +174,41 @@ foreach ($tablesToTruncate as $table) {
 
 $db->exec('SET FOREIGN_KEY_CHECKS = 1');
 
+// Excluir operadoras desativadas
+try {
+    $delInactive = $db->prepare("DELETE FROM health_insurers WHERE is_active = 0");
+    $delInactive->execute();
+    $deletedInsurers = $delInactive->rowCount();
+    if ($deletedInsurers > 0) {
+        $results[] = "🗑️ health_insurers inativas — $deletedInsurers removidas";
+    }
+} catch (\PDOException $e) {
+    $results[] = "⏭️ health_insurers inativas — erro: " . $e->getMessage();
+}
+
 // Limpar uploads (mídias de chat, documentos, etc.)
 $uploadDirs = [
     __DIR__ . '/uploads/chat',
+    __DIR__ . '/uploads/chat_media',
     __DIR__ . '/uploads/documents',
     __DIR__ . '/uploads/patients',
     __DIR__ . '/uploads/professional',
+    __DIR__ . '/uploads/application_replies',
 ];
 
 foreach ($uploadDirs as $dir) {
     if (is_dir($dir)) {
-        $files = glob($dir . '/*');
         $count = 0;
-        if ($files) {
-            foreach ($files as $file) {
-                if (is_file($file)) {
-                    unlink($file);
-                    $count++;
-                }
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isFile()) {
+                unlink($item->getPathname());
+                $count++;
+            } elseif ($item->isDir()) {
+                @rmdir($item->getPathname());
             }
         }
         $results[] = "🗑️ $dir — $count arquivos removidos";
