@@ -38,10 +38,12 @@ $sql = 'SELECT fe.id, fe.amount,
                fe.payment_type as service_type,
                COALESCE(p.full_name, fe.supplier_name, "-") as patient_name,
                COALESCE(fe.cost_center, "-") as cost_center,
-               NULL as operadora
+               hi.name as operadora
         FROM financial_entries fe
         LEFT JOIN users u ON u.id = fe.professional_user_id
         LEFT JOIN patients p ON p.id = fe.patient_id
+        LEFT JOIN patient_assignments pa ON pa.id = fe.assignment_id
+        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
         WHERE fe.entry_type = "expense" AND fe.is_active = 1';
 
 $params = [];
@@ -218,10 +220,12 @@ foreach ($rows as $r) {
     }
     echo '<td>' . $fornecedorDisplay . '</td>';
     
-    // Operadora: mostrar operadora para atendimentos, "Não aplicável" para lançamentos manuais
+    // Operadora: mostrar operadora se disponível
     $operadoraDisplay = 'Não aplicável';
-    if ((string)$r['source'] === 'patient_assignment' && !empty($r['operadora'])) {
+    if (!empty($r['operadora'])) {
         $operadoraDisplay = h((string)$r['operadora']);
+    } elseif ((int)$r['appointment_id'] > 0) {
+        $operadoraDisplay = 'Não informado';
     }
     echo '<td>' . $operadoraDisplay . '</td>';
     

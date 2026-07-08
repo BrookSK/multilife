@@ -39,10 +39,12 @@ $sql = 'SELECT fe.id, fe.amount,
                fe.payment_type as service_type,
                fe.category,
                COALESCE(fe.cost_center, "-") as cost_center,
-               NULL as operadora
+               hi.name as operadora
         FROM financial_entries fe
         LEFT JOIN patients p ON p.id = fe.patient_id
         LEFT JOIN users u ON u.id = fe.professional_user_id
+        LEFT JOIN patient_assignments pa ON pa.id = fe.assignment_id
+        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
         WHERE fe.entry_type = "income" AND fe.is_active = 1';
 
 $params = [];
