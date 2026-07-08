@@ -65,6 +65,67 @@ try {
     $updateStmt->execute([$newStatus, $userId, $rejectionReason, $requirementId]);
     
     if ($decision === 'approve') {
+        // Criar lançamento financeiro INDIVIDUAL desta sessão aprovada
+        $assignStmt = db()->prepare("
+            SELECT pa.agreed_value, pa.authorized_value, pa.professional_user_id, pa.patient_id,
+                   pa.specialty, pa.service_type, p.full_name as patient_name
+            FROM patient_assignments pa
+            LEFT JOIN patients p ON p.id = pa.patient_id
+            WHERE pa.id = ?
+        ");
+        $assignStmt->execute([$requirement['assignment_id']]);
+        $assignment = $assignStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($assignment) {
+            $agreedValue = (float)($assignment['agreed_value'] ?? 0);
+            $authorizedValue = (float)($assignment['authorized_value'] ?? 0);
+            $sessionNumber = (int)$requirement['session_number'];
+            
+            // Receita (income) - valor autorizado por sessão (da operadora)
+            if ($authorizedValue > 0) {
+                $incomeStmt = db()->prepare("
+                    INSERT INTO financial_entries (
+                        entry_type, category, assignment_id, patient_id, professional_user_id,
+                        amount, description, entry_date, status, cost_center, created_by_user_id, is_active
+                    ) VALUES (
+                        'income', 'Receita de Atendimento', ?, ?, ?,
+                        ?, ?, NOW(), 'pending', 'Fluxo Operacional', ?, 1
+                    )
+                ");
+                $incomeDesc = "Sessão {$sessionNumber} - " . ($assignment['patient_name'] ?? '') . " - " . ($assignment['specialty'] ?? '');
+                $incomeStmt->execute([
+                    $requirement['assignment_id'],
+                    $assignment['patient_id'],
+                    $assignment['professional_user_id'],
+                    $authorizedValue,
+                    $incomeDesc,
+                    $userId
+                ]);
+            }
+            
+            // Despesa (expense) - valor acordado por sessão (ao profissional)
+            if ($agreedValue > 0) {
+                $expenseStmt = db()->prepare("
+                    INSERT INTO financial_entries (
+                        entry_type, category, assignment_id, patient_id, professional_user_id,
+                        amount, description, entry_date, status, cost_center, created_by_user_id, is_active
+                    ) VALUES (
+                        'expense', 'Pagamento Profissional', ?, ?, ?,
+                        ?, ?, NOW(), 'pending', 'Fluxo Operacional', ?, 1
+                    )
+                ");
+                $expenseDesc = "Sessão {$sessionNumber} - " . ($assignment['patient_name'] ?? '') . " - " . ($assignment['specialty'] ?? '');
+                $expenseStmt->execute([
+                    $requirement['assignment_id'],
+                    $assignment['patient_id'],
+                    $assignment['professional_user_id'],
+                    $agreedValue,
+                    $expenseDesc,
+                    $userId
+                ]);
+            }
+        }
+        
         // Verificar se todos os documentos foram aprovados
         $checkStmt = db()->prepare("
             SELECT COUNT(*) as pending_count
@@ -74,8 +135,11 @@ try {
         $checkStmt->execute([$requirement['assignment_id']]);
         $checkResult = $checkStmt->fetch(PDO::FETCH_ASSOC);
         
-        // Se todos os documentos foram aprovados, manter status awaiting_financial_approval
-        // (não muda automaticamente, precisa de aprovação manual do financeiro)
+        // Se todos aprovados, atualizar status do assignment
+        if ((int)$checkResult['pending_count'] === 0) {
+            $updAssign = db()->prepare("UPDATE patient_assignments SET status = 'approved' WHERE id = ?");
+            $updAssign->execute([$requirement['assignment_id']]);
+        }
     }
     
     // Registrar no prontuário
