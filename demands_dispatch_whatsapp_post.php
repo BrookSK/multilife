@@ -118,14 +118,18 @@ if (count($groups) === 0) {
         $profsStmt->execute([$specialty, '%' . $specialty . '%']);
         $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
         
-        // Limpar telefones (apenas dígitos)
+        // Limpar telefones (apenas dígitos) e remover duplicados
         $participants = [];
         foreach ($profPhones as $phone) {
             $clean = preg_replace('/\D+/', '', $phone);
             if (strlen($clean) >= 10) {
+                if (strlen($clean) === 10 || strlen($clean) === 11) {
+                    $clean = '55' . $clean;
+                }
                 $participants[] = $clean;
             }
         }
+        $participants = array_values(array_unique($participants));
         
         // Garantir pelo menos 1 participante (o próprio admin)
         if (empty($participants)) {
