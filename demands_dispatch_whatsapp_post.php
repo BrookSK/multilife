@@ -302,10 +302,10 @@ try {
         ]);
     }
 
-    // Atualiza status para em_captacao se ainda estava aguardando
+    // Atualiza status para em_captacao e assume para o usuário que disparou
     if ((string)$d['status'] === 'aguardando_captacao') {
-        $upd = $db->prepare('UPDATE demands SET status = \'em_captacao\' WHERE id = :id');
-        $upd->execute(['id' => $id]);
+        $upd = $db->prepare('UPDATE demands SET status = \'em_captacao\', assumed_by_user_id = :uid, assumed_at = NOW() WHERE id = :id');
+        $upd->execute(['id' => $id, 'uid' => auth_user_id()]);
 
         $log = $db->prepare('INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note) VALUES (:did, :os, :ns, :uid, :note)');
         $log->execute([
