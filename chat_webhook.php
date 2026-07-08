@@ -106,6 +106,68 @@ if ($event === 'chats.update') {
                     // Usar remoteJidAlt (formato @s.whatsapp.net) se disponível
                     $msgRemoteJid = (string)($key['remoteJidAlt'] ?? $key['remoteJid'] ?? $remoteJid);
                     
+                    // ===== TRATAR REAÇÕES =====
+                    $msgPayload = $msg['message'] ?? [];
+                    if (is_array($msgPayload) && isset($msgPayload['reactionMessage'])) {
+                        $reaction = $msgPayload['reactionMessage'];
+                        $reactionKey = $reaction['key'] ?? [];
+                        $reactionMsgId = (string)($reactionKey['id'] ?? '');
+                        $reactionEmoji = (string)($reaction['text'] ?? '');
+                        $reactorJid = (string)($key['participant'] ?? $msgRemoteJid);
+                        $timestamp = (int)($msg['messageTimestamp'] ?? time());
+                        $pushName = (string)($msg['pushName'] ?? '');
+                        
+                        if (!empty($reactionMsgId) && !empty($reactionEmoji)) {
+                            try {
+                                ensureChatTables();
+                                $stmtReact = db()->prepare("
+                                    INSERT INTO chat_reactions (remote_jid, message_id, reactor_jid, emoji, reaction_timestamp)
+                                    VALUES (?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), reaction_timestamp = VALUES(reaction_timestamp)
+                                ");
+                                $stmtReact->execute([$msgRemoteJid, $reactionMsgId, $reactorJid, $reactionEmoji, $timestamp]);
+                                error_log("[WEBHOOK] chats.update REAÇÃO: emoji='$reactionEmoji' msg='$reactionMsgId' reactor='$reactorJid' pushName='$pushName'");
+                                
+                                // Verificar se é reação a mensagem de captação
+                                if (str_contains($msgRemoteJid, '@g.us')) {
+                                    $stmtDispatch = db()->prepare("
+                                        SELECT ddl.demand_id, ddl.group_id, d.status as demand_status
+                                        FROM demand_dispatch_logs ddl
+                                        INNER JOIN demands d ON d.id = ddl.demand_id
+                                        WHERE ddl.evolution_message_id = ?
+                                        LIMIT 1
+                                    ");
+                                    $stmtDispatch->execute([$reactionMsgId]);
+                                    $dispatchRow = $stmtDispatch->fetch(PDO::FETCH_ASSOC);
+                                    
+                                    if ($dispatchRow && !in_array($dispatchRow['demand_status'], ['admitido', 'concluido', 'cancelado'])) {
+                                        // Registrar interesse do profissional
+                                        $demandId = (int)$dispatchRow['demand_id'];
+                                        $profPhone = preg_replace('/@.*/', '', $reactorJid);
+                                        
+                                        // Buscar user_id pelo telefone
+                                        $profUserId = null;
+                                        $stmtUser = db()->prepare("SELECT id FROM users WHERE phone LIKE ? LIMIT 1");
+                                        $stmtUser->execute(['%' . substr($profPhone, -8) . '%']);
+                                        $profUser = $stmtUser->fetch();
+                                        if ($profUser) $profUserId = (int)$profUser['id'];
+                                        
+                                        $stmtInsert = db()->prepare("
+                                            INSERT IGNORE INTO demand_interested_professionals 
+                                            (demand_id, phone, push_name, user_id, emoji, reacted_at)
+                                            VALUES (?, ?, ?, ?, ?, NOW())
+                                        ");
+                                        $stmtInsert->execute([$demandId, $profPhone, $pushName, $profUserId, $reactionEmoji]);
+                                        error_log("[WEBHOOK] chats.update: INTERESSE registrado! Demanda #$demandId prof='$pushName' phone='$profPhone' emoji='$reactionEmoji'");
+                                    }
+                                }
+                            } catch (Throwable $e) {
+                                error_log("[WEBHOOK] chats.update reação erro: " . $e->getMessage());
+                            }
+                        }
+                        continue; // Reação processada, pular para próxima mensagem
+                    }
+                    
                     // Verificar se já existe no banco
                     $checkStmt = db()->prepare("SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1");
                     $checkStmt->execute([$msgId]);
@@ -114,7 +176,6 @@ if ($event === 'chats.update') {
                     }
                     
                     // Extrair texto — formato pode ser msg['message'] ou msg['message']['conversation']
-                    $msgPayload = $msg['message'] ?? [];
                     $messageText = '';
                     if (is_string($msgPayload)) {
                         $messageText = $msgPayload;
