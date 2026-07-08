@@ -134,7 +134,7 @@ if ($event === 'chats.update') {
                                         SELECT ddl.demand_id, ddl.group_id, d.status as demand_status
                                         FROM demand_dispatch_logs ddl
                                         INNER JOIN demands d ON d.id = ddl.demand_id
-                                        WHERE ddl.evolution_message_id = ?
+                                        WHERE ddl.external_message_id = ?
                                         LIMIT 1
                                     ");
                                     $stmtDispatch->execute([$reactionMsgId]);
@@ -341,12 +341,12 @@ if ($event === 'chats.update') {
                 
                 if (empty($reactionMsgId) || empty($reactionEmoji)) continue;
                 
-                // Verificar se é reação a uma mensagem de captação
+                // Verificar se é reação a uma mensagem de captação via demand_dispatch_logs
                 $stmtDispatch = db()->prepare("
                     SELECT ddl.demand_id, d.status as demand_status
                     FROM demand_dispatch_logs ddl
                     INNER JOIN demands d ON d.id = ddl.demand_id
-                    WHERE ddl.evolution_message_id = ?
+                    WHERE ddl.external_message_id = ?
                     LIMIT 1
                 ");
                 $stmtDispatch->execute([$reactionMsgId]);
