@@ -1672,12 +1672,13 @@ if ($chatType === 'grupos') {
     try {
         $stmtWait = db()->prepare("
             SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty,
-                   dl.id as dispatch_id, wg.name as group_name
+                   wg.name as group_name
             FROM demand_interested_professionals dip
             INNER JOIN demands d ON d.id = dip.demand_id
-            LEFT JOIN demand_dispatch_logs dl ON dl.id = dip.dispatch_log_id
+            LEFT JOIN demand_dispatch_logs dl ON dl.demand_id = dip.demand_id
             LEFT JOIN whatsapp_groups wg ON wg.id = dl.group_id
             WHERE dip.status = 'interested'
+            GROUP BY dip.id
             ORDER BY d.id DESC, dip.reacted_at DESC
             LIMIT 100
         ");
@@ -1712,12 +1713,20 @@ if ($chatType === 'grupos') {
                 echo '</div>';
                 
                 foreach ($pros as $pro) {
-                    $proName = $pro['push_name'] ?? $pro['phone'];
+                    $proName = $pro['push_name'] ?? $pro['phone'] ?? '?';
                     $proEmoji = $pro['emoji'] ?? '👤';
-                    $proDate = $pro['reacted_at'] ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
-                    $proJid = $pro['phone_jid'] ?? '';
+                    $proDate = !empty($pro['reacted_at']) ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
                     
-                    echo '<a href="' . (!empty($proJid) ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=lista_espera' : '#') . '" class="whatsapp-chat-item">';
+                    // Construir JID para link do chat privado
+                    $proPhone = preg_replace('/\D+/', '', (string)($pro['phone'] ?? ''));
+                    if (strlen($proPhone) >= 10 && strlen($proPhone) <= 11) {
+                        $proPhone = '55' . $proPhone;
+                    }
+                    $proJid = $proPhone !== '' ? $proPhone . '@s.whatsapp.net' : '';
+                    
+                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' : '#';
+                    
+                    echo '<a href="' . $linkHref . '" class="whatsapp-chat-item">';
                     echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
                     echo '<div class="whatsapp-chat-info">';
                     echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';

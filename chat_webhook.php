@@ -341,6 +341,19 @@ if ($event === 'chats.update') {
                 
                 if (empty($reactionMsgId) || empty($reactionEmoji)) continue;
                 
+                // Salvar reação na tabela chat_reactions (para exibição na UI)
+                try {
+                    ensureChatTables();
+                    $stmtSaveReaction = db()->prepare("
+                        INSERT INTO chat_reactions (remote_jid, message_id, reactor_jid, emoji, reaction_timestamp)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), reaction_timestamp = VALUES(reaction_timestamp)
+                    ");
+                    $stmtSaveReaction->execute([$groupJid, $reactionMsgId, $reactorJid, $reactionEmoji, $timestamp]);
+                } catch (Throwable $e) {
+                    // Ignorar se falhar
+                }
+                
                 // Verificar se é reação a uma mensagem de captação via demand_dispatch_logs
                 $stmtDispatch = db()->prepare("
                     SELECT ddl.demand_id, d.status as demand_status
