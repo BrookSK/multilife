@@ -14,6 +14,17 @@ $reason = trim((string)($_POST['reason'] ?? ''));
 $applyToAll = isset($_POST['apply_to_all']) && $_POST['apply_to_all'] === '1';
 $newWeekdays = isset($_POST['weekdays']) && is_array($_POST['weekdays']) ? array_map('intval', $_POST['weekdays']) : [];
 
+// Se não veio weekdays do formulário mas temos frequência padronizada, usar a tabela
+if (count($newWeekdays) === 0 && $newFrequency !== '' && function_exists('frequency_get_weekdays')) {
+    $freqCode = $newFrequency;
+    if (!isset(FREQUENCY_WEEKDAYS_MAP[$freqCode])) {
+        $freqCode = frequency_normalize($newFrequency);
+    }
+    if ($freqCode !== '') {
+        $newWeekdays = frequency_get_weekdays($freqCode);
+    }
+}
+
 if ($assignmentId <= 0 || $newFrequency === '' || $reason === '') {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
     header('Location: /monitoramento_desmame.php?assignment_id=' . $assignmentId);

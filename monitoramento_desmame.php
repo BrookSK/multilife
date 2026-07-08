@@ -81,12 +81,24 @@ echo '<form method="post" action="/monitoramento_desmame_post.php" style="displa
 echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
 
 echo '<div class="grid">';
-echo '<div class="col6"><label>Nova frequência<select name="new_frequency" required>';
-$freqOptions = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', '6x por semana', 'Diário', '1x a cada 15 dias', '1x por mês', '2x por mês'];
-echo '<option value="">— Selecione —</option>';
-foreach ($freqOptions as $fo) {
-    $sel = (strcasecmp($fo, (string)($assignment['session_frequency'] ?? '')) === 0) ? ' selected' : '';
-    echo '<option value="' . h($fo) . '"' . $sel . '>' . h($fo) . '</option>';
+echo '<div class="col6"><label>Nova frequência<select name="new_frequency" id="freqSelect" required>';
+// Usar tabela padronizada
+if (function_exists('frequency_get_options')) {
+    $freqOpts = frequency_get_options();
+    echo '<option value="">— Selecione —</option>';
+    foreach ($freqOpts as $fo) {
+        $sel = ($fo['code'] === frequency_normalize((string)($assignment['session_frequency'] ?? ''))) ? ' selected' : '';
+        echo '<option value="' . h($fo['code']) . '"' . $sel . ' data-weekdays=\'' . json_encode($fo['weekdays']) . '\'>';
+        echo h($fo['label']) . ' — ' . h($fo['description']);
+        echo '</option>';
+    }
+} else {
+    $freqOptions = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', '6x por semana', 'Diário', '1x a cada 15 dias', '1x por mês', '2x por mês'];
+    echo '<option value="">— Selecione —</option>';
+    foreach ($freqOptions as $fo) {
+        $sel = (strcasecmp($fo, (string)($assignment['session_frequency'] ?? '')) === 0) ? ' selected' : '';
+        echo '<option value="' . h($fo) . '"' . $sel . '>' . h($fo) . '</option>';
+    }
 }
 echo '</select></label></div>';
 echo '<div class="col6"><label>Nova qtd. de sessões (opcional)<input type="number" name="new_session_quantity" min="1" value="' . (int)($assignment['session_quantity'] ?? '') . '"></label></div>';
@@ -133,13 +145,34 @@ echo '<button class="btn btnPrimary" type="submit" style="background:#f59e0b">Co
 echo '</div>';
 echo '</form>';
 
-// Validação: dias selecionados devem corresponder à frequência
+// Validação e auto-seleção de dias
 echo '<script>';
+echo 'document.addEventListener("DOMContentLoaded", function() {';
+echo '  var freqSelect = document.getElementById("freqSelect");';
+echo '  var checks = document.querySelectorAll(".wd-check");';
+echo '  ';
+echo '  // Auto-selecionar dias quando mudar a frequência';
+echo '  if (freqSelect) {';
+echo '    freqSelect.addEventListener("change", function() {';
+echo '      var opt = this.options[this.selectedIndex];';
+echo '      var weekdays = opt.getAttribute("data-weekdays");';
+echo '      if (weekdays) {';
+echo '        var days = JSON.parse(weekdays);';
+echo '        checks.forEach(function(cb) {';
+echo '          cb.checked = days.indexOf(parseInt(cb.value)) !== -1;';
+echo '        });';
+echo '      }';
+echo '    });';
+echo '    // Disparar ao carregar se já tem valor selecionado';
+echo '    if (freqSelect.value) freqSelect.dispatchEvent(new Event("change"));';
+echo '  }';
+echo '});';
 echo 'document.querySelector("form[action=\'/monitoramento_desmame_post.php\']").addEventListener("submit", function(e) {';
-echo '  var freqSelect = this.querySelector("select[name=\'new_frequency\']");';
+echo '  var freqSelect = document.getElementById("freqSelect");';
 echo '  var freq = freqSelect ? freqSelect.value : "";';
-echo '  var freqMap = {"1x por semana":1,"2x por semana":2,"3x por semana":3,"4x por semana":4,"5x por semana":5,"6x por semana":6,"Diário":7};';
-echo '  var required = freqMap[freq] || 0;';
+echo '  var opt = freqSelect.options[freqSelect.selectedIndex];';
+echo '  var weekdays = opt ? opt.getAttribute("data-weekdays") : "[]";';
+echo '  var required = weekdays ? JSON.parse(weekdays).length : 0;';
 echo '  var checked = document.querySelectorAll(".wd-check:checked").length;';
 echo '  var errDiv = document.getElementById("weekdaysError");';
 echo '  if (required > 0 && checked !== required) {';
