@@ -140,7 +140,20 @@ if ($event === 'chats.update') {
                     }
                     
                     if ($messageText === '' && $messageType === 'text') {
-                        continue; // Mensagem vazia e não é mídia
+                        continue; // Mensagem de texto vazia, pular
+                    }
+                    
+                    // Para mídias, pegar caption ou indicar tipo
+                    if ($messageType !== 'text' && $messageText === '') {
+                        if (is_array($msgPayload)) {
+                            $messageText = (string)($msgPayload['imageMessage']['caption'] ?? 
+                                $msgPayload['videoMessage']['caption'] ?? 
+                                $msgPayload['documentMessage']['fileName'] ?? 
+                                '');
+                        }
+                        if ($messageText === '') {
+                            $messageText = '[' . $messageType . ']';
+                        }
                     }
                     
                     // Inserir no banco
