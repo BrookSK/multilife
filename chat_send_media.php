@@ -175,8 +175,8 @@ try {
     $apiResponse = null;
     switch ($mediaType) {
         case 'audio':
-            error_log("[$debugId] Chamando sendMedia(audio) com base64 puro");
-            $apiResponse = $api->sendMedia($remoteJid, 'audio', $fileName, $base64Media);
+            error_log("[$debugId] Chamando sendWhatsAppAudio com base64 puro");
+            $apiResponse = $api->sendWhatsAppAudio($remoteJid, $base64Media);
             break;
         case 'image':
             $caption = trim($_POST['caption'] ?? '');

@@ -315,8 +315,7 @@ final class EvolutionApiV1
     {
         return $this->request('POST', '/message/sendWhatsAppAudio/' . urlencode($this->inst()), [], [
             'number' => $number,
-            'audioMessage' => ['audio' => $audio],
-            'options' => (object)$options,
+            'audio' => $audio,
         ]);
     }
 
