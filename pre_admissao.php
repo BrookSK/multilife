@@ -351,7 +351,7 @@ if ($selected) {
         if (!empty($originEmail) && strpos($originEmail, '@') !== false) {
             $emailDomain = strtolower(substr($originEmail, strpos($originEmail, '@') + 1));
             try {
-                $stmtIns = db()->prepare("SELECT name FROM health_insurers WHERE status = 'active' AND email_domain = ? LIMIT 1");
+                $stmtIns = db()->prepare("SELECT name FROM health_insurers WHERE is_active = 1 AND email_domain = ? LIMIT 1");
                 $stmtIns->execute([$emailDomain]);
                 $insRow = $stmtIns->fetch();
                 if ($insRow) {
@@ -360,7 +360,7 @@ if ($selected) {
                     // Fallback: buscar por nome baseado no domínio
                     $domainBase = explode('.', $emailDomain)[0];
                     if (strlen($domainBase) >= 3) {
-                        $stmtIns2 = db()->prepare("SELECT name FROM health_insurers WHERE status = 'active' AND LOWER(name) LIKE ? LIMIT 1");
+                        $stmtIns2 = db()->prepare("SELECT name FROM health_insurers WHERE is_active = 1 AND LOWER(name) LIKE ? LIMIT 1");
                         $stmtIns2->execute(['%' . $domainBase . '%']);
                         $insRow2 = $stmtIns2->fetch();
                         if ($insRow2) $detectedInsurer = $insRow2['name'];
