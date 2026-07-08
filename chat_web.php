@@ -2133,7 +2133,7 @@ if (empty($selectedChat)) {
     
     // Botão de áudio
     echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" data-media-type="audio">';
-    echo '<button type="button" onclick="document.getElementById(\'audioInput\').click()" class="whatsapp-action-btn" title="Enviar áudio">';
+    echo '<button type="button" id="audioRecordBtn" onclick="toggleAudioRecording()" class="whatsapp-action-btn" title="Gravar áudio (clique para iniciar/parar)">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     echo '</button>';
     

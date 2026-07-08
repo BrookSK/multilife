@@ -875,6 +875,29 @@ function stopAudioRecording() {
     mediaRecorder.stop();
     const indicator = document.getElementById('recordingIndicator');
     if (indicator) indicator.remove();
+    // Restaurar botão
+    const btn = document.getElementById('audioRecordBtn');
+    if (btn) {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.title = 'Gravar áudio (clique para iniciar/parar)';
+    }
+  }
+}
+
+function toggleAudioRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopAudioRecording();
+  } else {
+    startAudioRecording();
+    // Mudar visual do botão para indicar gravação
+    const btn = document.getElementById('audioRecordBtn');
+    if (btn) {
+      btn.style.background = '#dc2626';
+      btn.style.color = 'white';
+      btn.style.borderRadius = '50%';
+      btn.title = 'Clique para parar a gravação';
+    }
   }
 }
 
