@@ -15,33 +15,58 @@ $res = $api->findMessages($jid);
 
 $messages = $res['json']['messages']['records'] ?? $res['json']['messages'] ?? $res['json'] ?? [];
 
-// Pegar só as últimas 3 mensagens que são mídia
-$mediaMessages = [];
+// Pegar a última mensagem que é mídia recebida (fromMe=false)
+$mediaMsg = null;
 if (is_array($messages)) {
     foreach ($messages as $msg) {
+        $key = $msg['key'] ?? [];
+        if (!empty($key['fromMe'])) continue;
         $msgPayload = $msg['message'] ?? [];
         if (isset($msgPayload['imageMessage']) || isset($msgPayload['audioMessage']) || isset($msgPayload['videoMessage']) || isset($msgPayload['documentMessage'])) {
-            $mediaMessages[] = [
-                'key' => $msg['key'] ?? [],
-                'pushName' => $msg['pushName'] ?? '',
-                'messageTimestamp' => $msg['messageTimestamp'] ?? 0,
-                'message_keys' => is_array($msgPayload) ? array_keys($msgPayload) : 'not_array',
-                'has_base64_in_msg' => isset($msg['base64']),
-                'has_base64_in_payload' => isset($msgPayload['base64']),
-                'imageMessage_keys' => isset($msgPayload['imageMessage']) ? array_keys($msgPayload['imageMessage']) : null,
-                'audioMessage_keys' => isset($msgPayload['audioMessage']) ? array_keys($msgPayload['audioMessage']) : null,
-                'imageMessage_url' => $msgPayload['imageMessage']['url'] ?? null,
-                'imageMessage_directPath' => $msgPayload['imageMessage']['directPath'] ?? null,
-                'imageMessage_mediaUrl' => $msgPayload['imageMessage']['mediaUrl'] ?? null,
-            ];
-            if (count($mediaMessages) >= 3) break;
+            $mediaMsg = $msg;
+            break;
         }
     }
 }
 
+if (!$mediaMsg) {
+    echo json_encode(['error' => 'No received media found', 'total' => count($messages)]);
+    exit;
+}
+
+// Tentar baixar via getBase64FromMediaMessage
+$baseUrl = $api->getBaseUrl();
+$apiKey = $api->getApiKey();
+$instance = $api->getInstance();
+
+$downloadUrl = $baseUrl . '/chat/getBase64FromMediaMessage/' . urlencode($instance);
+$downloadPayload = json_encode([
+    'message' => [
+        'key' => $mediaMsg['key'],
+    ],
+    'convertToMp4' => false,
+]);
+
+$ch = curl_init($downloadUrl);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $downloadPayload);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+$downloadResp = curl_exec($ch);
+$downloadCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+$downloadData = json_decode($downloadResp, true);
+
 echo json_encode([
-    'jid' => $jid,
-    'http_code' => $res['status'] ?? 0,
-    'total_messages' => is_array($messages) ? count($messages) : 0,
-    'media_messages' => $mediaMessages,
-], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    'media_key' => $mediaMsg['key'],
+    'media_type' => array_keys($mediaMsg['message'] ?? []),
+    'download_endpoint' => $downloadUrl,
+    'download_http_code' => $downloadCode,
+    'download_response_keys' => is_array($downloadData) ? array_keys($downloadData) : 'not_array',
+    'download_has_base64' => isset($downloadData['base64']),
+    'download_base64_length' => isset($downloadData['base64']) ? strlen($downloadData['base64']) : 0,
+    'download_response_preview' => substr($downloadResp, 0, 300),
+], JSON_PRETTY_PRINT);
