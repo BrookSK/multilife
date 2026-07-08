@@ -82,8 +82,9 @@ try {
     
     // Calcular datas das sessões
     // Prioridade 1: Datas vindas da proposta (session_dates)
-    // Prioridade 2: Dias da semana selecionados (weekdays) 
-    // Prioridade 3: Fallback semanal
+    // Prioridade 2: Dias da semana selecionados (weekdays)
+    // Prioridade 3: Tabela padronizada de frequência (frequency_weekday_rules)
+    // Prioridade 4: Fallback semanal
     $sessionDates = [];
     $totalSessions = (int)$assignment['session_quantity'];
     $startDate = new DateTime(); // Hoje (data da aprovação)
@@ -98,7 +99,7 @@ try {
         $sessionDates = array_values($sessionDates);
     }
     
-    // Se não veio da proposta, usar dias da semana
+    // Se não veio da proposta, usar dias da semana selecionados
     if (count($sessionDates) === 0 && $weekdaysJson !== null) {
         $weekdays = json_decode($weekdaysJson, true);
         if (is_array($weekdays) && count($weekdays) > 0) {
@@ -115,7 +116,38 @@ try {
         }
     }
     
-    // Fallback: semanal a partir de hoje
+    // Se ainda não tem datas, usar tabela padronizada de frequência
+    if (count($sessionDates) === 0 && function_exists('frequency_normalize')) {
+        $freqRaw = trim((string)($assignment['session_frequency'] ?? ''));
+        if ($freqRaw !== '') {
+            $freqCode = frequency_normalize($freqRaw);
+            if ($freqCode === '') $freqCode = $freqRaw; // Pode já ser o código
+            $freqWeekdays = frequency_get_weekdays($freqCode);
+            
+            if (count($freqWeekdays) > 0) {
+                // Usar days da tabela padronizada
+                $sessionDates = array_map(
+                    fn(DateTime $dt) => $dt->format('Y-m-d'),
+                    frequency_generate_session_dates($freqCode, $startDate, $totalSessions)
+                );
+                
+                // Salvar weekdays no assignment para referência futura
+                $weekdaysJson = json_encode($freqWeekdays);
+                $db->prepare("UPDATE patient_assignments SET weekdays = ? WHERE id = ?")->execute([$weekdaysJson, $assignmentId]);
+                
+                error_log("DEBUG APROVAÇÃO: Usando tabela padronizada - freq='$freqCode' weekdays=" . json_encode($freqWeekdays) . " sessões geradas=" . count($sessionDates));
+            } elseif ($freqCode === 'quinzenal' || $freqCode === 'mensal') {
+                // Quinzenal ou mensal: usar o helper
+                $sessionDates = array_map(
+                    fn(DateTime $dt) => $dt->format('Y-m-d'),
+                    frequency_generate_session_dates($freqCode, $startDate, $totalSessions)
+                );
+                error_log("DEBUG APROVAÇÃO: Usando tabela padronizada ($freqCode) - sessões geradas=" . count($sessionDates));
+            }
+        }
+    }
+    
+    // Fallback final: distribuir uniformemente
     if (count($sessionDates) === 0) {
         for ($i = 0; $i < $totalSessions; $i++) {
             $date = clone $startDate;

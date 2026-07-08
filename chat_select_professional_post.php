@@ -99,7 +99,8 @@ if ($proposalValue <= 0) {
     exit;
 }
 
-$allowedFreq = ['single', 'daily', 'weekly', 'biweekly', 'monthly', 'custom'];
+$allowedFreq = ['single', 'daily', 'weekly', 'biweekly', 'monthly', 'custom',
+    '1x_semana', '2x_semana', '3x_semana', '4x_semana', '5x_semana', '6x_semana', '7x_semana', 'quinzenal', 'mensal'];
 if (!in_array($frequency, $allowedFreq, true)) {
     $frequency = 'weekly';
 }
@@ -223,11 +224,64 @@ $frequencyDetailsJson = json_encode([
 $userId = auth_user_id();
 
 // ============================================================================
-// CALCULAR DATAS DAS SESSÕES
+// CALCULAR DATAS DAS SESSÕES (usando tabela padronizada de frequência)
 // ============================================================================
 function calculateSessionDates($startDate, $startTime, $endTime, $frequency, $sessionsPerWeek, $totalSessions) {
     $dates = [];
     $currentDate = new DateTime($startDate);
+    
+    // Tentar usar tabela padronizada de frequência
+    if (function_exists('frequency_normalize') && function_exists('frequency_generate_session_dates')) {
+        // Converter frequência do formulário para código padronizado
+        $freqCode = '';
+        if (isset(FREQUENCY_WEEKDAYS_MAP[$frequency])) {
+            $freqCode = $frequency; // Já é código padronizado (ex: 3x_semana)
+        } else {
+            // Tentar mapear pelo sessions_per_week
+            $sessionsMap = [
+                1 => '1x_semana',
+                2 => '2x_semana',
+                3 => '3x_semana',
+                4 => '4x_semana',
+                5 => '5x_semana',
+                6 => '6x_semana',
+                7 => '7x_semana',
+            ];
+            
+            if ($frequency === 'daily' || $sessionsPerWeek >= 7) {
+                $freqCode = '7x_semana';
+            } elseif ($frequency === 'biweekly') {
+                $freqCode = 'quinzenal';
+            } elseif ($frequency === 'monthly') {
+                $freqCode = 'mensal';
+            } elseif ($frequency === 'weekly' && $sessionsPerWeek >= 1 && $sessionsPerWeek <= 7) {
+                $freqCode = $sessionsMap[$sessionsPerWeek] ?? '';
+            } elseif ($sessionsPerWeek >= 1 && $sessionsPerWeek <= 7) {
+                $freqCode = $sessionsMap[$sessionsPerWeek] ?? '';
+            } else {
+                // Tentar normalizar texto
+                $freqCode = frequency_normalize($frequency);
+            }
+        }
+        
+        if ($freqCode !== '' && (isset(FREQUENCY_WEEKDAYS_MAP[$freqCode]) || $freqCode === 'quinzenal' || $freqCode === 'mensal')) {
+            $generatedDates = frequency_generate_session_dates($freqCode, $currentDate, $totalSessions);
+            
+            foreach ($generatedDates as $dt) {
+                $dates[] = [
+                    'date' => $dt->format('Y-m-d'),
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'formatted' => $dt->format('d/m/Y') . ' às ' . substr($startTime, 0, 5)
+                ];
+            }
+            
+            error_log("[SESSION_CALC] Usando tabela padronizada: freq=$freqCode | " . count($dates) . " sessões geradas");
+            return $dates;
+        }
+    }
+    
+    // Fallback: distribuição uniforme ao longo da semana
     $sessionsAdded = 0;
     $weekCounter = 0;
     
@@ -235,21 +289,17 @@ function calculateSessionDates($startDate, $startTime, $endTime, $frequency, $se
         $weekStart = clone $currentDate;
         $weekStart->modify('+' . $weekCounter . ' weeks');
         
-        // Adicionar sessões para esta semana
         $sessionsThisWeek = min($sessionsPerWeek, $totalSessions - $sessionsAdded);
         
         for ($i = 0; $i < $sessionsThisWeek; $i++) {
             $sessionDate = clone $weekStart;
             
-            // Distribuir sessões ao longo da semana
             if ($sessionsPerWeek > 1) {
-                // Calcular intervalo entre sessões (em dias)
                 $interval = floor(7 / $sessionsPerWeek);
                 $sessionDate->modify('+' . ($i * $interval) . ' days');
             }
             
-            // Pular finais de semana se necessário
-            while ($sessionDate->format('N') >= 6) { // 6=sábado, 7=domingo
+            while ($sessionDate->format('N') >= 6) {
                 $sessionDate->modify('+1 day');
             }
             
@@ -265,8 +315,6 @@ function calculateSessionDates($startDate, $startTime, $endTime, $frequency, $se
         }
         
         $weekCounter++;
-        
-        // Proteção contra loop infinito
         if ($weekCounter > 100) break;
     }
     
