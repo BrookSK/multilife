@@ -24,6 +24,10 @@ final class EvolutionApiV1
         return $this->baseUrl . '/' . ltrim($path, '/');
     }
 
+    public function getBaseUrl(): string { return $this->baseUrl; }
+    public function getApiKey(): string { return $this->apiKey; }
+    public function getInstance(): string { return $this->instance; }
+
     private function inst(?string $instanceName = null): string
     {
         $i = (string)($instanceName ?? $this->instance);

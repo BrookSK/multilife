@@ -144,28 +144,103 @@ if ($event === 'chats.update') {
                     }
                     
                     // Para mídias, pegar caption ou indicar tipo
-                    if ($messageType !== 'text' && $messageText === '') {
-                        if (is_array($msgPayload)) {
-                            $messageText = (string)($msgPayload['imageMessage']['caption'] ?? 
-                                $msgPayload['videoMessage']['caption'] ?? 
-                                $msgPayload['documentMessage']['fileName'] ?? 
-                                '');
+                    $mediaUrl = null;
+                    if ($messageType !== 'text' && is_array($msgPayload)) {
+                        // Pegar caption
+                        $messageText = (string)($msgPayload['imageMessage']['caption'] ?? 
+                            $msgPayload['videoMessage']['caption'] ?? 
+                            $msgPayload['documentMessage']['fileName'] ??
+                            $msgPayload['documentMessage']['caption'] ?? 
+                            '');
+                        
+                        // Pegar URL da mídia
+                        $mediaUrl = (string)($msgPayload['imageMessage']['url'] ?? 
+                            $msgPayload['videoMessage']['url'] ?? 
+                            $msgPayload['audioMessage']['url'] ?? 
+                            $msgPayload['documentMessage']['url'] ?? 
+                            $msgPayload['stickerMessage']['url'] ?? 
+                            $msg['media_url'] ?? $msg['mediaUrl'] ?? '');
+                        
+                        // Se tem base64 no payload
+                        $base64 = (string)($msgPayload['base64'] ?? $msg['base64'] ?? '');
+                        if ($base64 !== '' && $mediaUrl === '') {
+                            // Salvar base64 como arquivo
+                            $ext = match($messageType) {
+                                'image' => 'jpg',
+                                'video' => 'mp4',
+                                'audio' => 'ogg',
+                                'document' => 'pdf',
+                                'sticker' => 'webp',
+                                default => 'bin',
+                            };
+                            $dir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
+                            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+                            $filename = 'media_' . $msgId . '.' . $ext;
+                            $binaryData = base64_decode($base64);
+                            if ($binaryData !== false && strlen($binaryData) > 0) {
+                                file_put_contents($dir . '/' . $filename, $binaryData);
+                                $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $filename;
+                            }
                         }
-                        if ($messageText === '') {
+                        
+                        // Se não tem URL nem base64, tentar baixar via API
+                        if ($mediaUrl === '' && $msgId !== '') {
+                            try {
+                                $mediaEndpoint = rtrim($api->getBaseUrl(), '/') . '/chat/getBase64FromMediaMessage/' . urlencode($api->getInstance());
+                                $chMedia = curl_init($mediaEndpoint);
+                                curl_setopt($chMedia, CURLOPT_RETURNTRANSFER, true);
+                                curl_setopt($chMedia, CURLOPT_POST, true);
+                                curl_setopt($chMedia, CURLOPT_POSTFIELDS, json_encode(['message' => ['key' => $key], 'convertToMp4' => false]));
+                                curl_setopt($chMedia, CURLOPT_HTTPHEADER, ['apikey: ' . $api->getApiKey(), 'Content-Type: application/json']);
+                                curl_setopt($chMedia, CURLOPT_SSL_VERIFYPEER, false);
+                                curl_setopt($chMedia, CURLOPT_TIMEOUT, 15);
+                                $mediaResp = curl_exec($chMedia);
+                                $mediaCode = curl_getinfo($chMedia, CURLINFO_HTTP_CODE);
+                                curl_close($chMedia);
+                                
+                                if ($mediaCode === 200) {
+                                    $mediaData = json_decode($mediaResp, true);
+                                    $b64 = (string)($mediaData['base64'] ?? '');
+                                    if ($b64 !== '') {
+                                        $ext = match($messageType) {
+                                            'image' => 'jpg',
+                                            'video' => 'mp4',
+                                            'audio' => 'ogg',
+                                            'document' => 'pdf',
+                                            'sticker' => 'webp',
+                                            default => 'bin',
+                                        };
+                                        $dir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
+                                        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+                                        $filename = 'media_' . $msgId . '.' . $ext;
+                                        $binaryData = base64_decode($b64);
+                                        if ($binaryData !== false && strlen($binaryData) > 0) {
+                                            file_put_contents($dir . '/' . $filename, $binaryData);
+                                            $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $filename;
+                                        }
+                                    }
+                                }
+                            } catch (Throwable $e) {
+                                error_log("[WEBHOOK] Erro ao baixar mídia: " . $e->getMessage());
+                            }
+                        }
+                        
+                        if ($messageText === '' && $mediaUrl === '') {
                             $messageText = '[' . $messageType . ']';
                         }
                     }
                     
                     // Inserir no banco
                     $insertStmt = db()->prepare(
-                        "INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, message_type, sender_name, participant_jid, external_message_id, created_at) "
-                        . "VALUES (?, ?, 0, ?, ?, ?, ?, ?, NOW())"
+                        "INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, message_type, media_url, sender_name, participant_jid, external_message_id, created_at) "
+                        . "VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NOW())"
                     );
                     $insertStmt->execute([
                         $msgRemoteJid,
                         $messageText,
                         $timestamp,
                         $messageType,
+                        $mediaUrl,
                         $pushName,
                         $participant,
                         $msgId,
