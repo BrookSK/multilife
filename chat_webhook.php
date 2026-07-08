@@ -143,7 +143,7 @@ if ($event === 'chats.update') {
                         continue; // Mensagem de texto vazia, pular
                     }
                     
-                    // Para mídias, pegar caption ou indicar tipo
+                    // Para mídias, pegar caption e baixar o arquivo
                     $mediaUrl = null;
                     if ($messageType !== 'text' && is_array($msgPayload)) {
                         // Pegar caption
@@ -153,36 +153,8 @@ if ($event === 'chats.update') {
                             $msgPayload['documentMessage']['caption'] ?? 
                             '');
                         
-                        // Pegar URL da mídia
-                        $mediaUrl = (string)($msgPayload['imageMessage']['url'] ?? 
-                            $msgPayload['videoMessage']['url'] ?? 
-                            $msgPayload['audioMessage']['url'] ?? 
-                            $msgPayload['documentMessage']['url'] ?? 
-                            $msgPayload['stickerMessage']['url'] ?? 
-                            $msg['media_url'] ?? $msg['mediaUrl'] ?? '');
-                        
-                        // Se tem base64 no payload
-                        $base64 = (string)($msgPayload['base64'] ?? $msg['base64'] ?? '');
-                        if ($base64 !== '' && $mediaUrl === '') {
-                            $ext = 'bin';
-                            if ($messageType === 'image') $ext = 'jpg';
-                            elseif ($messageType === 'video') $ext = 'mp4';
-                            elseif ($messageType === 'audio') $ext = 'ogg';
-                            elseif ($messageType === 'document') $ext = 'pdf';
-                            elseif ($messageType === 'sticker') $ext = 'webp';
-                            
-                            $dir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
-                            if (!is_dir($dir)) @mkdir($dir, 0755, true);
-                            $filename = 'media_' . substr($msgId, 0, 16) . '_' . time() . '.' . $ext;
-                            $binaryData = base64_decode($base64);
-                            if ($binaryData !== false && strlen($binaryData) > 0) {
-                                file_put_contents($dir . '/' . $filename, $binaryData);
-                                $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $filename;
-                            }
-                        }
-                        
-                        // Se não tem URL nem base64, baixar via API getBase64FromMediaMessage
-                        if ($mediaUrl === '' && $msgId !== '') {
+                        // Baixar mídia via API getBase64FromMediaMessage (sempre, pois URLs do WhatsApp são criptografadas)
+                        if ($msgId !== '') {
                             try {
                                 $mediaEndpoint = rtrim($api->getBaseUrl(), '/') . '/chat/getBase64FromMediaMessage/' . urlencode($api->getInstance());
                                 $chMedia = curl_init($mediaEndpoint);
@@ -213,7 +185,7 @@ if ($event === 'chats.update') {
                                         elseif ($origFilename !== '') $ext = strtolower(pathinfo($origFilename, PATHINFO_EXTENSION)) ?: 'bin';
                                         
                                         $dir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
-                                        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+                                        if (!is_dir($dir)) @mkdir($dir, 0777, true);
                                         $filename = 'media_' . substr($msgId, 0, 16) . '_' . time() . '.' . $ext;
                                         $binaryData = base64_decode($b64);
                                         if ($binaryData !== false && strlen($binaryData) > 0) {
@@ -222,13 +194,15 @@ if ($event === 'chats.update') {
                                             error_log("[WEBHOOK] chats.update: mídia baixada OK ($ext, " . strlen($binaryData) . " bytes)");
                                         }
                                     }
+                                } else {
+                                    error_log("[WEBHOOK] chats.update: getBase64 falhou HTTP $mediaCode");
                                 }
                             } catch (Throwable $e) {
                                 error_log("[WEBHOOK] Erro ao baixar mídia: " . $e->getMessage());
                             }
                         }
                         
-                        if ($messageText === '' && $mediaUrl === '') {
+                        if ($messageText === '' && $mediaUrl === null) {
                             $messageText = '[' . $messageType . ']';
                         }
                     }
