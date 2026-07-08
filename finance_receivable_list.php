@@ -218,10 +218,12 @@ foreach ($rows as $r) {
     }
     echo '<td style="font-weight:700">' . $pacienteDisplay . '</td>';
     
-    // Operadora: mostrar operadora para atendimentos, "Não aplicável" para lançamentos manuais
+    // Operadora: mostrar operadora se disponível
     $operadoraDisplay = 'Não aplicável';
-    if ((string)$r['source'] === 'patient_assignment' && !empty($r['operadora'])) {
+    if (!empty($r['operadora'])) {
         $operadoraDisplay = h((string)$r['operadora']);
+    } elseif ((int)$r['appointment_id'] > 0) {
+        $operadoraDisplay = 'Não informado';
     }
     echo '<td>' . $operadoraDisplay . '</td>';
     
