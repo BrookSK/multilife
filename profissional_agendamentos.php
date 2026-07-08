@@ -62,18 +62,57 @@ foreach ($rawAssignments as $apt) {
         $startTime = $startDate->format('H:i');
     }
     
-    // Calcular intervalo entre sessões baseado na frequência
-    $intervalDays = match($frequency) {
-        'daily' => 1,
-        'weekly' => 7,
-        'biweekly' => 14,
-        'monthly' => 30,
-        default => 7,
-    };
+    // Gerar datas usando tabela padronizada de frequência
+    $sessionDates = [];
     
-    for ($i = 0; $i < $totalSessions; $i++) {
-        $sessionDate = clone $startDate;
-        $sessionDate->modify('+' . ($i * $intervalDays) . ' days');
+    if (function_exists('frequency_normalize') && function_exists('frequency_generate_session_dates')) {
+        // Tentar converter frequência para código padronizado
+        $freqCode = '';
+        if (isset(FREQUENCY_WEEKDAYS_MAP[$frequency])) {
+            $freqCode = $frequency;
+        } else {
+            $freqCode = frequency_normalize($frequency);
+        }
+        
+        // Se não encontrou por normalização, tentar pelo sessions_per_week
+        if ($freqCode === '') {
+            $sessionsMap = [1 => '1x_semana', 2 => '2x_semana', 3 => '3x_semana', 4 => '4x_semana', 5 => '5x_semana', 6 => '6x_semana', 7 => '7x_semana'];
+            if ($frequency === 'daily') {
+                $freqCode = '7x_semana';
+            } elseif ($frequency === 'biweekly') {
+                $freqCode = 'quinzenal';
+            } elseif ($frequency === 'monthly') {
+                $freqCode = 'mensal';
+            }
+        }
+        
+        if ($freqCode !== '') {
+            $generatedDates = frequency_generate_session_dates($freqCode, $startDate, $totalSessions);
+            foreach ($generatedDates as $dt) {
+                $sessionDates[] = $dt;
+            }
+        }
+    }
+    
+    // Fallback: lógica antiga com intervalo fixo
+    if (count($sessionDates) === 0) {
+        $intervalDays = match($frequency) {
+            'daily' => 1,
+            'weekly' => 7,
+            'biweekly' => 14,
+            'monthly' => 30,
+            default => 7,
+        };
+        
+        for ($i = 0; $i < $totalSessions; $i++) {
+            $sessionDate = clone $startDate;
+            $sessionDate->modify('+' . ($i * $intervalDays) . ' days');
+            $sessionDates[] = $sessionDate;
+        }
+    }
+    
+    for ($i = 0; $i < count($sessionDates); $i++) {
+        $sessionDate = $sessionDates[$i];
         
         $dateStr = $sessionDate->format('Y-m-d');
         $monthOfSession = (int)$sessionDate->format('m');
