@@ -176,22 +176,22 @@ try {
     $apiResponse = null;
     switch ($mediaType) {
         case 'audio':
-            error_log("[$debugId] Chamando sendAudio() com base64");
-            $apiResponse = $api->sendWhatsAppAudio($remoteJid, $dataUri);
+            error_log("[$debugId] Chamando sendMedia(audio) com base64");
+            $apiResponse = $api->sendMedia($remoteJid, 'audio', $fileName, $dataUri);
             break;
         case 'image':
             $caption = trim($_POST['caption'] ?? '');
-            error_log("[$debugId] Chamando sendImage() com base64 - Caption: '$caption'");
-            $apiResponse = $api->sendImage($remoteJid, $dataUri, $caption !== '' ? $caption : null);
+            error_log("[$debugId] Chamando sendMedia(image) com base64");
+            $apiResponse = $api->sendMedia($remoteJid, 'image', $fileName, $dataUri, $caption !== '' ? $caption : null);
             break;
         case 'video':
             $caption = trim($_POST['caption'] ?? '');
-            error_log("[$debugId] Chamando sendVideo() com base64");
-            $apiResponse = $api->sendVideo($remoteJid, $dataUri, $caption !== '' ? $caption : null);
+            error_log("[$debugId] Chamando sendMedia(video) com base64");
+            $apiResponse = $api->sendMedia($remoteJid, 'video', $fileName, $dataUri, $caption !== '' ? $caption : null);
             break;
         case 'document':
-            error_log("[$debugId] Chamando sendDocument() com base64");
-            $apiResponse = $api->sendDocument($remoteJid, $dataUri, $fileName);
+            error_log("[$debugId] Chamando sendMedia(document) com base64");
+            $apiResponse = $api->sendMedia($remoteJid, 'document', $fileName, $dataUri);
             break;
     }
     
