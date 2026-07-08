@@ -2150,16 +2150,26 @@ function toggleAudioRecording(){
         stream.getTracks().forEach(function(t){t.stop();});
         var blob=new Blob(_audioChunks,{type:"audio/webm"});
         var file=new File([blob],"audio.webm",{type:"audio/webm"});
-        var dt=new DataTransfer();dt.items.add(file);
-        var inp=document.getElementById("audioInput");
-        if(inp){inp.files=dt.files;inp.dispatchEvent(new Event("change",{bubbles:true}));}
+        var chatId=window.chatId||document.querySelector("[name=remote_jid]")&&document.querySelector("[name=remote_jid]").value||"";
+        if(!chatId){alert("Chat não selecionado");return;}
+        var fd=new FormData();
+        fd.append("media",file);
+        fd.append("remote_jid",chatId);
+        fd.append("media_type","audio");
+        fetch("/chat_send_media.php",{method:"POST",body:fd})
+        .then(function(r){return r.json();})
+        .then(function(data){
+          if(data.success){location.reload();}
+          else{alert("Erro ao enviar áudio: "+(data.error||"Erro desconhecido"));}
+        })
+        .catch(function(e){alert("Erro: "+e.message);});
       });
       _mediaRecorder.start();
       var btn=document.getElementById("audioRecordBtn");
       if(btn){btn.style.background="#dc2626";btn.style.color="white";btn.style.borderRadius="50%";}
       var ind=document.createElement("div");ind.id="recInd";
       ind.style.cssText="position:fixed;bottom:80px;right:20px;background:#dc2626;color:white;padding:12px 20px;border-radius:24px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000";
-      ind.textContent="🔴 Gravando... (clique no mic para parar)";
+      ind.textContent="Gravando... (clique no mic para parar)";
       document.body.appendChild(ind);
       setTimeout(function(){if(_mediaRecorder&&_mediaRecorder.state==="recording")toggleAudioRecording();},60000);
     }).catch(function(e){alert("Erro ao acessar microfone: "+e.message);});
