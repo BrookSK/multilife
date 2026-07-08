@@ -41,9 +41,7 @@ $instance = $api->getInstance();
 
 $downloadUrl = $baseUrl . '/chat/getBase64FromMediaMessage/' . urlencode($instance);
 $downloadPayload = json_encode([
-    'message' => [
-        'key' => $mediaMsg['key'],
-    ],
+    'message' => $mediaMsg,
     'convertToMp4' => false,
 ]);
 
