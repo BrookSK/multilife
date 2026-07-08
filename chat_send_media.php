@@ -36,6 +36,55 @@ if (empty($remoteJid) || empty($mediaType)) {
 }
 
 // Verificar se há arquivo enviado
+$audioBase64 = trim($_POST['audio_base64'] ?? '');
+
+// Caminho alternativo: áudio enviado como base64 (gravação do microfone)
+if ($mediaType === 'audio' && $audioBase64 !== '') {
+    error_log("[$debugId] Áudio recebido como base64 (" . strlen($audioBase64) . " chars)");
+    
+    try {
+        $api = new EvolutionApiV1();
+        
+        // Enviar direto como base64 via sendWhatsAppAudio
+        $res = $api->sendWhatsAppAudio($remoteJid, $audioBase64);
+        $httpCode = (int)($res['status'] ?? 0);
+        
+        if ($httpCode >= 200 && $httpCode < 300) {
+            // Salvar localmente para exibição no chat
+            $uploadDir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
+            if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
+            $fileName = 'audio_' . uniqid() . '.webm';
+            $binaryData = base64_decode($audioBase64);
+            if ($binaryData !== false) {
+                file_put_contents($uploadDir . '/' . $fileName, $binaryData);
+            }
+            $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $fileName;
+            
+            // Salvar no banco
+            $stmt = db()->prepare("
+                INSERT INTO chat_messages 
+                (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp)
+                VALUES (?, ?, 'audio', ?, 'audio/webm', ?, 1, ?)
+            ");
+            $stmt->execute([$remoteJid, '[Áudio]', $mediaUrl, $fileName, time()]);
+            
+            $response['success'] = true;
+            $response['message_id'] = (int)db()->lastInsertId();
+            error_log("[$debugId] ✅ Áudio base64 enviado com sucesso");
+        } else {
+            $errMsg = json_encode($res['json'] ?? $res['body_raw'] ?? '');
+            error_log("[$debugId] ❌ Erro ao enviar áudio: HTTP $httpCode - $errMsg");
+            $response['error'] = 'Erro ao enviar mídia via WhatsApp: ' . $errMsg;
+        }
+    } catch (Throwable $e) {
+        error_log("[$debugId] ❌ Exceção: " . $e->getMessage());
+        $response['error'] = 'Erro: ' . $e->getMessage();
+    }
+    
+    echo json_encode($response);
+    exit;
+}
+
 if (!isset($_FILES['media'])) {
     error_log("[$debugId] ERRO: Nenhum arquivo no \$_FILES['media']");
     $response['error'] = 'Nenhum arquivo enviado';

@@ -2131,9 +2131,54 @@ if (empty($selectedChat)) {
     // Botões de anexo de mídia
     echo '<div style="display:flex;gap:4px;align-items:center">';
     
-    // Botão de áudio
+    // Botão de áudio (gravação direta)
+    echo '<script>
+var _rec=null,_chunks=[];
+function toggleRec(){
+  if(_rec&&_rec.state==="recording"){
+    _rec.stop();
+    document.getElementById("audioRecordBtn").style.background="";
+    document.getElementById("audioRecordBtn").style.color="";
+    var ind=document.getElementById("recInd");if(ind)ind.remove();
+  } else {
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert("Navegador não suporta gravação");return;}
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+      _rec=new MediaRecorder(stream);_chunks=[];
+      _rec.ondataavailable=function(e){_chunks.push(e.data);};
+      _rec.onstop=function(){
+        stream.getTracks().forEach(function(t){t.stop();});
+        var blob=new Blob(_chunks,{type:"audio/webm"});
+        var reader=new FileReader();
+        reader.onloadend=function(){
+          var base64=reader.result.split(",")[1];
+          var chatId=window.chatId||new URLSearchParams(window.location.search).get("chat")||"";
+          if(!chatId){alert("Selecione um chat primeiro");return;}
+          var fd=new FormData();
+          fd.append("remote_jid",chatId);
+          fd.append("media_type","audio");
+          fd.append("audio_base64",base64);
+          fd.append("file_name","audio.webm");
+          fetch("/chat_send_media.php",{method:"POST",body:fd})
+          .then(function(r){return r.json();})
+          .then(function(d){if(d.success)location.reload();else alert("Erro: "+(d.error||"falha"));})
+          .catch(function(e){alert("Erro: "+e.message);});
+        };
+        reader.readAsDataURL(blob);
+      };
+      _rec.start();
+      document.getElementById("audioRecordBtn").style.background="#dc2626";
+      document.getElementById("audioRecordBtn").style.color="white";
+      var ind=document.createElement("div");ind.id="recInd";
+      ind.style.cssText="position:fixed;bottom:80px;right:20px;background:#dc2626;color:white;padding:12px 20px;border-radius:24px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000";
+      ind.textContent="Gravando... (clique no mic para parar)";
+      document.body.appendChild(ind);
+      setTimeout(function(){if(_rec&&_rec.state==="recording")toggleRec();},60000);
+    }).catch(function(e){alert("Erro microfone: "+e.message);});
+  }
+}
+</script>';
     echo '<input type="file" id="audioInput" accept="audio/*" style="display:none" data-media-type="audio">';
-    echo '<button type="button" onclick="document.getElementById(\'audioInput\').click()" class="whatsapp-action-btn" title="Enviar áudio">';
+    echo '<button type="button" id="audioRecordBtn" onclick="toggleRec()" class="whatsapp-action-btn" title="Gravar áudio">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 003 3v8a3 3 0 01-6 0V4a3 3 0 013-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     echo '</button>';
     
