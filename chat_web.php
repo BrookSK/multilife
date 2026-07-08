@@ -2446,7 +2446,6 @@ echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window
 if (!empty($selectedChat)) {
     echo 'if (window.chatId) {
     fetch("/chat_mark_read.php", {
-    fetch("/chat_mark_read.php", {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
