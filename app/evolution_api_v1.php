@@ -422,10 +422,11 @@ final class EvolutionApiV1
     public function updateGroupMembers(string $groupJid, string $action, array $participants): array
     {
         return $this->request(
-            'PUT',
+            'POST',
             '/group/updateParticipant/' . urlencode($this->inst()),
-            ['groupJid' => $groupJid],
+            [],
             [
+                'groupJid' => $groupJid,
                 'action' => $action,
                 'participants' => $participants,
             ]

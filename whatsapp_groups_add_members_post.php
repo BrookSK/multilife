@@ -54,9 +54,14 @@ if (empty($participants)) {
 
 try {
     $api = new EvolutionApiV1();
-    $api->updateGroupParticipants($groupJid, 'add', $participants);
+    $res = $api->updateGroupMembers($groupJid, 'add', $participants);
+    $httpCode = (int)($res['status'] ?? 0);
     
-    flash_set('success', count($participants) . ' membro(s) adicionado(s) com sucesso!');
+    if ($httpCode >= 200 && $httpCode < 300) {
+        flash_set('success', count($participants) . ' membro(s) adicionado(s) com sucesso!');
+    } else {
+        flash_set('error', 'Erro ao adicionar participante. HTTP Code: ' . $httpCode);
+    }
 } catch (Exception $e) {
     flash_set('error', 'Erro ao adicionar membros: ' . $e->getMessage());
 }
