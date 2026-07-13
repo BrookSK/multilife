@@ -17,7 +17,7 @@ $stmt = $db->prepare(
     "SELECT ar.*, d.origin_email, d.title as demand_title
      FROM authorization_requests ar
      INNER JOIN demands d ON d.id = ar.demand_id
-     WHERE ar.status = 'aguardando_autorizacao'
+     WHERE ar.status IN ('aguardando_autorizacao', 'cancelada')
      AND ar.sent_at IS NOT NULL
      AND ar.response_deadline IS NOT NULL
      AND ar.response_deadline <= NOW()
