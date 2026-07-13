@@ -1713,12 +1713,35 @@ if ($chatType === 'grupos') {
                 echo '</div>';
                 
                 foreach ($pros as $pro) {
-                    $proName = $pro['push_name'] ?? $pro['phone'];
+                    $proName = $pro['push_name'] ?? $pro['phone'] ?? '?';
                     $proEmoji = $pro['emoji'] ?? '👤';
-                    $proDate = $pro['reacted_at'] ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
-                    $proJid = $pro['phone_jid'] ?? '';
+                    $proDate = !empty($pro['reacted_at']) ? date('d/m H:i', strtotime($pro['reacted_at'])) : '';
                     
-                    echo '<a href="' . (!empty($proJid) ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=lista_espera' : '#') . '" class="whatsapp-chat-item">';
+                    // Construir JID real do profissional
+                    $proPhone = preg_replace('/\D+/', '', (string)($pro['phone'] ?? ''));
+                    // Se é LID (não numérico puro ou muito longo), buscar número real pelo user_id ou push_name
+                    if (strlen($proPhone) > 13 || !preg_match('/^\d+$/', $proPhone)) {
+                        $proPhone = '';
+                        if (!empty($pro['user_id'])) {
+                            $stmtPhone = db()->prepare("SELECT phone FROM users WHERE id = ? LIMIT 1");
+                            $stmtPhone->execute([$pro['user_id']]);
+                            $realPhone = $stmtPhone->fetchColumn();
+                            if ($realPhone) $proPhone = preg_replace('/\D+/', '', (string)$realPhone);
+                        }
+                        if ($proPhone === '' && !empty($pro['push_name'])) {
+                            $stmtPhone = db()->prepare("SELECT phone FROM users WHERE name LIKE ? AND phone IS NOT NULL LIMIT 1");
+                            $stmtPhone->execute(['%' . $pro['push_name'] . '%']);
+                            $realPhone = $stmtPhone->fetchColumn();
+                            if ($realPhone) $proPhone = preg_replace('/\D+/', '', (string)$realPhone);
+                        }
+                    }
+                    if (strlen($proPhone) === 10 || strlen($proPhone) === 11) {
+                        $proPhone = '55' . $proPhone;
+                    }
+                    $proJid = $proPhone !== '' ? $proPhone . '@s.whatsapp.net' : '';
+                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' : '#';
+                    
+                    echo '<a href="' . $linkHref . '" class="whatsapp-chat-item">';
                     echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
                     echo '<div class="whatsapp-chat-info">';
                     echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';
