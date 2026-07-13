@@ -95,7 +95,7 @@ echo '<div style="display:flex;align-items:flex-end;justify-content:space-betwee
 echo '<div>';
 echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">Chat</div>';
 echo '<div style="font-size:22px;font-weight:900">Selecionar Profissional</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Selecione o profissional e defina os parâmetros da proposta. O sistema enviará automaticamente um e-mail para a operadora aguardando autorização.</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Selecione o profissional e defina os parâmetros da proposta. O sistema enviará automaticamente um e-mail para a operadora / cliente aguardando autorização.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/chat_web.php?chat=' . urlencode((string)$chat['remote_jid']) . '">Voltar ao chat</a>';
