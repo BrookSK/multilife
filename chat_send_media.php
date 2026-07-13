@@ -263,9 +263,10 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     ");
     
+    $caption = trim($_POST['caption'] ?? '');
     $messageText = $mediaType === 'audio' ? '[Áudio]' : 
-                   ($mediaType === 'image' ? '[Imagem]' : 
-                   ($mediaType === 'video' ? '[Vídeo]' : '[Documento]'));
+                   ($mediaType === 'image' ? ($caption !== '' ? $caption : '[Imagem]') : 
+                   ($mediaType === 'video' ? ($caption !== '' ? $caption : '[Vídeo]') : '[Documento]'));
     
     error_log("[$debugId] Texto da mensagem: '$messageText'");
     
