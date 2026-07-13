@@ -162,14 +162,19 @@ function email_generate_default_proposal_html(array $vars): string
     $patientContent .= email_data_row('Localização', $location);
     $body .= email_section('👤 Dados do Paciente', $patientContent, '#00a884');
     
-    // Seção: Profissional
-    $profContent = email_data_row('Nome', $professionalName);
-    $profContent .= email_data_row('Especialidade', $specialty);
-    $profContent .= email_data_row('Serviço', $serviceName);
-    $profContent .= email_data_row('Registro Profissional', $professionalCouncil);
-    $profContent .= email_data_row('E-mail', $professionalEmail);
-    $profContent .= email_data_row('Telefone', $professionalPhone);
-    $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+    // Seção: Profissional (omitida na proposta inicial - será enviada após aprovação na pré-admissão)
+    // $profContent = email_data_row('Nome', $professionalName);
+    // $profContent .= email_data_row('Especialidade', $specialty);
+    // $profContent .= email_data_row('Serviço', $serviceName);
+    // $profContent .= email_data_row('Registro Profissional', $professionalCouncil);
+    // $profContent .= email_data_row('E-mail', $professionalEmail);
+    // $profContent .= email_data_row('Telefone', $professionalPhone);
+    // $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+    
+    // Apenas especialidade e serviço (sem dados pessoais do profissional)
+    $specContent = email_data_row('Especialidade', $specialty);
+    $specContent .= email_data_row('Serviço', $serviceName);
+    $body .= email_section('🏥 Serviço Solicitado', $specContent, '#0284c7');
     
     // Seção: Agendamento
     $schedContent = email_data_row('Data de Início', $startDate);

@@ -183,11 +183,10 @@ function email_html_proposal_resend(array $vars): string
     $patientContent .= email_data_row('Localização', $vars['location'] ?? '');
     $body .= email_section('👤 Dados do Paciente', $patientContent, '#00a884');
     
-    $profContent = email_data_row('Nome', $vars['professional_name'] ?? '');
-    $profContent .= email_data_row('Especialidade', $vars['specialty'] ?? '');
+    // Seção: Serviço (sem dados do profissional na proposta)
+    $profContent = email_data_row('Especialidade', $vars['specialty'] ?? '');
     $profContent .= email_data_row('Serviço', $vars['service_name'] ?? '');
-    $profContent .= email_data_row('Registro', $vars['professional_council'] ?? '');
-    $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+    $body .= email_section('🏥 Serviço Solicitado', $profContent, '#0284c7');
     
     $schedContent = email_data_row('Data de Início', $vars['start_date'] ?? '');
     $schedContent .= email_data_row('Horário', ($vars['start_time'] ?? '') . ' às ' . ($vars['end_time'] ?? ''));
