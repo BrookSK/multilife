@@ -25,9 +25,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes]);
-                $_SESSION['success'] = 'Operadora cadastrada com sucesso!';
+                $_SESSION['success'] = 'Operadora / Cliente cadastrada com sucesso!';
             } catch (PDOException $e) {
-                $_SESSION['error'] = 'Erro ao cadastrar operadora: ' . $e->getMessage();
+                $_SESSION['error'] = 'Erro ao cadastrar: ' . $e->getMessage();
             }
         }
         header('Location: /health_insurers_config.php');
@@ -52,9 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE id = ?
                 ");
                 $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes, $id]);
-                $_SESSION['success'] = 'Operadora atualizada com sucesso!';
+                $_SESSION['success'] = 'Operadora / Cliente atualizada com sucesso!';
             } catch (PDOException $e) {
-                $_SESSION['error'] = 'Erro ao atualizar operadora: ' . $e->getMessage();
+                $_SESSION['error'] = 'Erro ao atualizar: ' . $e->getMessage();
             }
         }
         header('Location: /health_insurers_config.php');
@@ -79,7 +79,7 @@ $insurers = $db->query("
     ORDER BY is_active DESC, name ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
-view_header('Configuração de Operadoras');
+view_header('Configuração de Operadoras / Clientes');
 ?>
 
 <div class="grid">
@@ -90,7 +90,7 @@ view_header('Configuração de Operadoras');
                 <div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Gerenciar convênios, operadoras e clientes</div>
             </div>
             <div style="display:flex;gap:10px">
-                <button onclick="openCreateModal()" class="btn-primary">+ Nova Operadora</button>
+                <button onclick="openCreateModal()" class="btn-primary">+ Nova Operadora / Cliente</button>
                 <a href="/settings.php" class="btn">← Voltar</a>
             </div>
         </div>
@@ -151,7 +151,7 @@ view_header('Configuração de Operadoras');
             <input type="hidden" name="id" id="insurerId">
             
             <div style="margin-bottom:16px">
-                <label style="display:block;margin-bottom:8px;font-weight:600">Nome da Operadora *</label>
+                <label style="display:block;margin-bottom:8px;font-weight:600">Nome da Operadora / Cliente *</label>
                 <input type="text" name="name" id="insurerName" required style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
             </div>
             
@@ -179,7 +179,7 @@ view_header('Configuração de Operadoras');
             <div style="margin-bottom:16px">
                 <label style="display:block;margin-bottom:8px;font-weight:600">Domínio de E-mail</label>
                 <input type="text" name="email_domain" id="insurerEmailDomain" placeholder="ex: unimed.com.br, amil.com.br" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
-                <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Usado para identificar automaticamente a operadora pelo e-mail de origem das captações</div>
+                <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Usado para identificar automaticamente a operadora / cliente pelo e-mail de origem das captações</div>
             </div>
             
             <div style="margin-bottom:20px">
@@ -197,7 +197,7 @@ view_header('Configuração de Operadoras');
 
 <script>
 function openCreateModal() {
-    document.getElementById('modalTitle').textContent = 'Nova Operadora';
+    document.getElementById('modalTitle').textContent = 'Nova Operadora / Cliente';
     document.getElementById('formAction').value = 'create';
     document.getElementById('insurerForm').reset();
     document.getElementById('insurerId').value = '';
@@ -205,7 +205,7 @@ function openCreateModal() {
 }
 
 function editInsurer(insurer) {
-    document.getElementById('modalTitle').textContent = 'Editar Operadora';
+    document.getElementById('modalTitle').textContent = 'Editar Operadora / Cliente';
     document.getElementById('formAction').value = 'update';
     document.getElementById('insurerId').value = insurer.id;
     document.getElementById('insurerName').value = insurer.name;

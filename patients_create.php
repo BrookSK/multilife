@@ -111,7 +111,7 @@ echo '<div class="formSection">';
 echo '<div class="formSectionTitle">5. Convênio / Seguro Saúde</div>';
 echo '<div class="grid">';
 echo '<div class="col6"><label>Possui convênio?<select name="has_insurance"><option value="0">Não</option><option value="1">Sim</option></select></label></div>';
-echo '<div class="col6"><label>Operadora/Convênio<select name="health_insurer_id"><option value="">Selecione...</option>';
+echo '<div class="col6"><label>Operadora / Cliente<select name="health_insurer_id"><option value="">Selecione...</option>';
 try {
     $insurersStmt = db()->prepare("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
     $insurersStmt->execute();

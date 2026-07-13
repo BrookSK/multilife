@@ -123,7 +123,7 @@ $sections = [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
         'keys' => ['_specialties_']
     ],
-    'Operadoras' => [
+    'Operadoras / Clientes' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
         'keys' => ['_health_insurers_']
     ],
@@ -268,11 +268,11 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '</div>';
-    } elseif ($sectionTitle === 'Operadoras') {
+    } elseif ($sectionTitle === 'Operadoras / Clientes') {
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle" style="display:flex;align-items:center;justify-content:space-between">';
-        echo '<span>Operadoras de Saúde</span>';
-        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Gerenciar Operadoras</a>';
+        echo '<span>Operadoras / Clientes</span>';
+        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Gerenciar</a>';
         echo '</div>';
         
         // Buscar operadoras
