@@ -320,31 +320,20 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
             error_log("[SAVE_MSG] URL relativa detectada, adicionando barra inicial: $mediaUrl");
             $mediaUrl = '/' . $mediaUrl;
         } elseif ($isExternalUrl) {
-            // URL externa completa, fazer download
-            error_log("[SAVE_MSG] Mídia externa detectada, fazendo download...");
-            $localUrl = downloadMedia($mediaUrl, $mediaFilename ?? 'media', $mediaMimeType ?? 'application/octet-stream');
-            if ($localUrl !== null) {
-                $mediaUrl = $localUrl;
-                error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
-            } else {
-                // Fallback: baixar via Evolution API getBase64FromMediaMessage
-                error_log("[SAVE_MSG] Download direto falhou, tentando via Evolution API...");
+            // URLs do WhatsApp (mmg.whatsapp.net) são criptografadas - usar Evolution API para descriptografar
+            if (str_contains($mediaUrl, 'mmg.whatsapp.net') || str_contains($mediaUrl, '.enc')) {
+                error_log("[SAVE_MSG] URL criptografada do WhatsApp detectada, usando Evolution API...");
                 try {
                     $api = new EvolutionApiV1();
-                    $baseApiUrl = $api->getBaseUrl();
-                    $apiKeyVal = $api->getApiKey();
-                    $instanceVal = $api->getInstance();
-                    $mediaEndpoint = $baseApiUrl . '/chat/getBase64FromMediaMessage/' . urlencode($instanceVal);
+                    $mediaEndpoint = $api->getBaseUrl() . '/chat/getBase64FromMediaMessage/' . urlencode($api->getInstance());
                     
-                    // Precisamos do messageData original para passar à API
-                    // Usar variável global $currentMessageData se disponível
                     global $currentMessageData;
                     if (!empty($currentMessageData)) {
                         $chMedia = curl_init($mediaEndpoint);
                         curl_setopt($chMedia, CURLOPT_RETURNTRANSFER, true);
                         curl_setopt($chMedia, CURLOPT_POST, true);
                         curl_setopt($chMedia, CURLOPT_POSTFIELDS, json_encode(['message' => $currentMessageData, 'convertToMp4' => false]));
-                        curl_setopt($chMedia, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKeyVal, 'Content-Type: application/json']);
+                        curl_setopt($chMedia, CURLOPT_HTTPHEADER, ['apikey: ' . $api->getApiKey(), 'Content-Type: application/json']);
                         curl_setopt($chMedia, CURLOPT_SSL_VERIFYPEER, false);
                         curl_setopt($chMedia, CURLOPT_TIMEOUT, 30);
                         $mediaResp = curl_exec($chMedia);
@@ -363,8 +352,14 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                                     $uniqueFilename = uniqid('chat_', true) . '.' . $ext;
                                     file_put_contents($uploadDir . '/' . $uniqueFilename, $binaryData);
                                     $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
-                                    error_log("[SAVE_MSG] ✅ Mídia baixada via Evolution API: $mediaUrl (" . strlen($binaryData) . " bytes)");
+                                    error_log("[SAVE_MSG] ✅ Mídia descriptografada via Evolution API: $mediaUrl (" . strlen($binaryData) . " bytes)");
+                                } else {
+                                    $mediaUrl = null;
+                                    $messageText = $messageText ?: '[Mídia não disponível]';
                                 }
+                            } else {
+                                $mediaUrl = null;
+                                $messageText = $messageText ?: '[Mídia não disponível]';
                             }
                         } else {
                             error_log("[SAVE_MSG] Evolution getBase64 falhou HTTP $mediaCode");
@@ -372,12 +367,22 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                             $messageText = $messageText ?: '[Mídia não disponível]';
                         }
                     } else {
-                        error_log("[SAVE_MSG] currentMessageData não disponível para fallback");
                         $mediaUrl = null;
                         $messageText = $messageText ?: '[Mídia não disponível]';
                     }
                 } catch (Throwable $e) {
-                    error_log("[SAVE_MSG] Erro fallback Evolution API: " . $e->getMessage());
+                    error_log("[SAVE_MSG] Erro Evolution API: " . $e->getMessage());
+                    $mediaUrl = null;
+                    $messageText = $messageText ?: '[Mídia não disponível]';
+                }
+            } else {
+                // URL externa não-WhatsApp, fazer download normal
+                error_log("[SAVE_MSG] Mídia externa detectada, fazendo download...");
+                $localUrl = downloadMedia($mediaUrl, $mediaFilename ?? 'media', $mediaMimeType ?? 'application/octet-stream');
+                if ($localUrl !== null) {
+                    $mediaUrl = $localUrl;
+                    error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
+                } else {
                     $mediaUrl = null;
                     $messageText = $messageText ?: '[Mídia não disponível]';
                 }
