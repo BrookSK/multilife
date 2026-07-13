@@ -53,7 +53,7 @@ echo '<div class="grid">';
 echo '<section class="card col12">';
 echo '<div style="padding:16px;background:hsla(var(--warning)/.1);border:1px solid hsla(var(--warning)/.3);border-radius:12px;margin-bottom:20px">';
 echo '<div style="font-weight:700;margin-bottom:8px">⚠️ Atenção</div>';
-echo '<p style="margin:0;line-height:1.6">Esta proposta foi negada pela operadora. Você pode ajustar o valor e reenviar uma nova proposta.</p>';
+echo '<p style="margin:0;line-height:1.6">Esta proposta foi negada pela operadora / cliente. Você pode ajustar o valor e reenviar uma nova proposta.</p>';
 if (!empty($auth['denial_reason'])) {
     echo '<div style="margin-top:12px;padding:10px;background:white;border-radius:8px">';
     echo '<strong>Motivo da negação:</strong><br>';
@@ -70,7 +70,7 @@ echo '<div class="formSectionTitle">📋 Dados Atuais</div>';
 echo '<div class="grid">';
 echo '<div class="col6"><strong>Demanda:</strong> ' . h((string)$auth['demand_title']) . '</div>';
 echo '<div class="col6"><strong>Especialidade:</strong> ' . h((string)$auth['demand_specialty']) . '</div>';
-echo '<div class="col6"><strong>Operadora:</strong> ' . h((string)$auth['operator_email']) . '</div>';
+echo '<div class="col6"><strong>Operadora / Cliente:</strong> ' . h((string)$auth['operator_email']) . '</div>';
 echo '<div class="col6"><strong>Total de Sessões:</strong> ' . (int)$auth['total_sessions'] . '</div>';
 echo '</div>';
 echo '</div>';
@@ -102,7 +102,7 @@ echo '<div class="formSectionTitle">💵 Novos Valores</div>';
 echo '<div class="grid">';
 
 echo '<div class="col6">';
-echo '<label>Novo Valor de Proposta (operadora)<input type="number" step="0.01" min="0" name="new_proposal_value" id="newProposalValue" required placeholder="' . number_format($previousProposal, 2, '.', '') . '"></label>';
+echo '<label>Novo Valor de Proposta (operadora / cliente)<input type="number" step="0.01" min="0" name="new_proposal_value" id="newProposalValue" required placeholder="' . number_format($previousProposal, 2, '.', '') . '"></label>';
 echo '<div class="helpText">Valor que será oferecido à operadora por sessão</div>';
 echo '</div>';
 

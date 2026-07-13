@@ -128,7 +128,7 @@ echo '<div class="formSection">';
 echo '<div class="formSectionTitle">📋 Dados da Solicitação</div>';
 echo '<div class="grid">';
 echo '<div class="col6"><strong>Demanda:</strong> ' . h((string)$auth['demand_title']) . '</div>';
-echo '<div class="col6"><strong>Operadora:</strong> ' . h((string)$auth['operator_email']) . '</div>';
+echo '<div class="col6"><strong>Operadora / Cliente:</strong> ' . h((string)$auth['operator_email']) . '</div>';
 if (!empty($auth['denial_reason'])) {
     echo '<div class="col12">';
     echo '<strong>Motivo da Negação:</strong><br>';

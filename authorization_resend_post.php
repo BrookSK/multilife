@@ -236,7 +236,7 @@ try {
             'uid' => $userId
         ]);
         
-        flash_set('success', 'Proposta reenviada com sucesso! Aguardando nova resposta da operadora.');
+        flash_set('success', 'Proposta reenviada com sucesso! Aguardando nova resposta da operadora / cliente.');
         header('Location: /authorization_view.php?id=' . $newAuthId);
         exit;
         

@@ -170,9 +170,9 @@ echo '</div>';
 echo '<div class="formSection">';
 echo '<div class="formSectionTitle">📧 Informações de Envio</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><strong>E-mail da Operadora:</strong> ' . h((string)$auth['operator_email']) . '</div>';
+echo '<div class="col6"><strong>E-mail da Operadora / Cliente:</strong> ' . h((string)$auth['operator_email']) . '</div>';
 if (!empty($auth['operator_name'])) {
-    echo '<div class="col6"><strong>Nome da Operadora:</strong> ' . h((string)$auth['operator_name']) . '</div>';
+    echo '<div class="col6"><strong>Nome da Operadora / Cliente:</strong> ' . h((string)$auth['operator_name']) . '</div>';
 }
 if (!empty($auth['sent_at'])) {
     echo '<div class="col6"><strong>Enviado em:</strong> ' . date('d/m/Y H:i:s', strtotime((string)$auth['sent_at'])) . '</div>';

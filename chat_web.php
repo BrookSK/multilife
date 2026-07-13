@@ -1185,7 +1185,7 @@ try {
     }
 } catch (Exception $e) {
     error_log("Erro ao buscar operadoras: " . $e->getMessage());
-    echo '<option value="">Erro ao carregar operadoras</option>';
+    echo '<option value="">Erro ao carregar operadoras / clientes</option>';
 }
 echo '</select>';
 

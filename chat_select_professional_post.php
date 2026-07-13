@@ -410,7 +410,7 @@ try {
         'old' => $demand['status'],
         'new' => 'aguardando_autorizacao',
         'uid' => $userId,
-        'note' => 'Proposta enviada para operadora - Aguardando autorização'
+        'note' => 'Proposta enviada para operadora / cliente - Aguardando autorização'
     ]);
     error_log("✓ Log de status registrado");
     
@@ -433,7 +433,7 @@ try {
     $db->commit();
     error_log("✓ Transação commitada com sucesso");
     
-    // NÃO notificar profissional aqui — a proposta ainda precisa ser aprovada pela operadora
+    // NÃO notificar profissional aqui — a proposta ainda precisa ser aprovada pela operadora / cliente
     // O profissional será notificado APÓS a operadora aprovar (em process_single_authorization.php)
     
     // ============================================================================
@@ -551,7 +551,7 @@ try {
             'uid' => $userId
         ]);
         
-        flash_set('success', 'Proposta enviada com sucesso! Aguardando resposta da operadora.');
+        flash_set('success', 'Proposta enviada com sucesso! Aguardando resposta da operadora / cliente.');
         header('Location: /authorization_list.php?status=aguardando_autorizacao');
         exit;
         
