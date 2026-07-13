@@ -421,7 +421,8 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $contactName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $normalizedJid);
     
     // Usar senderName (pushName) como nome do contato se disponível e não é grupo
-    $displayName = $senderName ?: $contactName;
+    // Se fromMe=true, NÃO atualizar o nome do contato (seria o nosso próprio nome)
+    $displayName = (!$fromMe && $senderName) ? $senderName : $contactName;
     
     $lastMessageText = $text;
     if ($messageType !== 'text' && empty($text)) {
