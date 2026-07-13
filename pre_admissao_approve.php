@@ -263,6 +263,42 @@ try {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
     }
     
+    // Enviar mensagem de finalização no grupo de captação (por especialidade)
+    try {
+        $specialty = $assignment['specialty'] ?? '';
+        if ($specialty !== '') {
+            // Buscar grupo(s) onde essa captação foi disparada
+            $grpStmt = db()->prepare("
+                SELECT DISTINCT wg.evolution_group_jid, wg.name
+                FROM demand_dispatch_logs ddl
+                INNER JOIN whatsapp_groups wg ON wg.id = ddl.group_id
+                WHERE ddl.demand_id = ?
+                AND wg.evolution_group_jid IS NOT NULL
+            ");
+            $grpStmt->execute([$demandId]);
+            $dispatchedGroups = $grpStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (!empty($dispatchedGroups)) {
+                $api = new EvolutionApiV1();
+                $finalizationMsg = "✅ *[CAPTAÇÃO FINALIZADA]*\n\n"
+                    . "A captação para *" . ($assignment['patient_name'] ?? 'Paciente') . "* foi concluída.\n"
+                    . "📋 Especialidade: " . $specialty . "\n"
+                    . "👤 Profissional selecionado.\n\n"
+                    . "Obrigado a todos que demonstraram interesse! 🙏";
+                
+                foreach ($dispatchedGroups as $grp) {
+                    $groupJid = (string)$grp['evolution_group_jid'];
+                    if ($groupJid !== '') {
+                        $api->sendText($groupJid, $finalizationMsg);
+                        error_log("[PRE_ADMISSAO_APPROVE] Mensagem de finalização enviada para grupo: " . $grp['name']);
+                    }
+                }
+            }
+        }
+    } catch (Throwable $grpErr) {
+        error_log('[PRE_ADMISSAO_APPROVE] Erro ao enviar finalização no grupo: ' . $grpErr->getMessage());
+    }
+    
     // Enviar e-mail de confirmação para a operadora / cliente com dados completos
     try {
         // Buscar e-mail da operadora
