@@ -263,6 +263,68 @@ try {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
     }
     
+    // Enviar e-mail de confirmação para a operadora / cliente com dados completos
+    try {
+        // Buscar e-mail da operadora
+        $operatorEmail = '';
+        if ($healthInsurerId) {
+            $insStmt = db()->prepare("SELECT billing_email, contact_email FROM health_insurers WHERE id = ?");
+            $insStmt->execute([$healthInsurerId]);
+            $insData = $insStmt->fetch();
+            $operatorEmail = trim((string)($insData['billing_email'] ?? $insData['contact_email'] ?? ''));
+        }
+        // Fallback: e-mail de origem da demanda
+        if ($operatorEmail === '') {
+            $demandStmt = db()->prepare("SELECT origin_email FROM demands WHERE id = ?");
+            $demandStmt->execute([$demandId]);
+            $operatorEmail = trim((string)($demandStmt->fetchColumn() ?: ''));
+        }
+        
+        if ($operatorEmail !== '' && filter_var($operatorEmail, FILTER_VALIDATE_EMAIL)) {
+            $fromEmail = (string)admin_setting_get('smtp.out.from_email', '');
+            $fromName = (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+            
+            if ($fromEmail !== '' && filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                require_once __DIR__ . '/app/email_base_template.php';
+                require_once __DIR__ . '/app/email_html_generators.php';
+                
+                // Buscar dados completos do profissional
+                $profFullStmt = db()->prepare("SELECT name, email, phone, specialty FROM users WHERE id = ?");
+                $profFullStmt->execute([$assignment['professional_user_id']]);
+                $profFull = $profFullStmt->fetch();
+                
+                $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
+                $body .= '<p style="font-size:14px;color:#4b5563">O atendimento domiciliar foi <strong style="color:#059669">aprovado</strong> e o profissional já está designado. Seguem os detalhes completos:</p>';
+                
+                $patientContent = email_data_row('Nome', $assignment['patient_name'] ?? '');
+                $body .= email_section('👤 Paciente', $patientContent, '#00a884');
+                
+                $profContent = email_data_row('Nome', $profFull['name'] ?? $assignment['professional_name'] ?? '');
+                $profContent .= email_data_row('Especialidade', $profFull['specialty'] ?? $assignment['specialty'] ?? '');
+                $profContent .= email_data_row('E-mail', $profFull['email'] ?? '');
+                $profContent .= email_data_row('Telefone', $profFull['phone'] ?? '');
+                $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+                
+                $schedContent = email_data_row('Sessões', ($assignment['session_quantity'] ?? '') . ' sessões');
+                $schedContent .= email_data_row('Frequência', $assignment['session_frequency'] ?? '');
+                $body .= email_section('📋 Atendimento', $schedContent, '#7c3aed');
+                
+                $body .= email_divider();
+                $body .= '<p style="font-size:14px;color:#374151">O atendimento já está em andamento. Para qualquer dúvida, entre em contato.</p>';
+                $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+                
+                $htmlBody = email_base_layout('Atendimento Aprovado — Confirmação', $body);
+                
+                $client = new SmtpClient();
+                $client->send($fromEmail, $fromName, $operatorEmail, 'Atendimento Aprovado - ' . ($assignment['patient_name'] ?? 'Paciente'), $htmlBody);
+                
+                error_log('[PRE_ADMISSAO_APPROVE] E-mail de confirmação enviado para: ' . $operatorEmail);
+            }
+        }
+    } catch (Throwable $emailErr) {
+        error_log('[PRE_ADMISSAO_APPROVE] Erro ao enviar e-mail para operadora: ' . $emailErr->getMessage());
+    }
+    
     flash_set('success', 'Atendimento aprovado com sucesso! O card foi movido para "Admitido" na Captação.');
     header('Location: /pre_admissao.php');
     exit;
