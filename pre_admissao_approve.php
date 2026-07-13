@@ -301,22 +301,20 @@ try {
     
     // Enviar e-mail de confirmação para a operadora / cliente com dados completos
     try {
-        // Buscar e-mail da operadora
+        // Prioridade: e-mail de origem da demanda (quem enviou a solicitação)
         $operatorEmail = '';
-        error_log("[PRE_ADMISSAO_APPROVE] healthInsurerId: " . ($healthInsurerId ?? 'NULL'));
-        if ($healthInsurerId) {
+        $demandStmt = db()->prepare("SELECT origin_email FROM demands WHERE id = ?");
+        $demandStmt->execute([$demandId]);
+        $operatorEmail = trim((string)($demandStmt->fetchColumn() ?: ''));
+        error_log("[PRE_ADMISSAO_APPROVE] E-mail de origem da demanda: '$operatorEmail'");
+        
+        // Fallback: e-mail da operadora selecionada
+        if ($operatorEmail === '' && $healthInsurerId) {
             $insStmt = db()->prepare("SELECT billing_email, contact_email FROM health_insurers WHERE id = ?");
             $insStmt->execute([$healthInsurerId]);
             $insData = $insStmt->fetch();
             $operatorEmail = trim((string)($insData['billing_email'] ?? $insData['contact_email'] ?? ''));
-            error_log("[PRE_ADMISSAO_APPROVE] E-mail da operadora (banco): '$operatorEmail'");
-        }
-        // Fallback: e-mail de origem da demanda
-        if ($operatorEmail === '') {
-            $demandStmt = db()->prepare("SELECT origin_email FROM demands WHERE id = ?");
-            $demandStmt->execute([$demandId]);
-            $operatorEmail = trim((string)($demandStmt->fetchColumn() ?: ''));
-            error_log("[PRE_ADMISSAO_APPROVE] E-mail fallback (origin_email): '$operatorEmail'");
+            error_log("[PRE_ADMISSAO_APPROVE] E-mail fallback (operadora): '$operatorEmail'");
         }
         
         if ($operatorEmail !== '' && filter_var($operatorEmail, FILTER_VALIDATE_EMAIL)) {
