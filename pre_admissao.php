@@ -384,7 +384,7 @@ if ($selected) {
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($patientPhone) . '</div>';
     echo '<div style="font-weight:600;margin-top:8px">Profissional: ' . h($professionalName) . '</div>';
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($professionalPhone) . '</div>';
-    echo '<div style="font-weight:600;margin-top:8px">Operadora: ' . h($detectedInsurer) . '</div>';
+    echo '<div style="font-weight:600;margin-top:8px">Operadora / Cliente: ' . h($detectedInsurer) . '</div>';
     echo '</div>';
 
     // Buscar operadoras para dropdown
@@ -406,8 +406,8 @@ if ($selected) {
     echo '<div style="display:grid;gap:12px">';
     
     // Dropdown de operadora (pré-seleciona se identificada)
-    echo '<label>Operadora/Convênio *<select name="health_insurer_id" form="approveForm" required style="font-weight:600">';
-    echo '<option value="">Selecione a operadora...</option>';
+    echo '<label>Operadora / Cliente *<select name="health_insurer_id" form="approveForm" required style="font-weight:600">';
+    echo '<option value="">Selecione a operadora / cliente...</option>';
     foreach ($insurersList as $ins) {
         $sel = ((int)$ins['id'] === $detectedInsurerId) ? ' selected' : '';
         echo '<option value="' . (int)$ins['id'] . '"' . $sel . '>' . h($ins['name']) . '</option>';

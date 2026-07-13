@@ -110,16 +110,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Formatar número - apenas dígitos
             $participantPhone = preg_replace('/[^0-9]/', '', $participantPhone);
             
-            // Adicionar via API (PUT com groupJid como query param)
-            $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
+            // Adicionar via API (POST conforme documentação v2)
+            $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName);
             $payload = json_encode([
+                'groupJid' => $groupJid,
                 'action' => 'add',
                 'participants' => [$participantPhone]
             ]);
             
             $ch = curl_init($url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+            curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'apikey: ' . $apiKey,

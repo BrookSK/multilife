@@ -86,8 +86,8 @@ view_header('Configuração de Operadoras');
     <section class="card col12">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
             <div>
-                <div style="font-size:22px;font-weight:900">Operadoras de Saúde</div>
-                <div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Gerenciar convênios e operadoras</div>
+                <div style="font-size:22px;font-weight:900">Operadoras / Clientes</div>
+                <div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Gerenciar convênios, operadoras e clientes</div>
             </div>
             <div style="display:flex;gap:10px">
                 <button onclick="openCreateModal()" class="btn-primary">+ Nova Operadora</button>

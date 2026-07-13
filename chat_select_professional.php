@@ -133,7 +133,7 @@ echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>E-mail da Operadora<input type="email" name="operator_email" id="operatorEmail" required placeholder="contato@operadora.com.br"></label>';
+echo '<label>E-mail da Operadora / Cliente<input type="email" name="operator_email" id="operatorEmail" required placeholder="contato@operadora.com.br"></label>';
 echo '</div>';
 
 echo '<div class="col6">';
@@ -252,8 +252,8 @@ echo '<div class="helpText">Valor que o profissional receberá por sessão</div>
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>Valor de Proposta (operadora)<input type="number" step="0.01" min="0" name="proposal_value" id="proposalValue" required value="0.00" placeholder="200.00"></label>';
-echo '<div class="helpText">Valor que será oferecido à operadora por sessão</div>';
+echo '<label>Valor de Proposta (operadora / cliente)<input type="number" step="0.01" min="0" name="proposal_value" id="proposalValue" required value="0.00" placeholder="200.00"></label>';
+echo '<div class="helpText">Valor que será oferecido à operadora / cliente por sessão</div>';
 echo '</div>';
 
 echo '<div class="col12">';

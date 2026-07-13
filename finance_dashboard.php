@@ -488,12 +488,12 @@ echo '</div>'; // Fecha coluna 2
 echo '</div>'; // Fecha grid de 2 colunas
 echo '</section>'; // Fecha card unificado
 
-// Card: Atendimentos por Operadora
+// Card: Atendimentos por Operadora / Cliente
 echo '<section class="card col12">';
-echo '<div style="font-weight:700;font-size:16px;margin-bottom:16px">Atendimentos por Operadora</div>';
+echo '<div style="font-weight:700;font-size:16px;margin-bottom:16px">Atendimentos por Operadora / Cliente</div>';
 
 if (empty($operadorasComDados)) {
-    echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma operadora cadastrada</div>';
+    echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Nenhuma operadora / cliente cadastrada</div>';
 } else {
     // Ordenar por quantidade de atendimentos (decrescente)
     uasort($operadorasComDados, function($a, $b) {

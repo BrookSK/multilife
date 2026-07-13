@@ -194,7 +194,7 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Paciente</th><th>Operadora</th><th>Ligação</th><th>Centro de Custo</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Agendamento</th><th>Data</th><th>Paciente</th><th>Operadora / Cliente</th><th>Ligação</th><th>Centro de Custo</th><th>Valor</th><th>Status</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead><tbody>';
 foreach ($rows as $r) {
     echo '<tr>';

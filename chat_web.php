@@ -1173,7 +1173,7 @@ echo '<option value="">Selecione primeiro a especialidade...</option>';
 echo '</select>';
 echo '<input type="hidden" id="serviceMinValue" value="0">';
 
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Operadora *</label>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Operadora / Cliente *</label>';
 echo '<select id="healthInsurer" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
 echo '<option value="">Selecione...</option>';
 try {
@@ -1249,7 +1249,7 @@ echo '<input type="hidden" name="demand_id" id="selectProfModalDemandId">';
 
 echo '<div style="background:#e7f8f4;padding:16px;border-radius:8px;margin-bottom:20px">';
 echo '<p style="margin:0;font-size:14px;color:#00a884;font-weight:600">📋 Proposta de Autorização</p>';
-echo '<p style="margin:8px 0 0;font-size:13px;color:#667781">O sistema enviará automaticamente um e-mail para a operadora aguardando autorização.</p>';
+echo '<p style="margin:8px 0 0;font-size:13px;color:#667781">O sistema enviará automaticamente um e-mail para a operadora / cliente aguardando autorização.</p>';
 echo '</div>';
 
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
@@ -1288,7 +1288,7 @@ foreach ($specialtiesStmt->fetchAll() as $spec) {
 echo '</select>';
 echo '</div>';
 echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">E-mail da Operadora *</label>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">E-mail da Operadora / Cliente *</label>';
 echo '<input type="email" name="operator_email" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="contato@operadora.com.br">';
 echo '</div>';
 echo '</div>';
@@ -1354,23 +1354,24 @@ echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b2
 echo '<input type="number" name="agreed_value" id="selectProfAgreedValue" oninput="calculateTotals()" onchange="calculateTotals()" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 150.00">';
 echo '</div>';
 echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Proposta (operadora) *</label>';
+echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Proposta (operadora / cliente) *</label>';
 echo '<input type="number" name="proposal_value" id="selectProfProposalValue" oninput="calculateTotals()" onchange="calculateTotals()" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 180.00">';
 echo '</div>';
 echo '</div>';
 
-echo '<div style="background:#f0f2f5;padding:16px;border-radius:8px;margin-top:16px">';
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-echo '<div>';
-echo '<div style="font-size:12px;color:#667781;margin-bottom:4px">Custo Total (Profissional)</div>';
-echo '<div style="font-size:18px;font-weight:700;color:#111b21" id="totalCost">R$ 0,00</div>';
-echo '</div>';
-echo '<div>';
-echo '<div style="font-size:12px;color:#667781;margin-bottom:4px">Faturamento Total (Operadora)</div>';
-echo '<div style="font-size:18px;font-weight:700;color:#00a884" id="totalRevenue">R$ 0,00</div>';
-echo '</div>';
-echo '</div>';
-echo '</div>';
+// Bloco de custos oculto (comentado a pedido do cliente)
+// echo '<div style="background:#f0f2f5;padding:16px;border-radius:8px;margin-top:16px">';
+// echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+// echo '<div>';
+// echo '<div style="font-size:12px;color:#667781;margin-bottom:4px">Custo Total (Profissional)</div>';
+// echo '<div style="font-size:18px;font-weight:700;color:#111b21" id="totalCost">R$ 0,00</div>';
+// echo '</div>';
+// echo '<div>';
+// echo '<div style="font-size:12px;color:#667781;margin-bottom:4px">Faturamento Total (Operadora)</div>';
+// echo '<div style="font-size:18px;font-weight:700;color:#00a884" id="totalRevenue">R$ 0,00</div>';
+// echo '</div>';
+// echo '</div>';
+// echo '</div>';
 
 echo '<div style="margin-bottom:16px">';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Observações</label>';
