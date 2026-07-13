@@ -327,11 +327,60 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                 $mediaUrl = $localUrl;
                 error_log("[SAVE_MSG] Mídia salva localmente: $localUrl");
             } else {
-                // Se falhou ao baixar, salvar mensagem mas sem URL (não exibir mídia quebrada)
-                error_log("[SAVE_MSG] AVISO: Falha ao baixar mídia, salvando mensagem sem URL");
-                error_log("[SAVE_MSG] URL que falhou: $mediaUrl");
-                $mediaUrl = null; // Limpar URL para não exibir mídia quebrada
-                $messageText = $messageText ?: '[Mídia não disponível]';
+                // Fallback: baixar via Evolution API getBase64FromMediaMessage
+                error_log("[SAVE_MSG] Download direto falhou, tentando via Evolution API...");
+                try {
+                    $api = new EvolutionApiV1();
+                    $baseApiUrl = $api->getBaseUrl();
+                    $apiKeyVal = $api->getApiKey();
+                    $instanceVal = $api->getInstance();
+                    $mediaEndpoint = $baseApiUrl . '/chat/getBase64FromMediaMessage/' . urlencode($instanceVal);
+                    
+                    // Precisamos do messageData original para passar à API
+                    // Usar variável global $currentMessageData se disponível
+                    global $currentMessageData;
+                    if (!empty($currentMessageData)) {
+                        $chMedia = curl_init($mediaEndpoint);
+                        curl_setopt($chMedia, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($chMedia, CURLOPT_POST, true);
+                        curl_setopt($chMedia, CURLOPT_POSTFIELDS, json_encode(['message' => $currentMessageData, 'convertToMp4' => false]));
+                        curl_setopt($chMedia, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKeyVal, 'Content-Type: application/json']);
+                        curl_setopt($chMedia, CURLOPT_SSL_VERIFYPEER, false);
+                        curl_setopt($chMedia, CURLOPT_TIMEOUT, 30);
+                        $mediaResp = curl_exec($chMedia);
+                        $mediaCode = curl_getinfo($chMedia, CURLINFO_HTTP_CODE);
+                        curl_close($chMedia);
+                        
+                        if ($mediaCode >= 200 && $mediaCode < 300) {
+                            $mediaResult = json_decode($mediaResp, true);
+                            $b64 = (string)($mediaResult['base64'] ?? '');
+                            if ($b64 !== '') {
+                                $binaryData = base64_decode($b64);
+                                if ($binaryData !== false && strlen($binaryData) > 0) {
+                                    $uploadDir = __DIR__ . '/uploads/chat_media/' . date('Y-m');
+                                    if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
+                                    $ext = pathinfo($mediaFilename ?? 'media', PATHINFO_EXTENSION) ?: 'ogg';
+                                    $uniqueFilename = uniqid('chat_', true) . '.' . $ext;
+                                    file_put_contents($uploadDir . '/' . $uniqueFilename, $binaryData);
+                                    $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
+                                    error_log("[SAVE_MSG] ✅ Mídia baixada via Evolution API: $mediaUrl (" . strlen($binaryData) . " bytes)");
+                                }
+                            }
+                        } else {
+                            error_log("[SAVE_MSG] Evolution getBase64 falhou HTTP $mediaCode");
+                            $mediaUrl = null;
+                            $messageText = $messageText ?: '[Mídia não disponível]';
+                        }
+                    } else {
+                        error_log("[SAVE_MSG] currentMessageData não disponível para fallback");
+                        $mediaUrl = null;
+                        $messageText = $messageText ?: '[Mídia não disponível]';
+                    }
+                } catch (Throwable $e) {
+                    error_log("[SAVE_MSG] Erro fallback Evolution API: " . $e->getMessage());
+                    $mediaUrl = null;
+                    $messageText = $messageText ?: '[Mídia não disponível]';
+                }
             }
         }
     }
@@ -471,6 +520,10 @@ if ($event === 'messages.upsert') {
     foreach ($msgList as $messageData) {
         // LOG COMPLETO DO PAYLOAD PARA DIAGNÓSTICO
         error_log("[WEBHOOK] FULL MESSAGE DATA: " . json_encode($messageData));
+        
+        // Disponibilizar para fallback de download de mídia
+        global $currentMessageData;
+        $currentMessageData = $messageData;
         
         $remoteJid   = $messageData['key']['remoteJid'] ?? '';
         $senderPn    = $messageData['key']['senderPn'] ?? ''; // Número real do remetente
