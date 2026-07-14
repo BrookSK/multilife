@@ -108,7 +108,7 @@ try {
     if ($forceReprocess && $idFilter > 0) {
         $whereClause = "WHERE id = :id";
     } else {
-        $statusList = "'received','ai_pending'";
+        $statusList = "'received'";
         if ($retryErrors) {
             $statusList .= ",'error'";
         }
@@ -136,9 +136,9 @@ try {
         exit;
     }
 
-    $markPending = $db->prepare("UPDATE inbound_emails SET status = :st WHERE id = :id");
+    $markPending = $db->prepare("UPDATE inbound_emails SET status = 'processing' WHERE id = :id");
     foreach ($emails as $e) {
-        $markPending->execute(['id' => (int)$e['id'], 'st' => $pendingStatus]);
+        $markPending->execute(['id' => (int)$e['id']]);
     }
 
     $db->commit();
