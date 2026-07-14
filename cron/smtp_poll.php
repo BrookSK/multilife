@@ -150,9 +150,16 @@ if (!$imap) {
     exit;
 }
 
+$forceUid = isset($_GET['force_uid']) ? (int)$_GET['force_uid'] : 0;
+
 try {
-    // Unseen emails
-    $ids = imap_search($imap, 'UNSEEN', SE_UID);
+    // Unseen emails (ou UID forçado para re-processamento)
+    if ($forceUid > 0) {
+        $ids = [$forceUid];
+        error_log("[SMTP_POLL] Forçando re-processamento do UID $forceUid");
+    } else {
+        $ids = imap_search($imap, 'UNSEEN', SE_UID);
+    }
     if (!is_array($ids) || count($ids) === 0) {
         echo "OK: no unseen emails\n";
         exit;
@@ -255,7 +262,7 @@ try {
         }
 
         // Prevent duplicates when message_id exists
-        if ($messageId !== '') {
+        if ($messageId !== '' && $forceUid === 0) {
             $chk = $db->prepare('SELECT id FROM inbound_emails WHERE message_id = :mid LIMIT 1');
             $chk->execute(['mid' => $messageId]);
             if ($chk->fetch()) {
@@ -296,13 +303,18 @@ try {
         
         if ($structure) {
             // Processar estrutura MIME (com recursão para multipart aninhado)
+            $structType = isset($structure->type) ? (int)$structure->type : -1;
+            $structSubtype = isset($structure->subtype) ? strtoupper((string)$structure->subtype) : '';
+            error_log("[SMTP_POLL] UID $uid - Estrutura MIME: type=$structType subtype=$structSubtype partes=" . (isset($structure->parts) ? count($structure->parts) : 0));
             
             // Função recursiva para extrair texto de partes
-            $extractParts = function($parts, $prefix, $imap, $uidInt, $decodeBody) use (&$extractParts, &$bodyText, &$bodyHtml) {
+            $extractParts = function($parts, $prefix, $imap, $uidInt, $decodeBody) use (&$extractParts, &$bodyText, &$bodyHtml, $uid) {
                 foreach ($parts as $partNum => $part) {
                     $partIndex = $prefix . (string)($partNum + 1);
                     $type = isset($part->type) ? (int)$part->type : 0;
                     $subtype = isset($part->subtype) ? strtolower((string)$part->subtype) : '';
+                    
+                    error_log("[SMTP_POLL] UID $uid - Parte $partIndex: type=$type subtype=$subtype" . (isset($part->parts) ? " (tem " . count($part->parts) . " sub-partes)" : ""));
                     
                     // Se é multipart (type=1), descer recursivamente nas sub-partes
                     if ($type === 1 && isset($part->parts) && is_array($part->parts)) {
@@ -375,6 +387,8 @@ try {
         if ($bodyHtml !== '') {
             $bodyHtml = mb_convert_encoding($bodyHtml, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
         }
+        
+        error_log("[SMTP_POLL] UID $uid - Resultado extração: bodyText=" . strlen($bodyText) . " chars, bodyHtml=" . strlen($bodyHtml) . " chars");
 
         $db->beginTransaction();
         try {
