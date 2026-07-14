@@ -1127,6 +1127,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div class="waSubTabs">';
         echo '<button type="button" class="waSubTab waActive" data-watab="waConn">📡 Conexão</button>';
         echo '<button type="button" class="waSubTab" data-watab="waCred">🔑 Credenciais</button>';
+        echo '<button type="button" class="waSubTab" data-watab="waInst">👥 Instâncias</button>';
         echo '</div>';
         
         // --- Sub-aba: Conexão ---
@@ -1167,7 +1168,7 @@ var waCheckInterval = null;
 var waInstance = {$jsInstance};
 var waProvisioning = false;
 
-var htmlConnected = '<div style="padding:30px"><div style="color:hsl(142,76%,36%);margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div style="font-size:20px;font-weight:700;color:hsl(142,76%,36%);margin-bottom:8px">WhatsApp Conectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Instância <strong>' + waInstance + '</strong> está ativa e funcionando.</div><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a href="/admin_whatsapp_instances.php" class="btn">Gerenciar Instâncias</a><button type="button" class="btn" onclick="waDisconnect()" style="background:#ef4444;color:white;border:none">Desconectar</button></div></div>';
+var htmlConnected = '<div style="padding:30px"><div style="color:hsl(142,76%,36%);margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div style="font-size:20px;font-weight:700;color:hsl(142,76%,36%);margin-bottom:8px">WhatsApp Conectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Instância <strong>' + waInstance + '</strong> está ativa e funcionando.</div><button type="button" class="btn" onclick="waDisconnect()" style="background:#ef4444;color:white;border:none">Desconectar</button></div>';
 
 var htmlDisconnected = '<div style="padding:30px"><div style="color:#ef4444;margin-bottom:16px"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div><div style="font-size:20px;font-weight:700;color:#ef4444;margin-bottom:8px">WhatsApp Desconectado</div><div style="font-size:14px;color:#666;margin-bottom:20px">Escaneie o QR Code para conectar a instância <strong>' + waInstance + '</strong>.</div><button type="button" class="btn btnPrimary" onclick="waConnect()">Conectar (QR Code)</button></div>';
 
@@ -1342,6 +1343,95 @@ WAJS;
         // Botão salvar
         echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
         echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
+        echo '</div>';
+        echo '</div>';
+        
+        // --- Sub-aba: Instâncias (Multi-instância por usuário) ---
+        echo '<div class="waSubPanel" id="waInst">';
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Instâncias por Usuário</div>';
+        
+        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
+        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
+        echo 'Cada usuário pode ter sua própria conexão WhatsApp. Se não tiver, usa a instância padrão da plataforma.<br>';
+        echo 'Na criação de grupos, <strong>todos os números conectados</strong> são adicionados automaticamente.';
+        echo '</div>';
+        echo '</div>';
+        
+        $linkedInstances = whatsapp_list_all_instances();
+        $usersStmt = db()->prepare("SELECT u.id, u.name, u.email FROM users u WHERE u.status = 'active' ORDER BY u.name ASC");
+        $usersStmt->execute();
+        $availableUsers = $usersStmt->fetchAll();
+        
+        if (count($linkedInstances) === 0) {
+            echo '<div style="padding:30px;text-align:center;color:hsl(var(--muted-foreground))">';
+            echo '<div style="font-size:14px">Nenhuma instância cadastrada. Conecte o WhatsApp na aba <strong>Conexão</strong> para que a instância apareça aqui.</div>';
+            echo '</div>';
+        } else {
+            echo '<div style="overflow-x:auto">';
+            echo '<table style="width:100%;font-size:13px">';
+            echo '<thead><tr>';
+            echo '<th style="text-align:left">Instância</th>';
+            echo '<th style="text-align:left">Número</th>';
+            echo '<th style="text-align:left">Usuário Vinculado</th>';
+            echo '<th style="text-align:center">Conexão</th>';
+            echo '<th style="text-align:center">Padrão</th>';
+            echo '<th style="text-align:right">Ações</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($linkedInstances as $li) {
+                $liName = (string)($li['instance_name'] ?? '');
+                $liPhone = (string)($li['owner_phone_formatted'] ?: $li['owner_number'] ?: '-');
+                $liConnStatus = (string)($li['connection_status'] ?? 'disconnected');
+                $liIsDefault = (int)($li['is_default'] ?? 0);
+                $liId = (int)($li['id'] ?? 0);
+                
+                if ($liConnStatus === 'connected') {
+                    $statusBadge = '<span style="color:hsl(142,76%,36%);font-weight:600">● Conectado</span>';
+                } elseif ($liConnStatus === 'connecting') {
+                    $statusBadge = '<span style="color:#f59e0b;font-weight:600">● Conectando</span>';
+                } else {
+                    $statusBadge = '<span style="color:#ef4444;font-weight:600">● Desconectado</span>';
+                }
+                
+                echo '<tr>';
+                echo '<td style="font-weight:600">' . h($liName) . '</td>';
+                echo '<td>' . h($liPhone) . '</td>';
+                echo '<td>';
+                if ($li['user_name']) {
+                    echo h($li['user_name']);
+                } else {
+                    echo '<span style="color:hsl(var(--muted-foreground));font-style:italic">Sem vínculo</span>';
+                }
+                echo '</td>';
+                echo '<td style="text-align:center">' . $statusBadge . '</td>';
+                echo '<td style="text-align:center">' . ($liIsDefault ? '⭐' : '-') . '</td>';
+                echo '<td style="text-align:right">';
+                
+                if (!$liIsDefault) {
+                    echo '<form method="post" action="/admin_whatsapp_instance_link_post.php" style="display:inline-flex;align-items:center;gap:6px">';
+                    echo '<input type="hidden" name="instance_id" value="' . $liId . '">';
+                    echo '<select name="user_id" style="width:150px;font-size:12px;padding:4px 8px">';
+                    echo '<option value="0">Sem vínculo</option>';
+                    foreach ($availableUsers as $au) {
+                        $sel = ((int)($li['user_id'] ?? 0) === (int)$au['id']) ? ' selected' : '';
+                        echo '<option value="' . (int)$au['id'] . '"' . $sel . '>' . h($au['name']) . '</option>';
+                    }
+                    echo '</select>';
+                    echo '<button class="btn" type="submit" style="font-size:11px;padding:4px 10px">Salvar</button>';
+                    echo '</form>';
+                } else {
+                    echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Instância padrão</span>';
+                }
+                
+                echo '</td>';
+                echo '</tr>';
+            }
+            
+            echo '</tbody></table>';
+            echo '</div>';
+        }
+        
         echo '</div>';
         echo '</div>';
         
