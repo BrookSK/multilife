@@ -751,6 +751,31 @@ if (!empty($selectedChat)) {
         }
     }
 
+    // Se o chat não existe na lista mas é um JID válido, criar dados mínimos
+    // Permite abrir conversa com contatos novos (nunca conversou antes)
+    if (!$chatExists && strpos($selectedChat, '@') !== false) {
+        $chatName = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', $selectedChat);
+        // Tentar buscar nome do contato no banco de users pelo telefone
+        $phonePart = preg_replace('/\D+/', '', $chatName);
+        if (strlen($phonePart) >= 10) {
+            $phoneSuffix = substr($phonePart, -8);
+            $userStmt = db()->prepare("SELECT name FROM users WHERE phone LIKE ? LIMIT 1");
+            $userStmt->execute(['%' . $phoneSuffix]);
+            $userRow = $userStmt->fetch();
+            if ($userRow) {
+                $chatName = (string)$userRow['name'];
+            }
+        }
+        $selectedChatData = [
+            'id' => $selectedChat,
+            'name' => $chatName,
+            'profilePictureUrl' => null,
+            'is_group' => strpos($selectedChat, '@g.us') !== false ? 1 : 0,
+            'unreadCount' => 0,
+        ];
+        $chatExists = true;
+    }
+
     // Para grupos: buscar nome e foto na tabela chat_groups
     if (strpos($selectedChat, '@g.us') !== false && empty($selectedChatData['name'])) {
         try {
