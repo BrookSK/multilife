@@ -46,8 +46,11 @@ if ($status !== '') {
 }
 
 if ($q !== '') {
-    $where[] = '(d.title LIKE :q OR d.specialty LIKE :q OR d.location_city LIKE :q OR d.origin_email LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $where[] = '(d.title LIKE :q1 OR d.specialty LIKE :q2 OR d.location_city LIKE :q3 OR d.origin_email LIKE :q4)';
+    $params['q1'] = '%' . $q . '%';
+    $params['q2'] = '%' . $q . '%';
+    $params['q3'] = '%' . $q . '%';
+    $params['q4'] = '%' . $q . '%';
 }
 
 if ($specialty !== '') {
