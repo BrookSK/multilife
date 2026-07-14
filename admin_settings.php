@@ -1389,103 +1389,77 @@ WAJS;
         // Script para criação de instância + QR code
         $jsBaseUrl = json_encode($baseUrlWA);
         $jsApiKey = json_encode($apiKeyWA);
-        echo <<<WAINST_JS
-<script>
-(function(){
-var waInstInterval = null;
-var waInstCurrentName = "";
-
-window.waInstCreate = function(){
-  var sel = document.getElementById("waInstUser");
-  var userId = sel.value;
-  if(!userId){ alert("Selecione um usuário."); return; }
-  var userName = sel.options[sel.selectedIndex].getAttribute("data-name") || "user-" + userId;
-  var instanceName = "ml-" + userName;
-  waInstCurrentName = instanceName;
-  
-  var qrArea = document.getElementById("waInstQrArea");
-  var qrContainer = document.getElementById("waInstQrContainer");
-  var qrMsg = document.getElementById("waInstQrMsg");
-  qrArea.style.display = "block";
-  qrContainer.innerHTML = '<div style="color:#666;padding:20px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><div style="margin-top:8px">Criando instância...</div></div>';
-  qrMsg.textContent = "";
-  
-  // 1. Criar instância via proxy (provision)
-  fetch("/evolution_proxy.php?action=provision&instance=" + encodeURIComponent(instanceName))
-  .then(function(r){ return r.json(); })
-  .then(function(data){
-    if(!data.success){
-      qrContainer.innerHTML = '<div style="color:#ef4444;padding:20px">Erro: ' + (data.error || "Falha ao criar") + '</div>';
-      return;
-    }
-    
-    // 2. Vincular ao usuário via POST
-    var formData = new FormData();
-    formData.append("instance_name", instanceName);
-    formData.append("user_id", userId);
-    fetch("/admin_whatsapp_instance_link_post.php", {method:"POST", body: formData});
-    
-    // 3. Gerar QR Code
-    qrContainer.innerHTML = '<div style="color:#666;padding:20px">Gerando QR Code...</div>';
-    fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))
-    .then(function(r){ return r.json(); })
-    .then(function(connData){
-      if(connData.instance && connData.instance.state === "open"){
-        qrContainer.innerHTML = '<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">✓ Já conectado!</div>';
-        setTimeout(function(){ location.reload(); }, 2000);
-        return;
-      }
-      var base64 = connData.base64 || (connData.qrcode && connData.qrcode.base64) || "";
-      if(base64){
-        qrContainer.innerHTML = '<img src="' + base64 + '" style="max-width:260px;border-radius:8px">';
-        qrMsg.innerHTML = '<span style="color:#0ea5e9;font-weight:600">Escaneie o QR Code com o WhatsApp do usuário</span>';
-        waInstPoll(instanceName);
-      } else {
-        qrContainer.innerHTML = '<div style="color:#ef4444;padding:20px">QR Code não disponível. Tente novamente.</div>';
-      }
-    });
-  })
-  .catch(function(e){
-    qrContainer.innerHTML = '<div style="color:#ef4444;padding:20px">Erro: ' + e.message + '</div>';
-  });
-};
-
-function waInstPoll(instName){
-  if(waInstInterval) clearInterval(waInstInterval);
-  waInstInterval = setInterval(function(){
-    fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(instName))
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      var state = d.state || (d.instance && d.instance.state) || "";
-      if(state === "open" || state === "connected"){
-        clearInterval(waInstInterval);
-        document.getElementById("waInstQrContainer").innerHTML = '<div style="color:hsl(142,76%,36%);padding:20px"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:8px;font-weight:700">Conectado com sucesso!</div></div>';
-        document.getElementById("waInstQrMsg").textContent = "Recarregando...";
-        setTimeout(function(){ location.reload(); }, 2000);
-      }
-    });
-  }, 3000);
-}
-
-window.waInstRemove = function(instanceName, instanceId){
-  if(!confirm("Deseja remover a instância '" + instanceName + "'?\n\nIsso vai desconectar o WhatsApp e remover o vínculo com o usuário.")) return;
-  
-  // 1. Desconectar (logout) na Evolution API
-  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))
-  .then(function(r){ return r.json(); })
-  .then(function(){
-    // 2. Remover do banco (marcar como inactive)
-    var formData = new FormData();
-    formData.append("instance_id", instanceId);
-    formData.append("action", "remove");
-    return fetch("/admin_whatsapp_instance_remove_post.php", {method:"POST", body: formData});
-  })
-  .then(function(){ location.reload(); })
-  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });
-};
-})();
-</script>
-WAINST_JS;
+        echo '<script>';
+        echo '(function(){';
+        echo 'var waInstInterval = null;';
+        echo 'var waInstCurrentName = "";';
+        echo '';
+        echo 'window.waInstCreate = function(){';
+        echo '  var sel = document.getElementById("waInstUser");';
+        echo '  var userId = sel.value;';
+        echo '  if(!userId){ alert("Selecione um usuário."); return; }';
+        echo '  var userName = sel.options[sel.selectedIndex].getAttribute("data-name") || "user-" + userId;';
+        echo '  var instanceName = "ml-" + userName;';
+        echo '  waInstCurrentName = instanceName;';
+        echo '  var qrArea = document.getElementById("waInstQrArea");';
+        echo '  var qrContainer = document.getElementById("waInstQrContainer");';
+        echo '  var qrMsg = document.getElementById("waInstQrMsg");';
+        echo '  qrArea.style.display = "block";';
+        echo '  qrContainer.innerHTML = \'<div style="color:#666;padding:20px">Criando instância...</div>\';';
+        echo '  qrMsg.textContent = "";';
+        echo '  fetch("/evolution_proxy.php?action=provision&instance=" + encodeURIComponent(instanceName))';
+        echo '  .then(function(r){ return r.json(); })';
+        echo '  .then(function(data){';
+        echo '    if(!data.success){ qrContainer.innerHTML = \'<div style="color:#ef4444;padding:20px">Erro: \' + (data.error || "Falha ao criar") + \'</div>\'; return; }';
+        echo '    var formData = new FormData();';
+        echo '    formData.append("instance_name", instanceName);';
+        echo '    formData.append("user_id", userId);';
+        echo '    fetch("/admin_whatsapp_instance_link_post.php", {method:"POST", body: formData});';
+        echo '    qrContainer.innerHTML = \'<div style="color:#666;padding:20px">Gerando QR Code...</div>\';';
+        echo '    fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))';
+        echo '    .then(function(r){ return r.json(); })';
+        echo '    .then(function(connData){';
+        echo '      if(connData.instance && connData.instance.state === "open"){ qrContainer.innerHTML = \'<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">Já conectado!</div>\'; setTimeout(function(){ location.reload(); }, 2000); return; }';
+        echo '      var base64 = connData.base64 || (connData.qrcode && connData.qrcode.base64) || "";';
+        echo '      if(base64){ qrContainer.innerHTML = \'<img src="\' + base64 + \'" style="max-width:260px;border-radius:8px">\'; qrMsg.innerHTML = \'<span style="color:#0ea5e9;font-weight:600">Escaneie o QR Code com o WhatsApp do usuário</span>\'; waInstPoll(instanceName); }';
+        echo '      else { qrContainer.innerHTML = \'<div style="color:#ef4444;padding:20px">QR Code não disponível. Tente novamente.</div>\'; }';
+        echo '    });';
+        echo '  })';
+        echo '  .catch(function(e){ qrContainer.innerHTML = \'<div style="color:#ef4444;padding:20px">Erro: \' + e.message + \'</div>\'; });';
+        echo '};';
+        echo '';
+        echo 'function waInstPoll(instName){';
+        echo '  if(waInstInterval) clearInterval(waInstInterval);';
+        echo '  waInstInterval = setInterval(function(){';
+        echo '    fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(instName))';
+        echo '    .then(function(r){ return r.json(); })';
+        echo '    .then(function(d){';
+        echo '      var state = d.state || (d.instance && d.instance.state) || "";';
+        echo '      if(state === "open" || state === "connected"){';
+        echo '        clearInterval(waInstInterval);';
+        echo '        document.getElementById("waInstQrContainer").innerHTML = \'<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">Conectado com sucesso!</div>\';';
+        echo '        document.getElementById("waInstQrMsg").textContent = "Recarregando...";';
+        echo '        setTimeout(function(){ location.reload(); }, 2000);';
+        echo '      }';
+        echo '    });';
+        echo '  }, 3000);';
+        echo '}';
+        echo '';
+        echo 'window.waInstRemove = function(instanceName, instanceId){';
+        echo '  if(!confirm("Deseja remover a instância \'" + instanceName + "\'?\\n\\nIsso vai desconectar o WhatsApp e remover o vínculo com o usuário.")) return;';
+        echo '  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
+        echo '  .then(function(r){ return r.json(); })';
+        echo '  .then(function(){';
+        echo '    var formData = new FormData();';
+        echo '    formData.append("instance_id", instanceId);';
+        echo '    formData.append("action", "remove");';
+        echo '    return fetch("/admin_whatsapp_instance_remove_post.php", {method:"POST", body: formData});';
+        echo '  })';
+        echo '  .then(function(){ location.reload(); })';
+        echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
+        echo '};';
+        echo '})();';
+        echo '</script>';
         
         // --- Tabela de instâncias existentes ---
         if (count($linkedInstances) === 0) {
