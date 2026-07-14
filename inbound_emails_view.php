@@ -31,7 +31,7 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/inbound_emails_list.php">Voltar</a>';
-if ($e['linked_demand_id'] !== null) {
+if (($e['linked_demand_id'] ?? null) !== null) {
     echo '<a class="btn btnPrimary" href="/demands_view.php?id=' . (int)$e['linked_demand_id'] . '">Abrir demanda</a>';
 }
 echo '</div>';
