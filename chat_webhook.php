@@ -22,6 +22,9 @@ $event = $data['event'] ?? '';
 $event = strtolower(str_replace('_', '.', $event));
 error_log("[WEBHOOK] event:'$event' instance:'" . ($data['instance'] ?? '') . "'");
 
+// Guardar o nome da instância globalmente para uso nas funções de save
+$GLOBALS['_webhookInstanceName'] = $data['instance'] ?? null;
+
 // Ignorar eventos que não precisam de processamento
 $ignoredEvents = [
     'connection.update',
@@ -395,11 +398,13 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     
     $stmt = db()->prepare("
         INSERT INTO chat_messages 
-        (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, thumbnail_url, from_me, message_timestamp, quoted_message_id, quoted_message_text, quoted_message_sender, mentioned_jids, sender_name, participant_jid, external_message_id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, thumbnail_url, from_me, message_timestamp, quoted_message_id, quoted_message_text, quoted_message_sender, mentioned_jids, sender_name, participant_jid, external_message_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
+    $webhookInstanceName = $data['instance'] ?? ($GLOBALS['_webhookInstanceName'] ?? null);
     $stmt->execute([
         $normalizedJid, 
+        $webhookInstanceName,
         $text, 
         $messageType,
         $mediaUrl,
@@ -443,20 +448,22 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     error_log("[SAVE_CONTACT] Salvando/atualizando contato - normalizedJid: '$normalizedJid' | displayName: '$displayName' | isGroup: $isGroup");
 
     $stmtContact = db()->prepare("
-        INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO chat_contacts (remote_jid, instance_name, contact_name, is_group, last_message_timestamp, last_message_text, last_message_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             contact_name = CASE 
                 WHEN VALUES(contact_name) != '' AND VALUES(contact_name) != REPLACE(REPLACE(REPLACE(remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', '')
                 THEN VALUES(contact_name) 
                 ELSE COALESCE(contact_name, VALUES(contact_name))
             END,
+            instance_name = COALESCE(VALUES(instance_name), instance_name),
             last_message_timestamp = VALUES(last_message_timestamp),
             last_message_text = VALUES(last_message_text),
             last_message_type = VALUES(last_message_type),
             updated_at = CURRENT_TIMESTAMP
     ");
-    $stmtContact->execute([$normalizedJid, $displayName, $isGroup, $timestamp, $lastMessageText, $messageType]);
+    $webhookInstanceName = $data['instance'] ?? ($GLOBALS['_webhookInstanceName'] ?? null);
+    $stmtContact->execute([$normalizedJid, $webhookInstanceName, $displayName, $isGroup, $timestamp, $lastMessageText, $messageType]);
     
     error_log("[SAVE_CONTACT] Contato salvo com sucesso - normalizedJid: '$normalizedJid'");
 }

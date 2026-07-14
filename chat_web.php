@@ -159,10 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     error_log("[$debugId] DB_SAVE - Original JID: '$remoteJid' | Normalized: '$normalizedJid'");
                     
                     $stmt = db()->prepare("
-                        INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp)
-                        VALUES (?, ?, 1, ?)
+                        INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp)
+                        VALUES (?, ?, ?, 1, ?)
                     ");
-                    $savedToDb = $stmt->execute([$normalizedJid, $message, $timestamp]);
+                    $savedToDb = $stmt->execute([$normalizedJid, $instanceName, $message, $timestamp]);
                     
                     // Verificar se realmente salvou
                     if ($savedToDb) {
@@ -198,13 +198,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 error_log("[$debugId] CONTACT_SAVE - normalizedJid: '$normalizedJid' | contactName: '$contactName'");
                                 
                                 $stmtContact = db()->prepare("
-                                    INSERT INTO chat_contacts (remote_jid, contact_name, is_group, last_message_timestamp)
-                                    VALUES (?, ?, ?, ?)
+                                    INSERT INTO chat_contacts (remote_jid, instance_name, contact_name, is_group, last_message_timestamp)
+                                    VALUES (?, ?, ?, ?, ?)
                                     ON DUPLICATE KEY UPDATE 
+                                        instance_name = COALESCE(VALUES(instance_name), instance_name),
                                         last_message_timestamp = VALUES(last_message_timestamp),
                                         updated_at = CURRENT_TIMESTAMP
                                 ");
-                                $stmtContact->execute([$normalizedJid, $contactName, $isGroup, $timestamp]);
+                                $stmtContact->execute([$normalizedJid, $instanceName, $contactName, $isGroup, $timestamp]);
                                 
                                 // Buscar perfil do contato da Evolution API
                                 try {
@@ -581,6 +582,10 @@ try {
         
         // SEMPRE excluir grupos das abas de chat (grupos têm aba própria)
         $whereClauses[] = "cc.is_group = 0";
+        
+        // MULTI-INSTÂNCIA: Filtrar conversas pela instância do usuário logado
+        $whereClauses[] = "(cc.instance_name = ? OR cc.instance_name IS NULL)";
+        $params[] = $instanceName;
         
         // SEMPRE excluir conversas arquivadas
         $whereClauses[] = "(cc.status != 'arquivado' OR cc.status IS NULL)";
