@@ -151,7 +151,7 @@ foreach ($rows as $r) {
     echo '</td>';
     echo '<td style="text-align:right;white-space:nowrap">';
     echo '<a class="btn" href="/inbound_emails_view.php?id=' . (int)$r['id'] . '">Ver</a> ';
-    echo '<a class="btn" href="/cron/openai_extract_email_to_demand.php?token=49$cpFu92&id=' . (int)$r['id'] . '&retry_errors=1&force=1&async=1" style="background:#10b981;color:white" title="Reprocessar este e-mail (em background)">🔄 Reprocessar</a>';
+    echo '<a class="btn" href="/inbound_emails_reprocess.php?id=' . (int)$r['id'] . '" style="background:#10b981;color:white" title="Marcar para reprocessamento pelo próximo ciclo do cron">🔄 Reprocessar</a>';
     echo '</td>';
     echo '</tr>';
 }
