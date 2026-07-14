@@ -8,6 +8,9 @@ require_once __DIR__ . '/_bootstrap.php';
 @set_time_limit(300);
 ignore_user_abort(true);
 
+// Log de início para debug
+error_log("[EMAIL_EXTRACT] === INÍCIO DA EXECUÇÃO === PID:" . getmypid() . " SAPI:" . PHP_SAPI);
+
 // Fechar conexão HTTP imediatamente para evitar timeout do nginx/Apache
 // O script continua rodando em background após fechar a conexão
 if (PHP_SAPI !== 'cli') {
@@ -40,6 +43,32 @@ if (PHP_SAPI !== 'cli') {
     
     // Pequeno delay para garantir que a conexão foi fechada
     usleep(100000); // 100ms
+    
+    error_log("[EMAIL_EXTRACT] Conexão HTTP fechada, continuando processamento em background...");
+    
+    // Verificar se o processo ainda está vivo após fechar conexão
+    register_shutdown_function(function() {
+        $err = error_get_last();
+        if ($err) {
+            error_log("[EMAIL_EXTRACT] SHUTDOWN com erro: " . json_encode($err));
+        } else {
+            error_log("[EMAIL_EXTRACT] SHUTDOWN normal (processamento concluído)");
+        }
+    });
+}
+
+// Suporte a parâmetros via CLI ($argv) além de $_GET
+if (PHP_SAPI === 'cli' && isset($argv) && is_array($argv)) {
+    foreach ($argv as $arg) {
+        $a = (string)$arg;
+        if (strpos($a, '=') !== false) {
+            [$key, $val] = explode('=', $a, 2);
+            $key = ltrim($key, '-');
+            if ($key !== 'token' && !isset($_GET[$key])) {
+                $_GET[$key] = $val;
+            }
+        }
+    }
 }
 
 $idFilter = isset($_GET['id']) ? (int)$_GET['id'] : 0;
