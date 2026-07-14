@@ -1363,9 +1363,117 @@ WAJS;
         $usersStmt->execute();
         $availableUsers = $usersStmt->fetchAll();
         
+        // --- Formulário: Criar nova instância para usuário ---
+        echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:16px;margin-bottom:20px">';
+        echo '<div style="font-weight:700;margin-bottom:12px;font-size:14px">Conectar WhatsApp de um usuário</div>';
+        echo '<form id="waInstCreateForm" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end">';
+        echo '<div>';
+        echo '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Usuário</label>';
+        echo '<select id="waInstUser" style="width:100%;padding:8px;font-size:13px;border:1px solid hsl(var(--border));border-radius:6px">';
+        echo '<option value="">Selecione o usuário...</option>';
+        foreach ($availableUsers as $au) {
+            echo '<option value="' . (int)$au['id'] . '" data-name="' . h(strtolower(preg_replace('/[^a-zA-Z0-9]/', '-', $au['name']))) . '">' . h($au['name']) . ' (' . h($au['email']) . ')</option>';
+        }
+        echo '</select>';
+        echo '</div>';
+        echo '<div>';
+        echo '<button type="button" class="btn btnPrimary" onclick="waInstCreate()" style="width:100%">Criar e Conectar</button>';
+        echo '</div>';
+        echo '</form>';
+        echo '<div id="waInstQrArea" style="display:none;margin-top:16px;text-align:center;padding:20px;border-top:1px solid hsl(var(--border))">';
+        echo '<div id="waInstQrContainer"></div>';
+        echo '<div id="waInstQrMsg" style="margin-top:12px;font-size:13px;color:hsl(var(--muted-foreground))"></div>';
+        echo '</div>';
+        echo '</div>';
+        
+        // Script para criação de instância + QR code
+        $jsBaseUrl = json_encode($baseUrlWA);
+        $jsApiKey = json_encode($apiKeyWA);
+        echo <<<WAINST_JS
+<script>
+(function(){
+var waInstInterval = null;
+var waInstCurrentName = "";
+
+window.waInstCreate = function(){
+  var sel = document.getElementById("waInstUser");
+  var userId = sel.value;
+  if(!userId){ alert("Selecione um usuário."); return; }
+  var userName = sel.options[sel.selectedIndex].getAttribute("data-name") || "user-" + userId;
+  var instanceName = "ml-" + userName;
+  waInstCurrentName = instanceName;
+  
+  var qrArea = document.getElementById("waInstQrArea");
+  var qrContainer = document.getElementById("waInstQrContainer");
+  var qrMsg = document.getElementById("waInstQrMsg");
+  qrArea.style.display = "block";
+  qrContainer.innerHTML = '<div style="color:#666;padding:20px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><div style="margin-top:8px">Criando instância...</div></div>';
+  qrMsg.textContent = "";
+  
+  // 1. Criar instância via proxy (provision)
+  fetch("/evolution_proxy.php?action=provision&instance=" + encodeURIComponent(instanceName))
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(!data.success){
+      qrContainer.innerHTML = '<div style="color:#ef4444;padding:20px">Erro: ' + (data.error || "Falha ao criar") + '</div>';
+      return;
+    }
+    
+    // 2. Vincular ao usuário via POST
+    var formData = new FormData();
+    formData.append("instance_name", instanceName);
+    formData.append("user_id", userId);
+    fetch("/admin_whatsapp_instance_link_post.php", {method:"POST", body: formData});
+    
+    // 3. Gerar QR Code
+    qrContainer.innerHTML = '<div style="color:#666;padding:20px">Gerando QR Code...</div>';
+    fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))
+    .then(function(r){ return r.json(); })
+    .then(function(connData){
+      if(connData.instance && connData.instance.state === "open"){
+        qrContainer.innerHTML = '<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">✓ Já conectado!</div>';
+        setTimeout(function(){ location.reload(); }, 2000);
+        return;
+      }
+      var base64 = connData.base64 || (connData.qrcode && connData.qrcode.base64) || "";
+      if(base64){
+        qrContainer.innerHTML = '<img src="' + base64 + '" style="max-width:260px;border-radius:8px">';
+        qrMsg.innerHTML = '<span style="color:#0ea5e9;font-weight:600">Escaneie o QR Code com o WhatsApp do usuário</span>';
+        waInstPoll(instanceName);
+      } else {
+        qrContainer.innerHTML = '<div style="color:#ef4444;padding:20px">QR Code não disponível. Tente novamente.</div>';
+      }
+    });
+  })
+  .catch(function(e){
+    qrContainer.innerHTML = '<div style="color:#ef4444;padding:20px">Erro: ' + e.message + '</div>';
+  });
+};
+
+function waInstPoll(instName){
+  if(waInstInterval) clearInterval(waInstInterval);
+  waInstInterval = setInterval(function(){
+    fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(instName))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var state = d.state || (d.instance && d.instance.state) || "";
+      if(state === "open" || state === "connected"){
+        clearInterval(waInstInterval);
+        document.getElementById("waInstQrContainer").innerHTML = '<div style="color:hsl(142,76%,36%);padding:20px"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><div style="margin-top:8px;font-weight:700">Conectado com sucesso!</div></div>';
+        document.getElementById("waInstQrMsg").textContent = "Recarregando...";
+        setTimeout(function(){ location.reload(); }, 2000);
+      }
+    });
+  }, 3000);
+}
+})();
+</script>
+WAINST_JS;
+        
+        // --- Tabela de instâncias existentes ---
         if (count($linkedInstances) === 0) {
-            echo '<div style="padding:30px;text-align:center;color:hsl(var(--muted-foreground))">';
-            echo '<div style="font-size:14px">Nenhuma instância cadastrada. Conecte o WhatsApp na aba <strong>Conexão</strong> para que a instância apareça aqui.</div>';
+            echo '<div style="padding:20px;text-align:center;color:hsl(var(--muted-foreground))">';
+            echo '<div style="font-size:13px">Nenhuma instância cadastrada ainda. Use o formulário acima para conectar o WhatsApp de um usuário.</div>';
             echo '</div>';
         } else {
             echo '<div style="overflow-x:auto">';
@@ -1373,8 +1481,8 @@ WAJS;
             echo '<thead><tr>';
             echo '<th style="text-align:left">Instância</th>';
             echo '<th style="text-align:left">Número</th>';
-            echo '<th style="text-align:left">Usuário Vinculado</th>';
-            echo '<th style="text-align:center">Conexão</th>';
+            echo '<th style="text-align:left">Usuário</th>';
+            echo '<th style="text-align:center">Status</th>';
             echo '<th style="text-align:center">Padrão</th>';
             echo '<th style="text-align:right">Ações</th>';
             echo '</tr></thead><tbody>';
