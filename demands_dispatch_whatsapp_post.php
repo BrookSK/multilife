@@ -129,6 +129,17 @@ if (count($groups) === 0) {
                 $participants[] = $clean;
             }
         }
+        
+        // MULTI-INSTÂNCIA: Adicionar TODOS os números WhatsApp conectados no sistema
+        // Cada instância conectada (de cada usuário) entra como participante do grupo
+        $connectedNumbers = whatsapp_get_all_connected_numbers();
+        foreach ($connectedNumbers as $connNum) {
+            if (!in_array($connNum, $participants, true)) {
+                $participants[] = $connNum;
+            }
+        }
+        error_log("[DISPATCH] Adicionados " . count($connectedNumbers) . " números de instâncias conectadas ao grupo");
+        
         $participants = array_values(array_unique($participants));
         
         // Garantir pelo menos 1 participante (o próprio admin)
@@ -208,6 +219,24 @@ if (count($groups) === 0) {
                     }
                 } catch (Exception $e) {
                     error_log("[DISPATCH] Erro ao configurar grupo: " . $e->getMessage());
+                }
+                
+                // MULTI-INSTÂNCIA: Promover todos os números de instâncias conectadas a admin do grupo
+                // Isso garante que todas as instâncias possam enviar mensagens no grupo (announcement mode)
+                try {
+                    $instanceNumbers = whatsapp_get_all_connected_numbers();
+                    if (!empty($instanceNumbers)) {
+                        $api3 = new EvolutionApiV1();
+                        $adminParticipants = [];
+                        foreach ($instanceNumbers as $num) {
+                            $adminParticipants[] = $num . '@s.whatsapp.net';
+                        }
+                        $promoteResult = $api3->updateGroupMembers($newGroupJid, 'promote', $adminParticipants);
+                        $promoteCode = $promoteResult['status'] ?? 0;
+                        error_log("[DISPATCH] Instâncias promovidas a admin: HTTP $promoteCode (" . count($adminParticipants) . " números)");
+                    }
+                } catch (Exception $e) {
+                    error_log("[DISPATCH] Erro ao promover instâncias a admin: " . $e->getMessage());
                 }
                 
                 // Pequeno delay para o grupo estabilizar antes de enviar mensagem

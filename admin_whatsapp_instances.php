@@ -129,6 +129,77 @@ echo '</tbody></table>';
 echo '</div>';
 echo '</section>';
 
+// ============================
+// SEÇÃO: INSTÂNCIAS VINCULADAS A USUÁRIOS (Multi-instância)
+// ============================
+
+echo '<section class="card col12">';
+echo '<div style="font-weight:900;margin-bottom:8px">Instâncias por Usuário</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:13px;margin-bottom:12px">Cada usuário pode ter sua própria conexão WhatsApp. Se não tiver, usa a instância padrão da plataforma.</div>';
+
+$linkedInstances = whatsapp_list_all_instances();
+
+// Buscar usuários disponíveis para vincular
+$usersStmt = db()->prepare("SELECT u.id, u.name, u.email FROM users u WHERE u.status = 'active' ORDER BY u.name ASC");
+$usersStmt->execute();
+$availableUsers = $usersStmt->fetchAll();
+
+echo '<div style="overflow:auto">';
+echo '<table>';
+echo '<thead><tr>';
+echo '<th>Instância</th><th>Número</th><th>Usuário Vinculado</th><th>Status Conexão</th><th>Padrão?</th><th style="text-align:right">Ações</th>';
+echo '</tr></thead><tbody>';
+
+foreach ($linkedInstances as $li) {
+    $liName = (string)($li['instance_name'] ?? '');
+    $liPhone = (string)($li['owner_phone_formatted'] ?: $li['owner_number'] ?: '-');
+    $liUser = $li['user_name'] ? h($li['user_name']) . ' <small>(' . h($li['user_email']) . ')</small>' : '<em>Sem vínculo</em>';
+    $liConnStatus = (string)($li['connection_status'] ?? 'disconnected');
+    $liIsDefault = (int)($li['is_default'] ?? 0);
+    $liId = (int)($li['id'] ?? 0);
+    
+    $statusBadge = match($liConnStatus) {
+        'connected' => '<span style="color:green;font-weight:700">● Conectado</span>',
+        'connecting' => '<span style="color:orange;font-weight:700">● Conectando</span>',
+        default => '<span style="color:red;font-weight:700">● Desconectado</span>',
+    };
+    
+    echo '<tr>';
+    echo '<td style="font-weight:700">' . h($liName) . '</td>';
+    echo '<td>' . h($liPhone) . '</td>';
+    echo '<td>' . $liUser . '</td>';
+    echo '<td>' . $statusBadge . '</td>';
+    echo '<td>' . ($liIsDefault ? '⭐ Sim' : 'Não') . '</td>';
+    echo '<td style="text-align:right">';
+    
+    if (!$liIsDefault) {
+        echo '<form method="post" action="/admin_whatsapp_instance_link_post.php" style="display:inline">';
+        echo '<input type="hidden" name="instance_id" value="' . $liId . '">';
+        echo '<select name="user_id" style="width:140px;font-size:12px">';
+        echo '<option value="0">-- Desvincular --</option>';
+        foreach ($availableUsers as $au) {
+            $sel = ((int)($li['user_id'] ?? 0) === (int)$au['id']) ? ' selected' : '';
+            echo '<option value="' . (int)$au['id'] . '"' . $sel . '>' . h($au['name']) . '</option>';
+        }
+        echo '</select> ';
+        echo '<button class="btn" type="submit" style="font-size:12px">Salvar</button>';
+        echo '</form>';
+    } else {
+        echo '<em style="font-size:12px;color:hsl(var(--muted-foreground))">Padrão (todos usam)</em>';
+    }
+    
+    echo '</td>';
+    echo '</tr>';
+}
+
+if (count($linkedInstances) === 0) {
+    echo '<tr><td colspan="6" class="pill" style="display:table-cell;padding:12px">Nenhuma instância cadastrada no sistema. Crie uma instância acima e ela aparecerá aqui.</td></tr>';
+}
+
+echo '</tbody></table>';
+echo '</div>';
+echo '</section>';
+
 echo '</div>';
 
 view_footer();

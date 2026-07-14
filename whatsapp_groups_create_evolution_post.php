@@ -103,6 +103,15 @@ if (count($participants) === 0) {
     exit;
 }
 
+// MULTI-INSTÂNCIA: Adicionar TODOS os números WhatsApp conectados como participantes
+$connectedNumbers = whatsapp_get_all_connected_numbers();
+foreach ($connectedNumbers as $connNum) {
+    if (!in_array($connNum, $participants, true)) {
+        $participants[] = $connNum;
+    }
+}
+$participants = array_values(array_unique($participants));
+
 $api = null;
 try {
     $api = new EvolutionApiV1();
@@ -142,6 +151,22 @@ $stmt->execute([
 
 $id = (string)db()->lastInsertId();
 audit_log('create', 'whatsapp_groups_create_evolution', $id, null, ['name' => $subject, 'evolution_group_jid' => $jid, 'contacts_count' => count($participants)]);
+
+// MULTI-INSTÂNCIA: Promover todos os números de instâncias conectadas a admin do grupo
+// Isso garante que todas as instâncias possam enviar mensagens se o grupo for announcement
+try {
+    $instanceNumbers = whatsapp_get_all_connected_numbers();
+    if (!empty($instanceNumbers)) {
+        $adminParticipants = [];
+        foreach ($instanceNumbers as $num) {
+            $adminParticipants[] = $num . '@s.whatsapp.net';
+        }
+        $api->updateGroupMembers($jid, 'promote', $adminParticipants);
+        error_log("[GROUP_CREATE] Instâncias promovidas a admin: " . count($adminParticipants) . " números");
+    }
+} catch (Exception $e) {
+    error_log("[GROUP_CREATE] Erro ao promover instâncias a admin: " . $e->getMessage());
+}
 
 flash_set('success', 'Grupo criado na Evolution e salvo.');
 header('Location: /whatsapp_groups_list.php');

@@ -112,8 +112,8 @@ $updErr = $db->prepare(
 );
 
 $insDemand = $db->prepare(
-    'INSERT INTO demands (title, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests)'
-    . ' VALUES (:t,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr)'
+    'INSERT INTO demands (title, patient_name, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, source_email_id, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests)'
+    . ' VALUES (:t,:pname,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:seid,:st,:pv,:as,:urg,:freq,:hmr)'
 );
 $insDemandLog = $db->prepare(
     'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)'
@@ -252,35 +252,44 @@ foreach ($emails as $e) {
     }
 
     // CHAMADA 1: Extrair dados básicos (título, localização, especialidade, valor, urgência)
-    // IMPORTANTE: Detecta múltiplas solicitações no mesmo e-mail
+    // IMPORTANTE: Detecta múltiplos PACIENTES/CLIENTES e múltiplas especialidades por paciente
     $systemPrompt1 = "Você é um assistente que extrai dados estruturados de e-mails de solicitação de atendimento domiciliar (home care).\n"
-        . "Analise o e-mail e identifique TODAS as solicitações de atendimento presentes.\n\n"
-        . "ATENÇÃO: Um e-mail pode conter MÚLTIPLAS solicitações de especialidades diferentes para o mesmo paciente.\n"
-        . "Exemplo: 'Preciso de psicóloga, fisioterapeuta e fonoaudióloga' = 3 solicitações.\n\n"
+        . "Analise o e-mail e identifique TODOS os pacientes/clientes E TODAS as solicitações de atendimento presentes.\n\n"
+        . "ATENÇÃO IMPORTANTE:\n"
+        . "1. Um e-mail pode conter MÚLTIPLOS PACIENTES/CLIENTES (cada um com seu nome, endereço e especialidades).\n"
+        . "2. Cada paciente pode ter MÚLTIPLAS especialidades/serviços.\n"
+        . "3. Se o e-mail lista vários nomes de pacientes com seus respectivos dados, retorne CADA UM separadamente.\n\n"
+        . "Exemplo: Se o e-mail diz:\n"
+        . "  JOÃO SILVA - FISIO 3X/SEM + FONO 2X/SEM - Rua X, São Paulo\n"
+        . "  MARIA SANTOS - FISIO 5X/SEM - Rua Y, Campinas\n"
+        . "Então retorne 2 clientes, cada um com suas especialidades.\n\n"
         . "Retorne um JSON válido no formato:\n"
-        . "{\"title\":string,\"location_city\":string|null,\"location_state\":string|null,\"location_street\":string|null,\"location_neighborhood\":string|null,\"location_number\":string|null,\"specialty\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null,\"requests\":array}\n\n"
-        . "Campos principais (dados gerais do e-mail):\n"
-        . "- title: Título curto e objetivo (máx 60 caracteres)\n"
-        . "- location_city: Cidade do atendimento\n"
-        . "- location_state: UF com 2 letras maiúsculas (ex: SP, RJ)\n"
-        . "- location_street: Rua/Logradouro do local de atendimento (se mencionado)\n"
-        . "- location_neighborhood: Bairro do local de atendimento (se mencionado)\n"
-        . "- location_number: Número do endereço (se mencionado)\n"
-        . "- specialty: Especialidade principal (a primeira identificada)\n"
-        . "- procedure_value: Valor em reais como número decimal (ex: 1500.00) - valor da primeira solicitação ou geral\n"
-        . "- urgency: Nível de urgência (urgente, normal, baixa) baseado no contexto\n"
-        . "- frequency: Frequência do atendimento usando CÓDIGOS PADRONIZADOS: '1x_semana', '2x_semana', '3x_semana', '4x_semana', '5x_semana', '6x_semana', '7x_semana', 'quinzenal', 'mensal'. Exemplo: se o e-mail diz '3 sessões por semana' retorne '3x_semana'. Se diz 'diário' ou 'visitas diárias' retorne '7x_semana'. Se diz 'quinzenal' retorne 'quinzenal'.\n\n"
-        . "Campo requests (OBRIGATÓRIO - lista de TODAS as solicitações identificadas):\n"
-        . "- requests: Array de objetos, cada um com: {\"specialty\":string,\"description\":string|null,\"procedure_value\":number|null,\"urgency\":string|null,\"frequency\":string|null}\n"
-        . "  - specialty: Especialidade desta solicitação específica\n"
-        . "  - description: Descrição/detalhes específicos desta solicitação (extraídos do e-mail)\n"
-        . "  - procedure_value: Valor específico desta solicitação (se mencionado)\n"
-        . "  - urgency: Urgência específica desta solicitação (se diferente da geral)\n"
-        . "  - frequency: Frequência usando CÓDIGOS PADRONIZADOS: '1x_semana', '2x_semana', '3x_semana', '4x_semana', '5x_semana', '6x_semana', '7x_semana', 'quinzenal', 'mensal'\n\n"
+        . "{\"clients\":array}\n\n"
+        . "Campo clients (OBRIGATÓRIO - lista de TODOS os pacientes/clientes identificados):\n"
+        . "- clients: Array de objetos, cada um representando UM paciente/cliente com:\n"
+        . "  {\n"
+        . "    \"patient_name\": string (nome do paciente/segurado - OBRIGATÓRIO se identificável),\n"
+        . "    \"title\": string (título curto, máx 60 chars, pode incluir nome do paciente),\n"
+        . "    \"location_city\": string|null,\n"
+        . "    \"location_state\": string|null (UF 2 letras maiúsculas),\n"
+        . "    \"location_street\": string|null,\n"
+        . "    \"location_neighborhood\": string|null,\n"
+        . "    \"location_number\": string|null,\n"
+        . "    \"specialty\": string|null (especialidade principal do paciente),\n"
+        . "    \"procedure_value\": number|null,\n"
+        . "    \"urgency\": string|null (urgente, normal, baixa),\n"
+        . "    \"frequency\": string|null (CÓDIGOS: '1x_semana', '2x_semana', '3x_semana', '4x_semana', '5x_semana', '6x_semana', '7x_semana', 'quinzenal', 'mensal'),\n"
+        . "    \"requests\": array de {\"specialty\":string, \"description\":string|null, \"procedure_value\":number|null, \"urgency\":string|null, \"frequency\":string|null}\n"
+        . "  }\n\n"
         . "Regras:\n"
-        . "- Se houver apenas 1 solicitação, retorne requests com 1 item\n"
-        . "- Se houver múltiplas especialidades, retorne cada uma como item separado em requests\n"
-        . "- Seja preciso e objetivo\n"
+        . "- Se houver apenas 1 paciente, retorne clients com 1 item\n"
+        . "- Se houver múltiplos pacientes, retorne cada um como item separado em clients\n"
+        . "- Dentro de cada client, se houver múltiplas especialidades, coloque cada uma em requests\n"
+        . "- Se houver apenas 1 especialidade para o paciente, coloque 1 item em requests\n"
+        . "- patient_name: Nome completo do paciente/segurado conforme aparece no e-mail\n"
+        . "- DESCONSIDERE itens que NÃO são especialidades de profissionais de saúde (ex: materiais, equipamentos como concentrador O2, aspirador, cama elétrica - estes vão na description do request relevante, NÃO como request separado)\n"
+        . "- Equipamentos e materiais devem ser mencionados na description da especialidade principal do paciente\n"
+        . "- Frequência: 'DIARIA' ou '7X/SEM' = '7x_semana', '5X/SEM' = '5x_semana', '3X/SEM' = '3x_semana', '2X/SEM' = '2x_semana', '1X/SEM' = '1x_semana', 'QUINZENAL' = 'quinzenal', 'MENSAL' = 'mensal', 'BIMESTRAL' = 'mensal'\n"
         . "- UF sempre 2 letras maiúsculas\n"
         . "- Se não encontrar, use null\n"
         . "- Responda SOMENTE com JSON válido";
@@ -345,264 +354,311 @@ foreach ($emails as $e) {
             throw new RuntimeException('OpenAI não retornou JSON válido (chamada 1). Conteúdo: ' . mb_strimwidth($raw1, 0, 180, '')); 
         }
 
-        // Extrair dados básicos
-        $title = trim((string)($parsed1['title'] ?? ''));
-        $city = trim((string)($parsed1['location_city'] ?? ''));
-        $state = strtoupper(trim((string)($parsed1['location_state'] ?? '')));
-        $street = trim((string)($parsed1['location_street'] ?? ''));
-        $neighborhood = trim((string)($parsed1['location_neighborhood'] ?? ''));
-        $locationNumber = trim((string)($parsed1['location_number'] ?? ''));
-        $specialty = trim((string)($parsed1['specialty'] ?? ''));
-        $procedureValue = isset($parsed1['procedure_value']) && $parsed1['procedure_value'] !== null ? (float)$parsed1['procedure_value'] : null;
-        $urgency = trim((string)($parsed1['urgency'] ?? ''));
-        $frequency = trim((string)($parsed1['frequency'] ?? ''));
+        // ====================================================================
+        // MULTI-CLIENT: Extrair dados do novo formato {clients: [...]}
+        // Compatível com formato antigo (single-client sem campo clients)
+        // ====================================================================
         
-        // Normalizar frequência para código padronizado (caso IA retorne texto livre)
-        if ($frequency !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$frequency])) {
-            $normalized = frequency_normalize($frequency);
-            if ($normalized !== '') {
-                $frequency = $normalized;
-            }
-        }
-
-        // Extrair múltiplas solicitações (se houver)
-        $subRequests = [];
-        if (isset($parsed1['requests']) && is_array($parsed1['requests']) && count($parsed1['requests']) > 1) {
-            foreach ($parsed1['requests'] as $req) {
-                if (!is_array($req)) continue;
-                $reqSpecialty = trim((string)($req['specialty'] ?? ''));
-                if ($reqSpecialty === '') continue;
-                $reqFreq = trim((string)($req['frequency'] ?? ''));
-                // Normalizar frequência da sub-solicitação
-                if ($reqFreq !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$reqFreq])) {
-                    $normFreq = frequency_normalize($reqFreq);
-                    if ($normFreq !== '') $reqFreq = $normFreq;
-                }
-                $subRequests[] = [
-                    'specialty' => $reqSpecialty,
-                    'description' => trim((string)($req['description'] ?? '')),
-                    'procedure_value' => isset($req['procedure_value']) && $req['procedure_value'] !== null ? (float)$req['procedure_value'] : null,
-                    'urgency' => trim((string)($req['urgency'] ?? '')),
-                    'frequency' => $reqFreq,
-                ];
-            }
-        }
-        $hasMultipleRequests = count($subRequests) > 1;
-
-        // CHAMADA 2: Gerar resumo detalhado e descrição do card
-        $systemPrompt2 = "Você é um assistente especializado em criar resumos de solicitações de atendimento domiciliar (home care).\n"
-            . "Analise o e-mail completo e crie um resumo estruturado e profissional.\n\n"
-            . "Retorne um JSON válido no formato:\n"
-            . "{\"description\":string,\"ai_summary\":string}\n\n"
-            . "Campos:\n"
-            . "- description: Descrição completa e detalhada extraída do e-mail (todos os detalhes relevantes)\n"
-            . "- ai_summary: Resumo executivo ESTRUTURADO EM PARÁGRAFOS, focado nas características do atendimento\n\n"
-            . "Regras para description:\n"
-            . "- Incluir TODOS os detalhes médicos relevantes\n"
-            . "- Incluir dados do paciente (nome, idade, diagnóstico)\n"
-            . "- Incluir serviços solicitados e frequência\n"
-            . "- Manter formatação clara e profissional\n\n"
-            . "Regras para ai_summary (MUITO IMPORTANTE):\n"
-            . "- ESTRUTURAR EM PARÁGRAFOS separados por quebras de linha (\\n\\n)\n"
-            . "- Parágrafo 1: Dados do paciente (nome, idade, diagnóstico principal)\n"
-            . "- Parágrafo 2: Necessidade/serviço solicitado e frequência\n"
-            . "- Parágrafo 3: Valor e urgência (se houver)\n"
-            . "- Ser objetivo e pontual em cada parágrafo\n"
-            . "- Facilitar identificação rápida das características\n\n"
-            . "Responda SOMENTE com JSON válido";
-
-        $userPrompt2 = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . $content;
-
-        $res2 = $api->chatCompletions(
-            [
-                ['role' => 'system', 'content' => $systemPrompt2],
-                ['role' => 'user', 'content' => $userPrompt2],
-            ],
-            null,
-            [
-                'temperature' => 0.3,
-                'response_format' => ['type' => 'json_object'],
-            ]
-        );
-
-        $statusCode2 = (int)($res2['status'] ?? 0);
-        if ($statusCode2 < 200 || $statusCode2 >= 300) {
-            $msg = '';
-            $json = $res2['json'] ?? null;
-            if (is_array($json)) {
-                $msg = (string)($json['error']['message'] ?? '');
-            }
-            if ($msg === '') {
-                $msg = (string)($res2['body_raw'] ?? '');
-            }
-            $msg = trim($msg);
-            if ($msg === '') {
-                $msg = 'HTTP ' . (string)$statusCode2;
-            }
-            throw new RuntimeException('OpenAI error (chamada 2): ' . $msg);
-        }
-
-        $json2 = $res2['json'] ?? null;
-        $raw2 = '';
-        if (is_array($json2)) {
-            $raw2 = (string)($json2['choices'][0]['message']['content'] ?? '');
-        }
-        $raw2 = trim($raw2);
-
-        if ($raw2 === '') {
-            throw new RuntimeException('OpenAI retornou vazio (chamada 2).');
-        }
-
-        $parsed2 = json_decode($raw2, true);
-        if (!is_array($parsed2)) {
-            $start = strpos($raw2, '{');
-            $end = strrpos($raw2, '}');
-            if ($start !== false && $end !== false && $end > $start) {
-                $maybe = substr($raw2, $start, $end - $start + 1);
-                $maybeParsed = json_decode($maybe, true);
-                if (is_array($maybeParsed)) {
-                    $parsed2 = $maybeParsed;
-                }
-            }
-        }
-        if (!is_array($parsed2)) {
-            throw new RuntimeException('OpenAI não retornou JSON válido (chamada 2). Conteúdo: ' . mb_strimwidth($raw2, 0, 180, '')); 
-        }
-
-        // Extrair descrição e resumo
-        $desc = trim((string)($parsed2['description'] ?? ''));
-        $aiSummary = trim((string)($parsed2['ai_summary'] ?? ''));
+        $clients = [];
         
-        // Salvar apenas o e-mail original completo (sem duplicar a descrição da IA)
-        $desc = $content;
-
-        // Validações e defaults
-        if ($title === '') {
-            $title = $subject !== '' ? $subject : 'Demanda recebida por e-mail';
-        }
-
-        if ($state !== '' && !preg_match('/^[A-Z]{2}$/', $state)) {
-            $state = '';
-        }
-
-        // Determinar status baseado em completude dos dados
-        // Critério: Se tiver especialidade, pode ir para captação (mesmo sem cidade/estado completos)
-        // Apenas vai para tratamento_manual se faltar especialidade E (cidade OU estado)
-        $hasSpecialty = ($specialty !== '');
-        $hasLocation = ($city !== '' && $state !== '');
-        
-        $status = 'aguardando_captacao';
-        
-        // Só marca como tratamento_manual se faltar especialidade OU se não tiver nenhuma localização
-        if (!$hasSpecialty || (!$hasLocation && $city === '' && $state === '')) {
-            $status = 'tratamento_manual';
-            $needsManual = true;
+        if (isset($parsed1['clients']) && is_array($parsed1['clients']) && count($parsed1['clients']) > 0) {
+            // NOVO FORMATO: múltiplos clientes
+            $clients = $parsed1['clients'];
         } else {
-            $needsManual = false;
+            // FORMATO ANTIGO (backward-compatible): single client
+            $clients = [$parsed1];
         }
         
-        // Se urgente e tiver especialidade, sempre priorizar para captação
-        if ($urgency === 'urgente' && $hasSpecialty) {
-            $status = 'aguardando_captacao';
-            $needsManual = false;
+        $isMultiClient = count($clients) > 1;
+        
+        error_log("[EMAIL_EXTRACT] E-mail #$id - Clientes identificados: " . count($clients) . ($isMultiClient ? ' (MULTI-CLIENT)' : ''));
+
+        // CHAMADA 2: Gerar resumo detalhado (apenas se for 1 cliente - para multi-client é desnecessário)
+        $aiSummary = '';
+        if (!$isMultiClient) {
+            $systemPrompt2 = "Você é um assistente especializado em criar resumos de solicitações de atendimento domiciliar (home care).\n"
+                . "Analise o e-mail completo e crie um resumo estruturado e profissional.\n\n"
+                . "Retorne um JSON válido no formato:\n"
+                . "{\"description\":string,\"ai_summary\":string}\n\n"
+                . "Campos:\n"
+                . "- description: Descrição completa e detalhada extraída do e-mail (todos os detalhes relevantes)\n"
+                . "- ai_summary: Resumo executivo ESTRUTURADO EM PARÁGRAFOS, focado nas características do atendimento\n\n"
+                . "Regras para description:\n"
+                . "- Incluir TODOS os detalhes médicos relevantes\n"
+                . "- Incluir dados do paciente (nome, idade, diagnóstico)\n"
+                . "- Incluir serviços solicitados e frequência\n"
+                . "- Manter formatação clara e profissional\n\n"
+                . "Regras para ai_summary (MUITO IMPORTANTE):\n"
+                . "- ESTRUTURAR EM PARÁGRAFOS separados por quebras de linha (\\n\\n)\n"
+                . "- Parágrafo 1: Dados do paciente (nome, idade, diagnóstico principal)\n"
+                . "- Parágrafo 2: Necessidade/serviço solicitado e frequência\n"
+                . "- Parágrafo 3: Valor e urgência (se houver)\n"
+                . "- Ser objetivo e pontual em cada parágrafo\n"
+                . "- Facilitar identificação rápida das características\n\n"
+                . "Responda SOMENTE com JSON válido";
+
+            $userPrompt2 = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . $content;
+
+            $res2 = $api->chatCompletions(
+                [
+                    ['role' => 'system', 'content' => $systemPrompt2],
+                    ['role' => 'user', 'content' => $userPrompt2],
+                ],
+                null,
+                [
+                    'temperature' => 0.3,
+                    'response_format' => ['type' => 'json_object'],
+                ]
+            );
+
+            $statusCode2 = (int)($res2['status'] ?? 0);
+            if ($statusCode2 >= 200 && $statusCode2 < 300) {
+                $json2 = $res2['json'] ?? null;
+                $raw2 = '';
+                if (is_array($json2)) {
+                    $raw2 = (string)($json2['choices'][0]['message']['content'] ?? '');
+                }
+                $raw2 = trim($raw2);
+                if ($raw2 !== '') {
+                    $parsed2 = json_decode($raw2, true);
+                    if (!is_array($parsed2)) {
+                        $start = strpos($raw2, '{');
+                        $end = strrpos($raw2, '}');
+                        if ($start !== false && $end !== false && $end > $start) {
+                            $maybe = substr($raw2, $start, $end - $start + 1);
+                            $maybeParsed = json_decode($maybe, true);
+                            if (is_array($maybeParsed)) {
+                                $parsed2 = $maybeParsed;
+                            }
+                        }
+                    }
+                    if (is_array($parsed2)) {
+                        $aiSummary = trim((string)($parsed2['ai_summary'] ?? ''));
+                    }
+                }
+            }
         }
 
+        // ====================================================================
+        // CRIAR DEMANDS: 1 demand por cliente
+        // ====================================================================
+        
         $db->beginTransaction();
         try {
-            $insDemand->execute([
-                't' => $title,
-                'c' => $city !== '' ? $city : null,
-                's' => $state !== '' ? $state : null,
-                'street' => $street !== '' ? $street : null,
-                'neighborhood' => $neighborhood !== '' ? $neighborhood : null,
-                'number' => $locationNumber !== '' ? $locationNumber : null,
-                'sp' => $specialty !== '' ? $specialty : null,
-                'd' => $desc !== '' ? $desc : null,
-                'o' => $fromEmail !== '' ? $fromEmail : null,
-                'st' => $status,
-                'pv' => $procedureValue,
-                'as' => $aiSummary !== '' ? $aiSummary : null,
-                'urg' => $urgency !== '' ? $urgency : null,
-                'freq' => $frequency !== '' ? $frequency : null,
-                'hmr' => $hasMultipleRequests ? 1 : 0,
-            ]);
-            $demandId = (int)$db->lastInsertId();
+            $createdDemandIds = [];
+            
+            foreach ($clients as $clientIdx => $client) {
+                // Extrair dados do cliente
+                $patientName = trim((string)($client['patient_name'] ?? ''));
+                $title = trim((string)($client['title'] ?? ''));
+                $city = trim((string)($client['location_city'] ?? ''));
+                $state = strtoupper(trim((string)($client['location_state'] ?? '')));
+                $street = trim((string)($client['location_street'] ?? ''));
+                $neighborhood = trim((string)($client['location_neighborhood'] ?? ''));
+                $locationNumber = trim((string)($client['location_number'] ?? ''));
+                $specialty = trim((string)($client['specialty'] ?? ''));
+                $procedureValue = isset($client['procedure_value']) && $client['procedure_value'] !== null ? (float)$client['procedure_value'] : null;
+                $urgency = trim((string)($client['urgency'] ?? ''));
+                $frequency = trim((string)($client['frequency'] ?? ''));
+                
+                // Normalizar frequência
+                if ($frequency !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$frequency])) {
+                    $normalized = frequency_normalize($frequency);
+                    if ($normalized !== '') {
+                        $frequency = $normalized;
+                    }
+                }
+                
+                // Extrair sub-solicitações do cliente
+                $subRequests = [];
+                if (isset($client['requests']) && is_array($client['requests']) && count($client['requests']) > 1) {
+                    foreach ($client['requests'] as $req) {
+                        if (!is_array($req)) continue;
+                        $reqSpecialty = trim((string)($req['specialty'] ?? ''));
+                        if ($reqSpecialty === '') continue;
+                        $reqFreq = trim((string)($req['frequency'] ?? ''));
+                        if ($reqFreq !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$reqFreq])) {
+                            $normFreq = frequency_normalize($reqFreq);
+                            if ($normFreq !== '') $reqFreq = $normFreq;
+                        }
+                        $subRequests[] = [
+                            'specialty' => $reqSpecialty,
+                            'description' => trim((string)($req['description'] ?? '')),
+                            'procedure_value' => isset($req['procedure_value']) && $req['procedure_value'] !== null ? (float)$req['procedure_value'] : null,
+                            'urgency' => trim((string)($req['urgency'] ?? '')),
+                            'frequency' => $reqFreq,
+                        ];
+                    }
+                } elseif (isset($client['requests']) && is_array($client['requests']) && count($client['requests']) === 1) {
+                    // Se houver só 1 request, pegar a specialty dele se não tiver no nível do client
+                    $singleReq = $client['requests'][0];
+                    if (is_array($singleReq)) {
+                        if ($specialty === '') {
+                            $specialty = trim((string)($singleReq['specialty'] ?? ''));
+                        }
+                        if ($frequency === '') {
+                            $reqFreq = trim((string)($singleReq['frequency'] ?? ''));
+                            if ($reqFreq !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$reqFreq])) {
+                                $normFreq = frequency_normalize($reqFreq);
+                                if ($normFreq !== '') $reqFreq = $normFreq;
+                            } else {
+                                $reqFreq = $reqFreq;
+                            }
+                            $frequency = $reqFreq;
+                        }
+                    }
+                }
+                $hasMultipleRequests = count($subRequests) > 1;
+                
+                // Para multi-client, usar o corpo do email como descrição
+                $desc = $content;
+                
+                // Para multi-client, gerar ai_summary simplificado por cliente
+                $clientAiSummary = $aiSummary; // Usa o da chamada 2 se for single-client
+                if ($isMultiClient) {
+                    // Gerar resumo inline para multi-client
+                    $summaryParts = [];
+                    if ($patientName !== '') $summaryParts[] = "Paciente: $patientName";
+                    if ($specialty !== '') $summaryParts[] = "Especialidade principal: $specialty";
+                    if ($city !== '' || $state !== '') $summaryParts[] = "Local: " . trim("$city/$state", '/');
+                    if ($frequency !== '') $summaryParts[] = "Frequência: $frequency";
+                    if (count($subRequests) > 0) {
+                        $specs = array_map(fn($r) => $r['specialty'], $subRequests);
+                        $summaryParts[] = "Especialidades: " . implode(', ', $specs);
+                    }
+                    $clientAiSummary = implode("\n\n", $summaryParts);
+                }
 
-            // Inserir sub-solicitações se houver múltiplas
-            if ($hasMultipleRequests) {
-                $insSubReq = $db->prepare(
-                    'INSERT INTO demand_sub_requests (demand_id, specialty, description, location_city, location_state, procedure_value, urgency, frequency)'
-                    . ' VALUES (:did, :sp, :desc, :city, :state, :pv, :urg, :freq)'
-                );
-                foreach ($subRequests as $sr) {
-                    $insSubReq->execute([
-                        'did' => $demandId,
-                        'sp' => $sr['specialty'],
-                        'desc' => $sr['description'] !== '' ? $sr['description'] : null,
-                        'city' => $city !== '' ? $city : null,
-                        'state' => $state !== '' ? $state : null,
-                        'pv' => $sr['procedure_value'],
-                        'urg' => $sr['urgency'] !== '' ? $sr['urgency'] : ($urgency !== '' ? $urgency : null),
-                        'freq' => $sr['frequency'] !== '' ? $sr['frequency'] : ($frequency !== '' ? $frequency : null),
-                    ]);
+                // Validações e defaults
+                if ($title === '') {
+                    if ($patientName !== '') {
+                        $title = mb_strimwidth($patientName . ' - ' . ($specialty !== '' ? $specialty : 'Atendimento'), 0, 60, '');
+                    } else {
+                        $title = $subject !== '' ? $subject : 'Demanda recebida por e-mail';
+                    }
                 }
-                error_log("[EMAIL_EXTRACT] E-mail #$id - Múltiplas solicitações: " . count($subRequests) . " especialidades");
-            }
 
-            $note = 'criação automática via e-mail';
-            if ($needsManual) {
-                $missing = [];
-                if ($specialty === '') {
-                    $missing[] = 'especialidade';
+                if ($state !== '' && !preg_match('/^[A-Z]{2}$/', $state)) {
+                    $state = '';
                 }
-                if ($city === '' && $state === '') {
-                    $missing[] = 'localização completa';
-                }
-                if (count($missing) > 0) {
-                    $note .= ' (tratamento_manual: faltando ' . implode(', ', $missing) . ')';
-                }
-            } else {
-                // Adicionar nota se tiver dados parciais
-                $partial = [];
-                if ($city === '') {
-                    $partial[] = 'cidade';
-                }
-                if ($state === '') {
-                    $partial[] = 'UF';
-                }
-                if (count($partial) > 0) {
-                    $note .= ' (dados parciais: faltando ' . implode(', ', $partial) . ')';
-                }
-            }
 
-            $insDemandLog->execute([
-                'did' => $demandId,
-                'ns' => $status,
-                'note' => $note,
-            ]);
+                // Determinar status
+                $hasSpecialty = ($specialty !== '');
+                $hasLocation = ($city !== '' && $state !== '');
+                
+                $status = 'aguardando_captacao';
+                if (!$hasSpecialty || (!$hasLocation && $city === '' && $state === '')) {
+                    $status = 'tratamento_manual';
+                    $needsManual = true;
+                } else {
+                    $needsManual = false;
+                }
+                if ($urgency === 'urgente' && $hasSpecialty) {
+                    $status = 'aguardando_captacao';
+                    $needsManual = false;
+                }
 
+                // Inserir demand
+                $insDemand->execute([
+                    't' => $title,
+                    'pname' => $patientName !== '' ? $patientName : null,
+                    'c' => $city !== '' ? $city : null,
+                    's' => $state !== '' ? $state : null,
+                    'street' => $street !== '' ? $street : null,
+                    'neighborhood' => $neighborhood !== '' ? $neighborhood : null,
+                    'number' => $locationNumber !== '' ? $locationNumber : null,
+                    'sp' => $specialty !== '' ? $specialty : null,
+                    'd' => $desc !== '' ? $desc : null,
+                    'o' => $fromEmail !== '' ? $fromEmail : null,
+                    'seid' => $id, // source_email_id
+                    'st' => $status,
+                    'pv' => $procedureValue,
+                    'as' => $clientAiSummary !== '' ? $clientAiSummary : null,
+                    'urg' => $urgency !== '' ? $urgency : null,
+                    'freq' => $frequency !== '' ? $frequency : null,
+                    'hmr' => $hasMultipleRequests ? 1 : 0,
+                ]);
+                $demandId = (int)$db->lastInsertId();
+                $createdDemandIds[] = $demandId;
+
+                // Inserir sub-solicitações se houver múltiplas
+                if ($hasMultipleRequests) {
+                    $insSubReq = $db->prepare(
+                        'INSERT INTO demand_sub_requests (demand_id, specialty, description, location_city, location_state, procedure_value, urgency, frequency)'
+                        . ' VALUES (:did, :sp, :desc, :city, :state, :pv, :urg, :freq)'
+                    );
+                    foreach ($subRequests as $sr) {
+                        $insSubReq->execute([
+                            'did' => $demandId,
+                            'sp' => $sr['specialty'],
+                            'desc' => $sr['description'] !== '' ? $sr['description'] : null,
+                            'city' => $city !== '' ? $city : null,
+                            'state' => $state !== '' ? $state : null,
+                            'pv' => $sr['procedure_value'],
+                            'urg' => $sr['urgency'] !== '' ? $sr['urgency'] : ($urgency !== '' ? $urgency : null),
+                            'freq' => $sr['frequency'] !== '' ? $sr['frequency'] : ($frequency !== '' ? $frequency : null),
+                        ]);
+                    }
+                    error_log("[EMAIL_EXTRACT] E-mail #$id - Cliente '$patientName': " . count($subRequests) . " especialidades");
+                }
+
+                // Log de status
+                $note = 'criação automática via e-mail';
+                if ($isMultiClient) {
+                    $note .= ' (multi-client: ' . ($clientIdx + 1) . '/' . count($clients) . ')';
+                }
+                if ($needsManual) {
+                    $missing = [];
+                    if ($specialty === '') $missing[] = 'especialidade';
+                    if ($city === '' && $state === '') $missing[] = 'localização completa';
+                    if (count($missing) > 0) {
+                        $note .= ' (tratamento_manual: faltando ' . implode(', ', $missing) . ')';
+                    }
+                } else {
+                    $partial = [];
+                    if ($city === '') $partial[] = 'cidade';
+                    if ($state === '') $partial[] = 'UF';
+                    if (count($partial) > 0) {
+                        $note .= ' (dados parciais: faltando ' . implode(', ', $partial) . ')';
+                    }
+                }
+
+                $insDemandLog->execute([
+                    'did' => $demandId,
+                    'ns' => $status,
+                    'note' => $note,
+                ]);
+                
+                if ($needsManual) {
+                    $manual++;
+                }
+            } // end foreach clients
+
+            // Marcar e-mail como processado (usar o último demandId criado para linked_demand_id)
             $updParams = [
                 'st' => $doneStatus,
                 'pa' => date('Y-m-d H:i:s'),
                 'id' => $id,
             ];
             if ($hasLinkedDemandId) {
-                $updParams['did'] = $demandId;
+                $updParams['did'] = $createdDemandIds[0] ?? null;
             }
             $updOk->execute($updParams);
 
             $db->commit();
             $ok++;
             if ($debug) {
-                $createdLines[] = 'EMAIL #' . (string)$id . ' -> DEMAND #' . (string)$demandId . ' (' . $status . ')';
+                if ($isMultiClient) {
+                    $createdLines[] = 'EMAIL #' . (string)$id . ' -> ' . count($createdDemandIds) . ' DEMANDS [' . implode(',', array_map('strval', $createdDemandIds)) . '] (MULTI-CLIENT)';
+                } else {
+                    $createdLines[] = 'EMAIL #' . (string)$id . ' -> DEMAND #' . (string)($createdDemandIds[0] ?? 0) . ' (' . $status . ')';
+                }
             }
+            
+            error_log("[EMAIL_EXTRACT] E-mail #$id - " . count($createdDemandIds) . " demand(s) criada(s): [" . implode(',', $createdDemandIds) . "]");
         } catch (Throwable $e2) {
             $db->rollBack();
             throw $e2;
-        }
-
-        if ($needsManual) {
-            $manual++;
         }
     } catch (Throwable $ex) {
         $errors++;

@@ -38,6 +38,7 @@ require_once __DIR__ . '/smtp_client.php';
 require_once __DIR__ . '/notification_guard.php';
 require_once __DIR__ . '/frequency_helper.php';
 require_once __DIR__ . '/whatsapp_event_dispatcher.php';
+require_once __DIR__ . '/whatsapp_instances.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/rbac.php';
 require_once __DIR__ . '/view.php';
