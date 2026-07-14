@@ -8,7 +8,9 @@ auth_require_login();
 
 $baseUrl = admin_setting_get('evolution.base_url');
 $apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
+$_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
+$_userInst = whatsapp_get_user_instance($_currentUserId);
+$instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
 
 if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
     flash_set('error', 'Evolution API não configurada.');

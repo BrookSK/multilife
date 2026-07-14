@@ -25,7 +25,9 @@ try {
     
     $baseUrl = admin_setting_get('evolution.base_url');
     $apiKey = admin_setting_get('evolution.api_key');
-    $instance = admin_setting_get('evolution.instance');
+    $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
+    $_userInst = whatsapp_get_user_instance($_currentUserId);
+    $instance = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
     
     error_log("[GROUP_INVITE] baseUrl='" . var_export($baseUrl, true) . "'");
     error_log("[GROUP_INVITE] apiKey='" . (empty($apiKey) ? 'VAZIO' : substr($apiKey, 0, 10) . '...') . "'");

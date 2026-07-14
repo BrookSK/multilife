@@ -198,7 +198,9 @@ try {
     // Buscar configurações da Evolution API
     $baseUrl = admin_setting_get('evolution.base_url');
     $apiKey = admin_setting_get('evolution.api_key');
-    $instanceName = admin_setting_get('evolution.instance');
+    $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
+    $_userInst = whatsapp_get_user_instance($_currentUserId);
+    $instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
     
     error_log("[$debugId] Evolution API - baseUrl: '$baseUrl' | instance: '$instanceName'");
     

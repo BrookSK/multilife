@@ -18,9 +18,13 @@ $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $chatName = ''; // Inicializar para evitar erro no JavaScript
 
 // Buscar configurações da Evolution API
+// MULTI-INSTÂNCIA: Usar a instância do usuário logado (se tiver), senão a padrão
 $baseUrl = admin_setting_get('evolution.base_url');
 $apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
+
+$currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
+$userInstance = whatsapp_get_user_instance($currentUserId);
+$instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
 
 $success = '';
 $error = '';

@@ -1466,6 +1466,24 @@ function waInstPoll(instName){
     });
   }, 3000);
 }
+
+window.waInstRemove = function(instanceName, instanceId){
+  if(!confirm("Deseja remover a instância '" + instanceName + "'?\\n\\nIsso vai desconectar o WhatsApp e remover o vínculo com o usuário.")) return;
+  
+  // 1. Desconectar (logout) na Evolution API
+  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))
+  .then(function(r){ return r.json(); })
+  .then(function(){
+    // 2. Remover do banco (marcar como inactive)
+    var formData = new FormData();
+    formData.append("instance_id", instanceId);
+    formData.append("action", "remove");
+    return fetch("/admin_whatsapp_instance_remove_post.php", {method:"POST", body: formData});
+  })
+  .then(function(){ location.reload(); })
+  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });
+};
+})();
 })();
 </script>
 WAINST_JS;
@@ -1528,6 +1546,7 @@ WAINST_JS;
                     echo '</select>';
                     echo '<button class="btn" type="submit" style="font-size:11px;padding:4px 10px">Salvar</button>';
                     echo '</form>';
+                    echo ' <button type="button" class="btn" style="font-size:11px;padding:4px 10px;background:#ef4444;color:white;border:none" onclick="waInstRemove(\'' . h($liName) . '\',' . $liId . ')">Remover</button>';
                 } else {
                     echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Instância padrão</span>';
                 }
