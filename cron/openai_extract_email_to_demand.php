@@ -384,61 +384,155 @@ foreach ($emails as $e) {
     $userPrompt1 = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . $content;
 
     try {
-        // Primeira chamada: dados básicos
-        $res1 = $api->chatCompletions(
-            [
-                ['role' => 'system', 'content' => $systemPrompt1],
-                ['role' => 'user', 'content' => $userPrompt1],
-            ],
-            null,
-            [
-                'temperature' => 0.1,
-                'response_format' => ['type' => 'json_object'],
-            ]
-        );
-
-        $statusCode1 = (int)($res1['status'] ?? 0);
-        if ($statusCode1 < 200 || $statusCode1 >= 300) {
-            $msg = '';
-            $json = $res1['json'] ?? null;
-            if (is_array($json)) {
-                $msg = (string)($json['error']['message'] ?? '');
+        // CHUNKING: Se o e-mail é muito grande (>4000 chars), dividir em partes menores
+        // para evitar timeout da OpenAI. Cada chunk gera uma chamada separada.
+        $contentLength = mb_strlen($content);
+        $allClients = [];
+        
+        if ($contentLength > 4000) {
+            // Dividir o conteúdo em chunks de ~3000 chars respeitando quebras de linha
+            $lines = explode("\n", $content);
+            $chunks = [];
+            $currentChunk = '';
+            
+            foreach ($lines as $line) {
+                if (mb_strlen($currentChunk) + mb_strlen($line) > 3000 && $currentChunk !== '') {
+                    $chunks[] = $currentChunk;
+                    $currentChunk = '';
+                }
+                $currentChunk .= $line . "\n";
             }
-            if ($msg === '') {
-                $msg = (string)($res1['body_raw'] ?? '');
+            if (trim($currentChunk) !== '') {
+                $chunks[] = $currentChunk;
             }
-            $msg = trim($msg);
-            if ($msg === '') {
-                $msg = 'HTTP ' . (string)$statusCode1;
+            
+            error_log("[EMAIL_EXTRACT] E-mail #$id - Conteúdo grande (" . $contentLength . " chars), dividido em " . count($chunks) . " chunks");
+            
+            foreach ($chunks as $chunkIdx => $chunk) {
+                $chunkPrompt = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\n"
+                    . "PARTE " . ($chunkIdx + 1) . " DE " . count($chunks) . " DO E-MAIL:\n" . $chunk;
+                
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Processando chunk " . ($chunkIdx + 1) . "/" . count($chunks) . " (" . mb_strlen($chunk) . " chars)");
+                
+                $resChunk = $api->chatCompletions(
+                    [
+                        ['role' => 'system', 'content' => $systemPrompt1],
+                        ['role' => 'user', 'content' => $chunkPrompt],
+                    ],
+                    null,
+                    [
+                        'temperature' => 0.1,
+                        'response_format' => ['type' => 'json_object'],
+                    ]
+                );
+                
+                $chunkStatus = (int)($resChunk['status'] ?? 0);
+                if ($chunkStatus < 200 || $chunkStatus >= 300) {
+                    $msg = '';
+                    $json = $resChunk['json'] ?? null;
+                    if (is_array($json)) $msg = (string)($json['error']['message'] ?? '');
+                    if ($msg === '') $msg = (string)($resChunk['body_raw'] ?? '');
+                    error_log("[EMAIL_EXTRACT] E-mail #$id - Chunk " . ($chunkIdx + 1) . " falhou: $msg");
+                    continue; // Pula esse chunk, tenta o próximo
+                }
+                
+                $rawChunk = '';
+                $jsonChunk = $resChunk['json'] ?? null;
+                if (is_array($jsonChunk)) {
+                    $rawChunk = (string)($jsonChunk['choices'][0]['message']['content'] ?? '');
+                }
+                $rawChunk = trim($rawChunk);
+                
+                if ($rawChunk === '') continue;
+                
+                $parsedChunk = json_decode($rawChunk, true);
+                if (!is_array($parsedChunk)) {
+                    $start = strpos($rawChunk, '{');
+                    $end = strrpos($rawChunk, '}');
+                    if ($start !== false && $end !== false && $end > $start) {
+                        $parsedChunk = json_decode(substr($rawChunk, $start, $end - $start + 1), true);
+                    }
+                }
+                
+                if (!is_array($parsedChunk)) continue;
+                
+                // Extrair clientes deste chunk
+                if (isset($parsedChunk['clients']) && is_array($parsedChunk['clients'])) {
+                    foreach ($parsedChunk['clients'] as $c) {
+                        if (is_array($c)) $allClients[] = $c;
+                    }
+                } else {
+                    // Formato antigo ou chunk com 1 cliente
+                    $allClients[] = $parsedChunk;
+                }
+                
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Chunk " . ($chunkIdx + 1) . ": " . count($parsedChunk['clients'] ?? [$parsedChunk]) . " clientes extraídos");
             }
-            throw new RuntimeException('OpenAI error (chamada 1): ' . $msg);
-        }
+            
+            if (count($allClients) === 0) {
+                throw new RuntimeException('Nenhum cliente extraído de nenhum chunk (email grande).');
+            }
+            
+            // Montar parsed1 no formato esperado
+            $parsed1 = ['clients' => $allClients];
+            
+        } else {
+            // E-mail normal (pequeno) - uma única chamada
+            $res1 = $api->chatCompletions(
+                [
+                    ['role' => 'system', 'content' => $systemPrompt1],
+                    ['role' => 'user', 'content' => $userPrompt1],
+                ],
+                null,
+                [
+                    'temperature' => 0.1,
+                    'response_format' => ['type' => 'json_object'],
+                ]
+            );
 
-        $json1 = $res1['json'] ?? null;
-        $raw1 = '';
-        if (is_array($json1)) {
-            $raw1 = (string)($json1['choices'][0]['message']['content'] ?? '');
-        }
-        $raw1 = trim($raw1);
+            $statusCode1 = (int)($res1['status'] ?? 0);
+            if ($statusCode1 < 200 || $statusCode1 >= 300) {
+                $msg = '';
+                $json = $res1['json'] ?? null;
+                if (is_array($json)) {
+                    $msg = (string)($json['error']['message'] ?? '');
+                }
+                if ($msg === '') {
+                    $msg = (string)($res1['body_raw'] ?? '');
+                }
+                $msg = trim($msg);
+                if ($msg === '') {
+                    $msg = 'HTTP ' . (string)$statusCode1;
+                }
+                throw new RuntimeException('OpenAI error (chamada 1): ' . $msg);
+            }
 
-        if ($raw1 === '') {
-            throw new RuntimeException('OpenAI retornou vazio (chamada 1).');
-        }
+            $json1 = $res1['json'] ?? null;
+            $raw1 = '';
+            if (is_array($json1)) {
+                $raw1 = (string)($json1['choices'][0]['message']['content'] ?? '');
+            }
+            $raw1 = trim($raw1);
 
-        $parsed1 = json_decode($raw1, true);
-        if (!is_array($parsed1)) {
-            $start = strpos($raw1, '{');
-            $end = strrpos($raw1, '}');
-            if ($start !== false && $end !== false && $end > $start) {
-                $maybe = substr($raw1, $start, $end - $start + 1);
-                $maybeParsed = json_decode($maybe, true);
-                if (is_array($maybeParsed)) {
-                    $parsed1 = $maybeParsed;
+            if ($raw1 === '') {
+                throw new RuntimeException('OpenAI retornou vazio (chamada 1).');
+            }
+
+            $parsed1 = json_decode($raw1, true);
+            if (!is_array($parsed1)) {
+                $start = strpos($raw1, '{');
+                $end = strrpos($raw1, '}');
+                if ($start !== false && $end !== false && $end > $start) {
+                    $maybe = substr($raw1, $start, $end - $start + 1);
+                    $maybeParsed = json_decode($maybe, true);
+                    if (is_array($maybeParsed)) {
+                        $parsed1 = $maybeParsed;
+                    }
                 }
             }
-        }
-        if (!is_array($parsed1)) {
-            throw new RuntimeException('OpenAI não retornou JSON válido (chamada 1). Conteúdo: ' . mb_strimwidth($raw1, 0, 180, '')); 
+            if (!is_array($parsed1)) {
+                throw new RuntimeException('OpenAI não retornou JSON válido (chamada 1). Conteúdo: ' . mb_strimwidth($raw1, 0, 180, '')); 
+            }
         }
 
         // ====================================================================
