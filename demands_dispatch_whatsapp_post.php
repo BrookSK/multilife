@@ -309,7 +309,10 @@ $repl = [
     '{neighborhood_city}' => trim(($neighborhood !== '' ? $neighborhood . ' - ' : '') . ($city !== '' ? $city : '') . ($state !== '' ? '/' . $state : '')),
     '{specialty}' => $specialty !== '' ? $specialty : '-',
     '{frequency}' => $freqDisplay !== '' ? $freqDisplay : '-',
-    '{description}' => $subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? ''),
+    '{description}' => mb_strimwidth(
+        ($subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? '')),
+        0, 500, '...'
+    ),
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];
 
