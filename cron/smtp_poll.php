@@ -295,13 +295,26 @@ try {
         };
         
         if ($structure) {
-            // Processar estrutura MIME
-            $parts = [];
+            // Processar estrutura MIME (com recursão para multipart aninhado)
             
-            // Se for multipart, processar partes
-            if (isset($structure->parts) && is_array($structure->parts)) {
-                foreach ($structure->parts as $partNum => $part) {
-                    $partIndex = (string)($partNum + 1);
+            // Função recursiva para extrair texto de partes
+            $extractParts = function($parts, $prefix, $imap, $uidInt, $decodeBody) use (&$extractParts, &$bodyText, &$bodyHtml) {
+                foreach ($parts as $partNum => $part) {
+                    $partIndex = $prefix . (string)($partNum + 1);
+                    $type = isset($part->type) ? (int)$part->type : 0;
+                    $subtype = isset($part->subtype) ? strtolower((string)$part->subtype) : '';
+                    
+                    // Se é multipart (type=1), descer recursivamente nas sub-partes
+                    if ($type === 1 && isset($part->parts) && is_array($part->parts)) {
+                        $extractParts($part->parts, $partIndex . '.', $imap, $uidInt, $decodeBody);
+                        continue;
+                    }
+                    
+                    // Só processar text/plain e text/html
+                    if ($type !== 0) {
+                        continue; // Pular imagens, attachments, etc.
+                    }
+                    
                     $data = imap_fetchbody($imap, $uidInt, $partIndex, FT_UID);
                     
                     if ($data === false || $data === '') {
@@ -312,25 +325,33 @@ try {
                     $encoding = isset($part->encoding) ? (int)$part->encoding : 0;
                     $decoded = $decodeBody($data, $encoding);
                     
-                    // Verificar tipo MIME
-                    $mimeType = '';
-                    if (isset($part->type)) {
-                        $type = (int)$part->type;
-                        $subtype = isset($part->subtype) ? strtolower((string)$part->subtype) : '';
-                        
-                        if ($type === 0 && $subtype === 'plain') {
-                            $mimeType = 'text/plain';
-                        } elseif ($type === 0 && $subtype === 'html') {
-                            $mimeType = 'text/html';
+                    // Converter charset se necessário
+                    $charset = '';
+                    if (isset($part->parameters) && is_array($part->parameters)) {
+                        foreach ($part->parameters as $param) {
+                            if (isset($param->attribute) && strtolower($param->attribute) === 'charset') {
+                                $charset = strtolower((string)($param->value ?? ''));
+                            }
+                        }
+                    }
+                    if ($charset !== '' && $charset !== 'utf-8' && $charset !== 'us-ascii') {
+                        $converted = @mb_convert_encoding($decoded, 'UTF-8', $charset);
+                        if ($converted !== false) {
+                            $decoded = $converted;
                         }
                     }
                     
-                    if ($mimeType === 'text/plain' && $bodyText === '') {
+                    if ($subtype === 'plain' && $bodyText === '') {
                         $bodyText = $decoded;
-                    } elseif ($mimeType === 'text/html' && $bodyHtml === '') {
+                    } elseif ($subtype === 'html' && $bodyHtml === '') {
                         $bodyHtml = $decoded;
                     }
                 }
+            };
+            
+            // Se for multipart, processar partes (com recursão)
+            if (isset($structure->parts) && is_array($structure->parts)) {
+                $extractParts($structure->parts, '', $imap, $uidInt, $decodeBody);
             } else {
                 // Mensagem simples (não multipart)
                 $data = imap_body($imap, $uidInt, FT_UID);
