@@ -369,6 +369,8 @@ foreach ($emails as $e) {
         . "    \"requests\": array de {\"specialty\":string, \"description\":string|null, \"procedure_value\":number|null, \"urgency\":string|null, \"frequency\":string|null}\n"
         . "  }\n\n"
         . "Regras:\n"
+        . "- CADA NOME DE PACIENTE/SEGURADO = 1 ITEM no array clients (NÃO criar múltiplos items para o mesmo paciente)\n"
+        . "- TODAS as especialidades de um paciente vão dentro do campo 'requests' do MESMO client\n"
         . "- Se houver apenas 1 paciente, retorne clients com 1 item\n"
         . "- Se houver múltiplos pacientes, retorne cada um como item separado em clients\n"
         . "- Dentro de cada client, se houver múltiplas especialidades, coloque cada uma em requests\n"
@@ -410,7 +412,11 @@ foreach ($emails as $e) {
             
             foreach ($chunks as $chunkIdx => $chunk) {
                 $chunkPrompt = "ASSUNTO: " . $subject . "\n" . "REMETENTE: " . $fromEmail . "\n\n"
-                    . "PARTE " . ($chunkIdx + 1) . " DE " . count($chunks) . " DO E-MAIL:\n" . $chunk;
+                    . "IMPORTANTE: Este é um trecho (PARTE " . ($chunkIdx + 1) . " DE " . count($chunks) . ") de um e-mail grande. "
+                    . "Cada NOME DE PACIENTE/SEGURADO que aparecer = 1 client no array. "
+                    . "TODAS as especialidades desse paciente vão dentro do campo 'requests' do MESMO client. "
+                    . "NÃO crie clients separados para cada especialidade do mesmo paciente.\n\n"
+                    . "TRECHO DO E-MAIL:\n" . $chunk;
                 
                 error_log("[EMAIL_EXTRACT] E-mail #$id - Processando chunk " . ($chunkIdx + 1) . "/" . count($chunks) . " (" . mb_strlen($chunk) . " chars)");
                 
