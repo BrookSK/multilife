@@ -98,6 +98,12 @@ try {
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+            
+            // Atualizar status na tabela
+            if ($httpCode >= 200 && $httpCode < 300) {
+                whatsapp_update_connection_status($instanceName, 'disconnected');
+            }
+            
             echo json_encode([
                 'success' => ($httpCode >= 200 && $httpCode < 300),
                 'message' => ($httpCode >= 200 && $httpCode < 300) ? 'Desconectado' : 'Erro: ' . $httpCode,
@@ -129,6 +135,28 @@ try {
 
             // 2. Configurar webhook
             $whOk = configureWebhook($baseUrl, $apiKey, $instanceName);
+            
+            // 3. Registrar instância na tabela whatsapp_instances (se não existir)
+            try {
+                $existsStmt = db()->prepare("SELECT id FROM whatsapp_instances WHERE instance_name = :name LIMIT 1");
+                $existsStmt->execute(['name' => $instanceName]);
+                if (!$existsStmt->fetch()) {
+                    // Determinar se é a primeira instância (marcar como default)
+                    $countStmt = db()->prepare("SELECT COUNT(*) FROM whatsapp_instances WHERE status = 'active'");
+                    $countStmt->execute();
+                    $isFirst = ((int)$countStmt->fetchColumn() === 0);
+                    
+                    $insStmt = db()->prepare("INSERT INTO whatsapp_instances (instance_name, status, is_default, connection_status, created_by) VALUES (:name, 'active', :def, 'disconnected', :uid)");
+                    $insStmt->execute([
+                        'name' => $instanceName,
+                        'def' => $isFirst ? 1 : 0,
+                        'uid' => $_SESSION['auth_user_id'] ?? null,
+                    ]);
+                    error_log("[EVOLUTION_PROXY] Instância '$instanceName' registrada na tabela whatsapp_instances");
+                }
+            } catch (Throwable $e) {
+                error_log("[EVOLUTION_PROXY] Erro ao registrar instância: " . $e->getMessage());
+            }
 
             $decoded = json_decode($response, true);
             echo json_encode([
@@ -221,6 +249,66 @@ try {
             if (is_array($decoded) && isset($decoded['instance']['state'])) {
                 $decoded['state'] = $decoded['instance']['state'];
             }
+            
+            // AUTO-PREENCHER: Quando instância está conectada, buscar e salvar o número automaticamente
+            $connState = $decoded['state'] ?? ($decoded['instance']['state'] ?? '');
+            if ($connState === 'open' || $connState === 'connected') {
+                // Tentar extrair o número do owner da resposta
+                $ownerNumber = '';
+                if (isset($decoded['instance']['owner'])) {
+                    $ownerNumber = (string)$decoded['instance']['owner'];
+                } elseif (isset($decoded['owner'])) {
+                    $ownerNumber = (string)$decoded['owner'];
+                }
+                // Limpar o número (pode vir como "5517991253062@s.whatsapp.net" ou só dígitos)
+                $ownerNumber = preg_replace('/@.*$/', '', $ownerNumber);
+                $ownerNumber = preg_replace('/\D+/', '', $ownerNumber);
+                
+                // Se não veio na resposta do connectionState, tentar buscar via fetchInstances
+                if ($ownerNumber === '') {
+                    $fetchUrl = $baseUrl . '/instance/fetchInstances?instanceName=' . urlencode($instanceName);
+                    $chFetch = curl_init($fetchUrl);
+                    curl_setopt($chFetch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($chFetch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
+                    curl_setopt($chFetch, CURLOPT_SSL_VERIFYPEER, false);
+                    curl_setopt($chFetch, CURLOPT_TIMEOUT, 10);
+                    $fetchResp = curl_exec($chFetch);
+                    $fetchCode = curl_getinfo($chFetch, CURLINFO_HTTP_CODE);
+                    curl_close($chFetch);
+                    
+                    if ($fetchCode >= 200 && $fetchCode < 300) {
+                        $fetchData = json_decode($fetchResp, true);
+                        if (is_array($fetchData)) {
+                            // fetchInstances retorna array de instâncias
+                            $instData = $fetchData[0] ?? $fetchData;
+                            if (isset($instData['instance'])) {
+                                $instData = $instData['instance'];
+                            }
+                            $ownerNumber = (string)($instData['owner'] ?? $instData['ownerJid'] ?? '');
+                            $ownerNumber = preg_replace('/@.*$/', '', $ownerNumber);
+                            $ownerNumber = preg_replace('/\D+/', '', $ownerNumber);
+                        }
+                    }
+                }
+                
+                // Salvar o número e status na tabela whatsapp_instances
+                if ($ownerNumber !== '' && strlen($ownerNumber) >= 10) {
+                    // Formatar com DDI se necessário
+                    if (strlen($ownerNumber) === 10 || strlen($ownerNumber) === 11) {
+                        $ownerNumber = '55' . $ownerNumber;
+                    }
+                    whatsapp_update_connection_status($instanceName, 'connected', $ownerNumber);
+                    error_log("[EVOLUTION_PROXY] Auto-preenchido número para instância '$instanceName': $ownerNumber");
+                } else {
+                    // Ao menos atualizar o status de conexão
+                    whatsapp_update_connection_status($instanceName, 'connected');
+                }
+            } elseif ($connState === 'close' || $connState === 'disconnected') {
+                whatsapp_update_connection_status($instanceName, 'disconnected');
+            } elseif ($connState === 'connecting') {
+                whatsapp_update_connection_status($instanceName, 'connecting');
+            }
+            
             echo json_encode($decoded);
         } else {
             echo $response;
