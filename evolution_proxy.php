@@ -129,18 +129,25 @@ try {
             curl_close($ch);
 
             if ($httpCode < 200 || $httpCode >= 300) {
-                echo json_encode(['success' => false, 'error' => 'Falha ao criar instância. Código: ' . $httpCode, 'response' => $response]);
-                exit;
+                // Se 403 ou 409 = instância já existe na Evolution API (foi removida do sistema mas não da API)
+                // Tratar como sucesso e continuar (vai gerar QR Code no passo de connect)
+                if ($httpCode === 403 || $httpCode === 409) {
+                    error_log("[EVOLUTION_PROXY] Instância '$instanceName' já existe na Evolution (HTTP $httpCode). Reaproveitando.");
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'Falha ao criar instância. Código: ' . $httpCode, 'response' => $response]);
+                    exit;
+                }
             }
 
             // 2. Configurar webhook
             $whOk = configureWebhook($baseUrl, $apiKey, $instanceName);
             
-            // 3. Registrar instância na tabela whatsapp_instances (se não existir)
+            // 3. Registrar instância na tabela whatsapp_instances (se não existir ou reativar se inactive)
             try {
-                $existsStmt = db()->prepare("SELECT id FROM whatsapp_instances WHERE instance_name = :name LIMIT 1");
+                $existsStmt = db()->prepare("SELECT id, status FROM whatsapp_instances WHERE instance_name = :name LIMIT 1");
                 $existsStmt->execute(['name' => $instanceName]);
-                if (!$existsStmt->fetch()) {
+                $existingRow = $existsStmt->fetch();
+                if (!$existingRow) {
                     // Determinar se é a primeira instância (marcar como default)
                     $countStmt = db()->prepare("SELECT COUNT(*) FROM whatsapp_instances WHERE status = 'active'");
                     $countStmt->execute();
@@ -153,6 +160,11 @@ try {
                         'uid' => $_SESSION['auth_user_id'] ?? null,
                     ]);
                     error_log("[EVOLUTION_PROXY] Instância '$instanceName' registrada na tabela whatsapp_instances");
+                } elseif ($existingRow['status'] === 'inactive') {
+                    // Reativar instância que foi removida anteriormente
+                    $reactStmt = db()->prepare("UPDATE whatsapp_instances SET status = 'active', connection_status = 'disconnected' WHERE instance_name = :name");
+                    $reactStmt->execute(['name' => $instanceName]);
+                    error_log("[EVOLUTION_PROXY] Instância '$instanceName' reativada");
                 }
             } catch (Throwable $e) {
                 error_log("[EVOLUTION_PROXY] Erro ao registrar instância: " . $e->getMessage());
