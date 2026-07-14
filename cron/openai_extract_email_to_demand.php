@@ -496,22 +496,49 @@ foreach ($emails as $e) {
             
             // DEDUPLICAÇÃO: Remover pacientes duplicados (mesmo nome aparece em múltiplos chunks)
             // Manter o registro mais completo (mais requests, mais dados de endereço)
+            // Usa normalização agressiva: remove acentos, pega primeiras 3 palavras para match
+            $normalizeNameKey = function(string $name): string {
+                $name = mb_strtoupper(trim($name));
+                // Remover acentos
+                $name = str_replace(
+                    ['Á','À','Â','Ã','É','È','Ê','Í','Ì','Ó','Ò','Ô','Õ','Ú','Ù','Ç','Ñ'],
+                    ['A','A','A','A','E','E','E','I','I','O','O','O','O','U','U','C','N'],
+                    $name
+                );
+                // Remover caracteres especiais
+                $name = preg_replace('/[^A-Z0-9\s]/', '', $name);
+                // Pegar primeiras 3 palavras (evitar diferenças em sobrenomes truncados)
+                $words = preg_split('/\s+/', trim($name));
+                $words = array_slice($words, 0, 3);
+                return implode(' ', $words);
+            };
+            
             $deduped = [];
             foreach ($allClients as $client) {
-                $name = mb_strtoupper(trim((string)($client['patient_name'] ?? '')));
-                if ($name === '') {
-                    // Sem nome, manter como está
+                $rawName = trim((string)($client['patient_name'] ?? ''));
+                if ($rawName === '') {
+                    // Sem nome, manter como está (não pode deduplicar)
                     $deduped[] = $client;
                     continue;
                 }
                 
-                if (!isset($deduped[$name])) {
-                    $deduped[$name] = $client;
+                $key = $normalizeNameKey($rawName);
+                
+                if (!isset($deduped[$key])) {
+                    $deduped[$key] = $client;
                 } else {
                     // Já existe — mesclar requests (adicionar especialidades que não existem)
-                    $existing = $deduped[$name];
+                    $existing = $deduped[$key];
                     $existingRequests = $existing['requests'] ?? [];
                     $newRequests = $client['requests'] ?? [];
+                    
+                    // Se não tem requests explícitos mas tem specialty, criar request
+                    if (empty($newRequests) && !empty($client['specialty'])) {
+                        $newRequests = [['specialty' => $client['specialty'], 'frequency' => $client['frequency'] ?? null, 'description' => null, 'procedure_value' => null, 'urgency' => null]];
+                    }
+                    if (empty($existingRequests) && !empty($existing['specialty'])) {
+                        $existingRequests = [['specialty' => $existing['specialty'], 'frequency' => $existing['frequency'] ?? null, 'description' => null, 'procedure_value' => null, 'urgency' => null]];
+                    }
                     
                     // Coletar especialidades já existentes
                     $existingSpecs = [];
@@ -547,7 +574,7 @@ foreach ($emails as $e) {
                         $existing['location_number'] = $client['location_number'];
                     }
                     
-                    $deduped[$name] = $existing;
+                    $deduped[$key] = $existing;
                 }
             }
             
