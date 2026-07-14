@@ -8,21 +8,38 @@ require_once __DIR__ . '/_bootstrap.php';
 @set_time_limit(300);
 ignore_user_abort(true);
 
-// Se chamado via HTTP com parâmetro async=1, fechar conexão e processar em background
-$asyncMode = isset($_GET['async']) && $_GET['async'] === '1';
-if ($asyncMode && function_exists('fastcgi_finish_request')) {
-    // Enviar resposta HTTP imediatamente
+// Fechar conexão HTTP imediatamente para evitar timeout do nginx/Apache
+// O script continua rodando em background após fechar a conexão
+if (PHP_SAPI !== 'cli') {
+    // Desabilitar output buffering
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
+    // Preparar resposta mínima
+    $responseBody = "OK: processing started\n";
+    
+    // Enviar headers para fechar conexão
+    header('HTTP/1.1 200 OK');
     header('Content-Type: text/plain; charset=utf-8');
-    echo "OK: processing in background\n";
-    fastcgi_finish_request();
-} elseif ($asyncMode) {
-    // Fallback: fechar conexão manualmente
-    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Length: ' . strlen($responseBody));
     header('Connection: close');
-    header('Content-Length: 30');
-    echo "OK: processing in background\n";
-    ob_end_flush();
-    flush();
+    
+    // Enviar body
+    echo $responseBody;
+    
+    // Forçar flush de todos os buffers
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        flush();
+        if (function_exists('litespeed_finish_request')) {
+            litespeed_finish_request();
+        }
+    }
+    
+    // Pequeno delay para garantir que a conexão foi fechada
+    usleep(100000); // 100ms
 }
 
 $idFilter = isset($_GET['id']) ? (int)$_GET['id'] : 0;
