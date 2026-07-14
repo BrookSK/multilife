@@ -265,9 +265,9 @@ $tpl = trim((string)admin_setting_get(
     ''
 ));
 
-// Se template vazio ou não configurado, usar padrão com endereço completo
+// Se template vazio ou não configurado, usar padrão com bairro e cidade
 if ($tpl === '') {
-    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{address}\n{city}/{state}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{description}\n\n👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{description}\n\n👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
 }
 
 // Montar endereço completo (rua, número, bairro)
@@ -306,6 +306,7 @@ $repl = [
     '{address}' => $fullAddress !== '' ? $fullAddress : '',
     '{street}' => $street !== '' ? $street : '-',
     '{neighborhood}' => $neighborhood !== '' ? $neighborhood : '-',
+    '{neighborhood_city}' => trim(($neighborhood !== '' ? $neighborhood . ' - ' : '') . ($city !== '' ? $city : '') . ($state !== '' ? '/' . $state : '')),
     '{specialty}' => $specialty !== '' ? $specialty : '-',
     '{frequency}' => $freqDisplay !== '' ? $freqDisplay : '-',
     '{description}' => $subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? ''),

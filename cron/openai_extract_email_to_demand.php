@@ -799,8 +799,33 @@ foreach ($emails as $e) {
                 }
                 $hasMultipleRequests = count($subRequests) > 1;
                 
-                // Para multi-client, usar o corpo do email como descrição
-                $desc = $content;
+                // Descrição: para multi-client, gerar descrição específica do paciente (não o email inteiro)
+                if ($isMultiClient) {
+                    $descParts = [];
+                    if ($patientName !== '') $descParts[] = "Paciente: $patientName";
+                    if ($street !== '' || $neighborhood !== '' || $city !== '') {
+                        $addrParts = [];
+                        if ($street !== '') $addrParts[] = $street . ($locationNumber !== '' ? ', ' . $locationNumber : '');
+                        if ($neighborhood !== '') $addrParts[] = $neighborhood;
+                        if ($city !== '') $addrParts[] = $city . ($state !== '' ? '/' . $state : '');
+                        $descParts[] = "Endereço: " . implode(' - ', $addrParts);
+                    }
+                    if ($specialty !== '') $descParts[] = "Especialidade principal: $specialty";
+                    if ($frequency !== '') $descParts[] = "Frequência: $frequency";
+                    if (count($subRequests) > 0) {
+                        $specsList = [];
+                        foreach ($subRequests as $sr) {
+                            $srLine = $sr['specialty'];
+                            if (!empty($sr['frequency'])) $srLine .= ' (' . $sr['frequency'] . ')';
+                            $specsList[] = $srLine;
+                        }
+                        $descParts[] = "Especialidades solicitadas:\n- " . implode("\n- ", $specsList);
+                    }
+                    $descParts[] = "\nOrigem: " . $subject;
+                    $desc = implode("\n", $descParts);
+                } else {
+                    $desc = $content;
+                }
                 
                 // Para multi-client, gerar ai_summary simplificado por cliente
                 $clientAiSummary = $aiSummary; // Usa o da chamada 2 se for single-client
