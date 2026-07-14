@@ -80,7 +80,7 @@ if (count($where) > 0) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
 }
 
-$sql .= ' ORDER BY d.id DESC';
+$sql .= ' ORDER BY d.id DESC LIMIT 500';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
