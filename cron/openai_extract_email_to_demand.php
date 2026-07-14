@@ -392,17 +392,32 @@ foreach ($emails as $e) {
         $allClients = [];
         
         if ($contentLength > 4000) {
-            // Dividir o conteúdo em chunks de ~3000 chars respeitando quebras de linha
+            // Dividir o conteúdo em chunks respeitando blocos de pacientes
+            // Cada paciente é tipicamente: NOME + PAD + ENDEREÇO separados por linha em branco
             $lines = explode("\n", $content);
             $chunks = [];
             $currentChunk = '';
+            $lastWasEmpty = false;
             
             foreach ($lines as $line) {
-                if (mb_strlen($currentChunk) + mb_strlen($line) > 3000 && $currentChunk !== '') {
+                $trimmed = trim($line);
+                $isEmptyLine = ($trimmed === '');
+                
+                // Se a linha está vazia e o chunk já é grande o suficiente,
+                // cortar aqui (entre pacientes, não no meio de um)
+                if ($isEmptyLine && $lastWasEmpty && mb_strlen($currentChunk) > 2000) {
                     $chunks[] = $currentChunk;
                     $currentChunk = '';
                 }
+                
                 $currentChunk .= $line . "\n";
+                $lastWasEmpty = $isEmptyLine;
+                
+                // Fallback: se o chunk ficou muito grande sem encontrar quebra boa, forçar corte
+                if (mb_strlen($currentChunk) > 4500 && $isEmptyLine) {
+                    $chunks[] = $currentChunk;
+                    $currentChunk = '';
+                }
             }
             if (trim($currentChunk) !== '') {
                 $chunks[] = $currentChunk;
@@ -478,6 +493,66 @@ foreach ($emails as $e) {
             if (count($allClients) === 0) {
                 throw new RuntimeException('Nenhum cliente extraído de nenhum chunk (email grande).');
             }
+            
+            // DEDUPLICAÇÃO: Remover pacientes duplicados (mesmo nome aparece em múltiplos chunks)
+            // Manter o registro mais completo (mais requests, mais dados de endereço)
+            $deduped = [];
+            foreach ($allClients as $client) {
+                $name = mb_strtoupper(trim((string)($client['patient_name'] ?? '')));
+                if ($name === '') {
+                    // Sem nome, manter como está
+                    $deduped[] = $client;
+                    continue;
+                }
+                
+                if (!isset($deduped[$name])) {
+                    $deduped[$name] = $client;
+                } else {
+                    // Já existe — mesclar requests (adicionar especialidades que não existem)
+                    $existing = $deduped[$name];
+                    $existingRequests = $existing['requests'] ?? [];
+                    $newRequests = $client['requests'] ?? [];
+                    
+                    // Coletar especialidades já existentes
+                    $existingSpecs = [];
+                    foreach ($existingRequests as $r) {
+                        $existingSpecs[] = mb_strtolower(trim((string)($r['specialty'] ?? '')));
+                    }
+                    
+                    // Adicionar especialidades novas que não existem
+                    foreach ($newRequests as $r) {
+                        $spec = mb_strtolower(trim((string)($r['specialty'] ?? '')));
+                        if ($spec !== '' && !in_array($spec, $existingSpecs, true)) {
+                            $existingRequests[] = $r;
+                            $existingSpecs[] = $spec;
+                        }
+                    }
+                    
+                    $existing['requests'] = $existingRequests;
+                    
+                    // Preencher campos vazios com dados do duplicata
+                    if (empty($existing['location_city']) && !empty($client['location_city'])) {
+                        $existing['location_city'] = $client['location_city'];
+                    }
+                    if (empty($existing['location_state']) && !empty($client['location_state'])) {
+                        $existing['location_state'] = $client['location_state'];
+                    }
+                    if (empty($existing['location_street']) && !empty($client['location_street'])) {
+                        $existing['location_street'] = $client['location_street'];
+                    }
+                    if (empty($existing['location_neighborhood']) && !empty($client['location_neighborhood'])) {
+                        $existing['location_neighborhood'] = $client['location_neighborhood'];
+                    }
+                    if (empty($existing['location_number']) && !empty($client['location_number'])) {
+                        $existing['location_number'] = $client['location_number'];
+                    }
+                    
+                    $deduped[$name] = $existing;
+                }
+            }
+            
+            $allClients = array_values($deduped);
+            error_log("[EMAIL_EXTRACT] E-mail #$id - Após deduplicação: " . count($allClients) . " clientes únicos");
             
             // Montar parsed1 no formato esperado
             $parsed1 = ['clients' => $allClients];
