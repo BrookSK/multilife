@@ -542,7 +542,7 @@ if ($event === 'messages.upsert') {
         $senderPn    = $messageData['key']['senderPn'] ?? ''; // Número real do remetente
         $fromMe      = (bool)($messageData['key']['fromMe'] ?? false);
         $participant = $messageData['key']['participant'] ?? '';
-        $participantPn = $messageData['key']['participantPn'] ?? ''; // Número real do participante (em vez de LID)
+        $participantPn = $messageData['key']['participantPn'] ?? ($messageData['key']['participantAlt'] ?? ''); // Número real do participante (em vez de LID)
         $externalMsgId = $messageData['key']['id'] ?? '';
         $pushName    = $messageData['pushName'] ?? '';
         $msgPayload  = $messageData['message'] ?? [];
@@ -608,9 +608,22 @@ if ($event === 'messages.upsert') {
                                     $specialty = $dispatchRow['specialty'] ?? '';
                                     
                                     // Extrair telefone limpo do reactor
-                                    $cleanPhone = preg_replace('/[:@].+$/', '', $reactorJid);
+                                    // Preferir participantAlt (número real) sobre participant (LID)
+                                    $reactorForPhone = $participantPn ?: $participant ?: $reactorJid;
+                                    $cleanPhone = preg_replace('/[:@].+$/', '', $reactorForPhone);
                                     $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
-                                    $phoneJid = $cleanPhone . '@s.whatsapp.net';
+                                    
+                                    // Se cleanPhone parece ser um LID (>13 dígitos), não é telefone real
+                                    if (strlen($cleanPhone) > 13) {
+                                        $cleanPhone = '';
+                                        // Tentar extrair de participantAlt diretamente do payload
+                                        $altJid = $messageData['key']['participantAlt'] ?? '';
+                                        if ($altJid !== '') {
+                                            $cleanPhone = preg_replace('/[:@].+$/', '', $altJid);
+                                            $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
+                                        }
+                                    }
+                                    $phoneJid = $cleanPhone !== '' ? $cleanPhone . '@s.whatsapp.net' : '';
                                     
                                     error_log("[WEBHOOK] 🎉 INTERESSE EM CAPTAÇÃO! demand_id=$demandId phone=$cleanPhone pushName='$pushName'");
                                     

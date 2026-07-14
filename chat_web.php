@@ -1773,6 +1773,26 @@ if ($chatType === 'grupos') {
                         $proPhone = '55' . $proPhone;
                     }
                     $proJid = $proPhone !== '' ? $proPhone . '@s.whatsapp.net' : '';
+                    // Fallback: usar phone_jid original se não conseguiu resolver
+                    if ($proJid === '' && !empty($pro['phone_jid'])) {
+                        $rawJid = (string)$pro['phone_jid'];
+                        // Se tem @s.whatsapp.net, usar direto
+                        if (strpos($rawJid, '@s.whatsapp.net') !== false) {
+                            $proJid = $rawJid;
+                        } elseif (preg_match('/^\d{10,13}$/', preg_replace('/\D+/', '', $rawJid))) {
+                            $proJid = preg_replace('/\D+/', '', $rawJid) . '@s.whatsapp.net';
+                        }
+                    }
+                    // Fallback 2: usar o campo phone direto (pode ser o JID completo)
+                    if ($proJid === '' && !empty($pro['phone'])) {
+                        $rawPhone = (string)$pro['phone'];
+                        if (strpos($rawPhone, '@s.whatsapp.net') !== false) {
+                            $proJid = $rawPhone;
+                        } elseif (strpos($rawPhone, '@lid') !== false) {
+                            // LID não funciona para chat direto — tentar participantAlt
+                            $proJid = '';
+                        }
+                    }
                     $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' : '#';
                     
                     echo '<a href="' . $linkHref . '" class="whatsapp-chat-item">';
