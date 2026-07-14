@@ -1468,7 +1468,7 @@ function waInstPoll(instName){
 }
 
 window.waInstRemove = function(instanceName, instanceId){
-  if(!confirm("Deseja remover a instância '" + instanceName + "'?\\n\\nIsso vai desconectar o WhatsApp e remover o vínculo com o usuário.")) return;
+  if(!confirm("Deseja remover a instância '" + instanceName + "'?\n\nIsso vai desconectar o WhatsApp e remover o vínculo com o usuário.")) return;
   
   // 1. Desconectar (logout) na Evolution API
   fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))
@@ -1483,7 +1483,6 @@ window.waInstRemove = function(instanceName, instanceId){
   .then(function(){ location.reload(); })
   .catch(function(e){ alert("Erro: " + e.message); location.reload(); });
 };
-})();
 })();
 </script>
 WAINST_JS;
