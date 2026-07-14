@@ -132,9 +132,29 @@ $updErr = $db->prepare(
     . "WHERE id = :id"
 );
 
+// Verificar se as colunas novas existem (multi-client support)
+$demandCols = $db->prepare("SHOW COLUMNS FROM demands LIKE 'patient_name'");
+$demandCols->execute();
+$hasPatientName = (bool)$demandCols->fetch();
+
+$demandCols2 = $db->prepare("SHOW COLUMNS FROM demands LIKE 'source_email_id'");
+$demandCols2->execute();
+$hasSourceEmailId = (bool)$demandCols2->fetch();
+
+$insDemandCols = 'title, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests';
+$insDemandVals = ':t,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr';
+
+if ($hasPatientName) {
+    $insDemandCols = 'title, patient_name, ' . substr($insDemandCols, 7); // Insere patient_name após title
+    $insDemandVals = ':t,:pname,' . substr($insDemandVals, 3); // Insere :pname após :t
+}
+if ($hasSourceEmailId) {
+    $insDemandCols .= ', source_email_id';
+    $insDemandVals .= ',:seid';
+}
+
 $insDemand = $db->prepare(
-    'INSERT INTO demands (title, patient_name, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, source_email_id, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests)'
-    . ' VALUES (:t,:pname,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:seid,:st,:pv,:as,:urg,:freq,:hmr)'
+    'INSERT INTO demands (' . $insDemandCols . ') VALUES (' . $insDemandVals . ')'
 );
 $insDemandLog = $db->prepare(
     'INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)'
@@ -580,9 +600,8 @@ foreach ($emails as $e) {
                 }
 
                 // Inserir demand
-                $insDemand->execute([
+                $demandParams = [
                     't' => $title,
-                    'pname' => $patientName !== '' ? $patientName : null,
                     'c' => $city !== '' ? $city : null,
                     's' => $state !== '' ? $state : null,
                     'street' => $street !== '' ? $street : null,
@@ -591,14 +610,20 @@ foreach ($emails as $e) {
                     'sp' => $specialty !== '' ? $specialty : null,
                     'd' => $desc !== '' ? $desc : null,
                     'o' => $fromEmail !== '' ? $fromEmail : null,
-                    'seid' => $id, // source_email_id
                     'st' => $status,
                     'pv' => $procedureValue,
                     'as' => $clientAiSummary !== '' ? $clientAiSummary : null,
                     'urg' => $urgency !== '' ? $urgency : null,
                     'freq' => $frequency !== '' ? $frequency : null,
                     'hmr' => $hasMultipleRequests ? 1 : 0,
-                ]);
+                ];
+                if ($hasPatientName) {
+                    $demandParams['pname'] = $patientName !== '' ? $patientName : null;
+                }
+                if ($hasSourceEmailId) {
+                    $demandParams['seid'] = $id;
+                }
+                $insDemand->execute($demandParams);
                 $demandId = (int)$db->lastInsertId();
                 $createdDemandIds[] = $demandId;
 
