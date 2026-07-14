@@ -34,7 +34,7 @@ final class OpenAiApi
             'Authorization' => 'Bearer ' . $this->apiKey,
         ];
 
-        $res = http_json_request($method, $url, $headers, $body);
+        $res = http_json_request($method, $url, $headers, $body, 120);
         $ok = $res['status'] >= 200 && $res['status'] < 300;
 
         integration_log(

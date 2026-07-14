@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_bootstrap.php';
 
+// Aumentar timeout para e-mails grandes (multi-client com muitos pacientes)
+@set_time_limit(300);
+
 $idFilter = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $retryErrors = isset($_GET['retry_errors']) && ((string)$_GET['retry_errors'] === '1' || strtolower((string)$_GET['retry_errors']) === 'true');
 $forceReprocess = isset($_GET['force']) && ((string)$_GET['force'] === '1' || strtolower((string)$_GET['force']) === 'true');
