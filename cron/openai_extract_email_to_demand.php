@@ -834,7 +834,12 @@ foreach ($emails as $e) {
                     $summaryParts = [];
                     if ($patientName !== '') $summaryParts[] = "Paciente: $patientName";
                     if ($specialty !== '') $summaryParts[] = "Especialidade principal: $specialty";
-                    if ($city !== '' || $state !== '') $summaryParts[] = "Local: " . trim("$city/$state", '/');
+                    // Endereço completo (rua, número, bairro, cidade/UF)
+                    $localParts = [];
+                    if ($street !== '') $localParts[] = $street . ($locationNumber !== '' ? ', ' . $locationNumber : '');
+                    if ($neighborhood !== '') $localParts[] = $neighborhood;
+                    if ($city !== '' || $state !== '') $localParts[] = trim("$city/$state", '/');
+                    if (count($localParts) > 0) $summaryParts[] = "Local: " . implode(' — ', $localParts);
                     if ($frequency !== '') $summaryParts[] = "Frequência: $frequency";
                     if (count($subRequests) > 0) {
                         $specs = array_map(fn($r) => $r['specialty'], $subRequests);
