@@ -107,15 +107,24 @@ if (count($groups) === 0) {
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
         // Buscar profissionais da especialidade para adicionar ao grupo
+        // Match progressivo: exato → contém → primeira palavra da especialidade
         $profsStmt = db()->prepare("
             SELECT u.phone FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
             INNER JOIN roles r ON r.id = ur.role_id
             WHERE u.status = 'active' AND r.slug = 'profissional'
-            AND (u.specialty = ? OR u.specialty LIKE ?)
+            AND (
+                u.specialty = ? 
+                OR u.specialty LIKE ? 
+                OR ? LIKE CONCAT('%', u.specialty, '%')
+                OR u.specialty LIKE ?
+            )
             AND u.phone IS NOT NULL AND u.phone != ''
         ");
-        $profsStmt->execute([$specialty, '%' . $specialty . '%']);
+        // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
+        // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra)
+        $firstWord = explode(' ', trim($specialty))[0];
+        $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
         $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
         
         // Limpar telefones (apenas dígitos) e remover duplicados
@@ -317,6 +326,15 @@ $repl = [
 ];
 
 $msg = strtr($tpl, $repl);
+
+// Proteção contra envio duplo: verificar se já existe dispatch recente (< 60s) para esta demanda
+$recentDispatch = db()->prepare("SELECT id FROM demand_dispatch_logs WHERE demand_id = :did AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND) LIMIT 1");
+$recentDispatch->execute(['did' => $id]);
+if ($recentDispatch->fetch()) {
+    flash_set('error', 'Captação já foi disparada há menos de 1 minuto. Evite clicar duas vezes.');
+    header('Location: /demands_view.php?id=' . $id);
+    exit;
+}
 
 $db = db();
 $db->beginTransaction();
