@@ -327,13 +327,86 @@ $repl = [
 
 $msg = strtr($tpl, $repl);
 
-// Proteção contra envio duplo: verificar se já existe dispatch recente (< 60s) para esta demanda
-$recentDispatch = db()->prepare("SELECT id FROM demand_dispatch_logs WHERE demand_id = :did AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND) LIMIT 1");
-$recentDispatch->execute(['did' => $id]);
+// Proteção contra envio duplo: verificar se já existe dispatch recente (< 60s) para esta demanda + sub-request
+$recentSql = "SELECT id FROM demand_dispatch_logs WHERE demand_id = :did AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)";
+$recentParams = ['did' => $id];
+if ($subRequestId > 0) {
+    // Se tiver sub_request, verificar se a mensagem contém a especialidade da sub_request
+    $recentSql .= " AND message LIKE :splike";
+    $recentParams['splike'] = '%' . ($subRequest['specialty'] ?? '') . '%';
+}
+$recentSql .= " LIMIT 1";
+$recentDispatch = db()->prepare($recentSql);
+$recentDispatch->execute($recentParams);
 if ($recentDispatch->fetch()) {
     flash_set('error', 'Captação já foi disparada há menos de 1 minuto. Evite clicar duas vezes.');
     header('Location: /demands_view.php?id=' . $id);
     exit;
+}
+
+// ====================================================================
+// SINCRONIZAR MEMBROS DO GRUPO: Antes de enviar a captação, verificar se há profissionais
+// compatíveis que ainda não estão no grupo e adicioná-los.
+// Isso garante que profissionais novos recebam a captação.
+// ====================================================================
+if (count($groups) > 0) {
+    $targetGroup = $groups[0];
+    $targetJid = (string)($targetGroup['evolution_group_jid'] ?? '');
+    
+    if ($targetJid !== '') {
+        try {
+            $syncApi = new EvolutionApiV1();
+            
+            // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo)
+            $firstWord = explode(' ', trim($specialty))[0];
+            $syncProfsStmt = db()->prepare("
+                SELECT u.phone FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                INNER JOIN roles r ON r.id = ur.role_id
+                WHERE u.status = 'active' AND r.slug = 'profissional'
+                AND (
+                    u.specialty = ? 
+                    OR u.specialty LIKE ? 
+                    OR ? LIKE CONCAT('%', u.specialty, '%')
+                    OR u.specialty LIKE ?
+                )
+                AND u.phone IS NOT NULL AND u.phone != ''
+            ");
+            $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
+            $syncProfPhones = $syncProfsStmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            $phonesToAdd = [];
+            foreach ($syncProfPhones as $phone) {
+                $clean = preg_replace('/\D+/', '', $phone);
+                if (strlen($clean) >= 10) {
+                    if (strlen($clean) === 10 || strlen($clean) === 11) {
+                        $clean = '55' . $clean;
+                    }
+                    $phonesToAdd[] = $clean . '@s.whatsapp.net';
+                }
+            }
+            
+            // Adicionar números de instâncias conectadas também
+            $instanceNumbers = whatsapp_get_all_connected_numbers();
+            foreach ($instanceNumbers as $num) {
+                $phonesToAdd[] = $num . '@s.whatsapp.net';
+            }
+            
+            $phonesToAdd = array_values(array_unique($phonesToAdd));
+            
+            if (!empty($phonesToAdd)) {
+                // Adicionar ao grupo (a API ignora quem já é membro)
+                $syncApi->updateGroupMembers($targetJid, 'add', $phonesToAdd);
+                error_log("[DISPATCH] Sincronização de membros: adicionados " . count($phonesToAdd) . " números ao grupo $targetJid");
+                
+                // Pequeno delay para estabilizar
+                usleep(500000); // 500ms
+            }
+        } catch (Exception $e) {
+            error_log("[DISPATCH] Erro ao sincronizar membros do grupo: " . $e->getMessage());
+            // Não bloquear o dispatch por causa disso
+        }
+    }
 }
 
 $db = db();
