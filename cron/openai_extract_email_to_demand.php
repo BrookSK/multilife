@@ -234,10 +234,47 @@ foreach ($emails as $e) {
         $content = trim(strip_tags($bodyHtml));
     }
 
+    // AUTO-REFETCH: Se body está vazio, tentar re-buscar do IMAP automaticamente
+    if ($content === '') {
+        error_log("[EMAIL_EXTRACT] E-mail #$id - Body vazio, tentando refetch do IMAP...");
+        $refetchScript = __DIR__ . '/smtp_refetch_body.php';
+        if (file_exists($refetchScript)) {
+            // Simular chamada ao refetch inline
+            $_GET_BACKUP = $_GET ?? [];
+            $_GET['id'] = $id;
+            ob_start();
+            try {
+                // O refetch atualiza o banco diretamente
+                include $refetchScript;
+            } catch (Throwable $refetchErr) {
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Refetch falhou: " . $refetchErr->getMessage());
+            }
+            ob_end_clean();
+            $_GET = $_GET_BACKUP;
+            
+            // Re-ler do banco após refetch
+            $reloadStmt = $db->prepare("SELECT body_text, body_html FROM inbound_emails WHERE id = :id LIMIT 1");
+            $reloadStmt->execute(['id' => $id]);
+            $reloaded = $reloadStmt->fetch();
+            if ($reloaded) {
+                $bodyText = (string)($reloaded['body_text'] ?? '');
+                $bodyHtml = (string)($reloaded['body_html'] ?? '');
+                $content = trim($bodyText);
+                if ($content === '' && $bodyHtml !== '') {
+                    $content = trim(strip_tags($bodyHtml));
+                }
+            }
+            
+            if ($content !== '') {
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Refetch bem-sucedido! Body: " . strlen($content) . " chars");
+            }
+        }
+    }
+
     if ($content === '') {
         $errors++;
         $updErr->execute([
-            'err' => 'E-mail sem corpo (body_text/body_html vazio).',
+            'err' => 'E-mail sem corpo (body_text/body_html vazio). Refetch do IMAP também falhou.',
             'pa' => date('Y-m-d H:i:s'),
             'id' => $id,
         ]);
