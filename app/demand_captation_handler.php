@@ -106,9 +106,11 @@ function demand_on_admitted(int $demandId, int $selectedProfessionalUserId, ?int
         if ($groupRow && !empty($groupRow['evolution_group_jid'])) {
             try {
                 $api = new EvolutionApiV1();
-                $groupMsg = "📋 *Captação preenchida*\n\n"
-                    . "A captação *{$groupRow['title']}* já foi atribuída a um profissional.\n\n"
-                    . "Obrigado a todos que demonstraram interesse!";
+                $groupMsg = "✅ *[CAPTAÇÃO FINALIZADA]*\n\n"
+                    . "A captação *#$demandId* foi concluída.\n"
+                    . "📋 Especialidade: " . ($specialty ?? '') . "\n"
+                    . "👤 Profissional selecionado.\n\n"
+                    . "Obrigado a todos que demonstraram interesse! 🙏";
                 $api->sendText($groupRow['evolution_group_jid'], $groupMsg, []);
                 error_log("[CAPTATION] Mensagem de encerramento enviada no grupo para demanda #$demandId");
             } catch (Exception $e) {

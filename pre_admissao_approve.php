@@ -281,7 +281,7 @@ try {
             if (!empty($dispatchedGroups)) {
                 $api = new EvolutionApiV1();
                 $finalizationMsg = "✅ *[CAPTAÇÃO FINALIZADA]*\n\n"
-                    . "A captação para *" . ($assignment['patient_name'] ?? 'Paciente') . "* foi concluída.\n"
+                    . "A captação *#" . $demandId . "* foi concluída.\n"
                     . "📋 Especialidade: " . $specialty . "\n"
                     . "👤 Profissional selecionado.\n\n"
                     . "Obrigado a todos que demonstraram interesse! 🙏";
