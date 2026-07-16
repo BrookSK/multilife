@@ -453,11 +453,35 @@ try {
 $api = null;
 try {
     $api = new EvolutionApiV1();
+    
+    // Verificar se a instância está conectada antes de tentar enviar
+    try {
+        $connState = $api->connectionState();
+        $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+        if ($state !== 'open' && $state !== 'connected') {
+            // WhatsApp desconectado — reverter status e avisar o usuário
+            db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = \'WhatsApp desconectado\' WHERE demand_id = :did AND dispatch_status = \'queued\'')
+                ->execute(['did' => $id]);
+            
+            // Reverter status da demanda
+            if ((string)$d['status'] === 'aguardando_captacao') {
+                db()->prepare('UPDATE demands SET status = \'aguardando_captacao\', assumed_by_user_id = NULL, assumed_at = NULL WHERE id = :id')
+                    ->execute(['id' => $id]);
+            }
+            
+            flash_set('error', 'WhatsApp está desconectado. A captação não foi enviada. Reconecte em: Configurações → WhatsApp Conexão → aba Conexão.');
+            header('Location: /demands_view.php?id=' . $id);
+            exit;
+        }
+    } catch (Throwable $connErr) {
+        error_log("[DISPATCH] Erro ao verificar conexão: " . $connErr->getMessage());
+        // Não bloquear — tentar enviar mesmo assim
+    }
 } catch (Throwable $e) {
     // registra erro em todos
     $upd = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = :err WHERE demand_id = :did AND dispatch_status = \'queued\'');
     $upd->execute(['err' => 'Evolution API não configurada: ' . mb_strimwidth($e->getMessage(), 0, 220, ''), 'did' => $id]);
-    flash_set('error', 'Falha ao enviar: Evolution API não configurada.');
+    flash_set('error', 'WhatsApp não configurado. Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
     header('Location: /demands_view.php?id=' . $id);
     exit;
 }
