@@ -421,19 +421,19 @@ if ($aiSummarySanitized !== '') {
     // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
     $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
     
-    // Reformatar início: "O paciente, 72 anos" → "Paciente D, 72 anos"
+    // Reformatar início: "O paciente, 72 anos" → "O paciente de, 72 anos"
     // Detectar padrão: "O paciente, XX anos" ou "Paciente, XX anos" ou ", XX anos,"
-    $aiSummarySanitized = preg_replace('/^(?:O\s+)?(?:paciente|Paciente)\s*,?\s*(\d+\s*anos)/iu', 'Paciente D, $1', $aiSummarySanitized);
-    // Se não começa com "Paciente D" ainda (ex: texto começava com nome direto), prefixar
-    if (!preg_match('/^Paciente\s+D\b/iu', $aiSummarySanitized)) {
+    $aiSummarySanitized = preg_replace('/^(?:O\s+)?(?:paciente|Paciente)\s*(?:D\s*)?,?\s*(\d+\s*anos)/iu', 'O paciente de, $1', $aiSummarySanitized);
+    // Se não começa com "O paciente de" ainda (ex: texto começava com nome direto), prefixar
+    if (!preg_match('/^O paciente de\b/iu', $aiSummarySanitized)) {
         // Tentar extrair idade do texto
         if (preg_match('/(\d{1,3})\s*anos/iu', $aiSummarySanitized, $ageMatch)) {
             $age = $ageMatch[1];
             // Remover a idade duplicada se já estiver no meio do texto
             $aiSummarySanitized = preg_replace('/^[^.]*?\d{1,3}\s*anos\s*,?\s*/iu', '', $aiSummarySanitized);
-            $aiSummarySanitized = 'Paciente D, ' . $age . ' anos, ' . ltrim($aiSummarySanitized, ', ');
+            $aiSummarySanitized = 'O paciente de, ' . $age . ' anos, ' . ltrim($aiSummarySanitized, ', ');
         } else {
-            $aiSummarySanitized = 'Paciente D. ' . ltrim($aiSummarySanitized, ', ');
+            $aiSummarySanitized = 'O paciente de, ' . ltrim($aiSummarySanitized, ', ');
         }
     }
     
