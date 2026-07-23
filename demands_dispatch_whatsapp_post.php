@@ -341,9 +341,97 @@ if ($freqRaw !== '' && function_exists('frequency_get_label')) {
     }
 }
 
+// ====================================================================
+// SANITIZAÇÃO DA MENSAGEM: Sigilo do paciente, filtro de especialidade, remoção de valores
+// ====================================================================
+
+// 1. Remover nome do paciente do título
+$titleForMsg = (string)$d['title'];
+$patientName = trim((string)($d['patient_name'] ?? ''));
+if ($patientName !== '') {
+    // Remover padrões como "para Nome Completo", "- Nome Completo", "Nome Completo"
+    $titleForMsg = preg_replace('/\s*(para|[-–])\s*' . preg_quote($patientName, '/') . '/iu', '', $titleForMsg);
+    // Se ainda contiver o nome (ex: no início), remover diretamente
+    $titleForMsg = str_ireplace($patientName, '', $titleForMsg);
+    $titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
+    // Remover travessão ou "para" pendente no final
+    $titleForMsg = rtrim($titleForMsg, ' -–');
+    $titleForMsg = preg_replace('/\s+para\s*$/iu', '', $titleForMsg);
+}
+
+// 2. Sanitizar ai_summary: remover nome do paciente, filtrar por especialidade, remover valores
+$aiSummaryRaw = trim((string)($d['ai_summary'] ?? ''));
+$aiSummarySanitized = $aiSummaryRaw;
+
+if ($aiSummarySanitized !== '') {
+    // 2a. Remover nome do paciente do quadro clínico
+    if ($patientName !== '') {
+        $aiSummarySanitized = str_ireplace($patientName, '', $aiSummarySanitized);
+        // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
+        $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
+        $aiSummarySanitized = preg_replace('/\s{2,}/', ' ', $aiSummarySanitized);
+    }
+    
+    // 2b. Remover valores financeiros (R$ X.XXX,XX, valores monetários)
+    // Remove linhas/frases que mencionam valor autorizado, valor do plano, preço etc.
+    $aiSummarySanitized = preg_replace('/[^\n]*valor\s+(autorizado|do plano|mensal|total)[^\n]*/iu', '', $aiSummarySanitized);
+    // Remove qualquer menção a R$ seguido de valor
+    $aiSummarySanitized = preg_replace('/R\$\s*[\d.,]+(\s*(por|\/)\s*(mês|sessão|dia|semana|hora|atendimento))?/iu', '', $aiSummarySanitized);
+    // Remove linhas que ficaram vazias ou só com pontuação
+    $aiSummarySanitized = preg_replace('/^\s*[,.\s]*$/mu', '', $aiSummarySanitized);
+    
+    // 2c. Filtrar por especialidade: manter apenas informações da especialidade da captação
+    // Separar por frases/sentenças e filtrar as que mencionam outras especialidades
+    $specialtiesAll = ['fisioterapia', 'fonoaudiologia', 'enfermagem', 'psicologia', 'terapia ocupacional', 
+                       'nutrição', 'nutri', 'medicina', 'médico', 'técnico de enfermagem'];
+    // Identificar a especialidade da captação atual (normalizar para match)
+    $currentSpecNormalized = mb_strtolower(trim(explode(' ', $specialty)[0])); // Ex: "fisioterapia" de "Fisioterapia Domiciliar"
+    
+    // Outras especialidades (todas exceto a atual)
+    $otherSpecs = array_filter($specialtiesAll, function($s) use ($currentSpecNormalized) {
+        return mb_strpos($s, $currentSpecNormalized) === false && mb_strpos($currentSpecNormalized, $s) === false;
+    });
+    
+    if (!empty($otherSpecs)) {
+        // Tratar o texto por sentenças (separadas por . ou ,)
+        // Abordagem: remover trechos de listas multidisciplinares que mencionam outras especialidades
+        // Ex: "incluindo fisioterapia (3x/semana), fonoaudiologia (2x/semana), enfermagem (diária) e psicologia (1x/semana)"
+        // Se captação é de fisioterapia, remover "fonoaudiologia (2x/semana), enfermagem (diária) e psicologia (1x/semana)"
+        
+        // Padrão: remover itens de lista separados por vírgula ou "e" que contenham outras especialidades
+        foreach ($otherSpecs as $otherSpec) {
+            // Remove "especialidade (frequência)," ou ", especialidade (frequência)" ou "e especialidade (frequência)"
+            $aiSummarySanitized = preg_replace('/,?\s*(?:e\s+)?' . preg_quote($otherSpec, '/') . '\s*\([^)]*\)/iu', '', $aiSummarySanitized);
+            // Remove menções simples como "especialidade X vezes/semana"
+            $aiSummarySanitized = preg_replace('/,?\s*(?:e\s+)?' . preg_quote($otherSpec, '/') . '\s+\d+[x×]\s*[\/\\\\]\s*\w+/iu', '', $aiSummarySanitized);
+        }
+        
+        // Ajustar "incluindo fisioterapia (3x/semana)" → limpar "incluindo" se sobrou só uma especialidade
+        $aiSummarySanitized = preg_replace('/incluindo\s+(' . preg_quote(explode(' ', $specialty)[0], '/') . ')/iu', '$1', $aiSummarySanitized);
+        
+        // Substituir "atendimento multidisciplinar" por "atendimento" quando filtramos para 1 especialidade
+        $aiSummarySanitized = preg_replace('/atendimento\s+multidisciplinar\s+domiciliar/iu', 'atendimento domiciliar', $aiSummarySanitized);
+        $aiSummarySanitized = preg_replace('/atendimento\s+multidisciplinar/iu', 'atendimento', $aiSummarySanitized);
+        
+        // Remover "solicita-se atendimento domiciliar, " ficando com vírgula solta
+        $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
+        $aiSummarySanitized = preg_replace('/,\s*\./', '.', $aiSummarySanitized);
+        $aiSummarySanitized = preg_replace('/\.\s*,/', '.', $aiSummarySanitized);
+    }
+    
+    // Limpar espaços e linhas extras
+    $aiSummarySanitized = preg_replace('/\n{3,}/', "\n\n", $aiSummarySanitized);
+    $aiSummarySanitized = preg_replace('/\s{2,}/', ' ', $aiSummarySanitized);
+    $aiSummarySanitized = trim($aiSummarySanitized);
+}
+
+// Também sanitizar o título: remover "multidisciplinar" se estamos filtrando para 1 especialidade
+$titleForMsg = preg_replace('/\s*multidisciplinar\s*/iu', ' ', $titleForMsg);
+$titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
+
 $repl = [
     '{id}' => (string)$d['id'],
-    '{title}' => (string)$d['title'],
+    '{title}' => $titleForMsg,
     '{city}' => $city !== '' ? $city : '-',
     '{state}' => $state !== '' ? $state : '-',
     '{address}' => $fullAddress !== '' ? $fullAddress : '',
@@ -356,12 +444,9 @@ $repl = [
         ($subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? '')),
         0, 500, '...'
     ),
-    '{ai_summary}' => mb_strimwidth(
-        trim((string)($d['ai_summary'] ?? '')),
-        0, 800, '...'
-    ),
-    '{ai_summary_block}' => trim((string)($d['ai_summary'] ?? '')) !== ''
-        ? "📋 *Quadro Clínico:*\n" . mb_strimwidth(trim((string)($d['ai_summary'] ?? '')), 0, 800, '...') . "\n\n"
+    '{ai_summary}' => mb_strimwidth($aiSummarySanitized, 0, 800, '...'),
+    '{ai_summary_block}' => $aiSummarySanitized !== ''
+        ? "📋 *Quadro Clínico:*\n" . mb_strimwidth($aiSummarySanitized, 0, 800, '...') . "\n\n"
         : '',
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];
