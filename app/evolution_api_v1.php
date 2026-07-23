@@ -243,7 +243,7 @@ final class EvolutionApiV1
             return $res;
         }
         
-        error_log("[EVOLUTION] sendTextToGroup: Formato 1 (number=$groupJid) falhou ($httpCode)");
+        error_log("[EVOLUTION] sendTextToGroup: Formato 1 (number=$groupJid) falhou ($httpCode) - body: " . json_encode($res['json'] ?? $res['body_raw'] ?? ''));
         
         // Formato 2: Apenas o ID numérico sem @g.us
         // Algumas versões da API fazem append automático de @g.us
@@ -280,6 +280,27 @@ final class EvolutionApiV1
         if ($httpCode3 >= 200 && $httpCode3 < 300) {
             return $res3;
         }
+        
+        error_log("[EVOLUTION] sendTextToGroup: Formato 3 (number=$groupJid + delay) falhou ($httpCode3)");
+
+        // Formato 4: Tentar com @lid (Linked ID) caso o JID seja nesse formato
+        $groupIdOnly = str_replace(['@g.us', '@lid'], '', $groupJid);
+        $lidJid = $groupIdOnly . '@lid';
+        $body4 = [
+            'number' => $lidJid,
+            'text' => $text,
+        ];
+        
+        usleep(500000); // 500ms
+        
+        $res4 = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body4);
+        
+        $httpCode4 = (int)($res4['status'] ?? 0);
+        if ($httpCode4 >= 200 && $httpCode4 < 300) {
+            return $res4;
+        }
+        
+        error_log("[EVOLUTION] sendTextToGroup: Formato 4 (number=$lidJid) falhou ($httpCode4)");
         
         error_log("[EVOLUTION] sendTextToGroup: TODOS OS FORMATOS FALHARAM para $groupJid");
         

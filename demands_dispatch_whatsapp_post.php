@@ -191,6 +191,37 @@ if (count($groups) === 0) {
             // Log para debug
             error_log("[DISPATCH] Resposta criação grupo: " . mb_strimwidth($createResponse, 0, 500, '...'));
             
+            // Garantir que o JID termine com @g.us
+            if (!empty($newGroupJid) && strpos($newGroupJid, '@') === false) {
+                $newGroupJid = $newGroupJid . '@g.us';
+            }
+            
+            // Se o JID não parece um grupo válido (formato esperado: NUMBERS-NUMBERS@g.us ou NUMBERS@g.us),
+            // tentar buscar o grupo recém-criado via fetchAllGroups pelo nome
+            if (!empty($newGroupJid) && strpos($newGroupJid, '-') === false) {
+                error_log("[DISPATCH] JID sem hífen detectado ($newGroupJid), tentando buscar JID real via fetchAllGroups...");
+                try {
+                    $fetchApi = new EvolutionApiV1();
+                    $allGroupsRes = $fetchApi->fetchAllGroups(false);
+                    $allGroupsCode = (int)($allGroupsRes['status'] ?? 0);
+                    if ($allGroupsCode >= 200 && $allGroupsCode < 300) {
+                        $groupsList = $allGroupsRes['json'] ?? [];
+                        // Procurar pelo nome do grupo recém-criado
+                        foreach ($groupsList as $grp) {
+                            $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
+                            $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
+                            if ($grpSubject === $groupName && strpos($grpId, '-') !== false) {
+                                error_log("[DISPATCH] JID real encontrado via fetchAllGroups: $grpId (antigo: $newGroupJid)");
+                                $newGroupJid = $grpId;
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("[DISPATCH] Erro ao buscar JID real: " . $e->getMessage());
+                }
+            }
+            
             if (!empty($newGroupJid)) {
                 // Salvar grupo no banco
                 $stmtNewGroup = db()->prepare(
@@ -519,6 +550,47 @@ foreach ($toSend as $row) {
     try {
         $res = $api->sendTextToGroup($jid, $msgRow);
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+        
+        // Se falhou e o JID não tem hífen (possível LID), tentar buscar JID real
+        if (!$ok && strpos($jid, '-') === false) {
+            error_log("[DISPATCH] Envio falhou para JID sem hífen ($jid). Buscando JID real via fetchAllGroups...");
+            try {
+                // Buscar nome do grupo no banco para fazer match
+                $stmtGrpName = db()->prepare('SELECT name FROM whatsapp_groups WHERE evolution_group_jid = ?');
+                $stmtGrpName->execute([$jid]);
+                $grpNameRow = $stmtGrpName->fetch();
+                $grpName = $grpNameRow ? $grpNameRow['name'] : '';
+                
+                if ($grpName !== '') {
+                    $allGroupsRes = $api->fetchAllGroups(false);
+                    $allGroupsCode = (int)($allGroupsRes['status'] ?? 0);
+                    if ($allGroupsCode >= 200 && $allGroupsCode < 300) {
+                        $groupsList = $allGroupsRes['json'] ?? [];
+                        foreach ($groupsList as $grp) {
+                            $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
+                            $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
+                            if ($grpSubject === $grpName && $grpId !== '' && $grpId !== $jid) {
+                                error_log("[DISPATCH] JID real encontrado: $grpId (antigo: $jid). Atualizando banco e reenviando...");
+                                // Atualizar o JID no banco
+                                db()->prepare('UPDATE whatsapp_groups SET evolution_group_jid = ? WHERE evolution_group_jid = ?')
+                                    ->execute([$grpId, $jid]);
+                                // Tentar enviar com o JID correto
+                                usleep(500000);
+                                $res = $api->sendTextToGroup($grpId, $msgRow);
+                                $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+                                if ($ok) {
+                                    $jid = $grpId; // Usar JID correto para salvar em chat_messages
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable $lookupErr) {
+                error_log("[DISPATCH] Erro ao buscar JID real: " . $lookupErr->getMessage());
+            }
+        }
+        
         if ($ok) {
             // Extrair o message_id retornado pela API (para vincular reações futuras)
             $externalMsgId = null;
