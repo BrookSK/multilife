@@ -93,7 +93,48 @@ if (count($groups) === 0) {
     error_log("[DISPATCH] Nenhum grupo encontrado para spec='$specialty' city='$city' state='$state'. Criando automaticamente...");
     
     try {
-        $api = new EvolutionApiV1();
+        // MULTI-INSTÂNCIA: Encontrar uma instância conectada para criar o grupo
+        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $instanceName = '';
+        
+        // Buscar todas as instâncias ativas e tentar cada uma
+        $allInstForGroup = db()->prepare("
+            SELECT instance_name FROM whatsapp_instances 
+            WHERE status = 'active' 
+            ORDER BY is_default DESC, id ASC
+        ");
+        $allInstForGroup->execute();
+        $instRows = $allInstForGroup->fetchAll(PDO::FETCH_COLUMN);
+        
+        foreach ($instRows as $instCandidate) {
+            if ($instCandidate === '') continue;
+            try {
+                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
+                $connState = $tryApi->connectionState();
+                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+                if ($state === 'open' || $state === 'connected') {
+                    $instanceName = $instCandidate;
+                    error_log("[DISPATCH] Instância conectada para criação de grupo: $instanceName");
+                    break;
+                }
+            } catch (Throwable $e) {
+                continue;
+            }
+        }
+        
+        // Fallback: instância padrão das admin_settings
+        if ($instanceName === '') {
+            $instanceName = (string)admin_setting_get('evolution.instance', '');
+        }
+        
+        if ($baseUrl === '' || $apiKey === '' || $instanceName === '') {
+            flash_set('error', 'Nenhuma instância WhatsApp conectada para criar o grupo. Reconecte em: Configurações → WhatsApp Conexão.');
+            header('Location: /demands_view.php?id=' . $id);
+            exit;
+        }
+        
+        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
         
         // Gerar nome do grupo: Especialidade - Cidade/UF - N
         $location = trim($city !== '' ? ($city . ($state !== '' ? '/' . $state : '')) : $state);
@@ -157,11 +198,7 @@ if (count($groups) === 0) {
             $participants[] = $adminPhone;
         }
         
-        // Criar grupo via Evolution API
-        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-        $apiKey = (string)admin_setting_get('evolution.api_key', '');
-        $instanceName = (string)admin_setting_get('evolution.instance', '');
-        
+        // Criar grupo via Evolution API (usando instância conectada detectada acima)
         $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
         $createPayload = json_encode([
             'subject' => $groupName,
@@ -201,7 +238,7 @@ if (count($groups) === 0) {
             if (!empty($newGroupJid) && strpos($newGroupJid, '-') === false) {
                 error_log("[DISPATCH] JID sem hífen detectado ($newGroupJid), tentando buscar JID real via fetchAllGroups...");
                 try {
-                    $fetchApi = new EvolutionApiV1();
+                    $fetchApi = $api;
                     $allGroupsRes = $fetchApi->fetchAllGroups(false);
                     $allGroupsCode = (int)($allGroupsRes['status'] ?? 0);
                     if ($allGroupsCode >= 200 && $allGroupsCode < 300) {
@@ -250,7 +287,7 @@ if (count($groups) === 0) {
                 
                 // Configurar grupo para apenas admins enviarem mensagens
                 try {
-                    $api2 = new EvolutionApiV1();
+                    $api2 = $api;
                     $settingsResult = $api2->updateGroupSetting($newGroupJid, 'announcement');
                     $settingsCode = $settingsResult['status'] ?? 0;
                     $settingsJson = $settingsResult['json'] ?? $settingsResult['body_raw'] ?? '';
@@ -269,7 +306,7 @@ if (count($groups) === 0) {
                 try {
                     $instanceNumbers = whatsapp_get_all_connected_numbers();
                     if (!empty($instanceNumbers)) {
-                        $api3 = new EvolutionApiV1();
+                        $api3 = $api;
                         $adminParticipants = [];
                         foreach ($instanceNumbers as $num) {
                             $adminParticipants[] = $num . '@s.whatsapp.net';
@@ -512,7 +549,29 @@ if (count($groups) > 0) {
     
     if ($targetJid !== '') {
         try {
-            $syncApi = new EvolutionApiV1();
+            // Usar a primeira instância conectada disponível para sincronizar membros
+            $syncApi = null;
+            $syncInstRows = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC");
+            $syncInstRows->execute();
+            foreach ($syncInstRows->fetchAll(PDO::FETCH_COLUMN) as $syncInstName) {
+                if ($syncInstName === '') continue;
+                try {
+                    $trySyncApi = new EvolutionApiV1(
+                        rtrim((string)admin_setting_get('evolution.base_url', ''), '/'),
+                        (string)admin_setting_get('evolution.api_key', ''),
+                        $syncInstName
+                    );
+                    $syncConn = $trySyncApi->connectionState();
+                    $syncState = $syncConn['json']['instance']['state'] ?? ($syncConn['json']['state'] ?? '');
+                    if ($syncState === 'open' || $syncState === 'connected') {
+                        $syncApi = $trySyncApi;
+                        break;
+                    }
+                } catch (Throwable $e) { continue; }
+            }
+            if ($syncApi === null) {
+                $syncApi = new EvolutionApiV1(); // fallback
+            }
             
             // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo)
             $firstWord = explode(' ', trim($specialty))[0];
@@ -607,32 +666,80 @@ try {
 }
 
 // Envio via Evolution (fora da transação)
+// MULTI-INSTÂNCIA: Tentar todas as instâncias conectadas, não apenas a padrão
 $api = null;
+$apiInstanceName = null;
 try {
-    $api = new EvolutionApiV1();
+    // Buscar todas as instâncias ativas
+    $allInstances = db()->prepare("
+        SELECT instance_name, token, is_default, connection_status 
+        FROM whatsapp_instances 
+        WHERE status = 'active' 
+        ORDER BY is_default DESC, id ASC
+    ");
+    $allInstances->execute();
+    $instances = $allInstances->fetchAll();
     
-    // Verificar se a instância está conectada antes de tentar enviar
-    try {
-        $connState = $api->connectionState();
-        $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-        if ($state !== 'open' && $state !== 'connected') {
-            // WhatsApp desconectado — reverter status e avisar o usuário
-            db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = \'WhatsApp desconectado\' WHERE demand_id = :did AND dispatch_status = \'queued\'')
-                ->execute(['did' => $id]);
+    $baseUrl = (string)admin_setting_get('evolution.base_url', '');
+    $apiKey = (string)admin_setting_get('evolution.api_key', '');
+    
+    // Tentar cada instância até encontrar uma conectada
+    foreach ($instances as $inst) {
+        $instName = (string)($inst['instance_name'] ?? '');
+        if ($instName === '') continue;
+        
+        try {
+            $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+            $connState = $tryApi->connectionState();
+            $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
             
-            // Reverter status da demanda
-            if ((string)$d['status'] === 'aguardando_captacao') {
-                db()->prepare('UPDATE demands SET status = \'aguardando_captacao\', assumed_by_user_id = NULL, assumed_at = NULL WHERE id = :id')
-                    ->execute(['id' => $id]);
+            if ($state === 'open' || $state === 'connected') {
+                $api = $tryApi;
+                $apiInstanceName = $instName;
+                error_log("[DISPATCH] Instância conectada encontrada: $instName");
+                break;
+            } else {
+                error_log("[DISPATCH] Instância '$instName' não conectada (state=$state), tentando próxima...");
             }
-            
-            flash_set('error', 'WhatsApp está desconectado. A captação não foi enviada. Reconecte em: Configurações → WhatsApp Conexão → aba Conexão.');
-            header('Location: /demands_view.php?id=' . $id);
-            exit;
+        } catch (Throwable $instErr) {
+            error_log("[DISPATCH] Erro ao verificar instância '$instName': " . $instErr->getMessage());
+            continue;
         }
-    } catch (Throwable $connErr) {
-        error_log("[DISPATCH] Erro ao verificar conexão: " . $connErr->getMessage());
-        // Não bloquear — tentar enviar mesmo assim
+    }
+    
+    // Fallback: se nenhuma instância do banco funcionou, tentar a instância padrão das admin_settings
+    if ($api === null) {
+        $defaultInstName = (string)admin_setting_get('evolution.instance', '');
+        if ($defaultInstName !== '') {
+            try {
+                $tryApi = new EvolutionApiV1();
+                $connState = $tryApi->connectionState();
+                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+                if ($state === 'open' || $state === 'connected') {
+                    $api = $tryApi;
+                    $apiInstanceName = $defaultInstName;
+                    error_log("[DISPATCH] Instância padrão admin_settings conectada: $defaultInstName");
+                }
+            } catch (Throwable $defErr) {
+                error_log("[DISPATCH] Instância padrão admin_settings falhou: " . $defErr->getMessage());
+            }
+        }
+    }
+    
+    // Se nenhuma instância está conectada, reverter e avisar
+    if ($api === null) {
+        db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = \'Nenhuma instância WhatsApp conectada\' WHERE demand_id = :did AND dispatch_status = \'queued\'')
+            ->execute(['did' => $id]);
+        
+        // Reverter status da demanda
+        if ((string)$d['status'] === 'aguardando_captacao') {
+            db()->prepare('UPDATE demands SET status = \'aguardando_captacao\', assumed_by_user_id = NULL, assumed_at = NULL WHERE id = :id')
+                ->execute(['id' => $id]);
+        }
+        
+        flash_set('error', 'Nenhuma instância WhatsApp está conectada. Verifique em: Configurações → WhatsApp Conexão → aba Conexão.');
+        header('Location: /demands_view.php?id=' . $id);
+        exit;
     }
 } catch (Throwable $e) {
     // registra erro em todos
