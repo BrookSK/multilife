@@ -414,27 +414,48 @@ $aiSummaryRaw = trim((string)($d['ai_summary'] ?? ''));
 $aiSummarySanitized = $aiSummaryRaw;
 
 if ($aiSummarySanitized !== '') {
-    // 2a. Remover nome do paciente do quadro clínico
+    // 2a. Remover nome do paciente e reformatar o início como "Paciente D, [idade]"
     if ($patientName !== '') {
         $aiSummarySanitized = str_ireplace($patientName, '', $aiSummarySanitized);
-        // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
-        $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
-        $aiSummarySanitized = preg_replace('/\s{2,}/', ' ', $aiSummarySanitized);
+    }
+    // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
+    $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
+    
+    // Reformatar início: "O paciente, 72 anos" → "Paciente D, 72 anos"
+    // Detectar padrão: "O paciente, XX anos" ou "Paciente, XX anos" ou ", XX anos,"
+    $aiSummarySanitized = preg_replace('/^(?:O\s+)?(?:paciente|Paciente)\s*,?\s*(\d+\s*anos)/iu', 'Paciente D, $1', $aiSummarySanitized);
+    // Se não começa com "Paciente D" ainda (ex: texto começava com nome direto), prefixar
+    if (!preg_match('/^Paciente\s+D\b/iu', $aiSummarySanitized)) {
+        // Tentar extrair idade do texto
+        if (preg_match('/(\d{1,3})\s*anos/iu', $aiSummarySanitized, $ageMatch)) {
+            $age = $ageMatch[1];
+            // Remover a idade duplicada se já estiver no meio do texto
+            $aiSummarySanitized = preg_replace('/^[^.]*?\d{1,3}\s*anos\s*,?\s*/iu', '', $aiSummarySanitized);
+            $aiSummarySanitized = 'Paciente D, ' . $age . ' anos, ' . ltrim($aiSummarySanitized, ', ');
+        } else {
+            $aiSummarySanitized = 'Paciente D. ' . ltrim($aiSummarySanitized, ', ');
+        }
     }
     
-    // 2b. Remover valores financeiros (R$ X.XXX,XX, valores monetários)
-    // Remove apenas trechos que contêm valores monetários, mantendo o restante da frase
-    // Remove "O valor autorizado pelo plano de saúde é de R$ 11.500,00 por mês" → remove essa frase inteira
-    $aiSummarySanitized = preg_replace('/[^.\n]*valor\s+autorizado[^.\n]*[.]/iu', '', $aiSummarySanitized);
-    // Remove frases que são exclusivamente sobre valor (ex: "O valor é de R$ X")
-    $aiSummarySanitized = preg_replace('/[^.\n]*(?:valor|custo|preço)\s+(?:é|será|de|do\s+plano)[^.\n]*[.]/iu', '', $aiSummarySanitized);
-    // Remove menções inline a R$ valor (mantém o restante da frase)
-    $aiSummarySanitized = preg_replace('/,?\s*(?:no valor de|de|é de|será de)?\s*R\$\s*[\d.,]+(?:\s*(?:por|\/)\s*(?:mês|sessão|dia|semana|hora|atendimento))?/iu', '', $aiSummarySanitized);
-    // Remove padrões de valor sem R$ mas com formato monetário em contexto de preço
-    $aiSummarySanitized = preg_replace('/,?\s*(?:valor|custo)\s*(?:de|:)\s*[\d.,]+\s*(?:reais|por\s+\w+)?/iu', '', $aiSummarySanitized);
+    $aiSummarySanitized = preg_replace('/\s{2,}/', ' ', $aiSummarySanitized);
+    
+    // 2b. Remover TODOS os valores financeiros
+    // Remove frases inteiras sobre valor autorizado
+    $aiSummarySanitized = preg_replace('/[^.\n]*valor\s+autorizado[^.\n]*\.?/iu', '', $aiSummarySanitized);
+    // Remove frases sobre valor do plano, custo, preço
+    $aiSummarySanitized = preg_replace('/[^.\n]*(?:valor|custo|preço)\s+(?:é|será|de|do\s+plano|mensal|total)[^.\n]*\.?/iu', '', $aiSummarySanitized);
+    // Remove R$ com valor
+    $aiSummarySanitized = preg_replace('/,?\s*(?:no valor de|de|é de|será de|valor de)?\s*R\$\s*[\d.,]+(?:\s*(?:por|\/)\s*(?:mês|sessão|dia|semana|hora|atendimento))?/iu', '', $aiSummarySanitized);
+    // Remove valores numéricos em formato monetário sem R$ (ex: "500,00 por mês", "11.500,00 por mês")
+    $aiSummarySanitized = preg_replace('/\.?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*(?:por|\/)\s*(?:mês|sessão|dia|semana|hora|atendimento)/iu', '', $aiSummarySanitized);
+    // Remove "valor" seguido de número com vírgula decimal
+    $aiSummarySanitized = preg_replace('/,?\s*(?:valor|custo)\s*(?:de|:)?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*(?:reais|por\s+\w+)?/iu', '', $aiSummarySanitized);
+    // Remove R$ sozinho que pode ter ficado
+    $aiSummarySanitized = preg_replace('/R\$\s*[\d.,]+/iu', '', $aiSummarySanitized);
     // Limpar pontuação solta
     $aiSummarySanitized = preg_replace('/\.\s*\./', '.', $aiSummarySanitized);
     $aiSummarySanitized = preg_replace('/,\s*\./', '.', $aiSummarySanitized);
+    $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
     
     // 2c. Filtrar por especialidade: manter apenas informações da especialidade da captação
     // Separar por frases/sentenças e filtrar as que mencionam outras especialidades
