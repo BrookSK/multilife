@@ -276,7 +276,7 @@ $tpl = trim((string)admin_setting_get(
 
 // Se template vazio ou não configurado, usar padrão com bairro e cidade
 if ($tpl === '') {
-    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{ai_summary_block}👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
 }
 
 // Montar endereço completo (rua, número, bairro)
@@ -322,6 +322,13 @@ $repl = [
         ($subRequest ? (string)($subRequest['description'] ?? $d['description'] ?? '') : (string)($d['description'] ?? '')),
         0, 500, '...'
     ),
+    '{ai_summary}' => mb_strimwidth(
+        trim((string)($d['ai_summary'] ?? '')),
+        0, 800, '...'
+    ),
+    '{ai_summary_block}' => trim((string)($d['ai_summary'] ?? '')) !== ''
+        ? "📋 *Quadro Clínico:*\n" . mb_strimwidth(trim((string)($d['ai_summary'] ?? '')), 0, 800, '...') . "\n\n"
+        : '',
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];
 
