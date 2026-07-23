@@ -46,11 +46,18 @@ if ($status !== '') {
 }
 
 if ($q !== '') {
-    $where[] = '(d.title LIKE :q1 OR d.specialty LIKE :q2 OR d.location_city LIKE :q3 OR d.origin_email LIKE :q4)';
-    $params['q1'] = '%' . $q . '%';
-    $params['q2'] = '%' . $q . '%';
-    $params['q3'] = '%' . $q . '%';
-    $params['q4'] = '%' . $q . '%';
+    // Permitir busca por número da captação (#533 ou 533)
+    $qClean = ltrim($q, '#');
+    if (ctype_digit($qClean)) {
+        $where[] = 'd.id = :qid';
+        $params['qid'] = (int)$qClean;
+    } else {
+        $where[] = '(d.title LIKE :q1 OR d.specialty LIKE :q2 OR d.location_city LIKE :q3 OR d.origin_email LIKE :q4)';
+        $params['q1'] = '%' . $q . '%';
+        $params['q2'] = '%' . $q . '%';
+        $params['q3'] = '%' . $q . '%';
+        $params['q4'] = '%' . $q . '%';
+    }
 }
 
 if ($specialty !== '') {
@@ -197,7 +204,7 @@ echo '</select>';
 
 echo '<input type="date" name="date_from" placeholder="Data inicial" value="' . h($dateFrom) . '" title="Data inicial">';
 echo '<input type="date" name="date_to" placeholder="Data final" value="' . h($dateTo) . '" title="Data final">';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (título, origem)" style="grid-column:span 2">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (nº, título, origem)" style="grid-column:span 2">';
 echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
 echo '</form>';
 
@@ -316,7 +323,7 @@ foreach ($columns as $col) {
             echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '"' . $styleAttr . '>';
             echo '<div class="kanbanCardBody">';
             echo '<div class="kanbanCardTop">';
-            echo '<div class="kanbanCardTitle">' . h((string)$r['title']) . '</div>';
+            echo '<div class="kanbanCardTitle"><span style="color:hsl(var(--muted-foreground));font-weight:600;font-size:11px">#' . (int)$r['id'] . '</span> ' . h((string)$r['title']) . '</div>';
             echo '</div>';
             
             // Resumo da IA (se disponível)
