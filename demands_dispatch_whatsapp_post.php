@@ -521,6 +521,10 @@ $repl = [
     '{ai_summary_block}' => $aiSummarySanitized !== ''
         ? "📋 *Quadro Clínico:*\n" . mb_strimwidth($aiSummarySanitized, 0, 800, '...') . "\n\n"
         : '',
+    '{captation_note}' => trim((string)($d['captation_note'] ?? '')),
+    '{captation_note_block}' => trim((string)($d['captation_note'] ?? '')) !== ''
+        ? "📝 *Observação:*\n" . trim((string)($d['captation_note'] ?? '')) . "\n\n"
+        : '',
     '{origin}' => (string)($d['origin_email'] ?? ''),
 ];
 
@@ -539,6 +543,21 @@ if ($aiSummarySanitized !== '' && strpos($tpl, '{ai_summary') === false) {
         $msg = mb_substr($msg, 0, $ctaPos) . $clinicalBlock . "\n\n" . mb_substr($msg, $ctaPos);
     } else {
         $msg .= $clinicalBlock;
+    }
+}
+
+// Se o template não contém placeholder de observação mas existe conteúdo, anexar automaticamente
+$captationNote = trim((string)($d['captation_note'] ?? ''));
+if ($captationNote !== '' && strpos($tpl, '{captation_note') === false) {
+    $noteBlock = "\n\n📝 *Observação:*\n" . $captationNote;
+    $ctaPos = mb_strpos($msg, '👆');
+    if ($ctaPos === false) {
+        $ctaPos = mb_strpos($msg, '*Tem interesse');
+    }
+    if ($ctaPos !== false) {
+        $msg = mb_substr($msg, 0, $ctaPos) . $noteBlock . "\n\n" . mb_substr($msg, $ctaPos);
+    } else {
+        $msg .= $noteBlock;
     }
 }
 

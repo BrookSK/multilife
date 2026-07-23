@@ -40,7 +40,7 @@ $fields = [
     'demands.auto_archive_enabled' => 'Auto-arquivar demandas sem retorno (1=sim, 0=não)',
     'demands.auto_archive_days' => 'Dias sem interação para arquivar automaticamente',
     'chat.unanswered_timeout_minutes' => 'Chat - Tempo sem resposta (min) para gerar pendência',
-    'demands.whatsapp_template' => 'Captação - Template WhatsApp (placeholders: {id},{title},{city},{state},{address},{street},{neighborhood},{specialty},{frequency},{description},{ai_summary},{ai_summary_block},{origin})',
+    'demands.whatsapp_template' => 'Captação - Template WhatsApp (placeholders: {id},{title},{city},{state},{address},{street},{neighborhood},{specialty},{frequency},{description},{ai_summary},{ai_summary_block},{captation_note},{captation_note_block},{origin})',
     'appointments.patient_whatsapp_template' => 'Agendamento - Template WhatsApp para paciente (placeholders: {appointment_id},{patient_name},{professional_name},{first_at})',
     'appointments.email_subject_template' => 'Agendamento - Template assunto e-mail (placeholders: {appointment_id},{patient_name},{professional_name},{first_at})',
     'appointments.email_body_template' => 'Agendamento - Template corpo e-mail (placeholders: {appointment_id},{patient_name},{professional_name},{first_at})',
