@@ -186,7 +186,10 @@ if (count($groups) === 0) {
         
         if ($createHttpCode === 200 || $createHttpCode === 201) {
             $createData = json_decode($createResponse, true);
-            $newGroupJid = $createData['id'] ?? '';
+            $newGroupJid = $createData['id'] ?? ($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['group']['id'] ?? '')));
+            
+            // Log para debug
+            error_log("[DISPATCH] Resposta criação grupo: " . mb_strimwidth($createResponse, 0, 500, '...'));
             
             if (!empty($newGroupJid)) {
                 // Salvar grupo no banco
@@ -514,7 +517,7 @@ foreach ($toSend as $row) {
     }
 
     try {
-        $res = $api->sendText($jid, $msgRow);
+        $res = $api->sendTextToGroup($jid, $msgRow);
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         if ($ok) {
             // Extrair o message_id retornado pela API (para vincular reações futuras)
