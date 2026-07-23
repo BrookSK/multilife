@@ -345,18 +345,31 @@ if ($freqRaw !== '' && function_exists('frequency_get_label')) {
 // SANITIZAÇÃO DA MENSAGEM: Sigilo do paciente, filtro de especialidade, remoção de valores
 // ====================================================================
 
-// 1. Remover nome do paciente do título
+// 1. Remover nome do paciente do título e substituir por texto genérico
 $titleForMsg = (string)$d['title'];
 $patientName = trim((string)($d['patient_name'] ?? ''));
+
+// Abordagem robusta: detectar padrão "para [qualquer nome]" no título e substituir
+// Padrões comuns: "Atendimento multidisciplinar para Roberto Teste", "Prospecção Fisio - Nome Paciente"
 if ($patientName !== '') {
-    // Remover padrões como "para Nome Completo", "- Nome Completo", "Nome Completo"
-    $titleForMsg = preg_replace('/\s*(para|[-–])\s*' . preg_quote($patientName, '/') . '/iu', '', $titleForMsg);
-    // Se ainda contiver o nome (ex: no início), remover diretamente
     $titleForMsg = str_ireplace($patientName, '', $titleForMsg);
-    $titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
-    // Remover travessão ou "para" pendente no final
-    $titleForMsg = rtrim($titleForMsg, ' -–');
-    $titleForMsg = preg_replace('/\s+para\s*$/iu', '', $titleForMsg);
+}
+// Remover qualquer texto após "para " (que seria o nome do paciente)
+$titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', '', $titleForMsg);
+// Remover qualquer texto após " - " que pareça nome (2+ palavras capitalizadas) — fallback
+$titleForMsg = preg_replace('/\s*[-–]\s+[A-ZÀ-ÚÇ][a-zà-úç]+(\s+[A-ZÀ-ÚÇa-zà-úç]+)+\s*$/u', '', $titleForMsg);
+// Limpar espaços e pontuação residual
+$titleForMsg = rtrim(trim($titleForMsg), ' -–');
+$titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
+
+// Substituir "multidisciplinar" já que estamos filtrando para 1 especialidade
+$titleForMsg = preg_replace('/\s*multidisciplinar\s*/iu', ' ', $titleForMsg);
+$titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
+
+// Montar título genérico com a especialidade: "Atendimento" → "Atendimento de Fisioterapia Domiciliar"
+// Se o título ficou muito curto ou genérico, complementar com a especialidade
+if (mb_strlen($titleForMsg) < 15 && $specialty !== '') {
+    $titleForMsg = $titleForMsg . ' de ' . $specialty;
 }
 
 // 2. Sanitizar ai_summary: remover nome do paciente, filtrar por especialidade, remover valores
@@ -373,12 +386,18 @@ if ($aiSummarySanitized !== '') {
     }
     
     // 2b. Remover valores financeiros (R$ X.XXX,XX, valores monetários)
-    // Remove linhas/frases que mencionam valor autorizado, valor do plano, preço etc.
-    $aiSummarySanitized = preg_replace('/[^\n]*valor\s+(autorizado|do plano|mensal|total)[^\n]*/iu', '', $aiSummarySanitized);
-    // Remove qualquer menção a R$ seguido de valor
-    $aiSummarySanitized = preg_replace('/R\$\s*[\d.,]+(\s*(por|\/)\s*(mês|sessão|dia|semana|hora|atendimento))?/iu', '', $aiSummarySanitized);
-    // Remove linhas que ficaram vazias ou só com pontuação
-    $aiSummarySanitized = preg_replace('/^\s*[,.\s]*$/mu', '', $aiSummarySanitized);
+    // Remove apenas trechos que contêm valores monetários, mantendo o restante da frase
+    // Remove "O valor autorizado pelo plano de saúde é de R$ 11.500,00 por mês" → remove essa frase inteira
+    $aiSummarySanitized = preg_replace('/[^.\n]*valor\s+autorizado[^.\n]*[.]/iu', '', $aiSummarySanitized);
+    // Remove frases que são exclusivamente sobre valor (ex: "O valor é de R$ X")
+    $aiSummarySanitized = preg_replace('/[^.\n]*(?:valor|custo|preço)\s+(?:é|será|de|do\s+plano)[^.\n]*[.]/iu', '', $aiSummarySanitized);
+    // Remove menções inline a R$ valor (mantém o restante da frase)
+    $aiSummarySanitized = preg_replace('/,?\s*(?:no valor de|de|é de|será de)?\s*R\$\s*[\d.,]+(?:\s*(?:por|\/)\s*(?:mês|sessão|dia|semana|hora|atendimento))?/iu', '', $aiSummarySanitized);
+    // Remove padrões de valor sem R$ mas com formato monetário em contexto de preço
+    $aiSummarySanitized = preg_replace('/,?\s*(?:valor|custo)\s*(?:de|:)\s*[\d.,]+\s*(?:reais|por\s+\w+)?/iu', '', $aiSummarySanitized);
+    // Limpar pontuação solta
+    $aiSummarySanitized = preg_replace('/\.\s*\./', '.', $aiSummarySanitized);
+    $aiSummarySanitized = preg_replace('/,\s*\./', '.', $aiSummarySanitized);
     
     // 2c. Filtrar por especialidade: manter apenas informações da especialidade da captação
     // Separar por frases/sentenças e filtrar as que mencionam outras especialidades
@@ -425,10 +444,6 @@ if ($aiSummarySanitized !== '') {
     $aiSummarySanitized = trim($aiSummarySanitized);
 }
 
-// Também sanitizar o título: remover "multidisciplinar" se estamos filtrando para 1 especialidade
-$titleForMsg = preg_replace('/\s*multidisciplinar\s*/iu', ' ', $titleForMsg);
-$titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
-
 $repl = [
     '{id}' => (string)$d['id'],
     '{title}' => $titleForMsg,
@@ -452,6 +467,22 @@ $repl = [
 ];
 
 $msg = strtr($tpl, $repl);
+
+// Se o template customizado não contém placeholder de quadro clínico mas existe conteúdo,
+// anexar automaticamente antes do CTA (👆 Tem interesse)
+if ($aiSummarySanitized !== '' && strpos($tpl, '{ai_summary') === false) {
+    $clinicalBlock = "\n\n📋 *Quadro Clínico:*\n" . mb_strimwidth($aiSummarySanitized, 0, 800, '...');
+    // Inserir antes do CTA se existir, senão no final
+    $ctaPos = mb_strpos($msg, '👆');
+    if ($ctaPos === false) {
+        $ctaPos = mb_strpos($msg, '*Tem interesse');
+    }
+    if ($ctaPos !== false) {
+        $msg = mb_substr($msg, 0, $ctaPos) . $clinicalBlock . "\n\n" . mb_substr($msg, $ctaPos);
+    } else {
+        $msg .= $clinicalBlock;
+    }
+}
 
 // Proteção contra envio duplo: verificar se já existe dispatch recente (< 60s) para esta demanda + sub-request
 $recentSql = "SELECT id FROM demand_dispatch_logs WHERE demand_id = :did AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)";
