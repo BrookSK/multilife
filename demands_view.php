@@ -241,6 +241,19 @@ if (!empty($d['reactivation_reason'])) {
     echo '</section>';
 }
 
+// Observação da Captação
+echo '<section class="card col12">';
+echo '<div style="font-weight:900;margin-bottom:12px">📝 Observação da Captação</div>';
+echo '<form method="post" action="/demands_captation_note_post.php" style="display:flex;gap:10px;align-items:flex-start">';
+echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
+echo '<textarea name="captation_note" rows="3" placeholder="Insira uma observação que será incluída na mensagem de captação enviada ao grupo WhatsApp..." style="flex:1;min-width:0;resize:vertical">' . h((string)($d['captation_note'] ?? '')) . '</textarea>';
+echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+echo '</form>';
+if (trim((string)($d['captation_note'] ?? '')) !== '') {
+    echo '<div style="margin-top:8px;font-size:12px;color:hsl(var(--muted-foreground))">⚠️ Esta observação será exibida na mensagem de captação enviada ao grupo WhatsApp.</div>';
+}
+echo '</section>';
+
 // Detalhes
 
 echo '<section class="card col12">';
