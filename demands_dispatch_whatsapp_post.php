@@ -242,21 +242,21 @@ if (count($groups) === 0) {
         error_log("[DISPATCH] Participantes: " . implode(', ', $participants));
         
         // Criar grupo via Evolution API (usando instância conectada detectada acima)
-        // A Evolution API aceita tanto números puros quanto com @s.whatsapp.net
-        // Garantir formato correto com sufixo para compatibilidade
+        // A Evolution API group/create espera números simples (sem @s.whatsapp.net)
+        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
+        $createPayload = json_encode([
+            'subject' => $groupName,
+            'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
+            'participants' => $participants,
+        ]);
+        
+        // Preparar lista com sufixo para uso posterior em updateGroupMembers
         $participantsFormatted = array_map(function($num) {
             if (strpos($num, '@') === false) {
                 return $num . '@s.whatsapp.net';
             }
             return $num;
         }, $participants);
-        
-        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
-        $createPayload = json_encode([
-            'subject' => $groupName,
-            'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
-            'participants' => $participantsFormatted,
-        ]);
         
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -402,8 +402,9 @@ if (count($groups) === 0) {
                 exit;
             }
         } else {
-            $errorMsg = substr($createResponse, 0, 200);
+            $errorMsg = substr($createResponse, 0, 500);
             error_log("[DISPATCH] Erro ao criar grupo: HTTP $createHttpCode - $errorMsg");
+            error_log("[DISPATCH] Payload enviado: " . $createPayload);
             flash_set('error', 'Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
             header('Location: /demands_view.php?id=' . $id);
             exit;
