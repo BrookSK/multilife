@@ -820,12 +820,16 @@ try {
         try {
             $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
             $connState = $tryApi->connectionState();
-            $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+            $httpCode = (int)($connState['status'] ?? 0);
+            $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ($connState['json']['instance']['connectionStatus'] ?? ''));
             
-            if ($state === 'open' || $state === 'connected') {
+            error_log("[DISPATCH] Instância '$instName': HTTP=$httpCode state='$state' response=" . json_encode($connState['json'] ?? ''));
+            
+            // Aceitar múltiplos indicadores de conexão ativa
+            if ($state === 'open' || $state === 'connected' || $state === 'connecting' || $httpCode === 200) {
                 $api = $tryApi;
                 $apiInstanceName = $instName;
-                error_log("[DISPATCH] Instância conectada encontrada: $instName");
+                error_log("[DISPATCH] Instância conectada encontrada: $instName (state=$state)");
                 break;
             } else {
                 error_log("[DISPATCH] Instância '$instName' não conectada (state=$state), tentando próxima...");
@@ -843,8 +847,10 @@ try {
             try {
                 $tryApi = new EvolutionApiV1();
                 $connState = $tryApi->connectionState();
-                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-                if ($state === 'open' || $state === 'connected') {
+                $httpCode = (int)($connState['status'] ?? 0);
+                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ($connState['json']['instance']['connectionStatus'] ?? ''));
+                error_log("[DISPATCH] Instância padrão '$defaultInstName': HTTP=$httpCode state='$state'");
+                if ($state === 'open' || $state === 'connected' || $state === 'connecting' || $httpCode === 200) {
                     $api = $tryApi;
                     $apiInstanceName = $defaultInstName;
                     error_log("[DISPATCH] Instância padrão admin_settings conectada: $defaultInstName");
@@ -855,7 +861,17 @@ try {
         }
     }
     
-    // Se nenhuma instância está conectada, reverter e avisar
+    // Se nenhuma instância está conectada, tentar usar a padrão sem verificar (fallback agressivo)
+    if ($api === null) {
+        $defaultInstName = (string)admin_setting_get('evolution.instance', '');
+        if ($defaultInstName !== '' && $baseUrl !== '' && $apiKey !== '') {
+            error_log("[DISPATCH] FALLBACK: Nenhuma instância confirmada como conectada. Tentando usar instância padrão '$defaultInstName' sem verificação...");
+            $api = new EvolutionApiV1($baseUrl, $apiKey, $defaultInstName);
+            $apiInstanceName = $defaultInstName;
+        }
+    }
+    
+    // Se ainda assim não temos API, reverter e avisar
     if ($api === null) {
         db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = \'Nenhuma instância WhatsApp conectada\' WHERE demand_id = :did AND dispatch_status = \'queued\'')
             ->execute(['did' => $id]);
