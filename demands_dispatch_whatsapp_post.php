@@ -238,12 +238,24 @@ if (count($groups) === 0) {
             $participants[] = $adminPhone;
         }
         
+        // Log de todos os participantes para debug
+        error_log("[DISPATCH] Participantes: " . implode(', ', $participants));
+        
         // Criar grupo via Evolution API (usando instância conectada detectada acima)
+        // A Evolution API aceita tanto números puros quanto com @s.whatsapp.net
+        // Garantir formato correto com sufixo para compatibilidade
+        $participantsFormatted = array_map(function($num) {
+            if (strpos($num, '@') === false) {
+                return $num . '@s.whatsapp.net';
+            }
+            return $num;
+        }, $participants);
+        
         $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
         $createPayload = json_encode([
             'subject' => $groupName,
             'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
-            'participants' => $participants,
+            'participants' => $participantsFormatted,
         ]);
         
         $ch = curl_init();
@@ -325,6 +337,20 @@ if (count($groups) === 0) {
                 
                 error_log("[DISPATCH] ✅ Grupo criado automaticamente: '$groupName' (JID: $newGroupJid) com " . count($participants) . " participantes");
                 
+                // GARANTIA: Adicionar explicitamente TODOS os participantes ao grupo após criação
+                // Algumas versões da Evolution API ignoram o array 'participants' na criação do grupo
+                try {
+                    usleep(1500000); // 1.5s delay para o grupo estabilizar
+                    $addResult = $api->updateGroupMembers($newGroupJid, 'add', $participantsFormatted);
+                    $addCode = (int)($addResult['status'] ?? 0);
+                    error_log("[DISPATCH] Adição explícita de participantes ao grupo: HTTP $addCode (" . count($participantsFormatted) . " números)");
+                    if ($addCode < 200 || $addCode >= 300) {
+                        error_log("[DISPATCH] ⚠️ Resposta da adição: " . json_encode($addResult['json'] ?? $addResult['body_raw'] ?? ''));
+                    }
+                } catch (Exception $e) {
+                    error_log("[DISPATCH] Erro ao adicionar participantes explicitamente: " . $e->getMessage());
+                }
+                
                 // Configurar grupo para apenas admins enviarem mensagens
                 try {
                     $api2 = $api;
@@ -345,18 +371,27 @@ if (count($groups) === 0) {
                 // Isso garante que todas as instâncias possam enviar mensagens no grupo (announcement mode)
                 try {
                     $instanceNumbers = whatsapp_get_all_connected_numbers();
-                    if (!empty($instanceNumbers)) {
-                        $api3 = $api;
-                        $adminParticipants = [];
-                        foreach ($instanceNumbers as $num) {
-                            $adminParticipants[] = $num . '@s.whatsapp.net';
+                    $promoteList = [];
+                    foreach ($instanceNumbers as $num) {
+                        $promoteList[] = $num . '@s.whatsapp.net';
+                    }
+                    // Também promover o usuário logado e admins de captação
+                    foreach ($participants as $pNum) {
+                        $pJid = strpos($pNum, '@') === false ? $pNum . '@s.whatsapp.net' : $pNum;
+                        if (!in_array($pJid, $promoteList, true)) {
+                            $promoteList[] = $pJid;
                         }
-                        $promoteResult = $api3->updateGroupMembers($newGroupJid, 'promote', $adminParticipants);
+                    }
+                    $promoteList = array_values(array_unique($promoteList));
+                    
+                    if (!empty($promoteList)) {
+                        $api3 = $api;
+                        $promoteResult = $api3->updateGroupMembers($newGroupJid, 'promote', $promoteList);
                         $promoteCode = $promoteResult['status'] ?? 0;
-                        error_log("[DISPATCH] Instâncias promovidas a admin: HTTP $promoteCode (" . count($adminParticipants) . " números)");
+                        error_log("[DISPATCH] Participantes promovidos a admin: HTTP $promoteCode (" . count($promoteList) . " números)");
                     }
                 } catch (Exception $e) {
-                    error_log("[DISPATCH] Erro ao promover instâncias a admin: " . $e->getMessage());
+                    error_log("[DISPATCH] Erro ao promover participantes a admin: " . $e->getMessage());
                 }
                 
                 // Pequeno delay para o grupo estabilizar antes de enviar mensagem
