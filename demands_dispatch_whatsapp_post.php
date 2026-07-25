@@ -241,40 +241,6 @@ if (count($groups) === 0) {
         // Log de todos os participantes para debug
         error_log("[DISPATCH] Participantes: " . implode(', ', $participants));
         
-        // Criar grupo via Evolution API (usando instância conectada detectada acima)
-        // IMPORTANTE: Remover o número da própria instância da lista de participantes
-        // A Evolution API retorna 500 se o número que está criando o grupo estiver no array participants
-        $instanceOwnerNumber = '';
-        try {
-            $stmtInstOwner = db()->prepare("SELECT owner_number, owner_phone_formatted FROM whatsapp_instances WHERE instance_name = ? AND status = 'active' LIMIT 1");
-            $stmtInstOwner->execute([$instanceName]);
-            $instOwnerRow = $stmtInstOwner->fetch();
-            if ($instOwnerRow) {
-                $instanceOwnerNumber = preg_replace('/\D+/', '', (string)($instOwnerRow['owner_phone_formatted'] ?: $instOwnerRow['owner_number'] ?: ''));
-                if (strlen($instanceOwnerNumber) === 10 || strlen($instanceOwnerNumber) === 11) {
-                    $instanceOwnerNumber = '55' . $instanceOwnerNumber;
-                }
-            }
-        } catch (Exception $e) {}
-        
-        // Também pegar o número via connectionState da API (fallback)
-        if ($instanceOwnerNumber === '') {
-            try {
-                $connInfo = $api->connectionState();
-                $instanceOwnerNumber = preg_replace('/\D+/', '', (string)($connInfo['json']['instance']['owner'] ?? ($connInfo['json']['ownerJid'] ?? '')));
-                $instanceOwnerNumber = str_replace('@s.whatsapp.net', '', $instanceOwnerNumber);
-            } catch (Exception $e) {}
-        }
-        
-        // Filtrar participantes: remover o número da instância que está criando
-        $participantsForCreate = $participants;
-        if ($instanceOwnerNumber !== '') {
-            $participantsForCreate = array_values(array_filter($participantsForCreate, function($num) use ($instanceOwnerNumber) {
-                return $num !== $instanceOwnerNumber;
-            }));
-            error_log("[DISPATCH] Número da instância removido dos participantes: $instanceOwnerNumber");
-        }
-        
         // Usar método da classe EvolutionApiV1 para criação do grupo (mais confiável)
         // Criar grupo com pelo menos 1 participante (necessário pela API)
         // Remover o número da própria instância da lista
@@ -299,6 +265,25 @@ if (count($groups) === 0) {
         $createHttpCode = (int)($createResult['status'] ?? 0);
         $createData = $createResult['json'] ?? [];
         $createResponse = json_encode($createData);
+        
+        // Se falhou, tentar com instância padrão direta (como era originalmente)
+        if ($createHttpCode < 200 || $createHttpCode >= 300) {
+            error_log("[DISPATCH] Criação com instância '$instanceName' falhou (HTTP $createHttpCode). Tentando com instância padrão...");
+            error_log("[DISPATCH] Resposta erro: $createResponse");
+            try {
+                $apiDefault = new EvolutionApiV1();
+                $createResult = $apiDefault->createGroup($groupName, $participantsForCreate);
+                $createHttpCode = (int)($createResult['status'] ?? 0);
+                $createData = $createResult['json'] ?? [];
+                $createResponse = json_encode($createData);
+                if ($createHttpCode >= 200 && $createHttpCode < 300) {
+                    $api = $apiDefault; // Usar a instância padrão para o resto do processo
+                    error_log("[DISPATCH] ✅ Grupo criado com instância padrão!");
+                }
+            } catch (Exception $e) {
+                error_log("[DISPATCH] Fallback instância padrão também falhou: " . $e->getMessage());
+            }
+        }
         
         error_log("[DISPATCH] Resposta criação grupo: HTTP $createHttpCode - " . mb_strimwidth($createResponse, 0, 500, '...'));
         
