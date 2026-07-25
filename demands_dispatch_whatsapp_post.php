@@ -182,36 +182,95 @@ if (count($groups) === 0) {
         
         error_log("[DISPATCH] Participantes para grupo: " . implode(', ', $participants));
         
-        // Criar grupo via cURL (formato original)
+        // ANTES de criar, verificar se já existe um grupo com esse nome no WhatsApp
+        // (Pode ter sido criado anteriormente e apagado só do banco)
         $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
         $apiKey = (string)admin_setting_get('evolution.api_key', '');
         $instanceName = (string)admin_setting_get('evolution.instance', '');
         
-        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
-        $createPayload = json_encode([
-            'subject' => $groupName,
-            'description' => 'Grupo MultiLife - ' . $specialty,
-            'participants' => $participants,
-        ]);
+        $existingGroupJid = '';
+        try {
+            $fetchRes = $api->fetchAllGroups(false);
+            $fetchCode = (int)($fetchRes['status'] ?? 0);
+            if ($fetchCode >= 200 && $fetchCode < 300) {
+                $allGroups = $fetchRes['json'] ?? [];
+                foreach ($allGroups as $grp) {
+                    $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
+                    $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
+                    // Procurar grupo com nome similar (mesma especialidade + cidade)
+                    if (stripos($grpSubject, $specialty) !== false && stripos($grpSubject, $location) !== false && $grpId !== '') {
+                        $existingGroupJid = $grpId;
+                        $groupName = $grpSubject; // Usar o nome real do grupo encontrado
+                        error_log("[DISPATCH] Grupo existente encontrado no WhatsApp: '$grpSubject' (JID: $grpId)");
+                        break;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            error_log("[DISPATCH] Erro ao buscar grupos existentes: " . $e->getMessage());
+        }
         
-        error_log("[DISPATCH] URL: $createUrl | Payload: $createPayload");
+        $createHttpCode = 0;
+        $createResponse = '';
+        $newGroupJid = $existingGroupJid;
         
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $createUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CUSTOMREQUEST => "POST",
-            CURLOPT_POSTFIELDS => $createPayload,
-            CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
-            CURLOPT_SSL_VERIFYPEER => false,
-        ]);
-        
-        $createResponse = curl_exec($ch);
-        $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        error_log("[DISPATCH] Resposta criação: HTTP $createHttpCode - " . substr($createResponse, 0, 500));
+        // Se não encontrou grupo existente, criar um novo
+        if ($existingGroupJid === '') {
+            $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
+            $createPayload = json_encode([
+                'subject' => $groupName,
+                'description' => 'Grupo MultiLife - ' . $specialty,
+                'participants' => $participants,
+            ]);
+            
+            error_log("[DISPATCH] Criando grupo novo. URL: $createUrl | Payload: $createPayload");
+            
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $createUrl,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_CUSTOMREQUEST => "POST",
+                CURLOPT_POSTFIELDS => $createPayload,
+                CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            
+            $createResponse = curl_exec($ch);
+            $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            error_log("[DISPATCH] Resposta criação: HTTP $createHttpCode - " . substr($createResponse, 0, 500));
+            
+            // Se criar falhou, tentar buscar novamente pelo fetchAllGroups (pode ter sido criado parcialmente)
+            if ($createHttpCode >= 400) {
+                error_log("[DISPATCH] Criação falhou (HTTP $createHttpCode). Buscando grupo recém-criado no WhatsApp...");
+                usleep(2000000); // 2s delay
+                try {
+                    $fetchRes2 = $api->fetchAllGroups(false);
+                    $fetchCode2 = (int)($fetchRes2['status'] ?? 0);
+                    if ($fetchCode2 >= 200 && $fetchCode2 < 300) {
+                        $allGroups2 = $fetchRes2['json'] ?? [];
+                        foreach ($allGroups2 as $grp) {
+                            $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
+                            $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
+                            if (stripos($grpSubject, $specialty) !== false && $grpId !== '') {
+                                $newGroupJid = $grpId;
+                                $groupName = $grpSubject;
+                                error_log("[DISPATCH] Grupo encontrado após falha: '$grpSubject' (JID: $grpId)");
+                                $createHttpCode = 200; // Forçar sucesso
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("[DISPATCH] Erro ao buscar grupo após falha: " . $e->getMessage());
+                }
+            }
+        } else {
+            // Grupo já existe, simular sucesso
+            $createHttpCode = 200;
+        }
         
         // Preparar lista com sufixo para updateGroupMembers
         $participantsFormatted = array_map(function($num) {
@@ -219,11 +278,12 @@ if (count($groups) === 0) {
         }, $participants);
         
         if ($createHttpCode === 200 || $createHttpCode === 201) {
-            $createData = json_decode($createResponse, true);
-            $newGroupJid = $createData['id'] ?? ($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['group']['id'] ?? '')));
-            
-            // Log para debug
-            error_log("[DISPATCH] Resposta criação grupo (detalhes): " . mb_strimwidth($createResponse, 0, 500, '...'));
+            // Se $newGroupJid ainda não foi definido (grupo novo criado), extrair da resposta
+            if ($newGroupJid === '') {
+                $createData = json_decode($createResponse, true);
+                $newGroupJid = $createData['id'] ?? ($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['group']['id'] ?? '')));
+                error_log("[DISPATCH] JID do novo grupo: $newGroupJid");
+            }
             
             // Garantir que o JID termine com @g.us
             if (!empty($newGroupJid) && strpos($newGroupJid, '@') === false) {
