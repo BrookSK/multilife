@@ -431,9 +431,17 @@ final class EvolutionApiV1
 
     public function createGroup(string $subject, array $participants, ?string $description = null): array
     {
+        // Evolution API espera participantes no formato "NUMERO@s.whatsapp.net"
+        $formattedParticipants = array_map(function($num) {
+            if (strpos($num, '@') === false) {
+                return $num . '@s.whatsapp.net';
+            }
+            return $num;
+        }, $participants);
+        
         $body = [
             'subject' => $subject,
-            'participants' => $participants,
+            'participants' => $formattedParticipants,
         ];
         if ($description !== null && $description !== '') {
             $body['description'] = $description;

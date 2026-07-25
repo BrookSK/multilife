@@ -276,9 +276,26 @@ if (count($groups) === 0) {
         }
         
         // Usar método da classe EvolutionApiV1 para criação do grupo (mais confiável)
-        // Criar grupo apenas com o nome, sem participantes (serão adicionados depois via updateGroupMembers)
-        error_log("[DISPATCH] Criando grupo '$groupName' via API (sem participantes iniciais)...");
-        $createResult = $api->createGroup($groupName, []);
+        // Criar grupo com pelo menos 1 participante (necessário pela API)
+        // Remover o número da própria instância da lista
+        $participantsForCreate = $participants;
+        if ($instanceOwnerNumber !== '') {
+            $participantsForCreate = array_values(array_filter($participantsForCreate, function($num) use ($instanceOwnerNumber) {
+                return $num !== $instanceOwnerNumber;
+            }));
+        }
+        // Garantir pelo menos 1 participante
+        if (empty($participantsForCreate)) {
+            // Usar o número admin como fallback
+            $adminFallback = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
+            if (strlen($adminFallback) === 10 || strlen($adminFallback) === 11) $adminFallback = '55' . $adminFallback;
+            if ($adminFallback !== $instanceOwnerNumber) {
+                $participantsForCreate[] = $adminFallback;
+            }
+        }
+        
+        error_log("[DISPATCH] Criando grupo '$groupName' com " . count($participantsForCreate) . " participantes iniciais: " . implode(', ', $participantsForCreate));
+        $createResult = $api->createGroup($groupName, $participantsForCreate);
         $createHttpCode = (int)($createResult['status'] ?? 0);
         $createData = $createResult['json'] ?? [];
         $createResponse = json_encode($createData);
