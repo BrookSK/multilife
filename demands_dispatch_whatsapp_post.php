@@ -242,15 +242,47 @@ if (count($groups) === 0) {
         error_log("[DISPATCH] Participantes: " . implode(', ', $participants));
         
         // Criar grupo via Evolution API (usando instância conectada detectada acima)
-        // A Evolution API group/create espera números simples (sem @s.whatsapp.net)
+        // IMPORTANTE: Remover o número da própria instância da lista de participantes
+        // A Evolution API retorna 500 se o número que está criando o grupo estiver no array participants
+        $instanceOwnerNumber = '';
+        try {
+            $stmtInstOwner = db()->prepare("SELECT owner_number, owner_phone_formatted FROM whatsapp_instances WHERE instance_name = ? AND status = 'active' LIMIT 1");
+            $stmtInstOwner->execute([$instanceName]);
+            $instOwnerRow = $stmtInstOwner->fetch();
+            if ($instOwnerRow) {
+                $instanceOwnerNumber = preg_replace('/\D+/', '', (string)($instOwnerRow['owner_phone_formatted'] ?: $instOwnerRow['owner_number'] ?: ''));
+                if (strlen($instanceOwnerNumber) === 10 || strlen($instanceOwnerNumber) === 11) {
+                    $instanceOwnerNumber = '55' . $instanceOwnerNumber;
+                }
+            }
+        } catch (Exception $e) {}
+        
+        // Também pegar o número via connectionState da API (fallback)
+        if ($instanceOwnerNumber === '') {
+            try {
+                $connInfo = $api->connectionState();
+                $instanceOwnerNumber = preg_replace('/\D+/', '', (string)($connInfo['json']['instance']['owner'] ?? ($connInfo['json']['ownerJid'] ?? '')));
+                $instanceOwnerNumber = str_replace('@s.whatsapp.net', '', $instanceOwnerNumber);
+            } catch (Exception $e) {}
+        }
+        
+        // Filtrar participantes: remover o número da instância que está criando
+        $participantsForCreate = $participants;
+        if ($instanceOwnerNumber !== '') {
+            $participantsForCreate = array_values(array_filter($participantsForCreate, function($num) use ($instanceOwnerNumber) {
+                return $num !== $instanceOwnerNumber;
+            }));
+            error_log("[DISPATCH] Número da instância removido dos participantes: $instanceOwnerNumber");
+        }
+        
         $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
         $createPayload = json_encode([
             'subject' => $groupName,
             'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
-            'participants' => $participants,
+            'participants' => $participantsForCreate,
         ]);
         
-        // Preparar lista com sufixo para uso posterior em updateGroupMembers
+        // Preparar lista completa com sufixo para uso posterior em updateGroupMembers
         $participantsFormatted = array_map(function($num) {
             if (strpos($num, '@') === false) {
                 return $num . '@s.whatsapp.net';
