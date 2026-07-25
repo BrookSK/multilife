@@ -275,12 +275,15 @@ if (count($groups) === 0) {
             error_log("[DISPATCH] Número da instância removido dos participantes: $instanceOwnerNumber");
         }
         
-        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
-        $createPayload = json_encode([
-            'subject' => $groupName,
-            'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
-            'participants' => $participantsForCreate,
-        ]);
+        // Usar método da classe EvolutionApiV1 para criação do grupo (mais confiável)
+        // Criar grupo apenas com o nome, sem participantes (serão adicionados depois via updateGroupMembers)
+        error_log("[DISPATCH] Criando grupo '$groupName' via API (sem participantes iniciais)...");
+        $createResult = $api->createGroup($groupName, []);
+        $createHttpCode = (int)($createResult['status'] ?? 0);
+        $createData = $createResult['json'] ?? [];
+        $createResponse = json_encode($createData);
+        
+        error_log("[DISPATCH] Resposta criação grupo: HTTP $createHttpCode - " . mb_strimwidth($createResponse, 0, 500, '...'));
         
         // Preparar lista completa com sufixo para uso posterior em updateGroupMembers
         $participantsFormatted = array_map(function($num) {
@@ -290,27 +293,11 @@ if (count($groups) === 0) {
             return $num;
         }, $participants);
         
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $createUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CUSTOMREQUEST => "POST",
-            CURLOPT_POSTFIELDS => $createPayload,
-            CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
-            CURLOPT_SSL_VERIFYPEER => false,
-        ]);
-        
-        $createResponse = curl_exec($ch);
-        $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
         if ($createHttpCode === 200 || $createHttpCode === 201) {
-            $createData = json_decode($createResponse, true);
             $newGroupJid = $createData['id'] ?? ($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['group']['id'] ?? '')));
             
             // Log para debug
-            error_log("[DISPATCH] Resposta criação grupo: " . mb_strimwidth($createResponse, 0, 500, '...'));
+            error_log("[DISPATCH] Resposta criação grupo (detalhes): " . mb_strimwidth($createResponse, 0, 500, '...'));
             
             // Garantir que o JID termine com @g.us
             if (!empty($newGroupJid) && strpos($newGroupJid, '@') === false) {
@@ -436,7 +423,7 @@ if (count($groups) === 0) {
         } else {
             $errorMsg = substr($createResponse, 0, 500);
             error_log("[DISPATCH] Erro ao criar grupo: HTTP $createHttpCode - $errorMsg");
-            error_log("[DISPATCH] Payload enviado: " . $createPayload);
+            error_log("[DISPATCH] Grupo tentado: '$groupName' | Instância: '$instanceName'");
             flash_set('error', 'Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
             header('Location: /demands_view.php?id=' . $id);
             exit;
