@@ -93,48 +93,7 @@ if (count($groups) === 0) {
     error_log("[DISPATCH] Nenhum grupo encontrado para spec='$specialty' city='$city' state='$state'. Criando automaticamente...");
     
     try {
-        // MULTI-INSTÂNCIA: Encontrar uma instância conectada para criar o grupo
-        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-        $apiKey = (string)admin_setting_get('evolution.api_key', '');
-        $instanceName = '';
-        
-        // Buscar todas as instâncias ativas e tentar cada uma
-        $allInstForGroup = db()->prepare("
-            SELECT instance_name FROM whatsapp_instances 
-            WHERE status = 'active' 
-            ORDER BY is_default DESC, id ASC
-        ");
-        $allInstForGroup->execute();
-        $instRows = $allInstForGroup->fetchAll(PDO::FETCH_COLUMN);
-        
-        foreach ($instRows as $instCandidate) {
-            if ($instCandidate === '') continue;
-            try {
-                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
-                $connState = $tryApi->connectionState();
-                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-                if ($state === 'open' || $state === 'connected') {
-                    $instanceName = $instCandidate;
-                    error_log("[DISPATCH] Instância conectada para criação de grupo: $instanceName");
-                    break;
-                }
-            } catch (Throwable $e) {
-                continue;
-            }
-        }
-        
-        // Fallback: instância padrão das admin_settings
-        if ($instanceName === '') {
-            $instanceName = (string)admin_setting_get('evolution.instance', '');
-        }
-        
-        if ($baseUrl === '' || $apiKey === '' || $instanceName === '') {
-            flash_set('error', 'Nenhuma instância WhatsApp conectada para criar o grupo. Reconecte em: Configurações → WhatsApp Conexão.');
-            header('Location: /demands_view.php?id=' . $id);
-            exit;
-        }
-        
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+        $api = new EvolutionApiV1();
         
         // Gerar nome do grupo: Especialidade - Cidade/UF - N
         $location = trim($city !== '' ? ($city . ($state !== '' ? '/' . $state : '')) : $state);
@@ -148,7 +107,6 @@ if (count($groups) === 0) {
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
         // Buscar profissionais da especialidade para adicionar ao grupo
-        // Match progressivo: exato → contém → primeira palavra da especialidade
         $profsStmt = db()->prepare("
             SELECT u.phone FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
@@ -162,8 +120,6 @@ if (count($groups) === 0) {
             )
             AND u.phone IS NOT NULL AND u.phone != ''
         ");
-        // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
-        // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra)
         $firstWord = explode(' ', trim($specialty))[0];
         $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
         $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
@@ -180,122 +136,90 @@ if (count($groups) === 0) {
             }
         }
         
-        // MULTI-INSTÂNCIA: Adicionar TODOS os números WhatsApp conectados no sistema
-        // Cada instância conectada (de cada usuário) entra como participante do grupo
+        // Adicionar números de instâncias conectadas
         $connectedNumbers = whatsapp_get_all_connected_numbers();
         foreach ($connectedNumbers as $connNum) {
             if (!in_array($connNum, $participants, true)) {
                 $participants[] = $connNum;
             }
         }
-        error_log("[DISPATCH] Adicionados " . count($connectedNumbers) . " números de instâncias conectadas ao grupo");
         
-        // Adicionar o telefone do usuário que está realizando a captação
-        $currentUserPhone = '';
-        $stmtCurrentUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
-        $stmtCurrentUser->execute([auth_user_id()]);
-        $currentUserRow = $stmtCurrentUser->fetch();
-        if ($currentUserRow && !empty($currentUserRow['phone'])) {
-            $currentUserPhone = preg_replace('/\D+/', '', (string)$currentUserRow['phone']);
-            if (strlen($currentUserPhone) === 10 || strlen($currentUserPhone) === 11) {
-                $currentUserPhone = '55' . $currentUserPhone;
-            }
-            if (strlen($currentUserPhone) >= 12 && !in_array($currentUserPhone, $participants, true)) {
-                $participants[] = $currentUserPhone;
+        // Adicionar telefone do usuário logado
+        $stmtCurUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
+        $stmtCurUser->execute([auth_user_id()]);
+        $curUserRow = $stmtCurUser->fetch();
+        if ($curUserRow && !empty($curUserRow['phone'])) {
+            $curPhone = preg_replace('/\D+/', '', (string)$curUserRow['phone']);
+            if (strlen($curPhone) === 10 || strlen($curPhone) === 11) $curPhone = '55' . $curPhone;
+            if (strlen($curPhone) >= 12 && !in_array($curPhone, $participants, true)) {
+                $participants[] = $curPhone;
             }
         }
         
-        // Adicionar telefones de todos os usuários com permissão de gerenciar captação
-        $stmtAdminUsers = db()->prepare("
+        // Adicionar telefones de usuários com permissão demands.manage
+        $stmtAdmins = db()->prepare("
             SELECT DISTINCT u.phone FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
             INNER JOIN roles r ON r.id = ur.role_id
             INNER JOIN role_permissions rp ON rp.role_id = r.id
             INNER JOIN permissions p ON p.id = rp.permission_id
-            WHERE u.status = 'active' 
-            AND p.slug = 'demands.manage'
+            WHERE u.status = 'active' AND p.slug = 'demands.manage'
             AND u.phone IS NOT NULL AND u.phone != ''
         ");
-        $stmtAdminUsers->execute();
-        $adminPhones = $stmtAdminUsers->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($adminPhones as $adminPh) {
-            $cleanAdmin = preg_replace('/\D+/', '', (string)$adminPh);
-            if (strlen($cleanAdmin) === 10 || strlen($cleanAdmin) === 11) {
-                $cleanAdmin = '55' . $cleanAdmin;
-            }
-            if (strlen($cleanAdmin) >= 12 && !in_array($cleanAdmin, $participants, true)) {
-                $participants[] = $cleanAdmin;
+        $stmtAdmins->execute();
+        foreach ($stmtAdmins->fetchAll(PDO::FETCH_COLUMN) as $aPhone) {
+            $cleanA = preg_replace('/\D+/', '', (string)$aPhone);
+            if (strlen($cleanA) === 10 || strlen($cleanA) === 11) $cleanA = '55' . $cleanA;
+            if (strlen($cleanA) >= 12 && !in_array($cleanA, $participants, true)) {
+                $participants[] = $cleanA;
             }
         }
-        
-        error_log("[DISPATCH] Total participantes para grupo: " . count($participants) . " (profissionais + instâncias + admins)");
         
         $participants = array_values(array_unique($participants));
-        
-        // Garantir pelo menos 1 participante (o próprio admin)
         if (empty($participants)) {
-            $adminPhone = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
-            $participants[] = $adminPhone;
+            $participants[] = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
         }
         
-        // Log de todos os participantes para debug
-        error_log("[DISPATCH] Participantes: " . implode(', ', $participants));
+        error_log("[DISPATCH] Participantes para grupo: " . implode(', ', $participants));
         
-        // Usar método da classe EvolutionApiV1 para criação do grupo (mais confiável)
-        // Criar grupo com pelo menos 1 participante (necessário pela API)
-        // Remover o número da própria instância da lista
-        $participantsForCreate = $participants;
-        if ($instanceOwnerNumber !== '') {
-            $participantsForCreate = array_values(array_filter($participantsForCreate, function($num) use ($instanceOwnerNumber) {
-                return $num !== $instanceOwnerNumber;
-            }));
-        }
-        // Garantir pelo menos 1 participante
-        if (empty($participantsForCreate)) {
-            // Usar o número admin como fallback
-            $adminFallback = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
-            if (strlen($adminFallback) === 10 || strlen($adminFallback) === 11) $adminFallback = '55' . $adminFallback;
-            if ($adminFallback !== $instanceOwnerNumber) {
-                $participantsForCreate[] = $adminFallback;
-            }
-        }
+        // Criar grupo via cURL (formato original)
+        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $instanceName = (string)admin_setting_get('evolution.instance', '');
         
-        error_log("[DISPATCH] Criando grupo '$groupName' com " . count($participantsForCreate) . " participantes iniciais: " . implode(', ', $participantsForCreate));
-        $createResult = $api->createGroup($groupName, $participantsForCreate);
-        $createHttpCode = (int)($createResult['status'] ?? 0);
-        $createData = $createResult['json'] ?? [];
-        $createResponse = json_encode($createData);
+        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
+        $createPayload = json_encode([
+            'subject' => $groupName,
+            'description' => 'Grupo MultiLife - ' . $specialty,
+            'participants' => $participants,
+        ]);
         
-        // Se falhou, tentar com instância padrão direta (como era originalmente)
-        if ($createHttpCode < 200 || $createHttpCode >= 300) {
-            error_log("[DISPATCH] Criação com instância '$instanceName' falhou (HTTP $createHttpCode). Tentando com instância padrão...");
-            error_log("[DISPATCH] Resposta erro: $createResponse");
-            try {
-                $apiDefault = new EvolutionApiV1();
-                $createResult = $apiDefault->createGroup($groupName, $participantsForCreate);
-                $createHttpCode = (int)($createResult['status'] ?? 0);
-                $createData = $createResult['json'] ?? [];
-                $createResponse = json_encode($createData);
-                if ($createHttpCode >= 200 && $createHttpCode < 300) {
-                    $api = $apiDefault; // Usar a instância padrão para o resto do processo
-                    error_log("[DISPATCH] ✅ Grupo criado com instância padrão!");
-                }
-            } catch (Exception $e) {
-                error_log("[DISPATCH] Fallback instância padrão também falhou: " . $e->getMessage());
-            }
-        }
+        error_log("[DISPATCH] URL: $createUrl | Payload: $createPayload");
         
-        error_log("[DISPATCH] Resposta criação grupo: HTTP $createHttpCode - " . mb_strimwidth($createResponse, 0, 500, '...'));
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $createUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => $createPayload,
+            CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
         
-        // Preparar lista completa com sufixo para uso posterior em updateGroupMembers
+        $createResponse = curl_exec($ch);
+        $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        error_log("[DISPATCH] Resposta criação: HTTP $createHttpCode - " . substr($createResponse, 0, 500));
+        
+        // Preparar lista com sufixo para updateGroupMembers
         $participantsFormatted = array_map(function($num) {
-            if (strpos($num, '@') === false) {
-                return $num . '@s.whatsapp.net';
-            }
-            return $num;
+            return strpos($num, '@') === false ? $num . '@s.whatsapp.net' : $num;
         }, $participants);
         
         if ($createHttpCode === 200 || $createHttpCode === 201) {
+            $createData = json_decode($createResponse, true);
             $newGroupJid = $createData['id'] ?? ($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['group']['id'] ?? '')));
             
             // Log para debug
