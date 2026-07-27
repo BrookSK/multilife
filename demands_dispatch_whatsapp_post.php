@@ -182,48 +182,72 @@ if (count($groups) === 0) {
         
         error_log("[DISPATCH] Participantes para grupo: " . implode(', ', $participants));
         
-        // ANTES de criar, verificar se já existe um grupo com esse nome no WhatsApp
-        // (Pode ter sido criado anteriormente e apagado só do banco)
+        // Buscar credenciais base
         $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
         $apiKey = (string)admin_setting_get('evolution.api_key', '');
         $instanceName = (string)admin_setting_get('evolution.instance', '');
         
-        $existingGroupJid = '';
-        try {
-            $fetchRes = $api->fetchAllGroups(false);
-            $fetchCode = (int)($fetchRes['status'] ?? 0);
-            if ($fetchCode >= 200 && $fetchCode < 300) {
-                $allGroups = $fetchRes['json'] ?? [];
-                foreach ($allGroups as $grp) {
-                    $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
-                    $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
-                    // Procurar grupo com nome similar (mesma especialidade + cidade)
-                    if (stripos($grpSubject, $specialty) !== false && stripos($grpSubject, $location) !== false && $grpId !== '') {
-                        $existingGroupJid = $grpId;
-                        $groupName = $grpSubject; // Usar o nome real do grupo encontrado
-                        error_log("[DISPATCH] Grupo existente encontrado no WhatsApp: '$grpSubject' (JID: $grpId)");
-                        break;
-                    }
-                }
+        // MULTI-INSTÂNCIA: Tentar criar grupo com qualquer instância conectada
+        // A instância padrão pode estar desconectada (Connection Closed)
+        $instancesToTry = [$instanceName]; // Começar pela padrão
+        $stmtAllInst = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND instance_name != ? ORDER BY is_default DESC, id ASC");
+        $stmtAllInst->execute([$instanceName]);
+        foreach ($stmtAllInst->fetchAll(PDO::FETCH_COLUMN) as $otherInst) {
+            if ($otherInst !== '' && !in_array($otherInst, $instancesToTry, true)) {
+                $instancesToTry[] = $otherInst;
             }
-        } catch (Exception $e) {
-            error_log("[DISPATCH] Erro ao buscar grupos existentes: " . $e->getMessage());
         }
         
         $createHttpCode = 0;
         $createResponse = '';
-        $newGroupJid = $existingGroupJid;
+        $newGroupJid = '';
+        $usedInstanceName = $instanceName;
         
-        // Se não encontrou grupo existente, criar um novo
-        if ($existingGroupJid === '') {
-            $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
+        // Primeiro, tentar buscar grupo existente com cada instância
+        foreach ($instancesToTry as $tryInst) {
+            try {
+                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $tryInst);
+                $fetchRes = $tryApi->fetchAllGroups(false);
+                $fetchCode = (int)($fetchRes['status'] ?? 0);
+                if ($fetchCode >= 200 && $fetchCode < 300) {
+                    $allGroups = $fetchRes['json'] ?? [];
+                    foreach ($allGroups as $grp) {
+                        $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
+                        $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
+                        if (stripos($grpSubject, $specialty) !== false && stripos($grpSubject, $location) !== false && $grpId !== '') {
+                            $newGroupJid = $grpId;
+                            $groupName = $grpSubject;
+                            $api = $tryApi;
+                            $usedInstanceName = $tryInst;
+                            error_log("[DISPATCH] Grupo existente encontrado via instância '$tryInst': '$grpSubject' (JID: $grpId)");
+                            break 2; // Sair de ambos loops
+                        }
+                    }
+                    // Esta instância está conectada, usar para criar
+                    $api = $tryApi;
+                    $usedInstanceName = $tryInst;
+                    error_log("[DISPATCH] Instância '$tryInst' conectada (fetchAllGroups OK). Usando para criar grupo.");
+                    break;
+                }
+            } catch (Exception $e) {
+                error_log("[DISPATCH] Instância '$tryInst' falhou fetchAllGroups: " . $e->getMessage());
+                continue;
+            }
+        }
+        
+        // Se encontrou grupo existente, pular criação
+        if ($newGroupJid !== '') {
+            $createHttpCode = 200;
+        } else {
+            // Criar grupo novo usando a instância conectada encontrada
+            $createUrl = $baseUrl . '/group/create/' . urlencode($usedInstanceName);
             $createPayload = json_encode([
                 'subject' => $groupName,
                 'description' => 'Grupo MultiLife - ' . $specialty,
                 'participants' => $participants,
             ]);
             
-            error_log("[DISPATCH] Criando grupo novo. URL: $createUrl | Payload: $createPayload");
+            error_log("[DISPATCH] Criando grupo via instância '$usedInstanceName'. URL: $createUrl");
             
             $ch = curl_init();
             curl_setopt_array($ch, [
@@ -240,36 +264,41 @@ if (count($groups) === 0) {
             $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             
-            error_log("[DISPATCH] Resposta criação: HTTP $createHttpCode - " . substr($createResponse, 0, 500));
+            error_log("[DISPATCH] Resposta criação (instância '$usedInstanceName'): HTTP $createHttpCode - " . substr($createResponse, 0, 500));
             
-            // Se criar falhou, tentar buscar novamente pelo fetchAllGroups (pode ter sido criado parcialmente)
+            // Se falhou com esta instância, tentar as outras
             if ($createHttpCode >= 400) {
-                error_log("[DISPATCH] Criação falhou (HTTP $createHttpCode). Buscando grupo recém-criado no WhatsApp...");
-                usleep(2000000); // 2s delay
-                try {
-                    $fetchRes2 = $api->fetchAllGroups(false);
-                    $fetchCode2 = (int)($fetchRes2['status'] ?? 0);
-                    if ($fetchCode2 >= 200 && $fetchCode2 < 300) {
-                        $allGroups2 = $fetchRes2['json'] ?? [];
-                        foreach ($allGroups2 as $grp) {
-                            $grpSubject = $grp['subject'] ?? ($grp['name'] ?? '');
-                            $grpId = $grp['id'] ?? ($grp['jid'] ?? '');
-                            if (stripos($grpSubject, $specialty) !== false && $grpId !== '') {
-                                $newGroupJid = $grpId;
-                                $groupName = $grpSubject;
-                                error_log("[DISPATCH] Grupo encontrado após falha: '$grpSubject' (JID: $grpId)");
-                                $createHttpCode = 200; // Forçar sucesso
-                                break;
-                            }
-                        }
+                foreach ($instancesToTry as $retryInst) {
+                    if ($retryInst === $usedInstanceName) continue;
+                    
+                    $retryUrl = $baseUrl . '/group/create/' . urlencode($retryInst);
+                    error_log("[DISPATCH] Tentando criar com instância alternativa: '$retryInst'");
+                    
+                    $ch = curl_init();
+                    curl_setopt_array($ch, [
+                        CURLOPT_URL => $retryUrl,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_TIMEOUT => 30,
+                        CURLOPT_CUSTOMREQUEST => "POST",
+                        CURLOPT_POSTFIELDS => $createPayload,
+                        CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+                        CURLOPT_SSL_VERIFYPEER => false,
+                    ]);
+                    
+                    $createResponse = curl_exec($ch);
+                    $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                    
+                    error_log("[DISPATCH] Resposta (instância '$retryInst'): HTTP $createHttpCode - " . substr($createResponse, 0, 300));
+                    
+                    if ($createHttpCode >= 200 && $createHttpCode < 300) {
+                        $usedInstanceName = $retryInst;
+                        $api = new EvolutionApiV1($baseUrl, $apiKey, $retryInst);
+                        error_log("[DISPATCH] ✅ Grupo criado com instância '$retryInst'!");
+                        break;
                     }
-                } catch (Exception $e) {
-                    error_log("[DISPATCH] Erro ao buscar grupo após falha: " . $e->getMessage());
                 }
             }
-        } else {
-            // Grupo já existe, simular sucesso
-            $createHttpCode = 200;
         }
         
         // Preparar lista com sufixo para updateGroupMembers
