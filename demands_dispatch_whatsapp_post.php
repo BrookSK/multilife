@@ -132,12 +132,53 @@ if (count($groups) === 0) {
                 }
                 
                 $connInstanceStateLower = strtolower(trim($connInstanceState));
-                error_log("[DISPATCH] Instância '$instCandidate': connectionState HTTP=$connHttpCode, state='$connInstanceState' (json=" . json_encode($connJson) . ")");
+                error_log("[DISPATCH] Instância '$instCandidate': connectionState HTTP=$connHttpCode, state='$connInstanceState'");
                 
                 if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
                     $instanceName = $instCandidate;
                     error_log("[DISPATCH] Instância conectada para criação de grupo: $instanceName");
                     break;
+                }
+                
+                // Se estado é 'close', tentar reconectar a instância automaticamente
+                // (a conexão pode ter caído e precisa de um restart/connect)
+                if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
+                    error_log("[DISPATCH] Instância '$instCandidate' com estado '$connInstanceState' — tentando reconectar...");
+                    try {
+                        // Tentar restart primeiro (reconecta sessão existente)
+                        $restartRes = $tryApi->restartInstance($instCandidate);
+                        $restartCode = (int)($restartRes['status'] ?? 0);
+                        error_log("[DISPATCH] Restart da instância '$instCandidate': HTTP $restartCode");
+                        
+                        // Aguardar reconexão (até 8 segundos)
+                        $reconnected = false;
+                        for ($attempt = 0; $attempt < 4; $attempt++) {
+                            sleep(2);
+                            $recheckRes = $tryApi->connectionState();
+                            $recheckJson = $recheckRes['json'] ?? [];
+                            $recheckState = strtolower(trim((string)($recheckJson['instance']['state'] ?? ($recheckJson['state'] ?? ''))));
+                            error_log("[DISPATCH] Tentativa " . ($attempt + 1) . " de reconexão '$instCandidate': state='$recheckState'");
+                            
+                            if (in_array($recheckState, ['open', 'connected'], true)) {
+                                $reconnected = true;
+                                break;
+                            }
+                            // Se está connecting, aguardar mais
+                            if ($recheckState !== 'connecting') {
+                                break; // Estado inesperado, desistir
+                            }
+                        }
+                        
+                        if ($reconnected) {
+                            $instanceName = $instCandidate;
+                            error_log("[DISPATCH] ✅ Instância '$instCandidate' reconectada com sucesso!");
+                            break;
+                        } else {
+                            error_log("[DISPATCH] Instância '$instCandidate' não reconectou após restart.");
+                        }
+                    } catch (Throwable $reconnErr) {
+                        error_log("[DISPATCH] Erro ao tentar reconectar '$instCandidate': " . $reconnErr->getMessage());
+                    }
                 } else {
                     error_log("[DISPATCH] Instância '$instCandidate' não conectada (state='$connInstanceState'), tentando próxima...");
                 }
@@ -147,13 +188,13 @@ if (count($groups) === 0) {
             }
         }
         
-        // Se API não respondeu para nenhuma, tentar usar a que está marcada como connected no banco
-        // (pode ser que a API esteja instável mas a instância funciona)
+        // Se nenhuma reconectou via API, usar a que está marcada como connected no banco
+        // e tentar criar grupo mesmo assim (pode funcionar se a conexão voltou entre checks)
         if ($instanceName === '') {
             foreach ($instRows as $instRow) {
                 if (($instRow['connection_status'] ?? '') === 'connected' && ($instRow['instance_name'] ?? '') !== '') {
                     $instanceName = (string)$instRow['instance_name'];
-                    error_log("[DISPATCH] Usando instância '$instanceName' baseado no connection_status do banco (API não confirmou)");
+                    error_log("[DISPATCH] ⚠️ Usando instância '$instanceName' do banco (nenhuma reconectou via API)");
                     break;
                 }
             }
@@ -839,9 +880,31 @@ try {
                 $apiInstanceName = $instName;
                 error_log("[DISPATCH] Instância conectada encontrada: $instName");
                 break;
-            } else {
-                error_log("[DISPATCH] Instância '$instName' não conectada (state=$connInstanceState), tentando próxima...");
             }
+            
+            // Se estado é 'close', tentar reconectar
+            if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
+                error_log("[DISPATCH-SEND] Instância '$instName' com estado '$connInstanceState' — tentando reconectar...");
+                try {
+                    $tryApi->restartInstance($instName);
+                    for ($retryAttempt = 0; $retryAttempt < 4; $retryAttempt++) {
+                        sleep(2);
+                        $recheckRes = $tryApi->connectionState();
+                        $recheckState = strtolower(trim((string)(($recheckRes['json']['instance']['state'] ?? ($recheckRes['json']['state'] ?? '')))));
+                        if (in_array($recheckState, ['open', 'connected'], true)) {
+                            $api = $tryApi;
+                            $apiInstanceName = $instName;
+                            error_log("[DISPATCH-SEND] ✅ Instância '$instName' reconectada!");
+                            break 2; // sai do for e do foreach
+                        }
+                        if ($recheckState !== 'connecting') break;
+                    }
+                } catch (Throwable $reconnErr) {
+                    error_log("[DISPATCH-SEND] Erro ao reconectar '$instName': " . $reconnErr->getMessage());
+                }
+            }
+            
+            error_log("[DISPATCH] Instância '$instName' não conectada (state=$connInstanceState), tentando próxima...");
         } catch (Throwable $instErr) {
             error_log("[DISPATCH] Erro ao verificar instância '$instName': " . $instErr->getMessage());
             continue;
