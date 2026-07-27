@@ -140,19 +140,28 @@ if (count($groups) === 0) {
                     break;
                 }
                 
-                // Se estado é 'close', tentar reconectar a instância automaticamente
-                // (a conexão pode ter caído e precisa de um restart/connect)
+                // Se estado é 'close', tentar reconectar via /instance/connect (sem QR, apenas restart de sessão)
                 if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
                     error_log("[DISPATCH] Instância '$instCandidate' com estado '$connInstanceState' — tentando reconectar...");
                     try {
-                        // Tentar restart primeiro (reconecta sessão existente)
-                        $restartRes = $tryApi->restartInstance($instCandidate);
-                        $restartCode = (int)($restartRes['status'] ?? 0);
-                        error_log("[DISPATCH] Restart da instância '$instCandidate': HTTP $restartCode");
+                        // Tentar connect (reconecta sessão existente se ainda válida)
+                        $connectRes = $tryApi->connectInstance($instCandidate);
+                        $connectCode = (int)($connectRes['status'] ?? 0);
+                        $connectJson = $connectRes['json'] ?? [];
+                        error_log("[DISPATCH] Connect da instância '$instCandidate': HTTP $connectCode");
                         
-                        // Aguardar reconexão (até 8 segundos)
+                        // Se retornou QR code, a sessão expirou e precisa escanear novamente
+                        $hasQr = isset($connectJson['base64']) || isset($connectJson['code']) || isset($connectJson['qrcode']);
+                        if ($hasQr) {
+                            error_log("[DISPATCH] Instância '$instCandidate' requer QR Code - sessão expirada");
+                            // Atualizar status no banco para refletir realidade
+                            whatsapp_update_connection_status($instCandidate, 'disconnected');
+                            continue;
+                        }
+                        
+                        // Aguardar reconexão (até 10 segundos)
                         $reconnected = false;
-                        for ($attempt = 0; $attempt < 4; $attempt++) {
+                        for ($attempt = 0; $attempt < 5; $attempt++) {
                             sleep(2);
                             $recheckRes = $tryApi->connectionState();
                             $recheckJson = $recheckRes['json'] ?? [];
@@ -163,40 +172,30 @@ if (count($groups) === 0) {
                                 $reconnected = true;
                                 break;
                             }
-                            // Se está connecting, aguardar mais
-                            if ($recheckState !== 'connecting') {
-                                break; // Estado inesperado, desistir
+                            // Se estado mudou para connecting, aguardar mais
+                            if ($recheckState !== 'connecting' && $recheckState !== 'close') {
+                                break;
                             }
                         }
                         
                         if ($reconnected) {
                             $instanceName = $instCandidate;
+                            whatsapp_update_connection_status($instCandidate, 'connected');
                             error_log("[DISPATCH] ✅ Instância '$instCandidate' reconectada com sucesso!");
                             break;
                         } else {
-                            error_log("[DISPATCH] Instância '$instCandidate' não reconectou após restart.");
+                            error_log("[DISPATCH] Instância '$instCandidate' não reconectou.");
+                            whatsapp_update_connection_status($instCandidate, 'disconnected');
                         }
                     } catch (Throwable $reconnErr) {
                         error_log("[DISPATCH] Erro ao tentar reconectar '$instCandidate': " . $reconnErr->getMessage());
                     }
                 } else {
-                    error_log("[DISPATCH] Instância '$instCandidate' não conectada (state='$connInstanceState'), tentando próxima...");
+                    error_log("[DISPATCH] Instância '$instCandidate' não conectada (state='$connInstanceState')");
                 }
             } catch (Throwable $e) {
                 error_log("[DISPATCH] Instância '$instCandidate' erro ao verificar: " . $e->getMessage());
                 continue;
-            }
-        }
-        
-        // Se nenhuma reconectou via API, usar a que está marcada como connected no banco
-        // e tentar criar grupo mesmo assim (pode funcionar se a conexão voltou entre checks)
-        if ($instanceName === '') {
-            foreach ($instRows as $instRow) {
-                if (($instRow['connection_status'] ?? '') === 'connected' && ($instRow['instance_name'] ?? '') !== '') {
-                    $instanceName = (string)$instRow['instance_name'];
-                    error_log("[DISPATCH] ⚠️ Usando instância '$instanceName' do banco (nenhuma reconectou via API)");
-                    break;
-                }
             }
         }
         
@@ -886,18 +885,29 @@ try {
             if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
                 error_log("[DISPATCH-SEND] Instância '$instName' com estado '$connInstanceState' — tentando reconectar...");
                 try {
-                    $tryApi->restartInstance($instName);
-                    for ($retryAttempt = 0; $retryAttempt < 4; $retryAttempt++) {
-                        sleep(2);
-                        $recheckRes = $tryApi->connectionState();
-                        $recheckState = strtolower(trim((string)(($recheckRes['json']['instance']['state'] ?? ($recheckRes['json']['state'] ?? '')))));
-                        if (in_array($recheckState, ['open', 'connected'], true)) {
-                            $api = $tryApi;
-                            $apiInstanceName = $instName;
-                            error_log("[DISPATCH-SEND] ✅ Instância '$instName' reconectada!");
-                            break 2; // sai do for e do foreach
+                    $connectRes = $tryApi->connectInstance($instName);
+                    $connectCode = (int)($connectRes['status'] ?? 0);
+                    $connectJson = $connectRes['json'] ?? [];
+                    error_log("[DISPATCH-SEND] Connect '$instName': HTTP $connectCode");
+                    
+                    // Se retornou QR code, sessão expirou
+                    $hasQr = isset($connectJson['base64']) || isset($connectJson['code']) || isset($connectJson['qrcode']);
+                    if (!$hasQr) {
+                        for ($retryAttempt = 0; $retryAttempt < 5; $retryAttempt++) {
+                            sleep(2);
+                            $recheckRes = $tryApi->connectionState();
+                            $recheckState = strtolower(trim((string)(($recheckRes['json']['instance']['state'] ?? ($recheckRes['json']['state'] ?? '')))));
+                            if (in_array($recheckState, ['open', 'connected'], true)) {
+                                $api = $tryApi;
+                                $apiInstanceName = $instName;
+                                whatsapp_update_connection_status($instName, 'connected');
+                                error_log("[DISPATCH-SEND] ✅ Instância '$instName' reconectada!");
+                                break 2; // sai do for e do foreach
+                            }
+                            if ($recheckState !== 'connecting' && $recheckState !== 'close') break;
                         }
-                        if ($recheckState !== 'connecting') break;
+                    } else {
+                        whatsapp_update_connection_status($instName, 'disconnected');
                     }
                 } catch (Throwable $reconnErr) {
                     error_log("[DISPATCH-SEND] Erro ao reconectar '$instName': " . $reconnErr->getMessage());
