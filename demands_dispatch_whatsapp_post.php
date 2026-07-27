@@ -199,9 +199,9 @@ if (count($groups) === 0) {
             }
         }
         
-        // Se nenhuma instância respondeu como conectada, NÃO usar fallback desconectado
+        // Se nenhuma instância está conectada, mostrar erro com orientação clara
         if ($instanceName === '') {
-            flash_set('error', 'Nenhuma instância WhatsApp está conectada para criar o grupo. Reconecte em: Configurações → WhatsApp Conexão → aba Instâncias.');
+            flash_set('error', 'Nenhuma instância WhatsApp está conectada. Vá em Configurações → WhatsApp Conexão → aba Instâncias e reconecte escaneando o QR Code.');
             header('Location: /demands_view.php?id=' . $id);
             exit;
         }

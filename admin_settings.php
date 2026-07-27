@@ -1485,6 +1485,35 @@ WAJS;
                 $liIsDefault = (int)($li['is_default'] ?? 0);
                 $liId = (int)($li['id'] ?? 0);
                 
+                // Verificar status REAL via Evolution API (atualiza banco se diferente)
+                if ($liName !== '') {
+                    try {
+                        $liApi = new EvolutionApiV1($baseUrlWA, $apiKeyWA, $liName);
+                        $liConnRes = $liApi->connectionState();
+                        $liRealState = strtolower(trim((string)(
+                            $liConnRes['json']['instance']['state'] 
+                            ?? ($liConnRes['json']['state'] ?? '')
+                        )));
+                        
+                        if (in_array($liRealState, ['open', 'connected'], true)) {
+                            if ($liConnStatus !== 'connected') {
+                                whatsapp_update_connection_status($liName, 'connected');
+                            }
+                            $liConnStatus = 'connected';
+                        } elseif ($liRealState === 'connecting') {
+                            $liConnStatus = 'connecting';
+                        } else {
+                            // close, closed, ou qualquer outro = desconectado
+                            if ($liConnStatus === 'connected') {
+                                whatsapp_update_connection_status($liName, 'disconnected');
+                            }
+                            $liConnStatus = 'disconnected';
+                        }
+                    } catch (Throwable $e) {
+                        // Se falhou ao verificar, manter o que tá no banco
+                    }
+                }
+                
                 if ($liConnStatus === 'connected') {
                     $statusBadge = '<span style="color:hsl(142,76%,36%);font-weight:600">● Conectado</span>';
                 } elseif ($liConnStatus === 'connecting') {
