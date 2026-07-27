@@ -112,24 +112,29 @@ if (count($groups) === 0) {
             try {
                 $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
                 $connState = $tryApi->connectionState();
-                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-                if ($state === 'open' || $state === 'connected') {
+                $connInstanceState = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+                if ($connInstanceState === 'open' || $connInstanceState === 'connected') {
                     $instanceName = $instCandidate;
                     error_log("[DISPATCH] Instância conectada para criação de grupo: $instanceName");
                     break;
+                } else {
+                    error_log("[DISPATCH] Instância '$instCandidate' não conectada (state=$connInstanceState), tentando próxima...");
                 }
             } catch (Throwable $e) {
+                error_log("[DISPATCH] Instância '$instCandidate' erro ao verificar: " . $e->getMessage());
                 continue;
             }
         }
         
-        // Fallback: instância padrão das admin_settings
+        // Se nenhuma instância respondeu como conectada, NÃO usar fallback desconectado
         if ($instanceName === '') {
-            $instanceName = (string)admin_setting_get('evolution.instance', '');
+            flash_set('error', 'Nenhuma instância WhatsApp está conectada para criar o grupo. Reconecte em: Configurações → WhatsApp Conexão → aba Instâncias.');
+            header('Location: /demands_view.php?id=' . $id);
+            exit;
         }
         
-        if ($baseUrl === '' || $apiKey === '' || $instanceName === '') {
-            flash_set('error', 'Nenhuma instância WhatsApp conectada para criar o grupo. Reconecte em: Configurações → WhatsApp Conexão.');
+        if ($baseUrl === '' || $apiKey === '') {
+            flash_set('error', 'Evolution API não configurada (base_url/api_key). Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
             header('Location: /demands_view.php?id=' . $id);
             exit;
         }
@@ -148,9 +153,16 @@ if (count($groups) === 0) {
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
         // Buscar profissionais da especialidade para adicionar ao grupo
-        // Match progressivo: exato → contém → primeira palavra da especialidade
+        // Match progressivo e flexível:
+        // 1. Match exato (u.specialty = 'Fisioterapia Domiciliar')
+        // 2. Especialidade contém o termo buscado (u.specialty LIKE '%Fisioterapia Domiciliar%')
+        // 3. Match inverso: o termo buscado contém a especialidade do profissional
+        //    ('Fisioterapia Domiciliar' LIKE '%Fisioterapia%') → pega profissionais com specialty 'Fisioterapia'
+        // 4. Primeira palavra da especialidade (u.specialty LIKE 'Fisioterapia%')
+        //    → pega 'Fisioterapia Geral', 'Fisioterapia Esportiva', 'Fisioterapia do Trabalho', etc.
+        $firstWord = explode(' ', trim($specialty))[0];
         $profsStmt = db()->prepare("
-            SELECT u.phone FROM users u
+            SELECT DISTINCT u.phone FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
             INNER JOIN roles r ON r.id = ur.role_id
             WHERE u.status = 'active' AND r.slug = 'profissional'
@@ -159,14 +171,17 @@ if (count($groups) === 0) {
                 OR u.specialty LIKE ? 
                 OR ? LIKE CONCAT('%', u.specialty, '%')
                 OR u.specialty LIKE ?
+                OR LOWER(u.specialty) LIKE LOWER(?)
             )
             AND u.phone IS NOT NULL AND u.phone != ''
         ");
         // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
-        // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra)
-        $firstWord = explode(' ', trim($specialty))[0];
-        $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
+        // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra),
+        // e LIKE '%fisioterapia%' (case-insensitive por palavra-chave principal)
+        $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
         $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        error_log("[DISPATCH] Busca de profissionais para '$specialty' (firstWord='$firstWord'): encontrados " . count($profPhones) . " telefones");
         
         // Limpar telefones (apenas dígitos) e remover duplicados
         $participants = [];
@@ -626,10 +641,10 @@ if (count($groups) > 0) {
                 $syncApi = new EvolutionApiV1(); // fallback
             }
             
-            // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo)
+            // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo e flexível)
             $firstWord = explode(' ', trim($specialty))[0];
             $syncProfsStmt = db()->prepare("
-                SELECT u.phone FROM users u
+                SELECT DISTINCT u.phone FROM users u
                 INNER JOIN user_roles ur ON ur.user_id = u.id
                 INNER JOIN roles r ON r.id = ur.role_id
                 WHERE u.status = 'active' AND r.slug = 'profissional'
@@ -638,10 +653,11 @@ if (count($groups) > 0) {
                     OR u.specialty LIKE ? 
                     OR ? LIKE CONCAT('%', u.specialty, '%')
                     OR u.specialty LIKE ?
+                    OR LOWER(u.specialty) LIKE LOWER(?)
                 )
                 AND u.phone IS NOT NULL AND u.phone != ''
             ");
-            $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
+            $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
             $syncProfPhones = $syncProfsStmt->fetchAll(PDO::FETCH_COLUMN);
             
             $phonesToAdd = [];
@@ -744,15 +760,15 @@ try {
         try {
             $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
             $connState = $tryApi->connectionState();
-            $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+            $connInstanceState = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
             
-            if ($state === 'open' || $state === 'connected') {
+            if ($connInstanceState === 'open' || $connInstanceState === 'connected') {
                 $api = $tryApi;
                 $apiInstanceName = $instName;
                 error_log("[DISPATCH] Instância conectada encontrada: $instName");
                 break;
             } else {
-                error_log("[DISPATCH] Instância '$instName' não conectada (state=$state), tentando próxima...");
+                error_log("[DISPATCH] Instância '$instName' não conectada (state=$connInstanceState), tentando próxima...");
             }
         } catch (Throwable $instErr) {
             error_log("[DISPATCH] Erro ao verificar instância '$instName': " . $instErr->getMessage());
@@ -767,8 +783,8 @@ try {
             try {
                 $tryApi = new EvolutionApiV1();
                 $connState = $tryApi->connectionState();
-                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-                if ($state === 'open' || $state === 'connected') {
+                $connInstanceState = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+                if ($connInstanceState === 'open' || $connInstanceState === 'connected') {
                     $api = $tryApi;
                     $apiInstanceName = $defaultInstName;
                     error_log("[DISPATCH] Instância padrão admin_settings conectada: $defaultInstName");
