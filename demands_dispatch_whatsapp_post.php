@@ -112,8 +112,8 @@ if (count($groups) === 0) {
             try {
                 $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
                 $connState = $tryApi->connectionState();
-                $connStatus = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-                if ($connStatus === 'open' || $connStatus === 'connected') {
+                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+                if ($state === 'open' || $state === 'connected') {
                     $instanceName = $instCandidate;
                     error_log("[DISPATCH] Instância conectada para criação de grupo: $instanceName");
                     break;
@@ -198,28 +198,35 @@ if (count($groups) === 0) {
             $participants[] = $adminPhone;
         }
         
-        // Criar grupo via Evolution API (usando o método da classe, consistente com whatsapp_groups_create_evolution_post.php)
-        $groupDescription = 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty;
-        $createRes = $api->createGroup($groupName, $participants, $groupDescription);
-        $createHttpCode = (int)($createRes['status'] ?? 0);
-        $createData = $createRes['json'] ?? null;
+        // Criar grupo via Evolution API (usando instância conectada detectada acima)
+        $createUrl = $baseUrl . '/group/create/' . urlencode($instanceName);
+        $createPayload = json_encode([
+            'subject' => $groupName,
+            'description' => 'Grupo criado automaticamente pelo sistema MultiLife - ' . $specialty,
+            'participants' => $participants,
+        ]);
         
-        if ($createHttpCode >= 200 && $createHttpCode < 300) {
-            // Extrair JID da resposta (mesmo padrão de whatsapp_groups_create_evolution_post.php)
-            $newGroupJid = '';
-            if (is_array($createData)) {
-                $newGroupJid = (string)($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['id'] ?? '')));
-                if ($newGroupJid === '' && isset($createData['data']) && is_array($createData['data'])) {
-                    $newGroupJid = (string)($createData['data']['groupJid'] ?? ($createData['data']['jid'] ?? ($createData['data']['id'] ?? '')));
-                }
-                // Fallback: group.id
-                if ($newGroupJid === '' && isset($createData['group']['id'])) {
-                    $newGroupJid = (string)$createData['group']['id'];
-                }
-            }
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $createUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => $createPayload,
+            CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+        
+        $createResponse = curl_exec($ch);
+        $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($createHttpCode === 200 || $createHttpCode === 201) {
+            $createData = json_decode($createResponse, true);
+            $newGroupJid = $createData['id'] ?? ($createData['groupJid'] ?? ($createData['jid'] ?? ($createData['group']['id'] ?? '')));
             
             // Log para debug
-            error_log("[DISPATCH] Resposta criação grupo: " . mb_strimwidth(json_encode($createData), 0, 500, '...'));
+            error_log("[DISPATCH] Resposta criação grupo: " . mb_strimwidth($createResponse, 0, 500, '...'));
             
             // Garantir que o JID termine com @g.us
             if (!empty($newGroupJid) && strpos($newGroupJid, '@') === false) {
@@ -320,7 +327,7 @@ if (count($groups) === 0) {
                 exit;
             }
         } else {
-            $errorMsg = mb_strimwidth(json_encode($createData ?? $createRes['body_raw'] ?? ''), 0, 200, '...');
+            $errorMsg = substr($createResponse, 0, 200);
             error_log("[DISPATCH] Erro ao criar grupo: HTTP $createHttpCode - $errorMsg");
             flash_set('error', 'Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
             header('Location: /demands_view.php?id=' . $id);
@@ -737,15 +744,15 @@ try {
         try {
             $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
             $connState = $tryApi->connectionState();
-            $connStatus = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+            $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
             
-            if ($connStatus === 'open' || $connStatus === 'connected') {
+            if ($state === 'open' || $state === 'connected') {
                 $api = $tryApi;
                 $apiInstanceName = $instName;
                 error_log("[DISPATCH] Instância conectada encontrada: $instName");
                 break;
             } else {
-                error_log("[DISPATCH] Instância '$instName' não conectada (state=$connStatus), tentando próxima...");
+                error_log("[DISPATCH] Instância '$instName' não conectada (state=$state), tentando próxima...");
             }
         } catch (Throwable $instErr) {
             error_log("[DISPATCH] Erro ao verificar instância '$instName': " . $instErr->getMessage());
@@ -760,8 +767,8 @@ try {
             try {
                 $tryApi = new EvolutionApiV1();
                 $connState = $tryApi->connectionState();
-                $connStatus = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
-                if ($connStatus === 'open' || $connStatus === 'connected') {
+                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? '');
+                if ($state === 'open' || $state === 'connected') {
                     $api = $tryApi;
                     $apiInstanceName = $defaultInstName;
                     error_log("[DISPATCH] Instância padrão admin_settings conectada: $defaultInstName");
