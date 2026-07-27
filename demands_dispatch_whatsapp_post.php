@@ -492,42 +492,29 @@ if ($freqRaw !== '' && function_exists('frequency_get_label')) {
 // SANITIZAÇÃO DA MENSAGEM: Sigilo do paciente, filtro de especialidade, remoção de valores
 // ====================================================================
 
-// Gerar iniciais do paciente (ex: "Maria Aparecida da Silva Braga" → "M.A.")
-$patientName = trim((string)($d['patient_name'] ?? ''));
-$patientInitials = '';
-if ($patientName !== '') {
-    // Pegar apenas palavras relevantes (ignorar preposições: da, de, do, dos, das)
-    $nameParts = preg_split('/\s+/', $patientName);
-    $prepositions = ['da', 'de', 'do', 'dos', 'das', 'e'];
-    $initials = [];
-    foreach ($nameParts as $part) {
-        $part = trim($part);
-        if ($part === '' || in_array(mb_strtolower($part), $prepositions, true)) continue;
-        $initials[] = mb_strtoupper(mb_substr($part, 0, 1));
-    }
-    // Usar apenas as 2 primeiras iniciais (nome + primeiro sobrenome relevante)
-    $patientInitials = implode('.', array_slice($initials, 0, 2)) . '.';
-}
-
-// 1. Substituir nome do paciente por iniciais no título
+// 1. Remover nome do paciente do título e substituir por texto genérico
 $titleForMsg = (string)$d['title'];
+$patientName = trim((string)($d['patient_name'] ?? ''));
+
+// Abordagem robusta: detectar padrão "para [qualquer nome]" no título e substituir
+// Padrões comuns: "Atendimento multidisciplinar para Roberto Teste", "Prospecção Fisio - Nome Paciente"
 if ($patientName !== '') {
-    // Substituir o nome completo pelas iniciais
-    $titleForMsg = str_ireplace($patientName, $patientInitials, $titleForMsg);
+    $titleForMsg = str_ireplace($patientName, '', $titleForMsg);
 }
-// Se ainda tem "para [texto que parece nome]" (caso o nome no título seja diferente do banco)
-// Substituir por "para [iniciais]"
-if ($patientInitials !== '') {
-    $titleForMsg = preg_replace('/\s+para\s+[A-ZÀ-ÚÇ][a-zà-úç]+(\s+[A-ZÀ-Úa-zà-úç]+){1,5}\s*$/iu', ' para ' . $patientInitials, $titleForMsg);
-}
-// Limpar espaços
+// Remover qualquer texto após "para " (que seria o nome do paciente)
+$titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', '', $titleForMsg);
+// Remover qualquer texto após " - " que pareça nome (2+ palavras capitalizadas) — fallback
+$titleForMsg = preg_replace('/\s*[-–]\s+[A-ZÀ-ÚÇ][a-zà-úç]+(\s+[A-ZÀ-ÚÇa-zà-úç]+)+\s*$/u', '', $titleForMsg);
+// Limpar espaços e pontuação residual
+$titleForMsg = rtrim(trim($titleForMsg), ' -–');
 $titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
 
 // Substituir "multidisciplinar" já que estamos filtrando para 1 especialidade
 $titleForMsg = preg_replace('/\s*multidisciplinar\s*/iu', ' ', $titleForMsg);
 $titleForMsg = trim(preg_replace('/\s{2,}/', ' ', $titleForMsg));
 
-// Montar título genérico com a especialidade se ficou muito curto
+// Montar título genérico com a especialidade: "Atendimento" → "Atendimento de Fisioterapia Domiciliar"
+// Se o título ficou muito curto ou genérico, complementar com a especialidade
 if (mb_strlen($titleForMsg) < 15 && $specialty !== '') {
     $titleForMsg = $titleForMsg . ' de ' . $specialty;
 }
@@ -537,26 +524,26 @@ $aiSummaryRaw = trim((string)($d['ai_summary'] ?? ''));
 $aiSummarySanitized = $aiSummaryRaw;
 
 if ($aiSummarySanitized !== '') {
-    // 2a. Substituir nome do paciente por iniciais no quadro clínico
+    // 2a. Remover nome do paciente e reformatar o início como "Paciente D, [idade]"
     if ($patientName !== '') {
-        $aiSummarySanitized = str_ireplace($patientName, $patientInitials, $aiSummarySanitized);
+        $aiSummarySanitized = str_ireplace($patientName, '', $aiSummarySanitized);
     }
-    // Limpar padrões residuais
+    // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
     $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
     
-    // Reformatar início: "O paciente M.A., 72 anos" ou "O paciente, 72 anos" → "O paciente de, 72 anos"
-    // Manter o formato "O paciente [iniciais], [idade] anos"
-    $aiSummarySanitized = preg_replace('/^(?:O\s+)?(?:paciente|Paciente)\s*(?:' . preg_quote($patientInitials, '/') . '\s*)?,?\s*(\d+\s*anos)/iu', 'O paciente ' . $patientInitials . ', $1', $aiSummarySanitized);
-    // Se não começa com "O paciente" ainda (ex: texto começava com nome direto), prefixar
-    if (!preg_match('/^O\s+paciente\b/iu', $aiSummarySanitized)) {
+    // Reformatar início: "O paciente, 72 anos" → "O paciente de, 72 anos"
+    // Detectar padrão: "O paciente, XX anos" ou "Paciente, XX anos" ou ", XX anos,"
+    $aiSummarySanitized = preg_replace('/^(?:O\s+)?(?:paciente|Paciente)\s*(?:D\s*)?,?\s*(\d+\s*anos)/iu', 'O paciente de, $1', $aiSummarySanitized);
+    // Se não começa com "O paciente de" ainda (ex: texto começava com nome direto), prefixar
+    if (!preg_match('/^O paciente de\b/iu', $aiSummarySanitized)) {
         // Tentar extrair idade do texto
         if (preg_match('/(\d{1,3})\s*anos/iu', $aiSummarySanitized, $ageMatch)) {
             $age = $ageMatch[1];
-            // Remover a idade duplicada se já estiver no início do texto
+            // Remover a idade duplicada se já estiver no meio do texto
             $aiSummarySanitized = preg_replace('/^[^.]*?\d{1,3}\s*anos\s*,?\s*/iu', '', $aiSummarySanitized);
-            $aiSummarySanitized = 'O paciente ' . $patientInitials . ', ' . $age . ' anos, ' . ltrim($aiSummarySanitized, ', ');
+            $aiSummarySanitized = 'O paciente de, ' . $age . ' anos, ' . ltrim($aiSummarySanitized, ', ');
         } else {
-            $aiSummarySanitized = 'O paciente ' . $patientInitials . '. ' . ltrim($aiSummarySanitized, ', ');
+            $aiSummarySanitized = 'O paciente de, ' . ltrim($aiSummarySanitized, ', ');
         }
     }
     
