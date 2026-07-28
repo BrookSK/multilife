@@ -133,7 +133,7 @@ echo '.drawer.isOpen{transform:translateX(0)}';
 echo '.drawer.isOpen ~ script + div[style*="position:fixed"]{display:none !important}';
 echo '.drawerHeader{padding:16px 16px 12px;border-bottom:1px solid hsl(var(--border));position:relative;z-index:10030}';echo '.drawerTitle{font-size:16px;font-weight:900}';
 echo '.drawerBody{padding:16px;overflow:auto;flex:1 1 auto}';
-echo '.tabList{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}';
+echo '.tabList{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}';
 echo '.tabBtn{border:1px solid hsl(var(--border));background:hsla(var(--secondary)/.50);border-radius:10px;padding:8px 8px;font-size:11px;font-weight:900;color:hsl(var(--muted-foreground));cursor:pointer}';
 echo '.tabBtn.isActive{background:hsl(var(--primary));border-color:hsl(var(--primary));color:hsl(var(--primary-foreground))}';
 echo '.tabPanel{display:none;margin-top:14px}';
@@ -297,6 +297,7 @@ echo '</div>';
 echo '<div class="tabList" id="tabList">';
 $tabs = [
     ['key' => 'faturamento', 'label' => 'Faturamento'],
+    ['key' => 'agendamento', 'label' => 'Agendamento'],
     ['key' => 'whatsapp', 'label' => 'WhatsApp'],
     ['key' => 'prontuario', 'label' => 'Prontuário'],
     ['key' => 'profissional', 'label' => 'Profissional'],
@@ -421,6 +422,54 @@ if ($selected) {
     echo '<label>Sessões<input value="' . h($sessionQty . 'x - ' . $sessionFreq) . '" readonly></label>';
     echo '<label>Valor por Sessão<input value="R$ ' . h(number_format($paymentValue, 2, ',', '.')) . '" readonly></label>';
     echo '<label>Dados financeiros<input placeholder="Nº contrato / autorização"></label>';
+    echo '</div>';
+    echo '</div>';
+
+    echo '<div class="tabPanel" data-panel="agendamento">';
+    echo '<div style="display:grid;gap:12px">';
+    
+    // Pré-carregar dados da proposta (authorization_request) se existirem
+    $preStartDate = $authRequest['start_date'] ?? '';
+    $preStartTime = !empty($authRequest['start_time']) ? substr($authRequest['start_time'], 0, 5) : '';
+    $preEndTime = !empty($authRequest['end_time']) ? substr($authRequest['end_time'], 0, 5) : '';
+    $preFrequency = $authRequest['frequency'] ?? '';
+    $preSessionsPerWeek = (int)($authRequest['sessions_per_week'] ?? 1);
+    $preDurationWeeks = (int)($authRequest['duration_weeks'] ?? 0);
+    $preTotalSessions = (int)($authRequest['total_sessions'] ?? $sessionQty);
+    
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
+    echo '<label>Data de Início *<input type="date" name="start_date" form="approveForm" value="' . h($preStartDate) . '" required></label>';
+    echo '<label>Hora Início *<input type="time" name="start_time" form="approveForm" value="' . h($preStartTime ?: '08:00') . '" required></label>';
+    echo '<label>Hora Fim *<input type="time" name="end_time" form="approveForm" value="' . h($preEndTime ?: '09:00') . '" required></label>';
+    echo '</div>';
+    
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    echo '<label>Frequência *<select name="frequency" id="paFrequency" form="approveForm" required>';
+    if (function_exists('frequency_get_options')) {
+        $freqOptions = frequency_get_options();
+        echo '<option value="">Selecione...</option>';
+        foreach ($freqOptions as $fo) {
+            $sel = ($fo['code'] === $preFrequency) ? ' selected' : '';
+            echo '<option value="' . h($fo['code']) . '"' . $sel . '>' . h($fo['label']) . ' — ' . h($fo['description']) . '</option>';
+        }
+    } else {
+        $freqOpts = ['daily' => 'Diária', 'weekly' => 'Semanal', 'biweekly' => 'Quinzenal', 'monthly' => 'Mensal'];
+        echo '<option value="">Selecione...</option>';
+        foreach ($freqOpts as $fk => $fl) {
+            $sel = ($fk === $preFrequency) ? ' selected' : '';
+            echo '<option value="' . h($fk) . '"' . $sel . '>' . h($fl) . '</option>';
+        }
+    }
+    echo '</select></label>';
+    echo '<label>Sessões por Semana *<input type="number" name="sessions_per_week" id="paSessionsPerWeek" form="approveForm" min="1" max="7" value="' . $preSessionsPerWeek . '" required></label>';
+    echo '</div>';
+    
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    echo '<label>Duração (semanas) *<input type="number" name="duration_weeks" id="paDurationWeeks" form="approveForm" min="1" value="' . ($preDurationWeeks ?: '') . '" required></label>';
+    echo '<label>Total de Sessões *<input type="number" name="total_sessions" id="paTotalSessions" form="approveForm" min="1" value="' . $preTotalSessions . '" required></label>';
+    echo '</div>';
+    
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">O total de sessões será calculado automaticamente com base na frequência e duração.</div>';
     echo '</div>';
     echo '</div>';
 
@@ -621,6 +670,26 @@ echo 'overlay.addEventListener("click", function(){window.location.href="' . h($
 echo 'var tabBtns=drawer.querySelectorAll(".tabBtn"); var panels=drawer.querySelectorAll(".tabPanel");';
 echo 'var activate=function(key){tabBtns.forEach(function(b){b.classList.toggle("isActive", b.getAttribute("data-tab")===key);}); panels.forEach(function(p){p.classList.toggle("isActive", p.getAttribute("data-panel")===key);});};';
 echo 'tabBtns.forEach(function(b){b.addEventListener("click", function(){activate(b.getAttribute("data-tab"));});});';
+
+// JS para calcular total de sessões automaticamente na aba Agendamento
+echo 'var paFreq=document.getElementById("paFrequency");';
+echo 'var paSPW=document.getElementById("paSessionsPerWeek");';
+echo 'var paDW=document.getElementById("paDurationWeeks");';
+echo 'var paTS=document.getElementById("paTotalSessions");';
+echo 'function paCalcSessions(){';
+echo '  if(!paFreq||!paSPW||!paDW||!paTS)return;';
+echo '  var freq=paFreq.value;var spw=parseInt(paSPW.value)||1;var dw=parseInt(paDW.value)||0;';
+echo '  var total=0;';
+echo '  if(freq==="daily"||freq==="7x_semana"){total=dw*7;}';
+echo '  else if(freq==="biweekly"||freq==="quinzenal"){total=Math.ceil(dw/2);}';
+echo '  else if(freq==="monthly"||freq==="mensal"){total=Math.ceil(dw/4);}';
+echo '  else{total=dw*spw;}';
+echo '  if(total>0)paTS.value=total;';
+echo '}';
+echo 'if(paFreq)paFreq.addEventListener("change",paCalcSessions);';
+echo 'if(paSPW)paSPW.addEventListener("input",paCalcSessions);';
+echo 'if(paDW)paDW.addEventListener("input",paCalcSessions);';
+
 echo '})();';
 echo '</script>';
 

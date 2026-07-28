@@ -82,15 +82,16 @@ if (!filter_var($operatorEmail, FILTER_VALIDATE_EMAIL)) {
 }
 
 if ($startDate === '' || $startTime === '' || $endTime === '') {
-    flash_set('error', 'Preencha data e horários do agendamento.');
-    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
-    exit;
+    // Agendamento agora é feito na pré-admissão, usar valores padrão
+    if ($startDate === '') $startDate = date('Y-m-d', strtotime('+7 days'));
+    if ($startTime === '') $startTime = '08:00';
+    if ($endTime === '') $endTime = '09:00';
 }
 
 if ($totalSessions <= 0 || $durationWeeks <= 0) {
-    flash_set('error', 'Informe duração e total de sessões.');
-    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
-    exit;
+    // Valores padrão quando não informados (serão definidos na pré-admissão)
+    if ($totalSessions <= 0) $totalSessions = 1;
+    if ($durationWeeks <= 0) $durationWeeks = 1;
 }
 
 if ($proposalValue <= 0) {

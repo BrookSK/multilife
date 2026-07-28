@@ -13,6 +13,15 @@ $weekdaysRaw = trim((string)($_POST['weekdays'] ?? ''));
 $sessionDatesRaw = trim((string)($_POST['session_dates'] ?? ''));
 $healthInsurerId = isset($_POST['health_insurer_id']) ? (int)$_POST['health_insurer_id'] : null;
 
+// Campos de agendamento (vindos da aba Agendamento na pré-admissão)
+$formStartDate = trim((string)($_POST['start_date'] ?? ''));
+$formStartTime = trim((string)($_POST['start_time'] ?? ''));
+$formEndTime = trim((string)($_POST['end_time'] ?? ''));
+$formFrequency = trim((string)($_POST['frequency'] ?? ''));
+$formSessionsPerWeek = isset($_POST['sessions_per_week']) ? (int)$_POST['sessions_per_week'] : 0;
+$formDurationWeeks = isset($_POST['duration_weeks']) ? (int)$_POST['duration_weeks'] : 0;
+$formTotalSessions = isset($_POST['total_sessions']) ? (int)$_POST['total_sessions'] : 0;
+
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
     header('Location: /pre_admissao.php');
@@ -81,16 +90,67 @@ try {
     ");
     
     // Calcular datas das sessões
+    // Prioridade 0: Campos de agendamento preenchidos na pré-admissão (form fields)
     // Prioridade 1: Datas vindas da proposta (session_dates)
     // Prioridade 2: Dias da semana selecionados (weekdays)
     // Prioridade 3: Tabela padronizada de frequência (frequency_weekday_rules)
     // Prioridade 4: Fallback semanal
     $sessionDates = [];
-    $totalSessions = (int)$assignment['session_quantity'];
+    $totalSessions = $formTotalSessions > 0 ? $formTotalSessions : (int)$assignment['session_quantity'];
     $startDate = new DateTime(); // Hoje (data da aprovação)
     
-    // Tentar usar datas pré-calculadas da proposta
-    if ($sessionDatesRaw !== '') {
+    // Prioridade 0: Se veio data de início do formulário de agendamento, usar
+    if ($formStartDate !== '' && $formFrequency !== '' && $formTotalSessions > 0) {
+        $startDate = new DateTime($formStartDate);
+        
+        // Atualizar session_quantity e session_frequency no assignment
+        $db->prepare("
+            UPDATE patient_assignments 
+            SET session_quantity = ?, session_frequency = ?
+            WHERE id = ?
+        ")->execute([$formTotalSessions, $formFrequency, $assignmentId]);
+        
+        // Atualizar authorization_request com os dados de agendamento (se existir)
+        try {
+            $db->prepare("
+                UPDATE authorization_requests 
+                SET start_date = ?, start_time = ?, end_time = ?, frequency = ?, 
+                    sessions_per_week = ?, duration_weeks = ?, total_sessions = ?
+                WHERE demand_id = ? AND patient_id = ?
+                ORDER BY id DESC LIMIT 1
+            ")->execute([
+                $formStartDate, $formStartTime ?: '08:00:00', $formEndTime ?: '09:00:00',
+                $formFrequency, $formSessionsPerWeek ?: 1, $formDurationWeeks ?: 4, $formTotalSessions,
+                $demandId, $assignment['patient_id']
+            ]);
+        } catch (Exception $e) {
+            error_log("DEBUG APROVAÇÃO: Erro ao atualizar authorization_requests: " . $e->getMessage());
+        }
+        
+        // Gerar datas usando tabela padronizada
+        if (function_exists('frequency_generate_session_dates')) {
+            $generatedDates = frequency_generate_session_dates($formFrequency, $startDate, $formTotalSessions);
+            if (count($generatedDates) > 0) {
+                $sessionDates = array_map(fn(DateTime $dt) => $dt->format('Y-m-d'), $generatedDates);
+            }
+        }
+        
+        // Fallback: calcular baseado em sessões por semana
+        if (count($sessionDates) === 0 && $formSessionsPerWeek > 0) {
+            $intervalDays = max(1, (int)floor(7 / $formSessionsPerWeek));
+            for ($i = 0; $i < $formTotalSessions; $i++) {
+                $sessDate = clone $startDate;
+                $sessDate->modify('+' . ($i * $intervalDays) . ' days');
+                $sessionDates[] = $sessDate->format('Y-m-d');
+            }
+        }
+        
+        $totalSessions = $formTotalSessions;
+        error_log("DEBUG APROVAÇÃO: Usando dados do formulário - freq='$formFrequency' start='$formStartDate' total=$formTotalSessions sessões geradas=" . count($sessionDates));
+    }
+    
+    // Prioridade 1: Tentar usar datas pré-calculadas da proposta
+    if (count($sessionDates) === 0 && $sessionDatesRaw !== '') {
         $sessionDates = array_filter(array_map('trim', explode(',', $sessionDatesRaw)));
         // Validar que são datas válidas
         $sessionDates = array_filter($sessionDates, function($d) {
