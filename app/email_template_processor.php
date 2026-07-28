@@ -130,69 +130,29 @@ function email_generate_default_proposal_html(array $vars): string
 {
     require_once __DIR__ . '/email_base_template.php';
     
-    $patientName = $vars['patient_name'] ?? '';
-    $patientEmail = $vars['patient_email'] ?? '';
-    $patientPhone = $vars['patient_phone'] ?? '';
-    $professionalName = $vars['professional_name'] ?? '';
-    $professionalEmail = $vars['professional_email'] ?? '';
-    $professionalPhone = $vars['professional_phone'] ?? '';
-    $professionalCouncil = $vars['professional_council'] ?? '';
     $specialty = $vars['specialty'] ?? '';
     $serviceName = $vars['service_name'] ?? '';
-    $location = $vars['location'] ?? '';
-    $startDate = $vars['start_date'] ?? '';
-    $startTime = $vars['start_time'] ?? '';
-    $endTime = $vars['end_time'] ?? '';
-    $frequencyText = $vars['frequency_text'] ?? '';
-    $totalSessions = $vars['total_sessions'] ?? '';
-    $durationWeeks = $vars['duration_weeks'] ?? '';
     $valuePerSession = $vars['value_per_session'] ?? '';
-    $totalValue = $vars['total_value'] ?? '';
-    $sessionDates = $vars['session_dates_array'] ?? [];
     $notes = $vars['notes'] ?? '';
 
-    // Montar corpo do e-mail
+    // Montar corpo do e-mail (simplificado)
     $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
-    $body .= '<p style="font-size:14px;color:#4b5563">Encaminhamos proposta de atendimento domiciliar para análise e autorização conforme detalhes abaixo:</p>';
+    $body .= '<p style="font-size:14px;color:#4b5563">Encaminhamos proposta de atendimento domiciliar para análise e autorização, conforme detalhes abaixo.</p>';
     
-    // Seção: Paciente
-    $patientContent = email_data_row('Nome', $patientName);
-    $patientContent .= email_data_row('E-mail', $patientEmail);
-    $patientContent .= email_data_row('Telefone', $patientPhone);
-    $patientContent .= email_data_row('Localização', $location);
-    $body .= email_section('👤 Dados do Paciente', $patientContent, '#00a884');
+    // Seção: Serviço Solicitado (simplificada, sem ícone, sem borda lateral colorida)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Serviço Solicitado</h3>';
+    $body .= email_data_row('Especialidade', $specialty);
+    $body .= email_data_row('Serviço', $serviceName);
+    $body .= '</div>';
     
-    // Seção: Profissional (omitida na proposta inicial - será enviada após aprovação na pré-admissão)
-    // $profContent = email_data_row('Nome', $professionalName);
-    // $profContent .= email_data_row('Especialidade', $specialty);
-    // $profContent .= email_data_row('Serviço', $serviceName);
-    // $profContent .= email_data_row('Registro Profissional', $professionalCouncil);
-    // $profContent .= email_data_row('E-mail', $professionalEmail);
-    // $profContent .= email_data_row('Telefone', $professionalPhone);
-    // $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+    // Valor por sessão (simples, sem destaque grande)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Valor da Sessão</h3>';
+    $body .= '<p style="margin:4px 0;font-size:14px"><strong style="color:#374151">Valor por Sessão:</strong> <span style="color:#059669;font-weight:700">R$ ' . htmlspecialchars($valuePerSession) . '</span></p>';
+    $body .= '</div>';
     
-    // Apenas especialidade e serviço (sem dados pessoais do profissional)
-    $specContent = email_data_row('Especialidade', $specialty);
-    $specContent .= email_data_row('Serviço', $serviceName);
-    $body .= email_section('🏥 Serviço Solicitado', $specContent, '#0284c7');
-    
-    // Seção: Agendamento
-    $schedContent = email_data_row('Data de Início', $startDate);
-    $schedContent .= email_data_row('Horário', $startTime . ' às ' . $endTime);
-    $schedContent .= email_data_row('Frequência', $frequencyText);
-    $schedContent .= email_data_row('Duração', $durationWeeks . ' semanas');
-    $schedContent .= email_data_row('Total de Sessões', $totalSessions);
-    $body .= email_section('📋 Agendamento Proposto', $schedContent, '#7c3aed');
-    
-    // Destaque: Valor
-    $body .= email_highlight_box('Valor por Sessão: R$ ' . $valuePerSession, 'R$ ' . $totalValue);
-    
-    // Tabela de sessões
-    if (!empty($sessionDates)) {
-        $body .= email_session_table($sessionDates);
-    }
-    
-    // Observações
+    // Observações (se houver)
     $body .= email_notes_block($notes);
     
     // Call to action
