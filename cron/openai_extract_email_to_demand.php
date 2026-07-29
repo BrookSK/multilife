@@ -154,7 +154,7 @@ $api = new OpenAiApi();
 // seja vinculada à autorização correta, mesmo quando há múltiplas autorizações
 // para o mesmo paciente (ex: fisioterapia #14 e fonoaudiologia #16)
 $checkAuthResponse = $db->prepare(
-    "SELECT ar.id, ar.operator_email, ar.email_thread_id, ar.demand_id, ar.patient_id, ar.sent_message_id
+    "SELECT ar.id, ar.operator_email, ar.email_thread_id, ar.demand_id, ar.patient_id, ar.sent_message_id, ar.sent_at
      FROM authorization_requests ar
      WHERE ar.status = 'aguardando_autorizacao'
      AND ar.sent_at IS NOT NULL
@@ -314,29 +314,67 @@ foreach ($emails as $e) {
         error_log("[EMAIL_EXTRACT]   🔓 CADEADO (In-Reply-To recebido): '$inReplyTo'");
         
         // ========================================================================
-        // MODELO CHAVE-CADEADO: ÚNICO CRITÉRIO DE IDENTIFICAÇÃO
+        // MODELO CHAVE-CADEADO COM FALLBACKS
         // ========================================================================
-        // Chave (🔑): Message-ID único gerado ao ENVIAR proposta
-        // Cadeado (🔓): Header In-Reply-To do e-mail de RESPOSTA
-        // 
-        // Se Chave = Cadeado → Resposta identificada com 100% de certeza
-        // Se Chave ≠ Cadeado → NÃO é resposta desta autorização
-        // 
-        // NÃO usa Thread-ID, operadora ou qualquer outro critério
+        // Critério 1 (100% preciso): In-Reply-To === sent_message_id
+        // Critério 2 (alta precisão): In-Reply-To normalizado (sem <> e espaços)
+        // Critério 3 (média precisão): Mesmo remetente (operator_email) + assunto "Re:" + enviado < 72h
         // ========================================================================
         
+        // Critério 1: Match exato
         if ($inReplyTo !== '' && $authMessageId !== '' && $inReplyTo === $authMessageId) {
             $isAuthorizationResponse = true;
             $matchedAuthId = (int)$auth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id ✅✅✅ CHAVE-CADEADO MATCH! Resposta de autorização #$matchedAuthId");
-            error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
-            error_log("[EMAIL_EXTRACT]   🔑🔓 Identificação 100% precisa - Modelo chave-cadeado");
+            error_log("[EMAIL_EXTRACT] E-mail #$id ✅ MATCH EXATO (Critério 1)! Auth #$matchedAuthId");
             break;
+        }
+        
+        // Critério 2: Match normalizado (remove < > e espaços extras)
+        if ($inReplyTo !== '' && $authMessageId !== '') {
+            $normalizedInReplyTo = trim(str_replace(['<', '>', ' '], '', $inReplyTo));
+            $normalizedAuthMsgId = trim(str_replace(['<', '>', ' '], '', $authMessageId));
+            if ($normalizedInReplyTo !== '' && $normalizedInReplyTo === $normalizedAuthMsgId) {
+                $isAuthorizationResponse = true;
+                $matchedAuthId = (int)$auth['id'];
+                error_log("[EMAIL_EXTRACT] E-mail #$id ✅ MATCH NORMALIZADO (Critério 2)! Auth #$matchedAuthId");
+                break;
+            }
+        }
+        
+        // Critério 3: Remetente é a operadora + assunto contém "Re:" + proposta enviada há menos de 72h
+        $authOperatorEmail = strtolower(trim((string)($auth['operator_email'] ?? '')));
+        $fromEmailLower = strtolower(trim($fromEmail));
+        if ($authOperatorEmail !== '' && $fromEmailLower !== '' && $authOperatorEmail === $fromEmailLower) {
+            $sentAt = $auth['sent_at'] ?? '';
+            if ($sentAt !== '') {
+                $sentTimestamp = strtotime($sentAt);
+                $hoursSinceSent = (time() - $sentTimestamp) / 3600;
+                
+                // Operadora respondeu dentro de 72 horas
+                if ($hoursSinceSent >= 0 && $hoursSinceSent <= 72) {
+                    // Verificar se assunto indica resposta (Re:, Fw:, Enc:, ou contém "proposta"/"atendimento")
+                    $subjectLower = strtolower($subject);
+                    $isReply = (strpos($subjectLower, 're:') !== false 
+                        || strpos($subjectLower, 'fw:') !== false 
+                        || strpos($subjectLower, 'enc:') !== false
+                        || strpos($subjectLower, 'proposta') !== false 
+                        || strpos($subjectLower, 'atendimento') !== false
+                        || strpos($subjectLower, 'autoriza') !== false);
+                    
+                    if ($isReply) {
+                        $isAuthorizationResponse = true;
+                        $matchedAuthId = (int)$auth['id'];
+                        error_log("[EMAIL_EXTRACT] E-mail #$id ✅ MATCH POR REMETENTE + ASSUNTO (Critério 3)! Auth #$matchedAuthId");
+                        error_log("[EMAIL_EXTRACT]   Operadora: $authOperatorEmail | Enviado há: " . round($hoursSinceSent, 1) . "h | Assunto: $subject");
+                        break;
+                    }
+                }
+            }
         }
     }
     
     if (!$isAuthorizationResponse) {
-        error_log("[EMAIL_EXTRACT] E-mail #$id - 🔑🔓 Chave-cadeado NÃO identificou como resposta, processando como nova demanda");
+        error_log("[EMAIL_EXTRACT] E-mail #$id - Nenhum critério identificou como resposta de autorização, processando como nova demanda");
     }
     
     // Se for resposta de autorização, processar imediatamente
