@@ -196,8 +196,13 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
             if ($req['status'] === 'rejected') continue;
             foreach ($req['files'] as $file) {
                 if ($file['document_type'] === 'produtividade') {
+                    $isPdf = (stripos($file['file_path'], '.pdf') !== false);
                     echo '<div style="position:relative;border:2px solid #10b981;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
-                    echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    if ($isPdf) {
+                        echo '<div style="width:100%;height:150px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:40px">📄</div>';
+                    } else {
+                        echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    }
                     echo '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:4px 8px;font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">';
                     echo 'Sessão ' . (int)$req['session_number'];
                     echo '</div>';
@@ -220,8 +225,13 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
             if ($req['status'] === 'rejected') continue;
             foreach ($req['files'] as $file) {
                 if ($file['document_type'] === 'faturamento') {
+                    $isPdf = (stripos($file['file_path'], '.pdf') !== false);
                     echo '<div style="position:relative;border:2px solid #0284c7;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
-                    echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    if ($isPdf) {
+                        echo '<div style="width:100%;height:150px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:40px">📄</div>';
+                    } else {
+                        echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    }
                     echo '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:4px 8px;font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">';
                     echo 'Sessão ' . (int)$req['session_number'];
                     echo '</div>';

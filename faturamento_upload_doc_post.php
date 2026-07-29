@@ -48,7 +48,7 @@ if ((!$prodFiles || empty($prodFiles['name'][0])) && (!$fatFiles || empty($fatFi
     exit;
 }
 
-$allowedTypes = ['image/jpeg', 'image/png'];
+$allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
 $maxSize = 10 * 1024 * 1024; // 10MB
 $maxFiles = 20;
 
@@ -85,7 +85,7 @@ function processFileArray($files, $docType, $requirementId, $userId, $allowedTyp
         $fileTmp = $files['tmp_name'][$i];
         
         if (!in_array($fileType, $allowedTypes)) {
-            throw new Exception("Arquivo {$fileName}: apenas JPEG e PNG são permitidos");
+            throw new Exception("Arquivo {$fileName}: formatos aceitos são PDF, JPG, JPEG, PNG, WEBP, HEIC e HEIF");
         }
         
         if ($fileSize > $maxSize) {
