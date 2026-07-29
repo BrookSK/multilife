@@ -159,7 +159,21 @@ $checkAuthResponse = $db->prepare(
      WHERE ar.status = 'aguardando_autorizacao'
      AND ar.sent_at IS NOT NULL
      AND ar.response_received_at IS NULL
-     AND ar.patient_id > 0"
+     AND ar.patient_id > 0
+     
+     UNION
+     
+     SELECT ar2.id, ar2.operator_email, ar2.email_thread_id, ar2.demand_id, ar2.patient_id, ar2.sent_message_id, ar2.sent_at
+     FROM authorization_requests ar2
+     WHERE ar2.status = 'cancelada'
+     AND ar2.sent_message_id IS NOT NULL
+     AND ar2.patient_id > 0
+     AND EXISTS (
+         SELECT 1 FROM authorization_requests ar3 
+         WHERE ar3.demand_id = ar2.demand_id 
+         AND ar3.status = 'aguardando_autorizacao'
+         AND ar3.previous_request_id = ar2.id
+     )"
 );
 
 $okSet = "status = :st, processed_at = :pa, error_message = NULL";
@@ -381,11 +395,41 @@ foreach ($emails as $e) {
     if ($isAuthorizationResponse && $matchedAuthId !== null) {
         error_log("[EMAIL_EXTRACT] Processando resposta de autorização IMEDIATAMENTE");
         
+        // Se o match foi com uma autorização cancelada (antigo reenvio), usar a autorização ativa
+        $actualAuthId = $matchedAuthId;
+        $checkActiveStmt = $db->prepare(
+            "SELECT id FROM authorization_requests 
+             WHERE previous_request_id = :prev_id AND status = 'aguardando_autorizacao' 
+             ORDER BY id DESC LIMIT 1"
+        );
+        $checkActiveStmt->execute(['prev_id' => $matchedAuthId]);
+        $activeAuth = $checkActiveStmt->fetchColumn();
+        if ($activeAuth) {
+            $actualAuthId = (int)$activeAuth;
+            error_log("[EMAIL_EXTRACT] Match em autorização cancelada #$matchedAuthId, usando autorização ativa #$actualAuthId");
+        }
+        
+        // Verificar se a autorização real está com status correto
+        $verifyStmt = $db->prepare("SELECT status FROM authorization_requests WHERE id = :id");
+        $verifyStmt->execute(['id' => $actualAuthId]);
+        $verifyStatus = $verifyStmt->fetchColumn();
+        
+        if ($verifyStatus !== 'aguardando_autorizacao') {
+            error_log("[EMAIL_EXTRACT] ⚠ Autorização #$actualAuthId já processada (status: $verifyStatus). Ignorando.");
+            $updOk->execute([
+                'st' => 'processed',
+                'pa' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]);
+            $ok++;
+            continue;
+        }
+        
         // Incluir função de processamento
         require_once __DIR__ . '/../app/process_single_authorization.php';
         
         // Processar autorização
-        $result = process_single_authorization($matchedAuthId, $id);
+        $result = process_single_authorization($actualAuthId, $id);
         
         if ($result['success']) {
             error_log("[EMAIL_EXTRACT] ✅ Autorização #$matchedAuthId processada com sucesso!");

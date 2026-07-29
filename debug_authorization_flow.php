@@ -24,10 +24,12 @@ echo "────────────────────────�
 $stmt = db()->query("
     SELECT ar.id, ar.demand_id, ar.patient_id, ar.operator_email, ar.status, 
            ar.sent_at, ar.sent_message_id, ar.response_received_at,
+           ar.previous_request_id, ar.resend_count,
            d.title as demand_title
     FROM authorization_requests ar
     LEFT JOIN demands d ON d.id = ar.demand_id
-    WHERE ar.status = 'aguardando_autorizacao'
+    WHERE ar.status IN ('aguardando_autorizacao', 'cancelada')
+    AND ar.sent_at IS NOT NULL
     ORDER BY ar.id DESC
     LIMIT 10
 ");
@@ -37,10 +39,17 @@ if (empty($pending)) {
     echo "<span style='color:#ef4444'>  ✗ Nenhuma autorização pendente encontrada!</span>\n";
 } else {
     foreach ($pending as $p) {
-        echo "  <span style='color:#60a5fa'>Auth #{$p['id']}</span> | Demand #{$p['demand_id']} | Patient #{$p['patient_id']}\n";
+        $statusColor = $p['status'] === 'aguardando_autorizacao' ? '#fbbf24' : '#9ca3af';
+        echo "  <span style='color:#60a5fa'>Auth #{$p['id']}</span> | Status: <span style='color:$statusColor'>{$p['status']}</span> | Demand #{$p['demand_id']} | Patient #{$p['patient_id']}\n";
         echo "    Operadora: {$p['operator_email']}\n";
         echo "    Enviado em: {$p['sent_at']}\n";
         echo "    sent_message_id: <span style='color:#fbbf24'>{$p['sent_message_id']}</span>\n";
+        if ($p['patient_id'] <= 0) {
+            echo "    <span style='color:#ef4444'>⚠ PROBLEMA: patient_id está vazio/zero! O matching vai ignorar esta autorização.</span>\n";
+        }
+        if (!empty($p['previous_request_id'])) {
+            echo "    Reenvio de: Auth #{$p['previous_request_id']}\n";
+        }
         echo "    Título: {$p['demand_title']}\n\n";
     }
 }
