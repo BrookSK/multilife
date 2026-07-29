@@ -125,14 +125,16 @@ view_header('Configuração de Operadoras / Clientes');
                         <?php endif; ?>
                     </td>
                     <td>
-                        <button onclick='editInsurer(<?= json_encode($insurer) ?>)' class="btn-sm">Editar</button>
-                        <form method="post" style="display:inline">
-                            <input type="hidden" name="action" value="toggle_status">
-                            <input type="hidden" name="id" value="<?= $insurer['id'] ?>">
-                            <button type="submit" class="btn-sm" style="background:hsl(var(--muted))">
-                                <?= $insurer['is_active'] ? 'Desativar' : 'Ativar' ?>
-                            </button>
-                        </form>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <button onclick='editInsurer(<?= json_encode($insurer) ?>)' class="btn" style="padding:6px 12px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-radius:6px">Editar</button>
+                            <form method="post" style="display:inline">
+                                <input type="hidden" name="action" value="toggle_status">
+                                <input type="hidden" name="id" value="<?= $insurer['id'] ?>">
+                                <button type="submit" class="btn" style="padding:6px 12px;font-size:12px;font-weight:600;background:<?= $insurer['is_active'] ? 'hsl(var(--destructive))' : 'hsl(var(--success))' ?>;color:#fff;border-radius:6px">
+                                    <?= $insurer['is_active'] ? 'Desativar' : 'Ativar' ?>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
