@@ -408,26 +408,26 @@ try {
                 $profFull = $profFullStmt->fetch();
                 
                 $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
-                $body .= '<p style="font-size:14px;color:#4b5563">O atendimento domiciliar foi <strong style="color:#059669">aprovado</strong> e o profissional já está designado. Seguem os detalhes completos:</p>';
+                $body .= '<p style="font-size:14px;color:#4b5563">O atendimento domiciliar foi <strong style="color:#059669">aprovado</strong>. Seguem os detalhes:</p>';
                 
-                $patientContent = email_data_row('Nome', $assignment['patient_name'] ?? '');
-                $body .= email_section('👤 Paciente', $patientContent, '#00a884');
+                $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Profissional Designado</h3>';
+                $body .= email_data_row('Nome', $profFull['name'] ?? $assignment['professional_name'] ?? '');
+                $body .= email_data_row('Especialidade', $profFull['specialty'] ?? $assignment['specialty'] ?? '');
+                $body .= email_data_row('Telefone', $profFull['phone'] ?? '');
+                $body .= '</div>';
                 
-                $profContent = email_data_row('Nome', $profFull['name'] ?? $assignment['professional_name'] ?? '');
-                $profContent .= email_data_row('Especialidade', $profFull['specialty'] ?? $assignment['specialty'] ?? '');
-                $profContent .= email_data_row('E-mail', $profFull['email'] ?? '');
-                $profContent .= email_data_row('Telefone', $profFull['phone'] ?? '');
-                $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
-                
-                $schedContent = email_data_row('Sessões', ($assignment['session_quantity'] ?? '') . ' sessões');
-                $schedContent .= email_data_row('Frequência', $assignment['session_frequency'] ?? '');
-                $body .= email_section('📋 Atendimento', $schedContent, '#7c3aed');
+                $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Atendimento</h3>';
+                $body .= email_data_row('Sessões', ($assignment['session_quantity'] ?? '') . ' sessões');
+                $body .= email_data_row('Frequência', $assignment['session_frequency'] ?? '');
+                $body .= '</div>';
                 
                 $body .= email_divider();
                 $body .= '<p style="font-size:14px;color:#374151">O atendimento já está em andamento. Para qualquer dúvida, entre em contato.</p>';
                 $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
                 
-                $htmlBody = email_base_layout('Atendimento Aprovado — Confirmação', $body);
+                $htmlBody = email_base_layout('Atendimento Aprovado', $body);
                 
                 // Usar Re: no assunto para manter thread + passar In-Reply-To/References
                 $emailSubject = $originalMessageId 
@@ -442,6 +442,65 @@ try {
         }
     } catch (Throwable $emailErr) {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao enviar e-mail para operadora: ' . $emailErr->getMessage());
+    }
+    
+    // Enviar e-mail para o PROFISSIONAL informando da aprovação
+    try {
+        $profEmailAddr = '';
+        $profNameForEmail = $assignment['professional_name'] ?? 'Profissional';
+        
+        // Buscar email do profissional
+        $profEmailStmt = db()->prepare("SELECT name, email, phone FROM users WHERE id = ?");
+        $profEmailStmt->execute([$assignment['professional_user_id']]);
+        $profEmailData = $profEmailStmt->fetch();
+        if ($profEmailData) {
+            $profEmailAddr = trim((string)($profEmailData['email'] ?? ''));
+            $profNameForEmail = $profEmailData['name'] ?? $profNameForEmail;
+        }
+        
+        if ($profEmailAddr !== '' && filter_var($profEmailAddr, FILTER_VALIDATE_EMAIL)) {
+            $fromEmail2 = (string)admin_setting_get('smtp.out.from_email', '');
+            $fromName2 = (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care');
+            
+            if ($fromEmail2 !== '') {
+                require_once __DIR__ . '/app/email_base_template.php';
+                
+                $patName = $assignment['patient_name'] ?? 'Paciente';
+                $sessQty = $assignment['session_quantity'] ?? 0;
+                $sessFreq = $assignment['session_frequency'] ?? '';
+                $payVal = (float)($assignment['payment_value'] ?? 0);
+                
+                $pBody = '<p style="font-size:15px;color:#374151">Olá, <strong>' . htmlspecialchars($profNameForEmail) . '</strong>!</p>';
+                $pBody .= '<p style="font-size:14px;color:#4b5563">O atendimento abaixo foi <strong style="color:#059669">aprovado</strong> e você foi designado(a) como profissional responsável.</p>';
+                
+                $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Dados do Atendimento</h3>';
+                $pBody .= email_data_row('Paciente', $patName);
+                $pBody .= email_data_row('Especialidade', $assignment['specialty'] ?? '');
+                $pBody .= email_data_row('Sessões', $sessQty . 'x — ' . $sessFreq);
+                $pBody .= email_data_row('Valor por Sessão', 'R$ ' . number_format($payVal, 2, ',', '.'));
+                $pBody .= '</div>';
+                
+                $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Contato do Paciente</h3>';
+                $pBody .= email_data_row('Nome', $patName);
+                $pBody .= email_data_row('Telefone', $assignment['patient_phone'] ?? '');
+                $pBody .= '</div>';
+                
+                $pBody .= email_divider();
+                $pBody .= '<p style="font-size:14px;color:#374151">Por favor, entre em contato com o paciente para alinhar o início do atendimento.</p>';
+                $pBody .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+                
+                $pHtml = email_base_layout('Atendimento Aprovado', $pBody);
+                
+                $smtp2 = new SmtpClient();
+                $smtp2->send($fromEmail2, $fromName2, $profEmailAddr, 'Atendimento Aprovado - ' . $patName, $pHtml);
+                
+                error_log('[PRE_ADMISSAO_APPROVE] E-mail enviado para profissional: ' . $profEmailAddr);
+            }
+        }
+    } catch (Throwable $profErr) {
+        error_log('[PRE_ADMISSAO_APPROVE] Erro ao enviar e-mail para profissional: ' . $profErr->getMessage());
     }
     
     flash_set('success', 'Atendimento aprovado com sucesso! O card foi movido para "Admitido" na Captação.');
