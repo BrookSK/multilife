@@ -78,6 +78,13 @@ function email_send_with_template(
                 'body_html' => email_generate_default_proposal_html($variables),
                 'body_plain' => null,
             ];
+        } elseif ($eventType === 'proposal_resend') {
+            $template = [
+                'id' => 0,
+                'subject' => 'Re: Proposta de Atendimento - ' . ($variables['patient_name'] ?? 'Paciente'),
+                'body_html' => email_generate_default_resend_html($variables),
+                'body_plain' => null,
+            ];
         } else {
             return [
                 'success' => false,
@@ -85,6 +92,12 @@ function email_send_with_template(
                 'template_id' => null
             ];
         }
+    }
+    
+    // Para proposal_resend, forçar o uso do layout limpo (ignorar template do banco se existir)
+    if ($eventType === 'proposal_resend') {
+        $template['body_html'] = email_generate_default_resend_html($variables);
+        $template['subject'] = 'Re: Proposta de Atendimento - ' . ($variables['patient_name'] ?? 'Paciente');
     }
     
     $templateId = (int)$template['id'];
@@ -155,6 +168,56 @@ function email_generate_default_proposal_html(array $vars): string
     $body .= '</div>';
     
     // Observações (se houver)
+    $body .= email_notes_block($notes);
+    
+    // Call to action
+    $body .= email_divider();
+    $body .= '<p style="font-size:14px;color:#374151;margin-top:20px">Solicitamos gentilmente a <strong>análise e retorno</strong> sobre esta proposta.</p>';
+    $body .= '<p style="font-size:14px;color:#374151"><strong>Para autorizar ou solicitar ajustes, basta responder este e-mail.</strong></p>';
+    $body .= '<p style="font-size:14px;color:#6b7280;margin-top:24px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+    
+    return email_base_layout('Proposta de Atendimento Domiciliar', $body, 'Para autorizar, responda diretamente este e-mail.');
+}
+
+/**
+ * Gerar HTML padrão para REENVIO de proposta — mesmo layout limpo da proposta original
+ */
+function email_generate_default_resend_html(array $vars): string
+{
+    require_once __DIR__ . '/email_base_template.php';
+    
+    $specialty = $vars['specialty'] ?? '';
+    $serviceName = $vars['service_name'] ?? '';
+    $valuePerSession = $vars['value_per_session'] ?? '';
+    $notes = $vars['notes'] ?? '';
+    $resendNotes = $vars['resend_notes'] ?? '';
+
+    // Montar corpo do e-mail (mesmo layout limpo da proposta)
+    $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
+    $body .= '<p style="font-size:14px;color:#4b5563">Reenviamos a proposta de atendimento domiciliar para análise e autorização, conforme detalhes abaixo.</p>';
+    
+    // Justificativa do reenvio (se houver)
+    if ($resendNotes !== '') {
+        $body .= '<div style="background:#fffbeb;padding:14px 18px;margin:16px 0;border-radius:8px;border-left:4px solid #f59e0b">';
+        $body .= '<p style="margin:0;font-size:13px;font-weight:700;color:#92400e">Observação do Reenvio</p>';
+        $body .= '<p style="margin:6px 0 0;font-size:14px;color:#78350f">' . nl2br(htmlspecialchars($resendNotes)) . '</p>';
+        $body .= '</div>';
+    }
+    
+    // Seção: Serviço Solicitado (simplificada)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Serviço Solicitado</h3>';
+    $body .= email_data_row('Especialidade', $specialty);
+    $body .= email_data_row('Serviço', $serviceName);
+    $body .= '</div>';
+    
+    // Valor por sessão (simples)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Valor da Sessão</h3>';
+    $body .= '<p style="margin:4px 0;font-size:14px"><strong style="color:#374151">Valor por Sessão:</strong> <span style="color:#059669;font-weight:700">R$ ' . htmlspecialchars($valuePerSession) . '</span></p>';
+    $body .= '</div>';
+    
+    // Observações gerais (se houver)
     $body .= email_notes_block($notes);
     
     // Call to action
