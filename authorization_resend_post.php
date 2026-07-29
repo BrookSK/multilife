@@ -198,7 +198,7 @@ try {
         $patientData = $stmt->fetch();
         $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId);
+        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId, $auth['sent_message_id'] ?? null, $auth['sent_message_id'] ?? null);
         
         if (!$emailResult['success']) {
             throw new Exception($emailResult['message']);

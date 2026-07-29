@@ -385,6 +385,23 @@ try {
                 require_once __DIR__ . '/app/email_base_template.php';
                 require_once __DIR__ . '/app/email_html_generators.php';
                 
+                // Buscar Message-ID da proposta original para manter thread de e-mail
+                $originalMessageId = null;
+                try {
+                    $threadStmt = db()->prepare("
+                        SELECT sent_message_id FROM authorization_requests 
+                        WHERE demand_id = ? AND patient_id = ? AND sent_message_id IS NOT NULL 
+                        ORDER BY id DESC LIMIT 1
+                    ");
+                    $threadStmt->execute([$demandId, $assignment['patient_id']]);
+                    $originalMessageId = $threadStmt->fetchColumn() ?: null;
+                    if ($originalMessageId) {
+                        error_log("[PRE_ADMISSAO_APPROVE] Thread: respondendo ao Message-ID: $originalMessageId");
+                    }
+                } catch (Throwable $e) {
+                    error_log("[PRE_ADMISSAO_APPROVE] Erro ao buscar thread: " . $e->getMessage());
+                }
+                
                 // Buscar dados completos do profissional
                 $profFullStmt = db()->prepare("SELECT name, email, phone, specialty FROM users WHERE id = ?");
                 $profFullStmt->execute([$assignment['professional_user_id']]);
@@ -412,8 +429,13 @@ try {
                 
                 $htmlBody = email_base_layout('Atendimento Aprovado — Confirmação', $body);
                 
+                // Usar Re: no assunto para manter thread + passar In-Reply-To/References
+                $emailSubject = $originalMessageId 
+                    ? 'Re: Proposta de Atendimento - ' . ($assignment['patient_name'] ?? 'Paciente')
+                    : 'Atendimento Aprovado - ' . ($assignment['patient_name'] ?? 'Paciente');
+                
                 $client = new SmtpClient();
-                $client->send($fromEmail, $fromName, $operatorEmail, 'Atendimento Aprovado - ' . ($assignment['patient_name'] ?? 'Paciente'), $htmlBody);
+                $client->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $htmlBody, $originalMessageId, $originalMessageId);
                 
                 error_log('[PRE_ADMISSAO_APPROVE] E-mail de confirmação enviado para: ' . $operatorEmail);
             }

@@ -62,7 +62,9 @@ function email_send_with_template(
     string $toEmail,
     string $eventType,
     array $variables,
-    ?int $healthInsurerId = null
+    ?int $healthInsurerId = null,
+    ?string $inReplyTo = null,
+    ?string $references = null
 ): array {
     // 1. Buscar template
     $template = email_get_template($eventType, $healthInsurerId);
@@ -105,7 +107,7 @@ function email_send_with_template(
         $fromName = admin_setting_get('smtp.out.from_name', 'MultiLife Care');
         
         // SmtpClient suporta HTML se body começar com <!DOCTYPE ou <html
-        $messageId = $smtp->send($fromEmail, $fromName, $toEmail, $subject, $bodyHtml);
+        $messageId = $smtp->send($fromEmail, $fromName, $toEmail, $subject, $bodyHtml, $inReplyTo, $references);
         
         return [
             'success' => true,
