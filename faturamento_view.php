@@ -210,10 +210,10 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
         echo '</div>';
     }
     
-    // Fichas de Faturamento
+    // Fichas de Evolução
     if ($totalFatFiles > 0) {
         echo '<div style="margin-bottom:20px">';
-        echo '<h4 style="color:#0c4a6e;margin-bottom:12px">💰 Fichas de Faturamento (' . $totalFatFiles . ')</h4>';
+        echo '<h4 style="color:#0c4a6e;margin-bottom:12px">💰 Fichas de Evolução (' . $totalFatFiles . ')</h4>';
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
         
         foreach ($documentRequirements as $req) {
