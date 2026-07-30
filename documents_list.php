@@ -138,7 +138,7 @@ $tabs = [
 foreach ($tabs as $tabKey => $tabLabel) {
     $isActive = $tab === $tabKey;
     $activeStyle = $isActive ? 'background:hsl(var(--primary));color:white;border-color:hsl(var(--primary))' : 'background:white;color:#667781;border-color:transparent';
-    $href = $tabKey === 'sent' ? '/admin_documents_sent.php' : '/documents_list.php?tab=' . $tabKey;
+    $href = $tabKey === 'sent' ? '/docs_enviados.php' : '/documents_list.php?tab=' . $tabKey;
     echo '<a href="' . $href . '" style="padding:12px 24px;text-decoration:none;font-weight:600;border:2px solid;border-bottom:none;border-radius:8px 8px 0 0;' . $activeStyle . '">' . $tabLabel . '</a>';
 }
 
