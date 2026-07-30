@@ -18,9 +18,18 @@ if ($uid) {
     // Verificar por roles - qualquer role administrativa tem acesso
     if (!$canAccessDashboard) {
         $userRolesForDash = rbac_user_roles($uid);
-        $adminRolesForDash = ['admin', 'ti', 'analista', 'captador', 'financeiro', 'coordenador', 'gerente', 'gerente_rh', 'supervisor'];
+        $adminRolesForDash = ['admin', 'ti', 'analista', 'captador', 'financeiro', 'coordenador', 'gerente', 'gerente_rh', 'supervisor', 'rh', 'gerente-rh'];
         if (!empty(array_intersect($userRolesForDash, $adminRolesForDash))) {
             $canAccessDashboard = true;
+        }
+        // Fallback: se o role contem palavras administrativas
+        if (!$canAccessDashboard) {
+            foreach ($userRolesForDash as $r) {
+                if ($r !== 'profissional' && $r !== 'paciente') {
+                    $canAccessDashboard = true;
+                    break;
+                }
+            }
         }
     }
 }

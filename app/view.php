@@ -25,8 +25,17 @@ function view_header(string $title): void
         $roleStmt->execute([$user['id']]);
         $userRoles = $roleStmt->fetchAll(PDO::FETCH_COLUMN);
         // Roles administrativas que dão acesso ao menu completo
-        $adminRoles = ['admin', 'analista', 'captador', 'ti', 'financeiro', 'coordenador', 'gerente', 'supervisor'];
+        $adminRoles = ['admin', 'analista', 'captador', 'ti', 'financeiro', 'coordenador', 'gerente', 'gerente_rh', 'gerente-rh', 'supervisor', 'rh'];
         $hasAdminRole = !empty(array_intersect($userRoles, $adminRoles));
+        // Fallback: qualquer role que nao seja profissional/paciente e administrativa
+        if (!$hasAdminRole) {
+            foreach ($userRoles as $r) {
+                if ($r !== 'profissional' && $r !== 'paciente' && $r !== '') {
+                    $hasAdminRole = true;
+                    break;
+                }
+            }
+        }
         // So mostra menu de profissional se NAO tiver nenhuma role administrativa
         $isProfessional = in_array('profissional', $userRoles, true) && !$hasAdminRole;
     }
