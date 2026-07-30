@@ -487,6 +487,72 @@ try {
                 $pBody .= email_data_row('Telefone', $assignment['patient_phone'] ?? '');
                 $pBody .= '</div>';
                 
+                // Documentos da operadora (manuais, formulários, termos)
+                $insurerDocs = [];
+                if ($healthInsurerId && $healthInsurerId > 0) {
+                    try {
+                        $docsStmt = db()->prepare("SELECT id, file_name, file_path FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY created_at ASC");
+                        $docsStmt->execute([$healthInsurerId]);
+                        $insurerDocs = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Throwable $e) {}
+                }
+                
+                if (!empty($insurerDocs)) {
+                    $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
+                    $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                    $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Documentos da Operadora</h3>';
+                    $pBody .= '<p style="font-size:13px;color:#6b7280;margin:0 0 12px">Acesse os documentos obrigatórios (manuais, formulários, termos):</p>';
+                    foreach ($insurerDocs as $doc) {
+                        $docUrl = $baseUrl . $doc['file_path'];
+                        $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(doc|docx)$/i', $doc['file_name']) ? '📝' : '📎');
+                        $pBody .= '<p style="margin:6px 0;font-size:14px">' . $icon . ' <a href="' . htmlspecialchars($docUrl) . '" target="_blank" style="color:#0284c7;text-decoration:underline">' . htmlspecialchars($doc['file_name']) . '</a></p>';
+                    }
+                    $pBody .= '</div>';
+                    
+                    // Registrar envio automático de documentos
+                    try {
+                        db()->exec("
+                            CREATE TABLE IF NOT EXISTS document_send_logs (
+                                id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                                document_id INT UNSIGNED NOT NULL COMMENT 'ID do documento enviado',
+                                document_source VARCHAR(50) NOT NULL DEFAULT 'insurer' COMMENT 'insurer, manual, system',
+                                recipient_type VARCHAR(50) NOT NULL COMMENT 'professional, patient, operator',
+                                recipient_id INT UNSIGNED NULL COMMENT 'user_id ou patient_id',
+                                recipient_email VARCHAR(255) NULL,
+                                assignment_id INT UNSIGNED NULL,
+                                demand_id INT UNSIGNED NULL,
+                                health_insurer_id INT UNSIGNED NULL,
+                                send_method VARCHAR(30) NOT NULL DEFAULT 'email' COMMENT 'email, whatsapp, portal',
+                                sent_by_user_id INT UNSIGNED NULL COMMENT 'NULL = automático',
+                                notes TEXT NULL,
+                                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                INDEX idx_document (document_id),
+                                INDEX idx_recipient (recipient_type, recipient_id),
+                                INDEX idx_assignment (assignment_id),
+                                INDEX idx_insurer (health_insurer_id)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                        ");
+                        
+                        $logStmt = db()->prepare("
+                            INSERT INTO document_send_logs (document_id, document_source, recipient_type, recipient_id, recipient_email, assignment_id, demand_id, health_insurer_id, send_method, sent_by_user_id, notes)
+                            VALUES (?, 'insurer', 'professional', ?, ?, ?, ?, ?, 'email', NULL, 'Envio automático na aprovação da pré-admissão')
+                        ");
+                        foreach ($insurerDocs as $doc) {
+                            $logStmt->execute([
+                                $doc['id'],
+                                $assignment['professional_user_id'],
+                                $profEmailAddr,
+                                $assignmentId,
+                                $demandId,
+                                $healthInsurerId
+                            ]);
+                        }
+                        error_log("[PRE_ADMISSAO_APPROVE] Documentos da operadora registrados no log: " . count($insurerDocs));
+                    } catch (Throwable $logErr) {
+                        error_log("[PRE_ADMISSAO_APPROVE] Erro ao registrar log de documentos: " . $logErr->getMessage());
+                    }
+                }
+                
                 $pBody .= email_divider();
                 $pBody .= '<p style="font-size:14px;color:#374151">Por favor, entre em contato com o paciente para alinhar o início do atendimento.</p>';
                 $pBody .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';

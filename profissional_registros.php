@@ -227,4 +227,48 @@ if (count($pendingDocs) > 0) {
 
 echo '</div>';
 
+// Documentos da Operadora (manuais, formulários, termos)
+$insurerDocsStmt = db()->prepare("
+    SELECT DISTINCT hid.id, hid.file_name, hid.file_path, hid.mime_type,
+           hi.name as insurer_name
+    FROM health_insurer_documents hid
+    INNER JOIN health_insurers hi ON hi.id = hid.health_insurer_id
+    INNER JOIN patient_assignments pa ON pa.health_insurer_id = hi.id
+    WHERE pa.professional_user_id = ?
+    AND pa.status IN ('admitted', 'awaiting_financial_approval', 'approved')
+    ORDER BY hi.name ASC, hid.file_name ASC
+");
+$insurerDocsStmt->execute([$userId]);
+$insurerDocsList = $insurerDocsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+if (!empty($insurerDocsList)) {
+    echo '<section class="card col12">';
+    echo '<h3>Documentos da Operadora</h3>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Manuais, formulários e termos obrigatórios das operadoras dos seus atendimentos ativos.</div>';
+    
+    // Agrupar por operadora
+    $byInsurer = [];
+    foreach ($insurerDocsList as $doc) {
+        $byInsurer[$doc['insurer_name']][] = $doc;
+    }
+    
+    foreach ($byInsurer as $insurerName => $docs) {
+        echo '<div style="margin-bottom:16px">';
+        echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground));margin-bottom:8px">' . h($insurerName) . '</div>';
+        echo '<div style="display:flex;flex-direction:column;gap:6px">';
+        foreach ($docs as $doc) {
+            $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(doc|docx)$/i', $doc['file_name']) ? '📝' : (preg_match('/\.(xls|xlsx)$/i', $doc['file_name']) ? '📊' : '📎'));
+            echo '<a href="' . h($doc['file_path']) . '" target="_blank" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:hsl(var(--secondary));border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px;font-weight:500">';
+            echo '<span>' . $icon . '</span>';
+            echo '<span>' . h($doc['file_name']) . '</span>';
+            echo '<span style="margin-left:auto;font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
+            echo '</a>';
+        }
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    echo '</section>';
+}
+
 view_footer();
