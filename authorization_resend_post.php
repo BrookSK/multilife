@@ -59,12 +59,12 @@ try {
     // Criar nova solicitação de autorização (cópia da anterior com valores atualizados ou existentes)
     $stmt = $db->prepare(
         'INSERT INTO authorization_requests 
-        (demand_id, professional_user_id, proposal_value, agreed_value, 
+        (demand_id, patient_id, professional_user_id, proposal_value, agreed_value, 
          start_date, start_time, end_time, frequency, frequency_details, 
          sessions_per_week, total_sessions, duration_weeks, operator_email, operator_name,
          status, created_by_user_id, resend_count, previous_request_id) 
         VALUES 
-        (:demand_id, :prof_id, :proposal, :agreed, 
+        (:demand_id, :patient_id, :prof_id, :proposal, :agreed, 
          :start_date, :start_time, :end_time, :frequency, :freq_details,
          :sessions_per_week, :total_sessions, :duration_weeks, :op_email, :op_name,
          :status, :created_by, :resend_count, :previous_id)'
@@ -74,6 +74,7 @@ try {
     
     $stmt->execute([
         'demand_id' => $auth['demand_id'],
+        'patient_id' => (int)($auth['patient_id'] ?? 0),
         'prof_id' => $auth['professional_user_id'],
         'proposal' => $newProposalValue,
         'agreed' => $newAgreedValue,
@@ -198,7 +199,7 @@ try {
         $patientData = $stmt->fetch();
         $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId);
+        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId, $auth['sent_message_id'] ?? null, $auth['sent_message_id'] ?? null);
         
         if (!$emailResult['success']) {
             throw new Exception($emailResult['message']);

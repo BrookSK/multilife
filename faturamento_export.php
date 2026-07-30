@@ -325,7 +325,7 @@ header('Content-Type: text/html; charset=utf-8');
 
     <?php if (count($fatFiles) > 0): ?>
     <div class="section">
-        <h2>💰 Fichas de Faturamento (<?= count($fatFiles) ?> arquivo<?= count($fatFiles) > 1 ? 's' : '' ?>)</h2>
+        <h2>💰 Fichas de Evolução (<?= count($fatFiles) ?> arquivo<?= count($fatFiles) > 1 ? 's' : '' ?>)</h2>
         <div class="gallery">
             <?php foreach ($fatFiles as $file): ?>
             <div class="gallery-item">

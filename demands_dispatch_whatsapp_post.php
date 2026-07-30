@@ -93,7 +93,130 @@ if (count($groups) === 0) {
     error_log("[DISPATCH] Nenhum grupo encontrado para spec='$specialty' city='$city' state='$state'. Criando automaticamente...");
     
     try {
+<<<<<<< HEAD
         $api = new EvolutionApiV1();
+=======
+        // MULTI-INSTÂNCIA: Encontrar uma instância conectada para criar o grupo
+        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $instanceName = '';
+        
+        // Buscar todas as instâncias ativas, priorizando as que já estão marcadas como conectadas no banco
+        $allInstForGroup = db()->prepare("
+            SELECT instance_name, connection_status FROM whatsapp_instances 
+            WHERE status = 'active' 
+            ORDER BY 
+                CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC,
+                is_default DESC, 
+                id ASC
+        ");
+        $allInstForGroup->execute();
+        $instRows = $allInstForGroup->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($instRows as $instRow) {
+            $instCandidate = (string)($instRow['instance_name'] ?? '');
+            if ($instCandidate === '') continue;
+            try {
+                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
+                $connStateRes = $tryApi->connectionState();
+                $connJson = $connStateRes['json'] ?? [];
+                $connHttpCode = (int)($connStateRes['status'] ?? 0);
+                
+                // Extrair estado da conexão - múltiplos formatos possíveis da Evolution API
+                $connInstanceState = '';
+                if (isset($connJson['instance']['state'])) {
+                    $connInstanceState = (string)$connJson['instance']['state'];
+                } elseif (isset($connJson['state'])) {
+                    $connInstanceState = (string)$connJson['state'];
+                } elseif (isset($connJson['instance']['status'])) {
+                    $connInstanceState = (string)$connJson['instance']['status'];
+                } elseif (isset($connJson['status']) && is_string($connJson['status'])) {
+                    $connInstanceState = (string)$connJson['status'];
+                }
+                
+                $connInstanceStateLower = strtolower(trim($connInstanceState));
+                error_log("[DISPATCH] Instância '$instCandidate': connectionState HTTP=$connHttpCode, state='$connInstanceState'");
+                
+                if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
+                    $instanceName = $instCandidate;
+                    error_log("[DISPATCH] Instância conectada para criação de grupo: $instanceName");
+                    break;
+                }
+                
+                // Se estado é 'close', tentar reconectar via /instance/connect (sem QR, apenas restart de sessão)
+                if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
+                    error_log("[DISPATCH] Instância '$instCandidate' com estado '$connInstanceState' — tentando reconectar...");
+                    try {
+                        // Tentar connect (reconecta sessão existente se ainda válida)
+                        $connectRes = $tryApi->connectInstance($instCandidate);
+                        $connectCode = (int)($connectRes['status'] ?? 0);
+                        $connectJson = $connectRes['json'] ?? [];
+                        error_log("[DISPATCH] Connect da instância '$instCandidate': HTTP $connectCode");
+                        
+                        // Se retornou QR code, a sessão expirou e precisa escanear novamente
+                        $hasQr = isset($connectJson['base64']) || isset($connectJson['code']) || isset($connectJson['qrcode']);
+                        if ($hasQr) {
+                            error_log("[DISPATCH] Instância '$instCandidate' requer QR Code - sessão expirada");
+                            // Atualizar status no banco para refletir realidade
+                            whatsapp_update_connection_status($instCandidate, 'disconnected');
+                            continue;
+                        }
+                        
+                        // Aguardar reconexão (até 10 segundos)
+                        $reconnected = false;
+                        for ($attempt = 0; $attempt < 5; $attempt++) {
+                            sleep(2);
+                            $recheckRes = $tryApi->connectionState();
+                            $recheckJson = $recheckRes['json'] ?? [];
+                            $recheckState = strtolower(trim((string)($recheckJson['instance']['state'] ?? ($recheckJson['state'] ?? ''))));
+                            error_log("[DISPATCH] Tentativa " . ($attempt + 1) . " de reconexão '$instCandidate': state='$recheckState'");
+                            
+                            if (in_array($recheckState, ['open', 'connected'], true)) {
+                                $reconnected = true;
+                                break;
+                            }
+                            // Se estado mudou para connecting, aguardar mais
+                            if ($recheckState !== 'connecting' && $recheckState !== 'close') {
+                                break;
+                            }
+                        }
+                        
+                        if ($reconnected) {
+                            $instanceName = $instCandidate;
+                            whatsapp_update_connection_status($instCandidate, 'connected');
+                            error_log("[DISPATCH] ✅ Instância '$instCandidate' reconectada com sucesso!");
+                            break;
+                        } else {
+                            error_log("[DISPATCH] Instância '$instCandidate' não reconectou.");
+                            whatsapp_update_connection_status($instCandidate, 'disconnected');
+                        }
+                    } catch (Throwable $reconnErr) {
+                        error_log("[DISPATCH] Erro ao tentar reconectar '$instCandidate': " . $reconnErr->getMessage());
+                    }
+                } else {
+                    error_log("[DISPATCH] Instância '$instCandidate' não conectada (state='$connInstanceState')");
+                }
+            } catch (Throwable $e) {
+                error_log("[DISPATCH] Instância '$instCandidate' erro ao verificar: " . $e->getMessage());
+                continue;
+            }
+        }
+        
+        // Se nenhuma instância está conectada, mostrar erro com orientação clara
+        if ($instanceName === '') {
+            flash_set('error', 'Nenhuma instância WhatsApp está conectada. Vá em Configurações → WhatsApp Conexão → aba Instâncias e reconecte escaneando o QR Code.');
+            header('Location: /demands_view.php?id=' . $id);
+            exit;
+        }
+        
+        if ($baseUrl === '' || $apiKey === '') {
+            flash_set('error', 'Evolution API não configurada (base_url/api_key). Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
+            header('Location: /demands_view.php?id=' . $id);
+            exit;
+        }
+        
+        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+>>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
         
         // Gerar nome do grupo: Especialidade - Cidade/UF - N
         $location = trim($city !== '' ? ($city . ($state !== '' ? '/' . $state : '')) : $state);
@@ -107,8 +230,19 @@ if (count($groups) === 0) {
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
         // Buscar profissionais da especialidade para adicionar ao grupo
+<<<<<<< HEAD
+=======
+        // Match progressivo e flexível:
+        // 1. Match exato (u.specialty = 'Fisioterapia Domiciliar')
+        // 2. Especialidade contém o termo buscado (u.specialty LIKE '%Fisioterapia Domiciliar%')
+        // 3. Match inverso: o termo buscado contém a especialidade do profissional
+        //    ('Fisioterapia Domiciliar' LIKE '%Fisioterapia%') → pega profissionais com specialty 'Fisioterapia'
+        // 4. Primeira palavra da especialidade (u.specialty LIKE 'Fisioterapia%')
+        //    → pega 'Fisioterapia Geral', 'Fisioterapia Esportiva', 'Fisioterapia do Trabalho', etc.
+        $firstWord = explode(' ', trim($specialty))[0];
+>>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
         $profsStmt = db()->prepare("
-            SELECT u.phone FROM users u
+            SELECT DISTINCT u.phone FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
             INNER JOIN roles r ON r.id = ur.role_id
             WHERE u.status = 'active' AND r.slug = 'profissional'
@@ -117,12 +251,22 @@ if (count($groups) === 0) {
                 OR u.specialty LIKE ? 
                 OR ? LIKE CONCAT('%', u.specialty, '%')
                 OR u.specialty LIKE ?
+                OR LOWER(u.specialty) LIKE LOWER(?)
             )
             AND u.phone IS NOT NULL AND u.phone != ''
         ");
+<<<<<<< HEAD
         $firstWord = explode(' ', trim($specialty))[0];
         $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
+=======
+        // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
+        // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra),
+        // e LIKE '%fisioterapia%' (case-insensitive por palavra-chave principal)
+        $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
+>>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
         $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        error_log("[DISPATCH] Busca de profissionais para '$specialty' (firstWord='$firstWord'): encontrados " . count($profPhones) . " telefones");
         
         // Limpar telefones (apenas dígitos) e remover duplicados
         $participants = [];
@@ -701,9 +845,15 @@ if (count($groups) > 0) {
         try {
             // Usar a primeira instância conectada disponível para sincronizar membros
             $syncApi = null;
-            $syncInstRows = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC");
+            $syncInstRows = db()->prepare("
+                SELECT instance_name, connection_status FROM whatsapp_instances 
+                WHERE status = 'active' 
+                ORDER BY CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC, is_default DESC, id ASC
+            ");
             $syncInstRows->execute();
-            foreach ($syncInstRows->fetchAll(PDO::FETCH_COLUMN) as $syncInstName) {
+            $syncInstList = $syncInstRows->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($syncInstList as $syncInstRow) {
+                $syncInstName = (string)($syncInstRow['instance_name'] ?? '');
                 if ($syncInstName === '') continue;
                 try {
                     $trySyncApi = new EvolutionApiV1(
@@ -712,21 +862,37 @@ if (count($groups) > 0) {
                         $syncInstName
                     );
                     $syncConn = $trySyncApi->connectionState();
-                    $syncState = $syncConn['json']['instance']['state'] ?? ($syncConn['json']['state'] ?? '');
-                    if ($syncState === 'open' || $syncState === 'connected') {
+                    $syncConnJson = $syncConn['json'] ?? [];
+                    $syncState = (string)($syncConnJson['instance']['state'] ?? ($syncConnJson['state'] ?? ''));
+                    if (in_array(strtolower(trim($syncState)), ['open', 'connected'], true)) {
                         $syncApi = $trySyncApi;
                         break;
                     }
                 } catch (Throwable $e) { continue; }
             }
+            // Fallback: usar instância marcada como connected no banco
             if ($syncApi === null) {
-                $syncApi = new EvolutionApiV1(); // fallback
+                foreach ($syncInstList as $syncInstRow) {
+                    if (($syncInstRow['connection_status'] ?? '') === 'connected' && ($syncInstRow['instance_name'] ?? '') !== '') {
+                        try {
+                            $syncApi = new EvolutionApiV1(
+                                rtrim((string)admin_setting_get('evolution.base_url', ''), '/'),
+                                (string)admin_setting_get('evolution.api_key', ''),
+                                (string)$syncInstRow['instance_name']
+                            );
+                            break;
+                        } catch (Throwable $e) { /* skip */ }
+                    }
+                }
+            }
+            if ($syncApi === null) {
+                $syncApi = new EvolutionApiV1(); // último fallback
             }
             
-            // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo)
+            // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo e flexível)
             $firstWord = explode(' ', trim($specialty))[0];
             $syncProfsStmt = db()->prepare("
-                SELECT u.phone FROM users u
+                SELECT DISTINCT u.phone FROM users u
                 INNER JOIN user_roles ur ON ur.user_id = u.id
                 INNER JOIN roles r ON r.id = ur.role_id
                 WHERE u.status = 'active' AND r.slug = 'profissional'
@@ -735,10 +901,11 @@ if (count($groups) > 0) {
                     OR u.specialty LIKE ? 
                     OR ? LIKE CONCAT('%', u.specialty, '%')
                     OR u.specialty LIKE ?
+                    OR LOWER(u.specialty) LIKE LOWER(?)
                 )
                 AND u.phone IS NOT NULL AND u.phone != ''
             ");
-            $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
+            $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
             $syncProfPhones = $syncProfsStmt->fetchAll(PDO::FETCH_COLUMN);
             
             $phonesToAdd = [];
@@ -861,7 +1028,10 @@ try {
         SELECT instance_name, token, is_default, connection_status 
         FROM whatsapp_instances 
         WHERE status = 'active' 
-        ORDER BY is_default DESC, id ASC
+        ORDER BY 
+            CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC,
+            is_default DESC, 
+            id ASC
     ");
     $allInstances->execute();
     $instances = $allInstances->fetchAll();
@@ -877,6 +1047,7 @@ try {
         try {
             $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
             $connState = $tryApi->connectionState();
+<<<<<<< HEAD
             $httpCode = (int)($connState['status'] ?? 0);
             $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ($connState['json']['instance']['connectionStatus'] ?? ''));
             
@@ -884,13 +1055,65 @@ try {
             
             // Aceitar múltiplos indicadores de conexão ativa
             if ($state === 'open' || $state === 'connected' || $state === 'connecting' || $httpCode === 200) {
+=======
+            $connJson = $connState['json'] ?? [];
+            
+            // Extrair estado - múltiplos formatos possíveis
+            $connInstanceState = '';
+            if (isset($connJson['instance']['state'])) {
+                $connInstanceState = (string)$connJson['instance']['state'];
+            } elseif (isset($connJson['state'])) {
+                $connInstanceState = (string)$connJson['state'];
+            } elseif (isset($connJson['instance']['status'])) {
+                $connInstanceState = (string)$connJson['instance']['status'];
+            } elseif (isset($connJson['status']) && is_string($connJson['status'])) {
+                $connInstanceState = (string)$connJson['status'];
+            }
+            
+            $connInstanceStateLower = strtolower(trim($connInstanceState));
+            
+            if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
+>>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
                 $api = $tryApi;
                 $apiInstanceName = $instName;
                 error_log("[DISPATCH] Instância conectada encontrada: $instName (state=$state)");
                 break;
-            } else {
-                error_log("[DISPATCH] Instância '$instName' não conectada (state=$state), tentando próxima...");
             }
+            
+            // Se estado é 'close', tentar reconectar
+            if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
+                error_log("[DISPATCH-SEND] Instância '$instName' com estado '$connInstanceState' — tentando reconectar...");
+                try {
+                    $connectRes = $tryApi->connectInstance($instName);
+                    $connectCode = (int)($connectRes['status'] ?? 0);
+                    $connectJson = $connectRes['json'] ?? [];
+                    error_log("[DISPATCH-SEND] Connect '$instName': HTTP $connectCode");
+                    
+                    // Se retornou QR code, sessão expirou
+                    $hasQr = isset($connectJson['base64']) || isset($connectJson['code']) || isset($connectJson['qrcode']);
+                    if (!$hasQr) {
+                        for ($retryAttempt = 0; $retryAttempt < 5; $retryAttempt++) {
+                            sleep(2);
+                            $recheckRes = $tryApi->connectionState();
+                            $recheckState = strtolower(trim((string)(($recheckRes['json']['instance']['state'] ?? ($recheckRes['json']['state'] ?? '')))));
+                            if (in_array($recheckState, ['open', 'connected'], true)) {
+                                $api = $tryApi;
+                                $apiInstanceName = $instName;
+                                whatsapp_update_connection_status($instName, 'connected');
+                                error_log("[DISPATCH-SEND] ✅ Instância '$instName' reconectada!");
+                                break 2; // sai do for e do foreach
+                            }
+                            if ($recheckState !== 'connecting' && $recheckState !== 'close') break;
+                        }
+                    } else {
+                        whatsapp_update_connection_status($instName, 'disconnected');
+                    }
+                } catch (Throwable $reconnErr) {
+                    error_log("[DISPATCH-SEND] Erro ao reconectar '$instName': " . $reconnErr->getMessage());
+                }
+            }
+            
+            error_log("[DISPATCH] Instância '$instName' não conectada (state=$connInstanceState), tentando próxima...");
         } catch (Throwable $instErr) {
             error_log("[DISPATCH] Erro ao verificar instância '$instName': " . $instErr->getMessage());
             continue;
@@ -904,16 +1127,41 @@ try {
             try {
                 $tryApi = new EvolutionApiV1();
                 $connState = $tryApi->connectionState();
+<<<<<<< HEAD
                 $httpCode = (int)($connState['status'] ?? 0);
                 $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ($connState['json']['instance']['connectionStatus'] ?? ''));
                 error_log("[DISPATCH] Instância padrão '$defaultInstName': HTTP=$httpCode state='$state'");
                 if ($state === 'open' || $state === 'connected' || $state === 'connecting' || $httpCode === 200) {
+=======
+                $connJson = $connState['json'] ?? [];
+                $connInstanceState = (string)($connJson['instance']['state'] ?? ($connJson['state'] ?? ''));
+                $connInstanceStateLower = strtolower(trim($connInstanceState));
+                if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
+>>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
                     $api = $tryApi;
                     $apiInstanceName = $defaultInstName;
                     error_log("[DISPATCH] Instância padrão admin_settings conectada: $defaultInstName");
                 }
             } catch (Throwable $defErr) {
                 error_log("[DISPATCH] Instância padrão admin_settings falhou: " . $defErr->getMessage());
+            }
+        }
+        
+        // Último recurso: usar instância que está como 'connected' no banco sem verificar API
+        if ($api === null) {
+            foreach ($instances as $inst) {
+                $instName = (string)($inst['instance_name'] ?? '');
+                $instConnStatus = (string)($inst['connection_status'] ?? '');
+                if ($instName !== '' && $instConnStatus === 'connected') {
+                    try {
+                        $api = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+                        $apiInstanceName = $instName;
+                        error_log("[DISPATCH] Usando instância '$instName' baseado no connection_status do banco (API não confirmou)");
+                        break;
+                    } catch (Throwable $e) {
+                        continue;
+                    }
+                }
             }
         }
     }

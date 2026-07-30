@@ -331,14 +331,14 @@ function process_single_authorization(int $authId, int $emailId): array
                 'id' => $authId
             ]);
             
-            // Atualizar demanda para pre_admissao
-            error_log("[PROCESS_SINGLE_AUTH] Atualizando demanda #$demandId para pre_admissao");
+            // Atualizar demanda para autorizacao_aprovada
+            error_log("[PROCESS_SINGLE_AUTH] Atualizando demanda #$demandId para autorizacao_aprovada");
             $updateDemandStmt = $db->prepare(
-                "UPDATE demands SET status = 'pre_admissao' WHERE id = :id"
+                "UPDATE demands SET status = 'autorizacao_aprovada' WHERE id = :id"
             );
             $updateDemandStmt->execute(['id' => $demandId]);
             $rowsAffected = $updateDemandStmt->rowCount();
-            error_log("[PROCESS_SINGLE_AUTH] ✓ Demanda movida para pre_admissao (rows affected: $rowsAffected)");
+            error_log("[PROCESS_SINGLE_AUTH] ✓ Demanda movida para autorizacao_aprovada (rows affected: $rowsAffected)");
             
             // Registrar histórico com dados completos de auditoria
             $historyStmt = $db->prepare(

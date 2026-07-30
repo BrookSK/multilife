@@ -309,6 +309,47 @@ document.addEventListener('DOMContentLoaded', function() {
             btnSubst.innerHTML = '🔄 Substituir Profissional';
             actions.appendChild(btnSubst);
             
+            // Botão Confirmar Profissional (lembrete do atendimento do dia)
+            const btnConfirm = document.createElement('button');
+            btnConfirm.className = 'btn';
+            btnConfirm.style.background = '#0284c7';
+            btnConfirm.style.color = '#fff';
+            btnConfirm.innerHTML = '✅ Confirmar Profissional';
+            btnConfirm.onclick = function() {
+                if (!confirm('Enviar lembrete de confirmação para o profissional ' + p.professional_name + '?')) return;
+                btnConfirm.disabled = true;
+                btnConfirm.innerHTML = '⏳ Enviando...';
+                fetch('/monitoramento_confirm_professional_post.php', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_id: info.event.id,
+                        assignment_id: p.assignment_id || info.event.id,
+                        professional_id: p.professional_id,
+                        patient_name: p.patient_name,
+                        specialty: p.specialty,
+                        session_date: info.event.start ? info.event.start.toISOString().split('T')[0] : ''
+                    })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        btnConfirm.innerHTML = '✅ Confirmação Enviada!';
+                        btnConfirm.style.background = '#059669';
+                    } else {
+                        alert('Erro: ' + (data.error || 'Falha ao enviar'));
+                        btnConfirm.disabled = false;
+                        btnConfirm.innerHTML = '✅ Confirmar Profissional';
+                    }
+                })
+                .catch(err => {
+                    alert('Erro de conexão');
+                    btnConfirm.disabled = false;
+                    btnConfirm.innerHTML = '✅ Confirmar Profissional';
+                });
+            };
+            actions.appendChild(btnConfirm);
+            
             document.getElementById('modal').classList.add('open');
         }
     });

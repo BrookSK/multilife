@@ -62,7 +62,9 @@ function email_send_with_template(
     string $toEmail,
     string $eventType,
     array $variables,
-    ?int $healthInsurerId = null
+    ?int $healthInsurerId = null,
+    ?string $inReplyTo = null,
+    ?string $references = null
 ): array {
     // 1. Buscar template
     $template = email_get_template($eventType, $healthInsurerId);
@@ -76,6 +78,13 @@ function email_send_with_template(
                 'body_html' => email_generate_default_proposal_html($variables),
                 'body_plain' => null,
             ];
+        } elseif ($eventType === 'proposal_resend') {
+            $template = [
+                'id' => 0,
+                'subject' => 'Re: Proposta de Atendimento - ' . ($variables['patient_name'] ?? 'Paciente'),
+                'body_html' => email_generate_default_resend_html($variables),
+                'body_plain' => null,
+            ];
         } else {
             return [
                 'success' => false,
@@ -83,6 +92,12 @@ function email_send_with_template(
                 'template_id' => null
             ];
         }
+    }
+    
+    // Para proposal_resend, forçar o uso do layout limpo (ignorar template do banco se existir)
+    if ($eventType === 'proposal_resend') {
+        $template['body_html'] = email_generate_default_resend_html($variables);
+        $template['subject'] = 'Re: Proposta de Atendimento - ' . ($variables['patient_name'] ?? 'Paciente');
     }
     
     $templateId = (int)$template['id'];
@@ -105,7 +120,7 @@ function email_send_with_template(
         $fromName = admin_setting_get('smtp.out.from_name', 'MultiLife Care');
         
         // SmtpClient suporta HTML se body começar com <!DOCTYPE ou <html
-        $messageId = $smtp->send($fromEmail, $fromName, $toEmail, $subject, $bodyHtml);
+        $messageId = $smtp->send($fromEmail, $fromName, $toEmail, $subject, $bodyHtml, $inReplyTo, $references);
         
         return [
             'success' => true,
@@ -130,69 +145,79 @@ function email_generate_default_proposal_html(array $vars): string
 {
     require_once __DIR__ . '/email_base_template.php';
     
-    $patientName = $vars['patient_name'] ?? '';
-    $patientEmail = $vars['patient_email'] ?? '';
-    $patientPhone = $vars['patient_phone'] ?? '';
-    $professionalName = $vars['professional_name'] ?? '';
-    $professionalEmail = $vars['professional_email'] ?? '';
-    $professionalPhone = $vars['professional_phone'] ?? '';
-    $professionalCouncil = $vars['professional_council'] ?? '';
     $specialty = $vars['specialty'] ?? '';
     $serviceName = $vars['service_name'] ?? '';
-    $location = $vars['location'] ?? '';
-    $startDate = $vars['start_date'] ?? '';
-    $startTime = $vars['start_time'] ?? '';
-    $endTime = $vars['end_time'] ?? '';
-    $frequencyText = $vars['frequency_text'] ?? '';
-    $totalSessions = $vars['total_sessions'] ?? '';
-    $durationWeeks = $vars['duration_weeks'] ?? '';
     $valuePerSession = $vars['value_per_session'] ?? '';
-    $totalValue = $vars['total_value'] ?? '';
-    $sessionDates = $vars['session_dates_array'] ?? [];
     $notes = $vars['notes'] ?? '';
 
-    // Montar corpo do e-mail
+    // Montar corpo do e-mail (simplificado)
     $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
-    $body .= '<p style="font-size:14px;color:#4b5563">Encaminhamos proposta de atendimento domiciliar para análise e autorização conforme detalhes abaixo:</p>';
+    $body .= '<p style="font-size:14px;color:#4b5563">Encaminhamos proposta de atendimento domiciliar para análise e autorização, conforme detalhes abaixo.</p>';
     
-    // Seção: Paciente
-    $patientContent = email_data_row('Nome', $patientName);
-    $patientContent .= email_data_row('E-mail', $patientEmail);
-    $patientContent .= email_data_row('Telefone', $patientPhone);
-    $patientContent .= email_data_row('Localização', $location);
-    $body .= email_section('👤 Dados do Paciente', $patientContent, '#00a884');
+    // Seção: Serviço Solicitado (simplificada, sem ícone, sem borda lateral colorida)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Serviço Solicitado</h3>';
+    $body .= email_data_row('Especialidade', $specialty);
+    $body .= email_data_row('Serviço', $serviceName);
+    $body .= '</div>';
     
-    // Seção: Profissional (omitida na proposta inicial - será enviada após aprovação na pré-admissão)
-    // $profContent = email_data_row('Nome', $professionalName);
-    // $profContent .= email_data_row('Especialidade', $specialty);
-    // $profContent .= email_data_row('Serviço', $serviceName);
-    // $profContent .= email_data_row('Registro Profissional', $professionalCouncil);
-    // $profContent .= email_data_row('E-mail', $professionalEmail);
-    // $profContent .= email_data_row('Telefone', $professionalPhone);
-    // $body .= email_section('🏥 Profissional Designado', $profContent, '#0284c7');
+    // Valor por sessão (simples, sem destaque grande)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Valor da Sessão</h3>';
+    $body .= '<p style="margin:4px 0;font-size:14px"><strong style="color:#374151">Valor por Sessão:</strong> <span style="color:#059669;font-weight:700">R$ ' . htmlspecialchars($valuePerSession) . '</span></p>';
+    $body .= '</div>';
     
-    // Apenas especialidade e serviço (sem dados pessoais do profissional)
-    $specContent = email_data_row('Especialidade', $specialty);
-    $specContent .= email_data_row('Serviço', $serviceName);
-    $body .= email_section('🏥 Serviço Solicitado', $specContent, '#0284c7');
+    // Observações (se houver)
+    $body .= email_notes_block($notes);
     
-    // Seção: Agendamento
-    $schedContent = email_data_row('Data de Início', $startDate);
-    $schedContent .= email_data_row('Horário', $startTime . ' às ' . $endTime);
-    $schedContent .= email_data_row('Frequência', $frequencyText);
-    $schedContent .= email_data_row('Duração', $durationWeeks . ' semanas');
-    $schedContent .= email_data_row('Total de Sessões', $totalSessions);
-    $body .= email_section('📋 Agendamento Proposto', $schedContent, '#7c3aed');
+    // Call to action
+    $body .= email_divider();
+    $body .= '<p style="font-size:14px;color:#374151;margin-top:20px">Solicitamos gentilmente a <strong>análise e retorno</strong> sobre esta proposta.</p>';
+    $body .= '<p style="font-size:14px;color:#374151"><strong>Para autorizar ou solicitar ajustes, basta responder este e-mail.</strong></p>';
+    $body .= '<p style="font-size:14px;color:#6b7280;margin-top:24px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
     
-    // Destaque: Valor
-    $body .= email_highlight_box('Valor por Sessão: R$ ' . $valuePerSession, 'R$ ' . $totalValue);
+    return email_base_layout('Proposta de Atendimento Domiciliar', $body, 'Para autorizar, responda diretamente este e-mail.');
+}
+
+/**
+ * Gerar HTML padrão para REENVIO de proposta — mesmo layout limpo da proposta original
+ */
+function email_generate_default_resend_html(array $vars): string
+{
+    require_once __DIR__ . '/email_base_template.php';
     
-    // Tabela de sessões
-    if (!empty($sessionDates)) {
-        $body .= email_session_table($sessionDates);
+    $specialty = $vars['specialty'] ?? '';
+    $serviceName = $vars['service_name'] ?? '';
+    $valuePerSession = $vars['value_per_session'] ?? '';
+    $notes = $vars['notes'] ?? '';
+    $resendNotes = $vars['resend_notes'] ?? '';
+
+    // Montar corpo do e-mail (mesmo layout limpo da proposta)
+    $body = '<p style="font-size:15px;color:#374151">Prezado(a),</p>';
+    $body .= '<p style="font-size:14px;color:#4b5563">Reenviamos a proposta de atendimento domiciliar para análise e autorização, conforme detalhes abaixo.</p>';
+    
+    // Justificativa do reenvio (se houver)
+    if ($resendNotes !== '') {
+        $body .= '<div style="background:#fffbeb;padding:14px 18px;margin:16px 0;border-radius:8px;border-left:4px solid #f59e0b">';
+        $body .= '<p style="margin:0;font-size:13px;font-weight:700;color:#92400e">Observação do Reenvio</p>';
+        $body .= '<p style="margin:6px 0 0;font-size:14px;color:#78350f">' . nl2br(htmlspecialchars($resendNotes)) . '</p>';
+        $body .= '</div>';
     }
     
-    // Observações
+    // Seção: Serviço Solicitado (simplificada)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Serviço Solicitado</h3>';
+    $body .= email_data_row('Especialidade', $specialty);
+    $body .= email_data_row('Serviço', $serviceName);
+    $body .= '</div>';
+    
+    // Valor por sessão (simples)
+    $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Valor da Sessão</h3>';
+    $body .= '<p style="margin:4px 0;font-size:14px"><strong style="color:#374151">Valor por Sessão:</strong> <span style="color:#059669;font-weight:700">R$ ' . htmlspecialchars($valuePerSession) . '</span></p>';
+    $body .= '</div>';
+    
+    // Observações gerais (se houver)
     $body .= email_notes_block($notes);
     
     // Call to action

@@ -196,8 +196,13 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
             if ($req['status'] === 'rejected') continue;
             foreach ($req['files'] as $file) {
                 if ($file['document_type'] === 'produtividade') {
+                    $isPdf = (stripos($file['file_path'], '.pdf') !== false);
                     echo '<div style="position:relative;border:2px solid #10b981;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
-                    echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    if ($isPdf) {
+                        echo '<div style="width:100%;height:150px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:40px">📄</div>';
+                    } else {
+                        echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    }
                     echo '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:4px 8px;font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">';
                     echo 'Sessão ' . (int)$req['session_number'];
                     echo '</div>';
@@ -210,18 +215,23 @@ if ($totalProdFiles > 0 || $totalFatFiles > 0) {
         echo '</div>';
     }
     
-    // Fichas de Faturamento
+    // Fichas de Evolução
     if ($totalFatFiles > 0) {
         echo '<div style="margin-bottom:20px">';
-        echo '<h4 style="color:#0c4a6e;margin-bottom:12px">💰 Fichas de Faturamento (' . $totalFatFiles . ')</h4>';
+        echo '<h4 style="color:#0c4a6e;margin-bottom:12px">💰 Fichas de Evolução (' . $totalFatFiles . ')</h4>';
         echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">';
         
         foreach ($documentRequirements as $req) {
             if ($req['status'] === 'rejected') continue;
             foreach ($req['files'] as $file) {
                 if ($file['document_type'] === 'faturamento') {
+                    $isPdf = (stripos($file['file_path'], '.pdf') !== false);
                     echo '<div style="position:relative;border:2px solid #0284c7;border-radius:8px;overflow:hidden;cursor:pointer" onclick="window.open(\'' . h($file['file_path']) . '\', \'_blank\')">';
-                    echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    if ($isPdf) {
+                        echo '<div style="width:100%;height:150px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:40px">📄</div>';
+                    } else {
+                        echo '<img src="' . h($file['file_path']) . '" style="width:100%;height:150px;object-fit:cover">';
+                    }
                     echo '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;padding:4px 8px;font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">';
                     echo 'Sessão ' . (int)$req['session_number'];
                     echo '</div>';

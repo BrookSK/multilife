@@ -154,12 +154,26 @@ $api = new OpenAiApi();
 // seja vinculada à autorização correta, mesmo quando há múltiplas autorizações
 // para o mesmo paciente (ex: fisioterapia #14 e fonoaudiologia #16)
 $checkAuthResponse = $db->prepare(
-    "SELECT ar.id, ar.operator_email, ar.email_thread_id, ar.demand_id, ar.patient_id, ar.sent_message_id
+    "SELECT ar.id, ar.operator_email, ar.email_thread_id, ar.demand_id, ar.patient_id, ar.sent_message_id, ar.sent_at
      FROM authorization_requests ar
      WHERE ar.status = 'aguardando_autorizacao'
      AND ar.sent_at IS NOT NULL
      AND ar.response_received_at IS NULL
-     AND ar.patient_id > 0"
+     AND ar.patient_id > 0
+     
+     UNION
+     
+     SELECT ar2.id, ar2.operator_email, ar2.email_thread_id, ar2.demand_id, ar2.patient_id, ar2.sent_message_id, ar2.sent_at
+     FROM authorization_requests ar2
+     WHERE ar2.status = 'cancelada'
+     AND ar2.sent_message_id IS NOT NULL
+     AND ar2.patient_id > 0
+     AND EXISTS (
+         SELECT 1 FROM authorization_requests ar3 
+         WHERE ar3.demand_id = ar2.demand_id 
+         AND ar3.status = 'aguardando_autorizacao'
+         AND ar3.previous_request_id = ar2.id
+     )"
 );
 
 $okSet = "status = :st, processed_at = :pa, error_message = NULL";
@@ -314,40 +328,108 @@ foreach ($emails as $e) {
         error_log("[EMAIL_EXTRACT]   🔓 CADEADO (In-Reply-To recebido): '$inReplyTo'");
         
         // ========================================================================
-        // MODELO CHAVE-CADEADO: ÚNICO CRITÉRIO DE IDENTIFICAÇÃO
+        // MODELO CHAVE-CADEADO COM FALLBACKS
         // ========================================================================
-        // Chave (🔑): Message-ID único gerado ao ENVIAR proposta
-        // Cadeado (🔓): Header In-Reply-To do e-mail de RESPOSTA
-        // 
-        // Se Chave = Cadeado → Resposta identificada com 100% de certeza
-        // Se Chave ≠ Cadeado → NÃO é resposta desta autorização
-        // 
-        // NÃO usa Thread-ID, operadora ou qualquer outro critério
+        // Critério 1 (100% preciso): In-Reply-To === sent_message_id
+        // Critério 2 (alta precisão): In-Reply-To normalizado (sem <> e espaços)
+        // Critério 3 (média precisão): Mesmo remetente (operator_email) + assunto "Re:" + enviado < 72h
         // ========================================================================
         
+        // Critério 1: Match exato
         if ($inReplyTo !== '' && $authMessageId !== '' && $inReplyTo === $authMessageId) {
             $isAuthorizationResponse = true;
             $matchedAuthId = (int)$auth['id'];
-            error_log("[EMAIL_EXTRACT] E-mail #$id ✅✅✅ CHAVE-CADEADO MATCH! Resposta de autorização #$matchedAuthId");
-            error_log("[EMAIL_EXTRACT]   Patient ID: " . $auth['patient_id'] . " | Demand ID: " . $auth['demand_id']);
-            error_log("[EMAIL_EXTRACT]   🔑🔓 Identificação 100% precisa - Modelo chave-cadeado");
+            error_log("[EMAIL_EXTRACT] E-mail #$id ✅ MATCH EXATO (Critério 1)! Auth #$matchedAuthId");
             break;
+        }
+        
+        // Critério 2: Match normalizado (remove < > e espaços extras)
+        if ($inReplyTo !== '' && $authMessageId !== '') {
+            $normalizedInReplyTo = trim(str_replace(['<', '>', ' '], '', $inReplyTo));
+            $normalizedAuthMsgId = trim(str_replace(['<', '>', ' '], '', $authMessageId));
+            if ($normalizedInReplyTo !== '' && $normalizedInReplyTo === $normalizedAuthMsgId) {
+                $isAuthorizationResponse = true;
+                $matchedAuthId = (int)$auth['id'];
+                error_log("[EMAIL_EXTRACT] E-mail #$id ✅ MATCH NORMALIZADO (Critério 2)! Auth #$matchedAuthId");
+                break;
+            }
+        }
+        
+        // Critério 3: Remetente é a operadora + assunto contém "Re:" + proposta enviada há menos de 72h
+        $authOperatorEmail = strtolower(trim((string)($auth['operator_email'] ?? '')));
+        $fromEmailLower = strtolower(trim($fromEmail));
+        if ($authOperatorEmail !== '' && $fromEmailLower !== '' && $authOperatorEmail === $fromEmailLower) {
+            $sentAt = $auth['sent_at'] ?? '';
+            if ($sentAt !== '') {
+                $sentTimestamp = strtotime($sentAt);
+                $hoursSinceSent = (time() - $sentTimestamp) / 3600;
+                
+                // Operadora respondeu dentro de 72 horas
+                if ($hoursSinceSent >= 0 && $hoursSinceSent <= 72) {
+                    // Verificar se assunto indica resposta (Re:, Fw:, Enc:, ou contém "proposta"/"atendimento")
+                    $subjectLower = strtolower($subject);
+                    $isReply = (strpos($subjectLower, 're:') !== false 
+                        || strpos($subjectLower, 'fw:') !== false 
+                        || strpos($subjectLower, 'enc:') !== false
+                        || strpos($subjectLower, 'proposta') !== false 
+                        || strpos($subjectLower, 'atendimento') !== false
+                        || strpos($subjectLower, 'autoriza') !== false);
+                    
+                    if ($isReply) {
+                        $isAuthorizationResponse = true;
+                        $matchedAuthId = (int)$auth['id'];
+                        error_log("[EMAIL_EXTRACT] E-mail #$id ✅ MATCH POR REMETENTE + ASSUNTO (Critério 3)! Auth #$matchedAuthId");
+                        error_log("[EMAIL_EXTRACT]   Operadora: $authOperatorEmail | Enviado há: " . round($hoursSinceSent, 1) . "h | Assunto: $subject");
+                        break;
+                    }
+                }
+            }
         }
     }
     
     if (!$isAuthorizationResponse) {
-        error_log("[EMAIL_EXTRACT] E-mail #$id - 🔑🔓 Chave-cadeado NÃO identificou como resposta, processando como nova demanda");
+        error_log("[EMAIL_EXTRACT] E-mail #$id - Nenhum critério identificou como resposta de autorização, processando como nova demanda");
     }
     
     // Se for resposta de autorização, processar imediatamente
     if ($isAuthorizationResponse && $matchedAuthId !== null) {
         error_log("[EMAIL_EXTRACT] Processando resposta de autorização IMEDIATAMENTE");
         
+        // Se o match foi com uma autorização cancelada (antigo reenvio), usar a autorização ativa
+        $actualAuthId = $matchedAuthId;
+        $checkActiveStmt = $db->prepare(
+            "SELECT id FROM authorization_requests 
+             WHERE previous_request_id = :prev_id AND status = 'aguardando_autorizacao' 
+             ORDER BY id DESC LIMIT 1"
+        );
+        $checkActiveStmt->execute(['prev_id' => $matchedAuthId]);
+        $activeAuth = $checkActiveStmt->fetchColumn();
+        if ($activeAuth) {
+            $actualAuthId = (int)$activeAuth;
+            error_log("[EMAIL_EXTRACT] Match em autorização cancelada #$matchedAuthId, usando autorização ativa #$actualAuthId");
+        }
+        
+        // Verificar se a autorização real está com status correto
+        $verifyStmt = $db->prepare("SELECT status FROM authorization_requests WHERE id = :id");
+        $verifyStmt->execute(['id' => $actualAuthId]);
+        $verifyStatus = $verifyStmt->fetchColumn();
+        
+        if ($verifyStatus !== 'aguardando_autorizacao') {
+            error_log("[EMAIL_EXTRACT] ⚠ Autorização #$actualAuthId já processada (status: $verifyStatus). Ignorando.");
+            $updOk->execute([
+                'st' => 'processed',
+                'pa' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]);
+            $ok++;
+            continue;
+        }
+        
         // Incluir função de processamento
         require_once __DIR__ . '/../app/process_single_authorization.php';
         
         // Processar autorização
-        $result = process_single_authorization($matchedAuthId, $id);
+        $result = process_single_authorization($actualAuthId, $id);
         
         if ($result['success']) {
             error_log("[EMAIL_EXTRACT] ✅ Autorização #$matchedAuthId processada com sucesso!");

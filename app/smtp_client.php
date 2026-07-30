@@ -131,7 +131,7 @@ final class SmtpClient
         }
     }
 
-    public function send(string $fromEmail, string $fromName, string $toEmail, string $subject, string $bodyText): string
+    public function send(string $fromEmail, string $fromName, string $toEmail, string $subject, string $bodyText, ?string $inReplyTo = null, ?string $references = null): string
     {
         $fromEmail = trim($fromEmail);
         $toEmail = trim($toEmail);
@@ -141,6 +141,9 @@ final class SmtpClient
 
         error_log("[SMTP] Enviando e-mail de $fromEmail para $toEmail");
         error_log("[SMTP] Assunto: $subject");
+        if ($inReplyTo) {
+            error_log("[SMTP] In-Reply-To: $inReplyTo");
+        }
         
         // Gerar Message-ID único para rastreamento
         $messageId = '<' . uniqid('multilife-', true) . '@' . gethostname() . '>';
@@ -172,6 +175,17 @@ final class SmtpClient
             $headers[] = 'Message-ID: ' . $messageId;
             $headers[] = 'Date: ' . date('r');
             $headers[] = 'MIME-Version: 1.0';
+            
+            // Threading headers para manter conversação
+            if ($inReplyTo !== null && $inReplyTo !== '') {
+                $headers[] = 'In-Reply-To: ' . $inReplyTo;
+            }
+            if ($references !== null && $references !== '') {
+                $headers[] = 'References: ' . $references;
+            } elseif ($inReplyTo !== null && $inReplyTo !== '') {
+                // Se não tem References mas tem In-Reply-To, usar In-Reply-To como References
+                $headers[] = 'References: ' . $inReplyTo;
+            }
             
             // Detectar se o corpo é HTML
             $isHtml = stripos($bodyText, '<html') !== false || stripos($bodyText, '<!DOCTYPE') !== false || stripos($bodyText, '<div') !== false;

@@ -125,14 +125,16 @@ view_header('Configuração de Operadoras / Clientes');
                         <?php endif; ?>
                     </td>
                     <td>
-                        <button onclick='editInsurer(<?= json_encode($insurer) ?>)' class="btn-sm">Editar</button>
-                        <form method="post" style="display:inline">
-                            <input type="hidden" name="action" value="toggle_status">
-                            <input type="hidden" name="id" value="<?= $insurer['id'] ?>">
-                            <button type="submit" class="btn-sm" style="background:hsl(var(--muted))">
-                                <?= $insurer['is_active'] ? 'Desativar' : 'Ativar' ?>
-                            </button>
-                        </form>
+                        <div style="display:flex;gap:6px">
+                            <button onclick='editInsurer(<?= json_encode($insurer) ?>)' style="padding:5px 10px;font-size:11px;font-weight:600;background:transparent;color:hsl(var(--primary));border:1px solid hsl(var(--primary));border-radius:6px;cursor:pointer">Editar</button>
+                            <form method="post" style="display:inline">
+                                <input type="hidden" name="action" value="toggle_status">
+                                <input type="hidden" name="id" value="<?= $insurer['id'] ?>">
+                                <button type="submit" style="padding:5px 10px;font-size:11px;font-weight:600;background:transparent;color:<?= $insurer['is_active'] ? 'hsl(var(--destructive))' : 'hsl(var(--success))' ?>;border:1px solid <?= $insurer['is_active'] ? 'hsl(var(--destructive))' : 'hsl(var(--success))' ?>;border-radius:6px;cursor:pointer">
+                                    <?= $insurer['is_active'] ? 'Desativar' : 'Ativar' ?>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -187,6 +189,17 @@ view_header('Configuração de Operadoras / Clientes');
                 <textarea name="notes" id="insurerNotes" rows="3" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px;resize:vertical"></textarea>
             </div>
             
+            <!-- Documentação vinculada -->
+            <div id="documentsSection" style="margin-bottom:20px;display:none">
+                <label style="display:block;margin-bottom:8px;font-weight:600">Documentação (Manuais, Formulários, Termos)</label>
+                <div id="documentsListContainer" style="margin-bottom:12px"></div>
+                <div style="border:2px dashed hsl(var(--border));border-radius:8px;padding:16px;text-align:center">
+                    <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="uploadDocuments(this.files)">
+                    <button type="button" onclick="document.getElementById('docFileInput').click()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">+ Adicionar Documento</button>
+                    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB)</div>
+                </div>
+            </div>
+            
             <div style="display:flex;gap:12px">
                 <button type="button" onclick="closeModal()" class="btn" style="flex:1">Cancelar</button>
                 <button type="submit" class="btn-primary" style="flex:1">Salvar</button>
@@ -215,11 +228,80 @@ function editInsurer(insurer) {
     document.getElementById('insurerBillingEmail').value = insurer.billing_email || '';
     document.getElementById('insurerEmailDomain').value = insurer.email_domain || '';
     document.getElementById('insurerNotes').value = insurer.notes || '';
+    document.getElementById('documentsSection').style.display = 'block';
+    loadDocuments(insurer.id);
     document.getElementById('insurerModal').style.display = 'block';
 }
 
 function closeModal() {
     document.getElementById('insurerModal').style.display = 'none';
+    document.getElementById('documentsSection').style.display = 'none';
+}
+
+function loadDocuments(insurerId) {
+    const container = document.getElementById('documentsListContainer');
+    container.innerHTML = '<div style="font-size:12px;color:hsl(var(--muted-foreground))">Carregando...</div>';
+    fetch('/health_insurers_documents_api.php?action=list&insurer_id=' + insurerId)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.documents || data.documents.length === 0) {
+                container.innerHTML = '<div style="font-size:12px;color:hsl(var(--muted-foreground));padding:8px 0">Nenhum documento cadastrado.</div>';
+                return;
+            }
+            let html = '';
+            data.documents.forEach(doc => {
+                const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : '🖼️'));
+                html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:hsl(var(--secondary));border-radius:6px;margin-bottom:6px">';
+                html += '<a href="' + doc.file_path + '" target="_blank" style="font-size:13px;font-weight:500;color:hsl(var(--primary));text-decoration:none;display:flex;align-items:center;gap:6px">' + icon + ' ' + doc.file_name + '</a>';
+                html += '<button type="button" onclick="deleteDocument(' + doc.id + ',' + insurerId + ')" style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--destructive));border:1px solid hsl(var(--destructive));border-radius:4px;cursor:pointer">×</button>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(() => {
+            container.innerHTML = '<div style="font-size:12px;color:hsl(var(--destructive))">Erro ao carregar documentos.</div>';
+        });
+}
+
+function uploadDocuments(files) {
+    const insurerId = document.getElementById('insurerId').value;
+    if (!insurerId) { alert('Salve a operadora primeiro.'); return; }
+    
+    const formData = new FormData();
+    formData.append('action', 'upload');
+    formData.append('insurer_id', insurerId);
+    for (let i = 0; i < files.length; i++) {
+        formData.append('files[]', files[i]);
+    }
+    
+    fetch('/health_insurers_documents_api.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadDocuments(insurerId);
+            } else {
+                alert(data.error || 'Erro ao enviar documento.');
+            }
+            document.getElementById('docFileInput').value = '';
+        })
+        .catch(() => { alert('Erro de conexão.'); });
+}
+
+function deleteDocument(docId, insurerId) {
+    if (!confirm('Remover este documento?')) return;
+    fetch('/health_insurers_documents_api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ action: 'delete', document_id: docId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            loadDocuments(insurerId);
+        } else {
+            alert(data.error || 'Erro ao remover.');
+        }
+    });
 }
 
 // Fechar modal ao clicar fora

@@ -1335,51 +1335,6 @@ echo '</select>';
 echo '<div style="font-size:12px;color:#667781;margin-top:4px">Ao selecionar um serviço, os valores serão preenchidos automaticamente</div>';
 echo '</div>';
 
-echo '<h3 style="margin:24px 0 16px;font-size:16px;color:#111b21;border-bottom:2px solid #e0e0e0;padding-bottom:8px">📅 Agendamento</h3>';
-
-echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Data de Início *</label>';
-echo '<input type="date" name="start_date" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
-echo '</div>';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Hora Início *</label>';
-echo '<input type="time" name="start_time" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
-echo '</div>';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Hora Fim *</label>';
-echo '<input type="time" name="end_time" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
-echo '</div>';
-echo '</div>';
-
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Frequência *</label>';
-echo '<select name="frequency" id="selectProfFrequency" onchange="calculateSessions()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
-echo '<option value="daily">Diária</option>';
-echo '<option value="weekly" selected>Semanal</option>';
-echo '<option value="biweekly">Quinzenal</option>';
-echo '<option value="monthly">Mensal</option>';
-echo '</select>';
-echo '</div>';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Sessões por Semana *</label>';
-echo '<input type="number" name="sessions_per_week" id="selectProfSessionsPerWeek" oninput="calculateSessions()" onchange="calculateSessions()" required min="1" max="7" value="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 3">';
-echo '<div style="font-size:12px;color:#667781;margin-top:4px">Quantas vezes por semana</div>';
-echo '</div>';
-echo '</div>';
-
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Duração (semanas) *</label>';
-echo '<input type="number" name="duration_weeks" id="selectProfDurationWeeks" oninput="calculateSessions()" onchange="calculateSessions()" required min="1" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 12">';
-echo '</div>';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Total de Sessões *</label>';
-echo '<input type="number" name="total_sessions" id="selectProfTotalSessions" oninput="calculateTotals()" onchange="calculateTotals()" required min="1" readonly style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;background:#f0f2f5" placeholder="Calculado automaticamente">';
-echo '</div>';
-echo '</div>';
-
 echo '<h3 style="margin:24px 0 16px;font-size:16px;color:#111b21;border-bottom:2px solid #e0e0e0;padding-bottom:8px">💰 Valores</h3>';
 
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';

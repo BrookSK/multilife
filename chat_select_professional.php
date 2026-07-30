@@ -187,62 +187,6 @@ echo '</div>';
 echo '</div>';
 
 echo '<div class="formSection">';
-echo '<div class="formSectionTitle">📅 Agendamento Proposto</div>';
-echo '<div class="grid">';
-
-echo '<div class="col6">';
-echo '<label>Data de Início<input type="date" name="start_date" id="startDate" required></label>';
-echo '</div>';
-
-echo '<div class="col6">';
-echo '<label>Frequência<select name="frequency" id="frequencySelect" required>';
-// Usando tabela padronizada de frequência/dias
-if (function_exists('frequency_get_options')) {
-    $freqOptions = frequency_get_options();
-    echo '<option value="">Selecione a frequência</option>';
-    foreach ($freqOptions as $fo) {
-        $selected = $fo['code'] === '1x_semana' ? ' selected' : '';
-        echo '<option value="' . h($fo['code']) . '"' . $selected . ' data-weekdays=\'' . json_encode($fo['weekdays']) . '\'>';
-        echo h($fo['label']) . ' — ' . h($fo['description']);
-        echo '</option>';
-    }
-} else {
-    echo '<option value="single">Atendimento Único</option>';
-    echo '<option value="weekly" selected>Semanal</option>';
-    echo '<option value="biweekly">Quinzenal</option>';
-    echo '<option value="monthly">Mensal</option>';
-    echo '<option value="custom">Personalizado</option>';
-}
-echo '</select></label>';
-echo '<div class="helpText" id="frequencyHelp"></div>';
-echo '</div>';
-
-echo '<div class="col6">';
-echo '<label>Hora de Início<input type="time" name="start_time" required value="08:00"></label>';
-echo '</div>';
-
-echo '<div class="col6">';
-echo '<label>Hora de Término<input type="time" name="end_time" required value="09:00"></label>';
-echo '</div>';
-
-echo '<div class="col12" id="frequencyDetailsDiv" style="display:none">';
-echo '<label>Detalhes da Frequência<textarea name="frequency_details" id="frequencyDetails" rows="3" placeholder="Ex: Segunda, Quarta e Sexta por 4 semanas (12 sessões)"></textarea></label>';
-echo '<div class="helpText">Descreva os dias da semana e duração do tratamento</div>';
-echo '</div>';
-
-echo '<div class="col6">';
-echo '<label>Duração (semanas)<input type="number" name="duration_weeks" id="durationWeeks" min="1" value="4" required></label>';
-echo '</div>';
-
-echo '<div class="col6">';
-echo '<label>Total de Sessões<input type="number" name="total_sessions" id="totalSessions" min="1" value="12" required></label>';
-echo '<div class="helpText" id="sessionCalc">Sistema calculará automaticamente</div>';
-echo '</div>';
-
-echo '</div>';
-echo '</div>';
-
-echo '<div class="formSection">';
 echo '<div class="formSectionTitle">💰 Valores</div>';
 echo '<div class="grid">';
 
@@ -258,11 +202,11 @@ echo '</div>';
 
 echo '<div class="col12">';
 echo '<div style="padding:14px;background:hsla(var(--primary)/.08);border:1px solid hsla(var(--primary)/.2);border-radius:10px">';
-echo '<div style="font-weight:700;margin-bottom:8px">💵 Resumo Financeiro</div>';
+echo '<div style="font-weight:700;margin-bottom:8px">💵 Resumo Financeiro (por sessão)</div>';
 echo '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:14px">';
-echo '<div><strong>Valor Total da Proposta:</strong><br><span id="totalProposal" style="font-size:18px;font-weight:900;color:hsl(var(--primary))">R$ 0,00</span></div>';
-echo '<div><strong>Custo Total (profissional):</strong><br><span id="totalCost" style="font-size:18px;font-weight:900">R$ 0,00</span></div>';
-echo '<div><strong>Margem Estimada:</strong><br><span id="totalMargin" style="font-size:18px;font-weight:900;color:hsl(var(--success))">R$ 0,00</span></div>';
+echo '<div><strong>Valor Proposta:</strong><br><span id="totalProposal" style="font-size:18px;font-weight:900;color:hsl(var(--primary))">R$ 0,00</span></div>';
+echo '<div><strong>Custo (profissional):</strong><br><span id="totalCost" style="font-size:18px;font-weight:900">R$ 0,00</span></div>';
+echo '<div><strong>Margem por Sessão:</strong><br><span id="totalMargin" style="font-size:18px;font-weight:900;color:hsl(var(--success))">R$ 0,00</span></div>';
 echo '</div>';
 echo '</div>';
 echo '</div>';
@@ -332,17 +276,7 @@ echo '      }';
 echo '    });';
 echo '  }';
 
-// Mostrar/ocultar detalhes de frequência
-echo '  const frequencySelect = document.getElementById("frequencySelect");';
-echo '  const frequencyDetailsDiv = document.getElementById("frequencyDetailsDiv");';
-echo '  if (frequencySelect && frequencyDetailsDiv) {';
-echo '    frequencySelect.addEventListener("change", function() {';
-echo '      frequencyDetailsDiv.style.display = (this.value === "custom") ? "block" : "none";';
-echo '    });';
-echo '  }';
-
 // Calcular totais automaticamente
-echo '  const totalSessionsInput = document.getElementById("totalSessions");';
 echo '  const agreedValueInput = document.getElementById("agreedValue");';
 echo '  const proposalValueInput = document.getElementById("proposalValue");';
 echo '  const totalProposalSpan = document.getElementById("totalProposal");';
@@ -350,61 +284,24 @@ echo '  const totalCostSpan = document.getElementById("totalCost");';
 echo '  const totalMarginSpan = document.getElementById("totalMargin");';
 echo '  ';
 echo '  function calculateTotals() {';
-echo '    const sessions = parseFloat(totalSessionsInput.value) || 0;';
 echo '    const agreed = parseFloat(agreedValueInput.value) || 0;';
 echo '    const proposal = parseFloat(proposalValueInput.value) || 0;';
 echo '    ';
-echo '    const totalProposal = sessions * proposal;';
-echo '    const totalCost = sessions * agreed;';
-echo '    const totalMargin = totalProposal - totalCost;';
+echo '    totalProposalSpan.textContent = "R$ " + proposal.toFixed(2).replace(".", ",");';
+echo '    totalCostSpan.textContent = "R$ " + agreed.toFixed(2).replace(".", ",");';
+echo '    const margin = proposal - agreed;';
+echo '    totalMarginSpan.textContent = "R$ " + margin.toFixed(2).replace(".", ",");';
 echo '    ';
-echo '    totalProposalSpan.textContent = "R$ " + totalProposal.toFixed(2).replace(".", ",");';
-echo '    totalCostSpan.textContent = "R$ " + totalCost.toFixed(2).replace(".", ",");';
-echo '    totalMarginSpan.textContent = "R$ " + totalMargin.toFixed(2).replace(".", ",");';
-echo '    ';
-echo '    if (totalMargin < 0) {';
+echo '    if (margin < 0) {';
 echo '      totalMarginSpan.style.color = "hsl(var(--destructive))";';
 echo '    } else {';
 echo '      totalMarginSpan.style.color = "hsl(var(--success))";';
 echo '    }';
 echo '  }';
 echo '  ';
-echo '  if (totalSessionsInput) totalSessionsInput.addEventListener("input", calculateTotals);';
 echo '  if (agreedValueInput) agreedValueInput.addEventListener("input", calculateTotals);';
 echo '  if (proposalValueInput) proposalValueInput.addEventListener("input", calculateTotals);';
-
-// Calcular sessões baseado em frequência
-echo '  const durationWeeksInput = document.getElementById("durationWeeks");';
-echo '  const sessionCalc = document.getElementById("sessionCalc");';
-echo '  ';
-echo '  function calculateSessions() {';
-echo '    const frequency = frequencySelect.value;';
-echo '    const weeks = parseInt(durationWeeksInput.value) || 0;';
-echo '    let sessions = 0;';
-echo '    ';
-echo '    switch(frequency) {';
-echo '      case "single": sessions = 1; break;';
-echo '      case "daily": sessions = weeks * 7; break;';
-echo '      case "weekly": sessions = weeks; break;';
-echo '      case "biweekly": sessions = Math.ceil(weeks / 2); break;';
-echo '      case "monthly": sessions = Math.ceil(weeks / 4); break;';
-echo '      default: sessions = parseInt(totalSessionsInput.value) || 0;';
-echo '    }';
-echo '    ';
-echo '    if (frequency !== "custom") {';
-echo '      totalSessionsInput.value = sessions;';
-echo '      sessionCalc.textContent = "Calculado: " + sessions + " sessões em " + weeks + " semanas";';
-echo '    } else {';
-echo '      sessionCalc.textContent = "Informe manualmente o total de sessões";';
-echo '    }';
-echo '    ';
-echo '    calculateTotals();';
-echo '  }';
-echo '  ';
-echo '  if (frequencySelect) frequencySelect.addEventListener("change", calculateSessions);';
-echo '  if (durationWeeksInput) durationWeeksInput.addEventListener("input", calculateSessions);';
-echo '  ';
-echo '  calculateSessions();';
+echo '  calculateTotals();';
 
 echo '});';
 echo '</script>';

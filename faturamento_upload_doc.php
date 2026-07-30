@@ -68,9 +68,9 @@ echo '</section>';
 echo '<section class="card col6" style="background:hsl(var(--muted));border-left:4px solid hsl(var(--primary))">';
 echo '<h3>Instruções</h3>';
 echo '<ul style="margin:0;padding-left:20px;line-height:1.8">';
-echo '<li>Envie as <strong>Fichas de Produtividade</strong> e <strong>Fichas de Faturamento</strong></li>';
-echo '<li>Formatos aceitos: <strong>apenas JPEG e PNG</strong></li>';
-echo '<li>Você pode tirar fotos diretamente pela câmera do celular</li>';
+echo '<li>Envie as <strong>Fichas de Produtividade</strong> e <strong>Fichas de Evolução</strong></li>';
+echo '<li>Formatos aceitos: <strong>PDF, JPG, JPEG, PNG, WEBP, HEIC e HEIF</strong></li>';
+echo '<li>Você pode tirar fotos diretamente pela câmera do celular ou enviar documentos em PDF</li>';
 echo '<li>Envie até <strong>20 arquivos por tipo</strong> de documento</li>';
 echo '<li>Após o envio, os documentos serão revisados pelo financeiro</li>';
 echo '</ul>';
@@ -102,9 +102,9 @@ echo '<div id="produtividade-uploads" style="display:flex;flex-direction:column;
 echo '<button type="button" onclick="addFileUpload(\'produtividade\')" class="btn" style="width:100%;margin-top:12px;background:hsl(var(--muted));border:2px dashed hsl(var(--border))">+ Adicionar Arquivo</button>';
 echo '</div>';
 
-// Fichas de Faturamento
+// Fichas de Evolução
 echo '<div style="margin-bottom:24px;padding:20px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:calc(var(--radius) + 4px);box-shadow:var(--shadow-card)">';
-echo '<h4 style="margin:0 0 16px 0;color:hsl(var(--foreground))">Fichas de Faturamento</h4>';
+echo '<h4 style="margin:0 0 16px 0;color:hsl(var(--foreground))">Fichas de Evolução</h4>';
 echo '<div id="faturamento-uploads" style="display:flex;flex-direction:column;gap:12px"></div>';
 echo '<button type="button" onclick="addFileUpload(\'faturamento\')" class="btn" style="width:100%;margin-top:12px;background:hsl(var(--muted));border:2px dashed hsl(var(--border))">+ Adicionar Arquivo</button>';
 echo '</div>';
@@ -143,7 +143,7 @@ echo '  fileBlock.innerHTML = `';
 echo '    <input type="file" ';
 echo '      id="${fileId}" ';
 echo '      name="${type}[]" ';
-echo '      accept="image/jpeg,image/png" ';
+echo '      accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf" ';
 echo '      capture="environment" ';
 echo '      onchange="handleFileSelect(this, \'${fileId}\', \'${type}\')"
       style="display:none">';
@@ -162,8 +162,9 @@ echo 'function handleFileSelect(input, fileId, type) {';
 echo '  const file = input.files[0];';
 echo '  if (!file) return;';
 echo '  ';
-echo '  if (!file.type.match("image/(jpeg|png)")) {';
-echo '    alert("Apenas arquivos JPEG e PNG são permitidos");';
+echo '  const allowedTypes = ["image/jpeg","image/png","image/webp","image/heic","image/heif","application/pdf"];';
+echo '  if (!allowedTypes.includes(file.type) && !file.name.match(/\\.(jpe?g|png|webp|heic|heif|pdf)$/i)) {';
+echo '    alert("Formatos aceitos: PDF, JPG, JPEG, PNG, WEBP, HEIC e HEIF");';
 echo '    input.value = "";';
 echo '    return;';
 echo '  }';
