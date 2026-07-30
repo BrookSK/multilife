@@ -316,6 +316,7 @@ function view_header(string $title): void
 
         $path = parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
         $path = is_string($path) ? $path : '';
+        $fullUri = $path . (isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? '?' . $_SERVER['QUERY_STRING'] : '');
 
         echo '<div class="appShell">';
         echo '<aside class="sidebar" id="appSidebar">';
@@ -357,7 +358,12 @@ function view_header(string $title): void
         ];
         
         foreach ($menuItems as $it) {
-            $isActive = $path === $it['path'];
+            // Comparar com query string se o item tiver, senao apenas path
+            if (strpos($it['path'], '?') !== false) {
+                $isActive = $fullUri === $it['path'];
+            } else {
+                $isActive = $path === $it['path'];
+            }
             $cls = 'navItem' . ($isActive ? ' isActive' : '');
             $icon = isset($icons[$it['title']]) ? $icons[$it['title']] : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="2"/></svg>';
             
