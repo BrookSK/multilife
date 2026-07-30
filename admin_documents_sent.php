@@ -5,18 +5,18 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('demands.manage');
+rbac_require_permission('documents.manage');
 
 $db = db();
 
-// Garantir que a tabela existe
+// Garantir que as tabelas existem
 try {
     $db->exec("
         CREATE TABLE IF NOT EXISTS document_send_logs (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            document_id INT UNSIGNED NOT NULL,
+            document_id INT UNSIGNED NOT NULL DEFAULT 0,
             document_source VARCHAR(50) NOT NULL DEFAULT 'insurer',
-            recipient_type VARCHAR(50) NOT NULL,
+            recipient_type VARCHAR(50) NOT NULL DEFAULT 'professional',
             recipient_id INT UNSIGNED NULL,
             recipient_email VARCHAR(255) NULL,
             assignment_id INT UNSIGNED NULL,
@@ -24,6 +24,8 @@ try {
             health_insurer_id INT UNSIGNED NULL,
             send_method VARCHAR(30) NOT NULL DEFAULT 'email',
             sent_by_user_id INT UNSIGNED NULL,
+            file_name VARCHAR(255) NULL,
+            file_path VARCHAR(500) NULL,
             notes TEXT NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_document (document_id),
@@ -32,6 +34,14 @@ try {
             INDEX idx_insurer (health_insurer_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+} catch (Throwable $e) {
+    // Tabela já existe ou erro ignorável
+}
+
+// Verificar se colunas file_name/file_path existem (podem não existir se tabela foi criada antes)
+try {
+    $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS file_name VARCHAR(255) NULL AFTER sent_by_user_id");
+    $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS file_path VARCHAR(500) NULL AFTER file_name");
 } catch (Throwable $e) {}
 
 // Filtros
@@ -59,14 +69,12 @@ if ($filterDemand > 0) {
 $whereClause = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
 
 $sql = "
-    SELECT dsl.*, 
-           hid.file_name, hid.file_path,
+    SELECT dsl.*,
            hi.name as insurer_name,
            u.name as recipient_name,
            p.full_name as patient_name,
            sender.name as sent_by_name
     FROM document_send_logs dsl
-    LEFT JOIN health_insurer_documents hid ON hid.id = dsl.document_id
     LEFT JOIN health_insurers hi ON hi.id = dsl.health_insurer_id
     LEFT JOIN users u ON u.id = dsl.recipient_id AND dsl.recipient_type = 'professional'
     LEFT JOIN patients p ON p.id = dsl.recipient_id AND dsl.recipient_type = 'patient'
