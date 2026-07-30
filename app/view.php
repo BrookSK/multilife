@@ -357,12 +357,21 @@ function view_header(string $title): void
             'Sessoes' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 4h6l2 3h12v13H2z"/><path d="M5 7h5l1.5 2h9v9H5z" opacity=".6"/><path d="M8 10h4l1.5 2h7v7H8z" opacity=".3"/></svg>',
         ];
         
+        // Pré-calcular se a URL atual casa com algum item que tem query string
+        $exactMatchWithQuery = false;
         foreach ($menuItems as $it) {
-            // Comparar com query string se o item tiver, senao apenas path
+            if (strpos($it['path'], '?') !== false && $fullUri === $it['path']) {
+                $exactMatchWithQuery = true;
+                break;
+            }
+        }
+
+        foreach ($menuItems as $it) {
             if (strpos($it['path'], '?') !== false) {
                 $isActive = $fullUri === $it['path'];
             } else {
-                $isActive = $path === $it['path'];
+                // Se ja existe um match exato com query, nao marcar item sem query do mesmo path
+                $isActive = ($path === $it['path']) && !$exactMatchWithQuery;
             }
             $cls = 'navItem' . ($isActive ? ' isActive' : '');
             $icon = isset($icons[$it['title']]) ? $icons[$it['title']] : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="2"/></svg>';
