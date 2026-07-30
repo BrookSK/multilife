@@ -5,7 +5,13 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('admin.dashboard');
+
+// Dashboard acessivel por admin.dashboard OU reports.view
+$uid = auth_user_id();
+if (!rbac_user_can($uid, 'admin.dashboard') && !rbac_user_can($uid, 'reports.view')) {
+    header('Location: /forbidden.php');
+    exit;
+}
 
 $db = db();
 
