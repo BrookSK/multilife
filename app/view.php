@@ -46,14 +46,14 @@ function view_header(string $title): void
         }
 
         // Mapeamento: item do menu => permissao necessaria
-        // null = sempre visivel, string = exige essa permissao
+        // null = sempre visivel, string|array = exige uma dessas permissoes
         $allMenuItems = [
-            ['title' => 'Dashboard', 'path' => '/dashboard.php', 'perm' => 'admin.dashboard'],
+            ['title' => 'Dashboard', 'path' => '/dashboard.php', 'perm' => ['admin.dashboard', 'reports.view']],
             ['title' => 'Captação', 'path' => '/demands_list.php', 'perm' => 'demands.manage'],
             ['title' => 'Autorização', 'path' => '/authorization_list.php', 'perm' => 'demands.manage'],
             ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php', 'perm' => 'demands.manage'],
             ['title' => 'Monitoramento', 'path' => '/monitoramento.php', 'perm' => 'demands.manage'],
-            ['title' => 'Sessoes', 'path' => '/admin_professional_sessions.php', 'perm' => 'demands.manage'],
+            ['title' => 'Sessoes', 'path' => '/admin_professional_sessions.php', 'perm' => 'appointments.manage'],
             ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php', 'perm' => 'professional_applications.manage'],
             ['title' => 'Pacientes', 'path' => '/patients_list.php', 'perm' => 'patients.manage'],
             ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional', 'perm' => 'users.manage'],
@@ -76,7 +76,14 @@ function view_header(string $title): void
 
         $menuItems = [];
         foreach ($allMenuItems as $item) {
-            if ($isFullAccess || $item['perm'] === null || in_array($item['perm'], $userPerms, true)) {
+            if ($isFullAccess || $item['perm'] === null) {
+                $menuItems[] = ['title' => $item['title'], 'path' => $item['path']];
+            } elseif (is_array($item['perm'])) {
+                // Qualquer uma das permissoes listadas da acesso
+                if (!empty(array_intersect($item['perm'], $userPerms))) {
+                    $menuItems[] = ['title' => $item['title'], 'path' => $item['path']];
+                }
+            } elseif (in_array($item['perm'], $userPerms, true)) {
                 $menuItems[] = ['title' => $item['title'], 'path' => $item['path']];
             }
         }
