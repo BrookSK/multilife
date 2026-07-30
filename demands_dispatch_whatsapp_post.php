@@ -93,9 +93,6 @@ if (count($groups) === 0) {
     error_log("[DISPATCH] Nenhum grupo encontrado para spec='$specialty' city='$city' state='$state'. Criando automaticamente...");
     
     try {
-<<<<<<< HEAD
-        $api = new EvolutionApiV1();
-=======
         // MULTI-INSTÂNCIA: Encontrar uma instância conectada para criar o grupo
         $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
         $apiKey = (string)admin_setting_get('evolution.api_key', '');
@@ -216,7 +213,6 @@ if (count($groups) === 0) {
         }
         
         $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
->>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
         
         // Gerar nome do grupo: Especialidade - Cidade/UF - N
         $location = trim($city !== '' ? ($city . ($state !== '' ? '/' . $state : '')) : $state);
@@ -230,8 +226,6 @@ if (count($groups) === 0) {
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
         // Buscar profissionais da especialidade para adicionar ao grupo
-<<<<<<< HEAD
-=======
         // Match progressivo e flexível:
         // 1. Match exato (u.specialty = 'Fisioterapia Domiciliar')
         // 2. Especialidade contém o termo buscado (u.specialty LIKE '%Fisioterapia Domiciliar%')
@@ -240,7 +234,6 @@ if (count($groups) === 0) {
         // 4. Primeira palavra da especialidade (u.specialty LIKE 'Fisioterapia%')
         //    → pega 'Fisioterapia Geral', 'Fisioterapia Esportiva', 'Fisioterapia do Trabalho', etc.
         $firstWord = explode(' ', trim($specialty))[0];
->>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
         $profsStmt = db()->prepare("
             SELECT DISTINCT u.phone FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
@@ -255,15 +248,10 @@ if (count($groups) === 0) {
             )
             AND u.phone IS NOT NULL AND u.phone != ''
         ");
-<<<<<<< HEAD
-        $firstWord = explode(' ', trim($specialty))[0];
-        $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%']);
-=======
         // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
         // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra),
         // e LIKE '%fisioterapia%' (case-insensitive por palavra-chave principal)
         $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
->>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
         $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
         
         error_log("[DISPATCH] Busca de profissionais para '$specialty' (firstWord='$firstWord'): encontrados " . count($profPhones) . " telefones");
@@ -1047,15 +1035,6 @@ try {
         try {
             $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
             $connState = $tryApi->connectionState();
-<<<<<<< HEAD
-            $httpCode = (int)($connState['status'] ?? 0);
-            $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ($connState['json']['instance']['connectionStatus'] ?? ''));
-            
-            error_log("[DISPATCH] Instância '$instName': HTTP=$httpCode state='$state' response=" . json_encode($connState['json'] ?? ''));
-            
-            // Aceitar múltiplos indicadores de conexão ativa
-            if ($state === 'open' || $state === 'connected' || $state === 'connecting' || $httpCode === 200) {
-=======
             $connJson = $connState['json'] ?? [];
             
             // Extrair estado - múltiplos formatos possíveis
@@ -1073,7 +1052,6 @@ try {
             $connInstanceStateLower = strtolower(trim($connInstanceState));
             
             if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
->>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
                 $api = $tryApi;
                 $apiInstanceName = $instName;
                 error_log("[DISPATCH] Instância conectada encontrada: $instName (state=$state)");
@@ -1127,17 +1105,10 @@ try {
             try {
                 $tryApi = new EvolutionApiV1();
                 $connState = $tryApi->connectionState();
-<<<<<<< HEAD
-                $httpCode = (int)($connState['status'] ?? 0);
-                $state = $connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ($connState['json']['instance']['connectionStatus'] ?? ''));
-                error_log("[DISPATCH] Instância padrão '$defaultInstName': HTTP=$httpCode state='$state'");
-                if ($state === 'open' || $state === 'connected' || $state === 'connecting' || $httpCode === 200) {
-=======
                 $connJson = $connState['json'] ?? [];
                 $connInstanceState = (string)($connJson['instance']['state'] ?? ($connJson['state'] ?? ''));
                 $connInstanceStateLower = strtolower(trim($connInstanceState));
                 if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
->>>>>>> 292d132a5516a0f6df16759590a4d0fb28fc8d35
                     $api = $tryApi;
                     $apiInstanceName = $defaultInstName;
                     error_log("[DISPATCH] Instância padrão admin_settings conectada: $defaultInstName");
