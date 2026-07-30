@@ -6,9 +6,25 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 
-// Dashboard acessivel por admin.dashboard OU reports.view
+// Dashboard acessivel por qualquer usuario com role administrativa
+// (nao restrito apenas a admin.dashboard, pois analistas e gerentes tambem precisam ver)
 $uid = auth_user_id();
-if (!rbac_user_can($uid, 'admin.dashboard') && !rbac_user_can($uid, 'reports.view')) {
+$canAccessDashboard = false;
+if ($uid) {
+    // Verificar por permissoes
+    if (rbac_user_can($uid, 'admin.dashboard') || rbac_user_can($uid, 'reports.view')) {
+        $canAccessDashboard = true;
+    }
+    // Verificar por roles - qualquer role administrativa tem acesso
+    if (!$canAccessDashboard) {
+        $userRolesForDash = rbac_user_roles($uid);
+        $adminRolesForDash = ['admin', 'ti', 'analista', 'captador', 'financeiro', 'coordenador', 'gerente', 'gerente_rh', 'supervisor'];
+        if (!empty(array_intersect($userRolesForDash, $adminRolesForDash))) {
+            $canAccessDashboard = true;
+        }
+    }
+}
+if (!$canAccessDashboard) {
     header('Location: /forbidden.php');
     exit;
 }

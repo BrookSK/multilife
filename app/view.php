@@ -48,7 +48,7 @@ function view_header(string $title): void
         // Mapeamento: item do menu => permissao necessaria
         // null = sempre visivel, string|array = exige uma dessas permissoes
         $allMenuItems = [
-            ['title' => 'Dashboard', 'path' => '/dashboard.php', 'perm' => ['admin.dashboard', 'reports.view']],
+            ['title' => 'Dashboard', 'path' => '/dashboard.php', 'perm' => null],
             ['title' => 'Captação', 'path' => '/demands_list.php', 'perm' => 'demands.manage'],
             ['title' => 'Autorização', 'path' => '/authorization_list.php', 'perm' => 'demands.manage'],
             ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php', 'perm' => 'demands.manage'],
