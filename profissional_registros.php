@@ -244,18 +244,68 @@ $insurerDocsList = $insurerDocsStmt->fetchAll(PDO::FETCH_ASSOC);
 // Documentos enviados manualmente para este profissional (via admin)
 $manualDocsForProf = [];
 try {
+    // Garantir que a tabela existe
+    db()->exec("CREATE TABLE IF NOT EXISTS document_send_logs (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        document_id INT UNSIGNED NOT NULL DEFAULT 0,
+        document_source VARCHAR(50) NOT NULL DEFAULT 'manual',
+        recipient_type VARCHAR(50) NOT NULL DEFAULT 'professional',
+        recipient_id INT UNSIGNED NULL,
+        recipient_email VARCHAR(255) NULL,
+        recipient_name VARCHAR(255) NULL,
+        assignment_id INT UNSIGNED NULL,
+        demand_id INT UNSIGNED NULL,
+        health_insurer_id INT UNSIGNED NULL,
+        send_method VARCHAR(30) NOT NULL DEFAULT 'email',
+        sent_by_user_id INT UNSIGNED NULL,
+        file_name VARCHAR(255) NULL,
+        file_path VARCHAR(500) NULL,
+        notes TEXT NULL,
+        send_status VARCHAR(30) NOT NULL DEFAULT 'enviado',
+        send_action VARCHAR(30) NOT NULL DEFAULT 'envio_inicial',
+        resent_from_log_id INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Throwable $e) {}
+try {
+    // Buscar por recipient_id (envios manuais)
     $manualDocsStmt = db()->prepare("
-        SELECT dsl.id, dsl.file_name, dsl.file_path, dsl.notes, dsl.created_at, dsl.send_method
-        FROM document_send_logs dsl
-        WHERE dsl.recipient_type = 'professional'
-        AND dsl.recipient_id = ?
-        AND dsl.file_path IS NOT NULL
-        AND dsl.file_path != ''
-        ORDER BY dsl.created_at DESC
+        SELECT id, file_name, file_path, notes, created_at, send_method
+        FROM document_send_logs
+        WHERE recipient_type = 'professional'
+        AND recipient_id = ?
+        AND file_path IS NOT NULL
+        AND file_path != ''
+        ORDER BY created_at DESC
     ");
     $manualDocsStmt->execute([$userId]);
     $manualDocsForProf = $manualDocsStmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {}
+
+    // Se vazio, tentar buscar pelo e-mail do profissional
+    if (empty($manualDocsForProf)) {
+        $emailStmt = db()->prepare("SELECT email FROM users WHERE id = ?");
+        $emailStmt->execute([$userId]);
+        $profEmail = (string)($emailStmt->fetchColumn() ?: '');
+        if ($profEmail !== '') {
+            $byEmailStmt = db()->prepare("
+                SELECT id, file_name, file_path, notes, created_at, send_method
+                FROM document_send_logs
+                WHERE recipient_email = ?
+                AND file_path IS NOT NULL
+                AND file_path != ''
+                ORDER BY created_at DESC
+            ");
+            $byEmailStmt->execute([$profEmail]);
+            $manualDocsForProf = $byEmailStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
+} catch (Throwable $e) {
+    try {
+        $manualDocsStmt = db()->prepare("SELECT * FROM document_send_logs WHERE recipient_email = (SELECT email FROM users WHERE id = ?) AND file_path IS NOT NULL AND file_path != '' ORDER BY created_at DESC");
+        $manualDocsStmt->execute([$userId]);
+        $manualDocsForProf = $manualDocsStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e2) {}
+}
 
 if (!empty($insurerDocsList) || !empty($manualDocsForProf)) {
     echo '<section class="card col12">';
