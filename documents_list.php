@@ -11,13 +11,62 @@ $tab = isset($_GET['tab']) ? (string)$_GET['tab'] : 'patients';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $selectedEntityId = isset($_GET['entity_id']) ? (int)$_GET['entity_id'] : 0;
 
-$allowedTabs = ['patients', 'professionals', 'employees'];
+$allowedTabs = ['patients', 'professionals', 'employees', 'sent'];
 if (!in_array($tab, $allowedTabs, true)) {
-    if ($tab === 'sent') {
-        header('Location: /admin_documents_sent.php');
-        exit;
-    }
     $tab = 'patients';
+}
+
+// Se for aba "sent", tratar separadamente
+if ($tab === 'sent') {
+    // Criar tabela se necessario
+    try { db()->exec("CREATE TABLE IF NOT EXISTS document_send_logs (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, document_id INT UNSIGNED NOT NULL DEFAULT 0, document_source VARCHAR(50) NOT NULL DEFAULT 'manual', recipient_type VARCHAR(50) NOT NULL DEFAULT 'professional', recipient_id INT UNSIGNED NULL, recipient_email VARCHAR(255) NULL, assignment_id INT UNSIGNED NULL, demand_id INT UNSIGNED NULL, health_insurer_id INT UNSIGNED NULL, send_method VARCHAR(30) NOT NULL DEFAULT 'email', sent_by_user_id INT UNSIGNED NULL, file_name VARCHAR(255) NULL, file_path VARCHAR(500) NULL, notes TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"); } catch (Exception $e) {}
+    
+    $sentLogs = array();
+    try {
+        $sentLogs = db()->query("SELECT * FROM document_send_logs ORDER BY created_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {}
+    
+    view_header('Documentos Enviados');
+    echo '<div class="grid">';
+    echo '<section class="card col12">';
+    echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+    echo '<div><div style="font-size:22px;font-weight:900">Gerenciamento de Documentos Enviados</div>';
+    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Visualize e envie documentos para profissionais e pacientes</div></div>';
+    echo '<a class="btn" href="/documents_list.php">Voltar</a>';
+    echo '</div>';
+    echo '</section>';
+    
+    echo '<section class="card col12">';
+    if (count($sentLogs) === 0) {
+        echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">';
+        echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum documento enviado ainda</div>';
+        echo '<div style="font-size:14px">Os documentos aparecerao aqui quando forem enviados automaticamente na aprovacao ou manualmente.</div>';
+        echo '</div>';
+    } else {
+        echo '<div style="overflow:auto"><table><thead><tr><th>Data</th><th>Documento</th><th>Destinatario</th><th>Tipo</th><th>Metodo</th><th>Origem</th><th>Obs</th></tr></thead><tbody>';
+        foreach ($sentLogs as $sl) {
+            $slTp = (isset($sl['recipient_type']) && $sl['recipient_type'] === 'professional') ? 'Prof.' : 'Pac.';
+            $slMt = (isset($sl['send_method']) && $sl['send_method'] === 'email') ? 'E-mail' : 'Portal';
+            $slOr = (isset($sl['document_source']) && $sl['document_source'] === 'insurer') ? 'Auto' : 'Manual';
+            echo '<tr>';
+            echo '<td style="font-size:12px;white-space:nowrap">' . date('d/m/Y H:i', strtotime($sl['created_at'])) . '</td>';
+            echo '<td>';
+            if (!empty($sl['file_path'])) { echo '<a href="' . htmlspecialchars($sl['file_path']) . '" target="_blank" style="color:hsl(var(--primary))">' . htmlspecialchars($sl['file_name']) . '</a>'; }
+            else { echo htmlspecialchars(isset($sl['file_name']) ? $sl['file_name'] : '-'); }
+            echo '</td>';
+            echo '<td style="font-size:12px">' . htmlspecialchars(isset($sl['recipient_email']) ? $sl['recipient_email'] : '-') . '</td>';
+            echo '<td style="font-size:11px">' . $slTp . '</td>';
+            echo '<td style="font-size:11px">' . $slMt . '</td>';
+            echo '<td style="font-size:11px">' . $slOr . '</td>';
+            echo '<td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . htmlspecialchars(isset($sl['notes']) ? $sl['notes'] : '') . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table></div>';
+    }
+    echo '</section>';
+    echo '</div>';
+    view_footer();
+    exit;
 }
 
 // Mapear tab para entity_type
@@ -138,7 +187,7 @@ $tabs = [
 foreach ($tabs as $tabKey => $tabLabel) {
     $isActive = $tab === $tabKey;
     $activeStyle = $isActive ? 'background:hsl(var(--primary));color:white;border-color:hsl(var(--primary))' : 'background:white;color:#667781;border-color:transparent';
-    $href = $tabKey === 'sent' ? '/docs_enviados.php' : '/documents_list.php?tab=' . $tabKey;
+    $href = '/documents_list.php?tab=' . $tabKey;
     echo '<a href="' . $href . '" style="padding:12px 24px;text-decoration:none;font-weight:600;border:2px solid;border-bottom:none;border-radius:8px 8px 0 0;' . $activeStyle . '">' . $tabLabel . '</a>';
 }
 
