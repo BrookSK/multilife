@@ -27,14 +27,18 @@ try {
 
 // Processar envio manual
 $flashMsg = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['send_action'] ?? '') === '1') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_doc') {
     $rType = trim((string)($_POST['recipient_type'] ?? ''));
     $rId = (int)($_POST['recipient_id'] ?? 0);
     $insId = (int)($_POST['health_insurer_id'] ?? 0);
     $method = trim((string)($_POST['send_method'] ?? 'email'));
     $note = trim((string)($_POST['notes'] ?? ''));
 
-    if ($rId > 0 && $rType !== '' && isset($_FILES['document']) && $_FILES['document']['error'] === UPLOAD_ERR_OK) {
+    if ($rId <= 0 || $rType === '') {
+        $flashMsg = '<div style="background:#fee2e2;padding:12px;border-radius:8px;margin-bottom:16px;color:#991b1b">Selecione um destinatario.</div>';
+    } elseif (!isset($_FILES['document']) || $_FILES['document']['error'] !== UPLOAD_ERR_OK) {
+        $flashMsg = '<div style="background:#fee2e2;padding:12px;border-radius:8px;margin-bottom:16px;color:#991b1b">Selecione um arquivo.</div>';
+    } else {
         $fn = $_FILES['document']['name'];
         $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
         if (in_array($ext, ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','webp']) && $_FILES['document']['size'] <= 10485760) {
@@ -45,46 +49,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['send_action'] ?? '') === '
                 $rp = '/uploads/manual_docs/' . $un;
                 $re = '';
                 try {
-                    $s = $db->prepare($rType === 'professional' ? "SELECT email FROM users WHERE id=?" : "SELECT email FROM patients WHERE id=?");
+                    if ($rType === 'professional') {
+                        $s = $db->prepare("SELECT email FROM users WHERE id = ?");
+                    } else {
+                        $s = $db->prepare("SELECT email FROM patients WHERE id = ?");
+                    }
                     $s->execute([$rId]);
                     $re = (string)($s->fetchColumn() ?: '');
                 } catch (Throwable $e) {}
+
                 try {
                     $db->prepare("INSERT INTO document_send_logs (document_source,recipient_type,recipient_id,recipient_email,health_insurer_id,send_method,sent_by_user_id,file_name,file_path,notes) VALUES('manual',?,?,?,?,?,?,?,?,?)")
-                        ->execute([$rType,$rId,$re,$insId>0?$insId:null,$method,auth_user_id(),$fn,$rp,$note]);
+                        ->execute([$rType, $rId, $re, $insId > 0 ? $insId : null, $method, auth_user_id(), $fn, $rp, $note]);
                 } catch (Throwable $e) {}
+
                 if ($method === 'email' && $re !== '' && filter_var($re, FILTER_VALIDATE_EMAIL)) {
                     try {
                         require_once __DIR__ . '/app/email_base_template.php';
-                        $body = '<p style="font-size:15px;color:#374151">Segue documento enviado pela equipe MultiLife Care:</p>';
-                        $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px"><p style="margin:0"><a href="https://multilife.onsolutionsbrasil.com.br'.$rp.'" style="color:#0284c7">'.htmlspecialchars($fn).'</a></p></div>';
+                        $body = '<p style="font-size:15px;color:#374151">Ola!</p>';
+                        $body .= '<p style="font-size:14px;color:#4b5563">Segue documento enviado pela equipe MultiLife Care:</p>';
+                        $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                        $body .= '<p style="margin:0;font-size:14px">📄 <a href="https://multilife.onsolutionsbrasil.com.br' . $rp . '" style="color:#0284c7">' . htmlspecialchars($fn) . '</a></p>';
+                        if ($note !== '') $body .= '<p style="margin:8px 0 0;font-size:13px;color:#6b7280">' . htmlspecialchars($note) . '</p>';
+                        $body .= '</div>';
                         $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+                        $htmlBody = email_base_layout('Documento Enviado', $body);
                         $smtp = new SmtpClient();
-                        $smtp->send((string)admin_setting_get('smtp.out.from_email',''), (string)admin_setting_get('smtp.out.from_name','MultiLife Care'), $re, 'Documento - '.$fn, email_base_layout('Documento Enviado', $body));
+                        $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento - ' . $fn, $htmlBody);
                     } catch (Throwable $e) {}
                 }
-                $flashMsg = 'success';
+                $flashMsg = '<div style="background:#d1fae5;padding:12px;border-radius:8px;margin-bottom:16px;color:#065f46;font-weight:600">Documento enviado com sucesso!</div>';
+            } else {
+                $flashMsg = '<div style="background:#fee2e2;padding:12px;border-radius:8px;margin-bottom:16px;color:#991b1b">Falha ao salvar arquivo.</div>';
             }
+        } else {
+            $flashMsg = '<div style="background:#fee2e2;padding:12px;border-radius:8px;margin-bottom:16px;color:#991b1b">Formato nao permitido ou arquivo muito grande (max 10MB).</div>';
         }
     }
 }
 
-// Filtros
-$filterQ = trim((string)($_GET['q'] ?? ''));
+// Filtro
+$q = trim((string)($_GET['q'] ?? ''));
 
 // Buscar logs
 $logs = [];
 try {
-    if ($filterQ !== '') {
-        $st = $db->prepare("SELECT * FROM document_send_logs WHERE file_name LIKE ? OR recipient_email LIKE ? OR notes LIKE ? ORDER BY created_at DESC LIMIT 100");
-        $st->execute(["%$filterQ%","%$filterQ%","%$filterQ%"]);
+    if ($q !== '') {
+        $stmt = $db->prepare("SELECT * FROM document_send_logs WHERE file_name LIKE ? OR recipient_email LIKE ? OR notes LIKE ? ORDER BY created_at DESC LIMIT 100");
+        $stmt->execute(["%$q%", "%$q%", "%$q%"]);
     } else {
-        $st = $db->query("SELECT * FROM document_send_logs ORDER BY created_at DESC LIMIT 100");
+        $stmt = $db->query("SELECT * FROM document_send_logs ORDER BY created_at DESC LIMIT 100");
     }
-    $logs = $st->fetchAll(PDO::FETCH_ASSOC);
+    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {}
 
-// Dados para formulario
+// Dados para o modal
 $insurers = [];
 try { $insurers = $db->query("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name")->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
 
@@ -96,42 +115,41 @@ try { $pats = $db->query("SELECT id, full_name FROM patients ORDER BY full_name 
 
 view_header('Documentos Enviados');
 
-if ($flashMsg === 'success') {
-    echo '<div style="background:#d1fae5;border:1px solid #10b981;padding:12px 16px;border-radius:8px;margin-bottom:16px;color:#065f46;font-weight:600">Documento enviado com sucesso!</div>';
-}
+echo $flashMsg;
 
 echo '<div class="grid">';
 
 // Header
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
-echo '<div><div style="font-size:22px;font-weight:900">Documentos Enviados</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Visualize documentos enviados e envie extras manualmente</div></div>';
+echo '<div>';
+echo '<div style="font-size:22px;font-weight:900">Gerenciamento de Documentos Enviados</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Visualize e envie documentos para profissionais e pacientes</div>';
+echo '</div>';
 echo '<div style="display:flex;gap:10px">';
-echo '<button onclick="document.getElementById(\'modalEnvio\').style.display=\'flex\'" class="btn btnPrimary">Enviar Documento</button>';
+echo '<button onclick="document.getElementById(\'sendModal\').style.display=\'flex\'" class="btn btnPrimary">Enviar Documento</button>';
 echo '<a class="btn" href="/documents_list.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
 // Filtro
 echo '<form method="get" style="display:flex;gap:12px;margin-top:16px">';
-echo '<input name="q" value="' . htmlspecialchars($filterQ) . '" placeholder="Buscar por nome, email ou arquivo..." style="flex:1">';
+echo '<input name="q" value="' . htmlspecialchars($q) . '" placeholder="Buscar documento, destinatario..." style="flex:1">';
 echo '<button class="btn" type="submit">Filtrar</button>';
-if ($filterQ !== '') echo '<a class="btn" href="/docs_enviados.php">Limpar</a>';
+if ($q !== '') echo '<a class="btn" href="/docs_enviados.php">Limpar</a>';
 echo '</form>';
 echo '</section>';
 
-// Tabela de historico
+// Tabela
 echo '<section class="card col12">';
 if (empty($logs)) {
     echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">';
     echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum documento enviado ainda</div>';
-    echo '<div style="font-size:14px">Os documentos aparecerao aqui apos aprovacao de atendimentos ou envio manual.</div>';
+    echo '<div style="font-size:14px">Use o botao "Enviar Documento" para enviar documentos manualmente, ou eles aparecerao automaticamente apos aprovacao de atendimentos.</div>';
     echo '</div>';
 } else {
-    echo '<div style="overflow:auto"><table><thead><tr>';
-    echo '<th>Data</th><th>Documento</th><th>Destinatario</th><th>Tipo</th><th>Metodo</th><th>Origem</th><th>Obs</th>';
-    echo '</tr></thead><tbody>';
+    echo '<div style="overflow:auto"><table>';
+    echo '<thead><tr><th>Data</th><th>Documento</th><th>Destinatario</th><th>Tipo</th><th>Metodo</th><th>Origem</th><th>Observacao</th></tr></thead><tbody>';
     foreach ($logs as $l) {
         $tp = ($l['recipient_type'] ?? '') === 'professional' ? 'Profissional' : 'Paciente';
         $mt = ($l['send_method'] ?? '') === 'email' ? 'E-mail' : ucfirst($l['send_method'] ?? 'portal');
@@ -140,16 +158,16 @@ if (empty($logs)) {
         echo '<td style="font-size:12px;white-space:nowrap">' . date('d/m/Y H:i', strtotime($l['created_at'])) . '</td>';
         echo '<td>';
         if (!empty($l['file_path'])) {
-            echo '<a href="' . htmlspecialchars($l['file_path']) . '" target="_blank" style="color:hsl(var(--primary));text-decoration:none;font-weight:500">' . htmlspecialchars($l['file_name'] ?? 'Documento') . '</a>';
+            echo '<a href="' . htmlspecialchars($l['file_path']) . '" target="_blank" style="color:hsl(var(--primary));text-decoration:none;font-weight:500">📄 ' . htmlspecialchars($l['file_name'] ?: 'Documento') . '</a>';
         } else {
-            echo htmlspecialchars($l['file_name'] ?? '-');
+            echo htmlspecialchars($l['file_name'] ?: '-');
         }
         echo '</td>';
-        echo '<td style="font-size:12px">' . htmlspecialchars($l['recipient_email'] ?? '-') . '</td>';
-        echo '<td><span style="font-size:11px;padding:2px 8px;background:hsl(var(--secondary));border-radius:4px">' . $tp . '</span></td>';
-        echo '<td><span style="font-size:11px;padding:2px 8px;background:hsl(var(--secondary));border-radius:4px">' . $mt . '</span></td>';
-        echo '<td><span style="font-size:11px;padding:2px 8px;background:' . ($or === 'Automatico' ? '#d1fae5' : '#e0e7ff') . ';border-radius:4px">' . $or . '</span></td>';
-        echo '<td style="font-size:11px;color:hsl(var(--muted-foreground));max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . htmlspecialchars($l['notes'] ?? '') . '</td>';
+        echo '<td style="font-size:12px">' . htmlspecialchars($l['recipient_email'] ?: '-') . '</td>';
+        echo '<td><span style="font-size:11px;padding:2px 6px;background:hsl(var(--secondary));border-radius:4px">' . $tp . '</span></td>';
+        echo '<td><span style="font-size:11px;padding:2px 6px;background:hsl(var(--secondary));border-radius:4px">' . $mt . '</span></td>';
+        echo '<td><span style="font-size:11px;padding:2px 6px;background:' . ($or === 'Automatico' ? '#d1fae5' : '#e0e7ff') . ';border-radius:4px">' . $or . '</span></td>';
+        echo '<td style="font-size:12px;color:hsl(var(--muted-foreground));max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . htmlspecialchars($l['notes'] ?? '') . '</td>';
         echo '</tr>';
     }
     echo '</tbody></table></div>';
@@ -158,67 +176,58 @@ echo '</section>';
 echo '</div>';
 
 // Modal de Envio
-echo '<div id="modalEnvio" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.style.display=\'none\'">';
-echo '<div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto">';
-echo '<h2 style="margin:0 0 20px;font-size:18px;font-weight:700">Enviar Documento</h2>';
+echo '<div id="sendModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.style.display=\'none\'">';
+echo '<div style="background:#fff;border-radius:12px;padding:24px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto">';
+echo '<h2 style="margin:0 0 16px;font-size:18px;font-weight:700">Enviar Documento</h2>';
 echo '<form method="post" enctype="multipart/form-data">';
-echo '<input type="hidden" name="send_action" value="1">';
+echo '<input type="hidden" name="action" value="send_doc">';
 
-// Tipo + Destinatario
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
-echo '<div><label style="display:block;margin-bottom:4px;font-size:12px;font-weight:600">Tipo de Destinatario *</label>';
-echo '<select name="recipient_type" id="envTipo" onchange="envAtualizar()" required style="width:100%;padding:9px;border:1px solid hsl(var(--border));border-radius:6px">';
-echo '<option value="">Selecione...</option><option value="professional">Profissional</option><option value="patient">Paciente</option>';
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
+echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Tipo *</label>';
+echo '<select name="recipient_type" id="rT" onchange="updR()" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">';
+echo '<option value="">Selecione</option><option value="professional">Profissional</option><option value="patient">Paciente</option>';
 echo '</select></div>';
-echo '<div><label style="display:block;margin-bottom:4px;font-size:12px;font-weight:600">Destinatario *</label>';
-echo '<select name="recipient_id" id="envDest" required style="width:100%;padding:9px;border:1px solid hsl(var(--border));border-radius:6px">';
-echo '<option value="">Selecione o tipo primeiro</option></select></div>';
+echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Destinatario *</label>';
+echo '<select name="recipient_id" id="rS" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">';
+echo '<option value="">Selecione tipo primeiro</option>';
+echo '</select></div>';
 echo '</div>';
 
-// Operadora + Metodo
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
-echo '<div><label style="display:block;margin-bottom:4px;font-size:12px;font-weight:600">Operadora / Cliente</label>';
-echo '<select name="health_insurer_id" style="width:100%;padding:9px;border:1px solid hsl(var(--border));border-radius:6px">';
-echo '<option value="0">Nenhuma (avulso)</option>';
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
+echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Operadora</label>';
+echo '<select name="health_insurer_id" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">';
+echo '<option value="0">Nenhuma</option>';
 foreach ($insurers as $i) echo '<option value="' . (int)$i['id'] . '">' . htmlspecialchars($i['name']) . '</option>';
 echo '</select></div>';
-echo '<div><label style="display:block;margin-bottom:4px;font-size:12px;font-weight:600">Metodo de Envio *</label>';
-echo '<select name="send_method" required style="width:100%;padding:9px;border:1px solid hsl(var(--border));border-radius:6px">';
-echo '<option value="email">E-mail</option><option value="portal">Disponibilizar no Portal</option>';
+echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Metodo *</label>';
+echo '<select name="send_method" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">';
+echo '<option value="email">E-mail</option><option value="portal">Portal</option>';
 echo '</select></div>';
 echo '</div>';
 
-// Arquivo
-echo '<div style="margin-bottom:14px"><label style="display:block;margin-bottom:4px;font-size:12px;font-weight:600">Arquivo *</label>';
-echo '<input type="file" name="document" required accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="width:100%">';
-echo '<div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:4px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (max 10MB)</div>';
-echo '</div>';
+echo '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Arquivo *</label>';
+echo '<input type="file" name="document" required accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="width:100%"></div>';
 
-// Observacao
-echo '<div style="margin-bottom:18px"><label style="display:block;margin-bottom:4px;font-size:12px;font-weight:600">Observacao</label>';
-echo '<textarea name="notes" rows="2" style="width:100%;padding:9px;border:1px solid hsl(var(--border));border-radius:6px;resize:vertical" placeholder="Referencia: paciente, sessao, captacao..."></textarea>';
-echo '</div>';
+echo '<div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Observacao</label>';
+echo '<input name="notes" placeholder="Motivo do envio..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px"></div>';
 
-// Botoes
-echo '<div style="display:flex;gap:12px">';
-echo '<button type="button" onclick="document.getElementById(\'modalEnvio\').style.display=\'none\'" class="btn" style="flex:1">Cancelar</button>';
+echo '<div style="display:flex;gap:10px">';
+echo '<button type="button" onclick="document.getElementById(\'sendModal\').style.display=\'none\'" class="btn" style="flex:1">Cancelar</button>';
 echo '<button type="submit" class="btn btnPrimary" style="flex:1">Enviar</button>';
 echo '</div>';
 
-echo '</form>';
-echo '</div>';
-echo '</div>';
+echo '</form></div></div>';
 
 // JavaScript
 echo '<script>';
-echo 'var envP=[';
-foreach ($profs as $i => $p) { if ($i) echo ','; echo '['.(int)$p['id'].',"'.addslashes($p['name']).'"]'; }
-echo '];var envA=[';
-foreach ($pats as $i => $p) { if ($i) echo ','; echo '['.(int)$p['id'].',"'.addslashes($p['full_name']).'"]'; }
+echo 'var _P=[';
+foreach ($profs as $i => $p) { if ($i) echo ','; echo '[' . (int)$p['id'] . ',"' . addslashes($p['name']) . '"]'; }
+echo '];var _A=[';
+foreach ($pats as $i => $p) { if ($i) echo ','; echo '[' . (int)$p['id'] . ',"' . addslashes($p['full_name']) . '"]'; }
 echo '];';
-echo 'function envAtualizar(){var t=document.getElementById("envTipo").value,s=document.getElementById("envDest");';
+echo 'function updR(){var t=document.getElementById("rT").value,s=document.getElementById("rS");';
 echo 's.innerHTML="<option value=\\'\\'>Selecione...</option>";';
-echo 'var l=t==="professional"?envP:t==="patient"?envA:[];';
+echo 'var l=t==="professional"?_P:t==="patient"?_A:[];';
 echo 'for(var i=0;i<l.length;i++){var o=document.createElement("option");o.value=l[i][0];o.textContent=l[i][1];s.appendChild(o);}}';
 echo '</script>';
 
