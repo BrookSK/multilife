@@ -241,7 +241,23 @@ $insurerDocsStmt = db()->prepare("
 $insurerDocsStmt->execute([$userId]);
 $insurerDocsList = $insurerDocsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-if (!empty($insurerDocsList)) {
+// Documentos enviados manualmente para este profissional (via admin)
+$manualDocsForProf = [];
+try {
+    $manualDocsStmt = db()->prepare("
+        SELECT dsl.id, dsl.file_name, dsl.file_path, dsl.notes, dsl.created_at, dsl.send_method
+        FROM document_send_logs dsl
+        WHERE dsl.recipient_type = 'professional'
+        AND dsl.recipient_id = ?
+        AND dsl.file_path IS NOT NULL
+        AND dsl.file_path != ''
+        ORDER BY dsl.created_at DESC
+    ");
+    $manualDocsStmt->execute([$userId]);
+    $manualDocsForProf = $manualDocsStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {}
+
+if (!empty($insurerDocsList) || !empty($manualDocsForProf)) {
     echo '<section class="card col12">';
     echo '<h3>Documentos da Operadora</h3>';
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Manuais, formulários e termos obrigatórios das operadoras dos seus atendimentos ativos.</div>';
@@ -268,6 +284,43 @@ if (!empty($insurerDocsList)) {
         echo '</div>';
     }
     
+    // Documentos enviados manualmente pela equipe
+    if (!empty($manualDocsForProf)) {
+        echo '<div style="margin-top:20px;padding-top:16px;border-top:1px solid hsl(var(--border))">';
+        echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground));margin-bottom:8px">Documentos Enviados pela Equipe</div>';
+        echo '<div style="display:flex;flex-direction:column;gap:6px">';
+        foreach ($manualDocsForProf as $doc) {
+            $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(doc|docx)$/i', $doc['file_name']) ? '📝' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $doc['file_name']) ? '🖼️' : '📎'));
+            echo '<a href="' . h($doc['file_path']) . '" target="_blank" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:hsl(var(--secondary));border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px;font-weight:500">';
+            echo '<span>' . $icon . '</span>';
+            echo '<span>' . h($doc['file_name']) . '</span>';
+            if (!empty($doc['notes'])) { echo '<span style="font-size:11px;color:hsl(var(--muted-foreground));margin-left:8px">(' . h($doc['notes']) . ')</span>'; }
+            echo '<span style="margin-left:auto;font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
+            echo '</a>';
+        }
+        echo '</div>';
+        echo '</div>';
+    }
+    
+    echo '</section>';
+}
+
+// Documentos enviados manualmente (exibir mesmo se não houver docs da operadora)
+if (!empty($manualDocsForProf) && empty($insurerDocsList)) {
+    echo '<section class="card col12">';
+    echo '<h3>Documentos Recebidos</h3>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Documentos enviados pela equipe administrativa.</div>';
+    echo '<div style="display:flex;flex-direction:column;gap:6px">';
+    foreach ($manualDocsForProf as $doc) {
+        $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(doc|docx)$/i', $doc['file_name']) ? '📝' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $doc['file_name']) ? '🖼️' : '📎'));
+        echo '<a href="' . h($doc['file_path']) . '" target="_blank" style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:hsl(var(--secondary));border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px;font-weight:500">';
+        echo '<span>' . $icon . '</span>';
+        echo '<span>' . h($doc['file_name']) . '</span>';
+        if (!empty($doc['notes'])) { echo '<span style="font-size:11px;color:hsl(var(--muted-foreground));margin-left:8px">(' . h($doc['notes']) . ')</span>'; }
+        echo '<span style="margin-left:auto;font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
+        echo '</a>';
+    }
+    echo '</div>';
     echo '</section>';
 }
 
