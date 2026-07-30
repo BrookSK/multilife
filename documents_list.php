@@ -16,9 +16,210 @@ if (!in_array($tab, $allowedTabs, true)) {
     $tab = 'patients';
 }
 
-// Se for aba "sent", renderizar gerenciamento de documentos enviados
+// Se for aba "sent", tratar separadamente
 if ($tab === 'sent') {
-    require __DIR__ . '/documents_sent_tab.php';
+    // Garantir tabela
+    try { db()->exec("CREATE TABLE IF NOT EXISTS document_send_logs (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, document_id INT UNSIGNED NOT NULL DEFAULT 0, document_source VARCHAR(50) NOT NULL DEFAULT 'manual', recipient_type VARCHAR(50) NOT NULL DEFAULT 'professional', recipient_id INT UNSIGNED NULL, recipient_email VARCHAR(255) NULL, recipient_name VARCHAR(255) NULL, assignment_id INT UNSIGNED NULL, demand_id INT UNSIGNED NULL, health_insurer_id INT UNSIGNED NULL, send_method VARCHAR(30) NOT NULL DEFAULT 'email', sent_by_user_id INT UNSIGNED NULL, file_name VARCHAR(255) NULL, file_path VARCHAR(500) NULL, notes TEXT NULL, send_status VARCHAR(30) NOT NULL DEFAULT 'enviado', send_action VARCHAR(30) NOT NULL DEFAULT 'envio_inicial', resent_from_log_id INT UNSIGNED NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"); } catch (Throwable $e) {}
+
+    // Sub-aba
+    $sub = isset($_GET['sub']) ? (string)$_GET['sub'] : 'documentos';
+    if (!in_array($sub, ['documentos', 'enviar', 'historico'], true)) { $sub = 'documentos'; }
+
+    // POST envio manual
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_manual_doc') {
+        $rt = trim((string)($_POST['recipient_type'] ?? ''));
+        $ri = (int)($_POST['recipient_id'] ?? 0);
+        $hi = (int)($_POST['health_insurer_id'] ?? 0);
+        $sm = trim((string)($_POST['send_method'] ?? 'email'));
+        $nt = trim((string)($_POST['notes'] ?? ''));
+        if ($ri > 0 && $rt !== '' && isset($_FILES['document']) && $_FILES['document']['error'] === UPLOAD_ERR_OK) {
+            $fn = $_FILES['document']['name'];
+            $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
+            if (in_array($ext, ['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','webp'], true) && $_FILES['document']['size'] <= 10485760) {
+                $dir = __DIR__ . '/uploads/manual_docs/';
+                if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+                $un = time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                if (move_uploaded_file($_FILES['document']['tmp_name'], $dir . $un)) {
+                    $rp = '/uploads/manual_docs/' . $un;
+                    $re = '';
+                    $rn = '';
+                    try {
+                        if ($rt === 'professional') { $s = db()->prepare("SELECT name, email FROM users WHERE id = ?"); $s->execute([$ri]); $row = $s->fetch(PDO::FETCH_ASSOC); $re = (string)($row['email'] ?? ''); $rn = (string)($row['name'] ?? ''); }
+                        else { $s = db()->prepare("SELECT full_name, email FROM patients WHERE id = ?"); $s->execute([$ri]); $row = $s->fetch(PDO::FETCH_ASSOC); $re = (string)($row['email'] ?? ''); $rn = (string)($row['full_name'] ?? ''); }
+                    } catch (Throwable $e) {}
+                    if ($sm === 'email' && $re !== '' && filter_var($re, FILTER_VALIDATE_EMAIL)) {
+                        try {
+                            require_once __DIR__ . '/app/email_base_template.php';
+                            $body = '<p>Segue documento enviado pela equipe MultiLife Care:</p><div style="background:#f9fafb;padding:18px;margin:20px 0;border-radius:8px"><p style="margin:0"><a href="https://multilife.onsolutionsbrasil.com.br' . $rp . '">' . htmlspecialchars($fn) . '</a></p></div>';
+                            $htmlBody = email_base_layout('Documento Enviado', $body);
+                            $smtp = new SmtpClient();
+                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento - ' . $fn, $htmlBody);
+                        } catch (Throwable $e) {}
+                    }
+                    try { db()->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, recipient_name, health_insurer_id, send_method, sent_by_user_id, file_name, file_path, notes, send_status, send_action) VALUES ('manual',?,?,?,?,?,?,?,?,?,?,'enviado','envio_inicial')")->execute([$rt, $ri, $re, $rn, $hi > 0 ? $hi : null, $sm, auth_user_id(), $fn, $rp, $nt]); } catch (Throwable $e) {}
+                    flash_set('success', 'Documento enviado com sucesso!');
+                    header('Location: /documents_list.php?tab=sent&sub=enviar');
+                    exit;
+                }
+            }
+        }
+    }
+
+    // Buscar logs
+    $sentLogs = [];
+    try { $sentLogs = db()->query("SELECT * FROM document_send_logs ORDER BY created_at DESC LIMIT 200")->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+
+    // Separar
+    $autoLogs = [];
+    $manualLogs = [];
+    foreach ($sentLogs as $l) {
+        if (($l['document_source'] ?? '') === 'manual') { $manualLogs[] = $l; } else { $autoLogs[] = $l; }
+    }
+
+    // Auxiliares
+    $insurers = [];
+    try { $insurers = db()->query("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name")->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+    $profs = [];
+    try { $profs = db()->query("SELECT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE u.status = 'active' AND r.slug = 'profissional' ORDER BY u.name")->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+    $pats = [];
+    try { $pats = db()->query("SELECT id, full_name FROM patients ORDER BY full_name LIMIT 500")->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+
+    view_header('Documentos Enviados');
+
+    $fl = flash_get('success');
+    if ($fl) { echo '<div class="alert alertSuccess">' . htmlspecialchars($fl) . '</div>'; }
+
+    echo '<div class="grid">';
+    echo '<section class="card col12">';
+    echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+    echo '<div><div style="font-size:22px;font-weight:900">Gerenciamento de Documentos Enviados</div>';
+    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Visualize, envie e acompanhe documentos para profissionais e pacientes</div></div>';
+    echo '<a class="btn" href="/documents_list.php">Voltar</a>';
+    echo '</div>';
+
+    // Sub-abas
+    echo '<div style="margin-top:20px;display:flex;gap:4px;border-bottom:2px solid hsl(var(--border))">';
+    $subTabs = ['documentos' => 'Documentos Enviados', 'enviar' => 'Enviar Extras', 'historico' => 'Historico'];
+    foreach ($subTabs as $k => $lbl) {
+        $act = ($sub === $k);
+        $st = $act ? 'background:hsl(var(--primary));color:white' : 'background:hsl(var(--card));color:hsl(var(--muted-foreground))';
+        echo '<a href="/documents_list.php?tab=sent&sub=' . $k . '" style="padding:10px 20px;text-decoration:none;font-weight:600;font-size:14px;border-radius:8px 8px 0 0;' . $st . '">' . $lbl . '</a>';
+    }
+    echo '</div>';
+    echo '</section>';
+
+    // === DOCUMENTOS ===
+    if ($sub === 'documentos') {
+        echo '<section class="card col12">';
+        if (empty($autoLogs) && empty($manualLogs)) {
+            echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))"><div style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhum documento enviado ainda</div><div style="font-size:14px">Os documentos aparecerao aqui quando forem enviados.</div></div>';
+        } else {
+            if (!empty($autoLogs)) {
+                echo '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Enviados Automaticamente</div>';
+                echo '<div style="overflow:auto"><table><thead><tr><th>Data</th><th>Documento</th><th>Destinatario</th><th>Metodo</th><th>Obs</th><th style="text-align:right">Acoes</th></tr></thead><tbody>';
+                foreach ($autoLogs as $l) {
+                    $fp = (string)($l['file_path'] ?? '');
+                    $fn2 = (string)($l['file_name'] ?? '');
+                    $de = (string)($l['recipient_name'] ?? ($l['recipient_email'] ?? '-'));
+                    echo '<tr>';
+                    echo '<td style="font-size:12px;white-space:nowrap">' . date('d/m/Y H:i', strtotime($l['created_at'])) . '</td>';
+                    echo '<td>';
+                    if ($fp !== '') { echo '<a href="' . htmlspecialchars($fp) . '" target="_blank" style="color:hsl(var(--primary))">📄 ' . htmlspecialchars($fn2 ?: 'Doc') . '</a>'; } else { echo htmlspecialchars($fn2 ?: '-'); }
+                    echo '</td>';
+                    echo '<td style="font-size:12px">' . htmlspecialchars($de) . '</td>';
+                    echo '<td style="font-size:11px">' . (($l['send_method'] ?? '') === 'email' ? 'E-mail' : 'Portal') . '</td>';
+                    echo '<td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . htmlspecialchars($l['notes'] ?? '') . '</td>';
+                    echo '<td style="text-align:right">';
+                    if ($fp !== '') { echo '<a href="' . htmlspecialchars($fp) . '" target="_blank" class="btn" style="padding:4px 10px;font-size:12px">Ver</a> <a href="' . htmlspecialchars($fp) . '" download class="btn" style="padding:4px 10px;font-size:12px">Baixar</a>'; }
+                    echo '</td></tr>';
+                }
+                echo '</tbody></table></div>';
+            }
+            if (!empty($manualLogs)) {
+                echo '<div style="margin-top:20px;padding-top:16px;border-top:1px solid hsl(var(--border));font-size:15px;font-weight:700;margin-bottom:12px">Enviados Manualmente</div>';
+                echo '<div style="overflow:auto"><table><thead><tr><th>Data</th><th>Documento</th><th>Destinatario</th><th>Metodo</th><th>Obs</th><th style="text-align:right">Acoes</th></tr></thead><tbody>';
+                foreach ($manualLogs as $l) {
+                    $fp = (string)($l['file_path'] ?? '');
+                    $fn2 = (string)($l['file_name'] ?? '');
+                    $de = (string)($l['recipient_name'] ?? ($l['recipient_email'] ?? '-'));
+                    echo '<tr>';
+                    echo '<td style="font-size:12px;white-space:nowrap">' . date('d/m/Y H:i', strtotime($l['created_at'])) . '</td>';
+                    echo '<td>';
+                    if ($fp !== '') { echo '<a href="' . htmlspecialchars($fp) . '" target="_blank" style="color:hsl(var(--primary))">📎 ' . htmlspecialchars($fn2 ?: 'Doc') . '</a>'; } else { echo htmlspecialchars($fn2 ?: '-'); }
+                    echo '</td>';
+                    echo '<td style="font-size:12px">' . htmlspecialchars($de) . '</td>';
+                    echo '<td style="font-size:11px">' . (($l['send_method'] ?? '') === 'email' ? 'E-mail' : 'Portal') . '</td>';
+                    echo '<td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . htmlspecialchars($l['notes'] ?? '') . '</td>';
+                    echo '<td style="text-align:right">';
+                    if ($fp !== '') { echo '<a href="' . htmlspecialchars($fp) . '" target="_blank" class="btn" style="padding:4px 10px;font-size:12px">Ver</a> <a href="' . htmlspecialchars($fp) . '" download class="btn" style="padding:4px 10px;font-size:12px">Baixar</a>'; }
+                    echo '</td></tr>';
+                }
+                echo '</tbody></table></div>';
+            }
+        }
+        echo '</section>';
+    }
+
+    // === ENVIAR ===
+    if ($sub === 'enviar') {
+        echo '<section class="card col12">';
+        echo '<div style="font-size:16px;font-weight:700;margin-bottom:6px">Enviar Documentos Complementares</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:20px">Envie documentos adicionais ao profissional ou paciente.</div>';
+        echo '<form method="post" action="/documents_list.php?tab=sent&sub=enviar" enctype="multipart/form-data" style="max-width:700px">';
+        echo '<input type="hidden" name="action" value="send_manual_doc">';
+        echo '<div class="grid"><div class="col6"><label>Tipo *<select name="recipient_type" id="rt" onchange="ur()" required><option value="">Selecione</option><option value="professional">Profissional</option><option value="patient">Paciente</option></select></label></div>';
+        echo '<div class="col6"><label>Destinatario *<select name="recipient_id" id="rs" required><option value="">Selecione tipo</option></select></label></div>';
+        echo '<div class="col6"><label>Operadora<select name="health_insurer_id"><option value="0">Nenhuma</option>';
+        foreach ($insurers as $i) { echo '<option value="' . (int)$i['id'] . '">' . htmlspecialchars($i['name']) . '</option>'; }
+        echo '</select></label></div>';
+        echo '<div class="col6"><label>Metodo *<select name="send_method" required><option value="email">E-mail</option><option value="portal">Portal</option></select></label></div>';
+        echo '<div class="col12"><label>Arquivo *<input type="file" name="document" required accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"></label></div>';
+        echo '<div class="col12"><label>Observacao<input name="notes" placeholder="Motivo do envio..."></label></div>';
+        echo '</div>';
+        echo '<div style="margin-top:16px"><button type="submit" class="btn btnPrimary">Enviar Documento</button></div>';
+        echo '</form>';
+        echo '</section>';
+    }
+
+    // === HISTORICO ===
+    if ($sub === 'historico') {
+        echo '<section class="card col12">';
+        echo '<div style="font-size:16px;font-weight:700;margin-bottom:14px">Historico Completo de Envios</div>';
+        if (empty($sentLogs)) {
+            echo '<div style="padding:30px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum registro.</div>';
+        } else {
+            echo '<div style="overflow:auto"><table><thead><tr><th>Data</th><th>Documento</th><th>Destinatario</th><th>Tipo Envio</th><th>Metodo</th><th>Obs</th></tr></thead><tbody>';
+            foreach ($sentLogs as $l) {
+                $fp = (string)($l['file_path'] ?? '');
+                $fn2 = (string)($l['file_name'] ?? '');
+                $de = (string)($l['recipient_name'] ?? ($l['recipient_email'] ?? '-'));
+                $src = ($l['document_source'] ?? '') === 'manual' ? 'Manual' : 'Auto';
+                echo '<tr>';
+                echo '<td style="font-size:12px;white-space:nowrap">' . date('d/m/Y H:i', strtotime($l['created_at'])) . '</td>';
+                echo '<td>';
+                if ($fp !== '') { echo '<a href="' . htmlspecialchars($fp) . '" target="_blank" style="color:hsl(var(--primary))">' . htmlspecialchars($fn2 ?: 'Doc') . '</a>'; } else { echo htmlspecialchars($fn2 ?: '-'); }
+                echo '</td>';
+                echo '<td style="font-size:12px">' . htmlspecialchars($de) . '</td>';
+                echo '<td style="font-size:11px">' . $src . '</td>';
+                echo '<td style="font-size:11px">' . (($l['send_method'] ?? '') === 'email' ? 'E-mail' : 'Portal') . '</td>';
+                echo '<td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . htmlspecialchars($l['notes'] ?? '') . '</td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table></div>';
+        }
+        echo '</section>';
+    }
+
+    echo '</div>';
+
+    // JS
+    echo '<script>var P=[';
+    foreach ($profs as $i => $p) { if ($i) echo ','; echo '[' . (int)$p['id'] . ',"' . addslashes($p['name']) . '"]'; }
+    echo '];var A=[';
+    foreach ($pats as $i => $p) { if ($i) echo ','; echo '[' . (int)$p['id'] . ',"' . addslashes($p['full_name']) . '"]'; }
+    echo '];function ur(){var t=document.getElementById("rt");if(!t)return;var v=t.value,s=document.getElementById("rs");if(!s)return;var l=v==="professional"?P:v==="patient"?A:[];s.innerHTML="";for(var i=0;i<l.length;i++){var o=document.createElement("option");o.value=l[i][0];o.textContent=l[i][1];s.appendChild(o);}}</script>';
+
+    view_footer();
     exit;
 }
 
