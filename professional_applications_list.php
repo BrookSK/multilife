@@ -44,6 +44,7 @@ echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '<a class="btn btnPrimary" href="/public/apply_professional.php" target="_blank" rel="noopener noreferrer">🔗 Abrir Link Público de Candidatura</a>';
+echo '<button class="btn" onclick="copyPublicLink()" id="copyLinkBtn">📋 Copiar Link Público</button>';
 echo '</div>';
 echo '</div>';
 
@@ -97,5 +98,7 @@ echo '</div>';
 echo '</section>';
 
 echo '</div>';
+
+echo '<script>function copyPublicLink(){var url=window.location.origin+"/public/apply_professional.php";navigator.clipboard.writeText(url).then(function(){var btn=document.getElementById("copyLinkBtn");btn.textContent="✅ Link Copiado!";setTimeout(function(){btn.textContent="📋 Copiar Link Público";},2000);}).catch(function(){prompt("Copie o link:",url);});}</script>';
 
 view_footer();
