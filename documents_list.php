@@ -56,7 +56,7 @@ if ($tab === 'sent') {
                             $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento - ' . $fn, $htmlBody);
                         } catch (Throwable $e) {}
                     }
-                    try { db()->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, recipient_name, health_insurer_id, send_method, sent_by_user_id, file_name, file_path, notes, send_status, send_action) VALUES ('manual',?,?,?,?,?,?,?,?,?,?,'enviado','envio_inicial')")->execute([$rt, $ri, $re, $rn, $hi > 0 ? $hi : null, $sm, auth_user_id(), $fn, $rp, $nt]); } catch (Throwable $e) {}
+                    try { db()->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, health_insurer_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual',?,?,?,?,?,?,?,?,?)")->execute([$rt, $ri, $re, $hi > 0 ? $hi : null, $sm, auth_user_id(), $fn, $rp, $nt]); } catch (Throwable $e) {}
                     flash_set('success', 'Documento enviado com sucesso!');
                     header('Location: /documents_list.php?tab=sent&sub=enviar');
                     exit;
