@@ -33,14 +33,31 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 } catch (Throwable $e) {}
 
-// Adicionar colunas caso tabela já exista sem elas
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS send_status VARCHAR(30) NOT NULL DEFAULT 'enviado' AFTER notes"); } catch (Throwable $e) {}
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS send_action VARCHAR(30) NOT NULL DEFAULT 'envio_inicial' AFTER send_status"); } catch (Throwable $e) {}
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS resent_from_log_id INT UNSIGNED NULL AFTER send_action"); } catch (Throwable $e) {}
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(255) NULL AFTER recipient_email"); } catch (Throwable $e) {}
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS patient_id INT UNSIGNED NULL AFTER assignment_id"); } catch (Throwable $e) {}
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS session_id INT UNSIGNED NULL AFTER patient_id"); } catch (Throwable $e) {}
-try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN IF NOT EXISTS captation_id INT UNSIGNED NULL AFTER session_id"); } catch (Throwable $e) {}
+// Adicionar colunas novas (compatível com MySQL 5.7+)
+$existingCols = [];
+try {
+    $colsResult = $db->query("SHOW COLUMNS FROM document_send_logs");
+    while ($col = $colsResult->fetch(PDO::FETCH_ASSOC)) {
+        $existingCols[] = $col['Field'];
+    }
+} catch (Throwable $e) {}
+
+if (!empty($existingCols)) {
+    $colsToAdd = [
+        'send_status' => "VARCHAR(30) NOT NULL DEFAULT 'enviado'",
+        'send_action' => "VARCHAR(30) NOT NULL DEFAULT 'envio_inicial'",
+        'resent_from_log_id' => "INT UNSIGNED NULL",
+        'recipient_name' => "VARCHAR(255) NULL",
+        'patient_id' => "INT UNSIGNED NULL",
+        'session_id' => "INT UNSIGNED NULL",
+        'captation_id' => "INT UNSIGNED NULL",
+    ];
+    foreach ($colsToAdd as $colName => $colDef) {
+        if (!in_array($colName, $existingCols, true)) {
+            try { $db->exec("ALTER TABLE document_send_logs ADD COLUMN $colName $colDef"); } catch (Throwable $e) {}
+        }
+    }
+}
 
 // Processar envio manual (POST)
 $flashSuccess = '';
@@ -147,12 +164,26 @@ try {
     $where = [];
     $params = [];
 
+    // Verificar se a coluna recipient_name existe
+    $hasRecipientName = false;
+    try {
+        $db->query("SELECT recipient_name FROM document_send_logs LIMIT 0");
+        $hasRecipientName = true;
+    } catch (Throwable $e) {}
+
     if ($q !== '') {
-        $where[] = "(dsl.file_name LIKE ? OR dsl.recipient_email LIKE ? OR dsl.recipient_name LIKE ? OR dsl.notes LIKE ?)";
-        $params[] = "%$q%";
-        $params[] = "%$q%";
-        $params[] = "%$q%";
-        $params[] = "%$q%";
+        if ($hasRecipientName) {
+            $where[] = "(dsl.file_name LIKE ? OR dsl.recipient_email LIKE ? OR dsl.recipient_name LIKE ? OR dsl.notes LIKE ?)";
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+        } else {
+            $where[] = "(dsl.file_name LIKE ? OR dsl.recipient_email LIKE ? OR dsl.notes LIKE ?)";
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+        }
     }
     if ($filterSource !== '') {
         $where[] = "dsl.document_source = ?";
@@ -163,8 +194,12 @@ try {
         $params[] = $filterType;
     }
     if ($filterStatus !== '') {
-        $where[] = "dsl.send_status = ?";
-        $params[] = $filterStatus;
+        // Verificar se coluna send_status existe
+        try {
+            $db->query("SELECT send_status FROM document_send_logs LIMIT 0");
+            $where[] = "dsl.send_status = ?";
+            $params[] = $filterStatus;
+        } catch (Throwable $e) {}
     }
 
     $sql = "SELECT dsl.*, u.name as sent_by_name FROM document_send_logs dsl LEFT JOIN users u ON u.id = dsl.sent_by_user_id";
@@ -308,6 +343,7 @@ if (empty($logs)) {
 
         // Status badge
         $status = $l['send_status'] ?? 'enviado';
+        if ($status === '' || $status === null) $status = 'enviado';
         $statusLabel = match($status) {
             'entregue' => 'Entregue',
             'falha' => 'Falha',
