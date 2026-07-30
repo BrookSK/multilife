@@ -39,29 +39,52 @@ function view_header(string $title): void
             ['title' => 'Minha Conta', 'path' => '/my_account.php'],
         ];
     } else {
-        $menuItems = [
-            ['title' => 'Dashboard', 'path' => '/dashboard.php'],
-            ['title' => 'Captação', 'path' => '/demands_list.php'],
-            ['title' => 'Autorização', 'path' => '/authorization_list.php'],
-            ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php'],
-            ['title' => 'Monitoramento', 'path' => '/monitoramento.php'],
-            ['title' => 'Sessoes', 'path' => '/admin_professional_sessions.php'],
-            ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php'],
-            ['title' => 'Pacientes', 'path' => '/patients_list.php'],
-            ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional'],
-            ['title' => 'Documentos', 'path' => '/documents_list.php'],
-            ['title' => 'Faturamento', 'path' => '/faturamento_list.php'],
-            ['title' => 'Financeiro', 'path' => '/finance_dashboard.php'],
-            ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php'],
-            ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php'],
-            ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php'],
-            ['title' => 'RH', 'path' => '/hr_dashboard.php'],
-            ['title' => 'Usuários', 'path' => '/users_list.php'],
-            ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php'],
-            ['title' => 'Pendências', 'path' => '/pending_items_list.php'],
-            ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php'],
-            ['title' => 'Configurações', 'path' => '/admin_settings.php'],
+        // Buscar permissoes do usuario para filtrar menu
+        $userPerms = [];
+        if ($user) {
+            try { $userPerms = rbac_user_permissions((int)$user['id']); } catch (Throwable $e) {}
+        }
+
+        // Mapeamento: item do menu => permissao necessaria
+        // null = sempre visivel, string = exige essa permissao
+        $allMenuItems = [
+            ['title' => 'Dashboard', 'path' => '/dashboard.php', 'perm' => 'admin.dashboard'],
+            ['title' => 'Captação', 'path' => '/demands_list.php', 'perm' => 'demands.manage'],
+            ['title' => 'Autorização', 'path' => '/authorization_list.php', 'perm' => 'demands.manage'],
+            ['title' => 'Pré-admissão', 'path' => '/pre_admissao.php', 'perm' => 'demands.manage'],
+            ['title' => 'Monitoramento', 'path' => '/monitoramento.php', 'perm' => 'demands.manage'],
+            ['title' => 'Sessoes', 'path' => '/admin_professional_sessions.php', 'perm' => 'demands.manage'],
+            ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php', 'perm' => 'professional_applications.manage'],
+            ['title' => 'Pacientes', 'path' => '/patients_list.php', 'perm' => 'patients.manage'],
+            ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional', 'perm' => 'users.manage'],
+            ['title' => 'Documentos', 'path' => '/documents_list.php', 'perm' => 'documents.manage'],
+            ['title' => 'Faturamento', 'path' => '/faturamento_list.php', 'perm' => 'faturamento.manage'],
+            ['title' => 'Financeiro', 'path' => '/finance_dashboard.php', 'perm' => 'finance.manage'],
+            ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php', 'perm' => 'finance.manage'],
+            ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php', 'perm' => 'finance.manage'],
+            ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php', 'perm' => 'finance.manage'],
+            ['title' => 'RH', 'path' => '/hr_dashboard.php', 'perm' => 'hr.manage'],
+            ['title' => 'Usuários', 'path' => '/users_list.php', 'perm' => 'users.manage'],
+            ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php', 'perm' => 'chat.manage'],
+            ['title' => 'Pendências', 'path' => '/pending_items_list.php', 'perm' => null],
+            ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php', 'perm' => 'admin.settings.manage'],
+            ['title' => 'Configurações', 'path' => '/admin_settings.php', 'perm' => 'admin.settings.manage'],
         ];
+
+        // Roles com acesso total (admin e ti veem tudo)
+        $isFullAccess = !empty(array_intersect($userRoles, ['admin', 'ti']));
+
+        $menuItems = [];
+        foreach ($allMenuItems as $item) {
+            if ($isFullAccess || $item['perm'] === null || in_array($item['perm'], $userPerms, true)) {
+                $menuItems[] = ['title' => $item['title'], 'path' => $item['path']];
+            }
+        }
+
+        // Garantir que pelo menos Dashboard apareca
+        if (empty($menuItems)) {
+            $menuItems[] = ['title' => 'Dashboard', 'path' => '/dashboard.php'];
+        }
     }
 
     echo '<!doctype html>';
