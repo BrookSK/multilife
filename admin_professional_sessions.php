@@ -465,14 +465,13 @@ if ($profData) {
     echo '</form>';
 
     // JavaScript para carregar sessoes do atendimento selecionado
+    $sessionsJs = [];
+    foreach ($allSessions as $s) {
+        $sessionsJs[] = ['id' => (int)$s['id'], 'aid' => (int)$s['assignment_id'], 'num' => (int)$s['session_number'], 'date' => (string)($s['session_date'] ?? ''), 'st' => (string)($s['doc_status'] ?? 'pending')];
+    }
     echo '<script>';
-    echo 'var sessionsData=' . json_encode(
-        array_map(function($s) {
-            return ['id' => (int)$s['id'], 'assignment_id' => (int)$s['assignment_id'], 'session_number' => (int)$s['session_number'], 'session_date' => $s['session_date'] ?? '', 'doc_status' => $s['doc_status'] ?? 'pending'];
-        }, $allSessions)
-    ) . ';';
-    echo 'function loadSessions(){var aid=document.getElementById("selAssignment").value;var sel=document.getElementById("selSession");sel.innerHTML="<option value=\\'\\'>Selecione...</option>";if(!aid)return;var filtered=sessionsData.filter(function(s){return s.assignment_id==aid;});for(var i=0;i<filtered.length;i++){var s=filtered[i];var o=document.createElement("option");o.value=s.id;o.textContent="Sessao "+s.session_number+(s.session_date?" - "+s.session_date:"")+" ("+s.doc_status+")";sel.appendChild(o);}}';
-    echo '</script>';
+    echo 'var SD=' . json_encode($sessionsJs, JSON_UNESCAPED_UNICODE) . ';';
+    echo 'function loadSessions(){var a=document.getElementById("selAssignment").value;var s=document.getElementById("selSession");s.innerHTML="<option value=\\'\\'>Selecione...</option>";if(!a)return;for(var i=0;i<SD.length;i++){if(SD[i].aid==a){var o=document.createElement("option");o.value=SD[i].id;o.textContent="Sessao "+SD[i].num+(SD[i].date?" - "+SD[i].date:"")+" ("+SD[i].st+")";s.appendChild(o);}}}';    echo '</script>';
     echo '</section>';
 
     // Documentos da Operadora enviados ao profissional
