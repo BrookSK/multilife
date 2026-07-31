@@ -120,8 +120,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     }
                     if ($docNotes !== '') { $msg .= "\n📝 _" . $docNotes . "_"; }
                     $msg .= "\n\nDocumentos disponiveis tambem no Portal do Profissional.";
-                    $res = $api->sendText($cleanPhone . '@s.whatsapp.net', $msg);
+                    $res = $api->sendText($cleanPhone, $msg);
                     $stWhats = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
+                    if ($stWhats === 'falha') { error_log("[ADMIN_SESSIONS] WhatsApp response: " . json_encode($res)); }
                 }
             } catch (Throwable $e) { $stWhats = 'falha'; error_log("[ADMIN_SESSIONS] Erro WhatsApp: " . $e->getMessage()); }
         }

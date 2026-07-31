@@ -87,7 +87,7 @@ if ($tab === 'sent') {
                                 $whatsMsg = "📎 *Documento Complementar*\n\nOlá, " . $rn . "!\n\nA equipe MultiLife Care enviou um documento complementar:\n\n📄 *" . $fn . "*\n" . $baseUrl . $rp;
                                 if ($nt !== '') { $whatsMsg .= "\n\n📝 _" . $nt . "_"; }
                                 $whatsMsg .= "\n\nEste documento também está disponível no Portal do Profissional.";
-                                $jid = $cleanPhone . '@s.whatsapp.net';
+                                $jid = $cleanPhone;
                                 $res = $api->sendText($jid, $whatsMsg);
                                 $statusWhatsapp = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
                             } else { $statusWhatsapp = 'falha'; }
