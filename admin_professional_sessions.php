@@ -33,15 +33,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
     $missingFiles = [];
     foreach ($fileFields as $fieldName => $label) {
         if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
-            $missingFiles[] = $label;
-            error_log("[ADMIN_SESSIONS] Arquivo nao selecionado: $fieldName (error=" . ($_FILES[$fieldName]['error'] ?? 'N/A') . ")");
+            $errCode = isset($_FILES[$fieldName]) ? (int)$_FILES[$fieldName]['error'] : 4;
+            if ($errCode !== 4) {
+                $errMsgs = [1 => 'Excede limite do servidor', 2 => 'Excede limite do form', 3 => 'Upload parcial', 6 => 'Sem pasta temporaria', 7 => 'Falha ao gravar'];
+                $missingFiles[] = $label . ' (' . ($errMsgs[$errCode] ?? "erro $errCode") . ')';
+            } else {
+                $missingFiles[] = $label;
+            }
+            error_log("[ADMIN_SESSIONS] Arquivo nao enviado: $fieldName error=$errCode");
             continue;
         }
         $file = $_FILES[$fieldName];
         $fn = $file['name'];
         $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
         if ($file['size'] > 10485760) {
-            $missingFiles[] = $label . ' (arquivo muito grande)';
+            $missingFiles[] = $label . ' (arquivo muito grande - max 10MB)';
             continue;
         }
 
@@ -164,7 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         $results[] = 'E-mail: ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | Portal: ✅ | WhatsApp: ' . ($stWhats === 'enviado' ? '✅' : '❌');
         flash_set('success', $filesProcessed . ' documento(s) enviado(s)! ' . implode(' — ', $results));
     } else {
-        flash_set('error', 'Selecione pelo menos um arquivo para enviar.');
+        $errorDetail = !empty($missingFiles) ? ' Motivo: ' . implode(', ', $missingFiles) : '';
+        flash_set('error', 'Selecione pelo menos um arquivo para enviar.' . $errorDetail);
     }
     header('Location: /admin_professional_sessions.php?prof_id=' . $profId);
     exit;
