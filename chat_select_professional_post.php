@@ -511,9 +511,27 @@ try {
         $patientData = $stmt->fetch();
         $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        // Enviar com template - usar Message-ID deterministico para garantir threading
+        // Enviar com template - responder ao email de captacao original para manter na mesma conversa
         $deterministicMsgId = '<proposal-' . $authRequestId . '@multilife.onsolutionsbrasil.com.br>';
-        $emailResult = email_send_with_template($operatorEmail, 'proposal_send', $variables, $healthInsurerId, null, null, $deterministicMsgId);
+        
+        // Buscar Message-ID do email de captacao original (inbound_emails)
+        $captationMsgId = null;
+        try {
+            // demands.source_email_id -> inbound_emails.message_id
+            $srcStmt = $db->prepare("SELECT ie.message_id FROM inbound_emails ie INNER JOIN demands d ON d.source_email_id = ie.id WHERE d.id = ? AND ie.message_id IS NOT NULL AND ie.message_id != '' LIMIT 1");
+            $srcStmt->execute([$demandId]);
+            $captationMsgId = $srcStmt->fetchColumn() ?: null;
+        } catch (Throwable $e) {}
+        // Se nao encontrar por source_email_id, tentar por in_reply_to do email mais recente
+        if (!$captationMsgId) {
+            try {
+                $srcStmt2 = $db->prepare("SELECT message_id FROM inbound_emails WHERE from_address LIKE ? AND message_id IS NOT NULL AND message_id != '' ORDER BY id DESC LIMIT 1");
+                $srcStmt2->execute(['%' . explode('@', $operatorEmail)[1] . '%']);
+                $captationMsgId = $srcStmt2->fetchColumn() ?: null;
+            } catch (Throwable $e) {}
+        }
+        
+        $emailResult = email_send_with_template($operatorEmail, 'proposal_send', $variables, $healthInsurerId, $captationMsgId, $captationMsgId, $deterministicMsgId);
         
         if (!$emailResult['success']) {
             throw new Exception($emailResult['message']);
