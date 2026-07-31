@@ -57,10 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $body .= '</div>';
                 $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
                 $htmlBody = email_base_layout($label, $body);
-                $smtp = new SmtpClient();
-                $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $profEmail, $label . ' - ' . $fn, $htmlBody);
+                $smtpInstance = new SmtpClient();
+                $smtpInstance->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $profEmail, $label . ' - ' . $fn, $htmlBody);
                 $stEmail = 'enviado';
-            } catch (Throwable $e) { $stEmail = 'falha'; }
+                usleep(500000); // 0.5s delay entre envios
+            } catch (Throwable $e) { $stEmail = 'falha'; error_log("[ADMIN_SESSIONS] Erro e-mail $label: " . $e->getMessage()); }
         }
 
         // WhatsApp
@@ -74,8 +75,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     if ($docNotes !== '') { $msg .= "\n\n📝 _" . $docNotes . "_"; }
                     $res = $api->sendText($cleanPhone . '@s.whatsapp.net', $msg);
                     $stWhats = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
+                    usleep(500000); // 0.5s delay
                 }
-            } catch (Throwable $e) { $stWhats = 'falha'; }
+            } catch (Throwable $e) { $stWhats = 'falha'; error_log("[ADMIN_SESSIONS] Erro WhatsApp $label: " . $e->getMessage()); }
         }
 
         // Registrar log
