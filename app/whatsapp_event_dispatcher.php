@@ -14,7 +14,53 @@ class WhatsAppEventDispatcher
     
     public function __construct()
     {
-        $this->api = new EvolutionApiV1();
+        // Tentar instancia padrao primeiro
+        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $defaultInstance = (string)admin_setting_get('evolution.instance', '');
+        
+        $api = null;
+        
+        // Verificar se instancia padrao esta conectada
+        if ($baseUrl !== '' && $apiKey !== '' && $defaultInstance !== '') {
+            try {
+                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $defaultInstance);
+                $connRes = $tryApi->connectionState();
+                $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
+                if (in_array($state, ['open', 'connected'], true)) {
+                    $api = $tryApi;
+                }
+            } catch (Throwable $e) {}
+        }
+        
+        // Se padrao nao esta conectada, buscar outra instancia conectada
+        if ($api === null && $baseUrl !== '' && $apiKey !== '') {
+            try {
+                $instStmt = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC, id ASC LIMIT 5");
+                $instStmt->execute();
+                $instList = $instStmt->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($instList as $instName) {
+                    if ((string)$instName === '' || (string)$instName === $defaultInstance) continue;
+                    try {
+                        $tryApi = new EvolutionApiV1($baseUrl, $apiKey, (string)$instName);
+                        $connRes = $tryApi->connectionState();
+                        $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
+                        if (in_array($state, ['open', 'connected'], true)) {
+                            $api = $tryApi;
+                            error_log("[WHATSAPP_DISPATCHER] Usando instancia alternativa: $instName (padrao '$defaultInstance' desconectada)");
+                            break;
+                        }
+                    } catch (Throwable $e) { continue; }
+                }
+            } catch (Throwable $e) {}
+        }
+        
+        // Fallback: usar padrao mesmo sem verificar (pode falhar no envio)
+        if ($api === null) {
+            $api = new EvolutionApiV1();
+        }
+        
+        $this->api = $api;
     }
     
     /**
