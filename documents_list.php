@@ -69,18 +69,28 @@ if ($tab === 'sent') {
                             if ($portalAtivo) { $body .= '<p style="font-size:14px;color:#4b5563">Este documento também está disponível no seu <strong>Portal do Profissional</strong>, na seção de Documentos.</p>'; }
                             $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
                             $htmlBody = email_base_layout('Documento Complementar Enviado', $body);
-                            // Threading - buscar Message-ID original do profissional
+                            // Threading - buscar Message-ID do email ao PROFISSIONAL (thread separada)
                             $threadMsgId = null;
                             $threadPatientName = '';
                             if ($rt === 'professional' && $ri > 0) {
                                 try {
-                                    $thS = db()->prepare("SELECT ar.sent_message_id, p.full_name FROM authorization_requests ar INNER JOIN patient_assignments pa ON pa.demand_id = ar.demand_id INNER JOIN patients p ON p.id = ar.patient_id WHERE pa.professional_user_id = ? AND ar.sent_message_id IS NOT NULL ORDER BY ar.id DESC LIMIT 1");
+                                    $thS = db()->prepare("SELECT pa.prof_email_message_id, p.full_name FROM patient_assignments pa INNER JOIN patients p ON p.id = pa.patient_id WHERE pa.professional_user_id = ? AND pa.prof_email_message_id IS NOT NULL ORDER BY pa.id DESC LIMIT 1");
                                     $thS->execute([$ri]);
                                     $thRow = $thS->fetch(PDO::FETCH_ASSOC);
-                                    if ($thRow) { $threadMsgId = $thRow['sent_message_id']; $threadPatientName = (string)($thRow['full_name'] ?? ''); }
-                                } catch (Throwable $e) {}
+                                    if ($thRow) { $threadMsgId = $thRow['prof_email_message_id']; $threadPatientName = (string)($thRow['full_name'] ?? ''); }
+                                } catch (Throwable $e) {
+                                    // Fallback: buscar da authorization_requests
+                                    try {
+                                        $thS2 = db()->prepare("SELECT p.full_name FROM patient_assignments pa INNER JOIN patients p ON p.id = pa.patient_id WHERE pa.professional_user_id = ? ORDER BY pa.id DESC LIMIT 1");
+                                        $thS2->execute([$ri]);
+                                        $thRow2 = $thS2->fetch(PDO::FETCH_ASSOC);
+                                        if ($thRow2) { $threadPatientName = (string)($thRow2['full_name'] ?? ''); }
+                                    } catch (Throwable $e2) {}
+                                }
                             }
-                            $threadSubject = $threadPatientName !== '' ? 'Re: Proposta de Atendimento - ' . $threadPatientName : 'Re: Proposta de Atendimento';
+                            // Fallback deterministico
+                            if (!$threadMsgId && $ri > 0) { $threadMsgId = '<prof-user-' . $ri . '@multilife.onsolutionsbrasil.com.br>'; }
+                            $threadSubject = $threadPatientName !== '' ? 'Re: Atendimento Aprovado - ' . $threadPatientName : 'Re: Atendimento - Documentos';
                             $smtp = new SmtpClient();
                             $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, $threadSubject, $htmlBody, $threadMsgId, $threadMsgId);
                             $statusEmail = 'enviado';

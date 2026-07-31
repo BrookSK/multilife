@@ -569,9 +569,17 @@ try {
                 $pHtml = email_base_layout('Atendimento Aprovado', $pBody);
                 
                 $smtp2 = new SmtpClient();
-                $smtp2->send($fromEmail2, $fromName2, $profEmailAddr, 'Atendimento Aprovado - ' . $patName, $pHtml);
+                $profMsgId = $smtp2->send($fromEmail2, $fromName2, $profEmailAddr, 'Atendimento Aprovado - ' . $patName, $pHtml);
                 
-                error_log('[PRE_ADMISSAO_APPROVE] E-mail enviado para profissional: ' . $profEmailAddr);
+                // Salvar Message-ID do email ao profissional para threading futuro
+                if ($profMsgId) {
+                    try { db()->prepare("UPDATE patient_assignments SET prof_email_message_id = ? WHERE id = ?")->execute([$profMsgId, $assignmentId]); } catch (Throwable $e) {
+                        // Coluna pode nao existir, criar
+                        try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN prof_email_message_id VARCHAR(255) NULL"); db()->prepare("UPDATE patient_assignments SET prof_email_message_id = ? WHERE id = ?")->execute([$profMsgId, $assignmentId]); } catch (Throwable $e2) {}
+                    }
+                }
+                
+                error_log('[PRE_ADMISSAO_APPROVE] E-mail enviado para profissional: ' . $profEmailAddr . ' MsgID: ' . $profMsgId);
             }
         }
     } catch (Throwable $profErr) {

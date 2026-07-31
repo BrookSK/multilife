@@ -149,20 +149,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 }
 
                 $emailTitle = 'Documentos da Sessao Disponiveis';
-                $emailSubject = 'Re: Proposta de Atendimento - ' . ($aData['patient_name'] ?? 'Paciente');
+                $emailSubject = 'Re: Atendimento Aprovado - ' . ($aData['patient_name'] ?? 'Paciente');
 
-                // Buscar Message-ID da proposta original para manter thread
+                // Buscar Message-ID do email ao PROFISSIONAL (thread separada da operadora)
                 $originalMsgId = null;
                 if ($assignmentId > 0) {
                     try {
-                        $thStmt = $db->prepare("SELECT ar.sent_message_id FROM authorization_requests ar INNER JOIN patient_assignments pa ON pa.demand_id = ar.demand_id WHERE pa.id = ? AND ar.sent_message_id IS NOT NULL ORDER BY ar.id ASC LIMIT 1");
+                        $thStmt = $db->prepare("SELECT prof_email_message_id FROM patient_assignments WHERE id = ? AND prof_email_message_id IS NOT NULL");
                         $thStmt->execute([$assignmentId]);
                         $originalMsgId = $thStmt->fetchColumn() ?: null;
                     } catch (Throwable $e) {}
                 }
-                // Fallback deterministico
+                // Fallback deterministico para thread do profissional
                 if (!$originalMsgId && $assignmentId > 0) {
-                    $originalMsgId = '<demand-assignment-' . $assignmentId . '@multilife.onsolutionsbrasil.com.br>';
+                    $originalMsgId = '<prof-assignment-' . $assignmentId . '@multilife.onsolutionsbrasil.com.br>';
                 }
 
                 $htmlBody = email_base_layout($emailTitle, $body);
