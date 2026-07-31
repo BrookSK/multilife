@@ -44,7 +44,7 @@ foreach ($appointments as $apt) {
     
     $events[] = [
         'id' => (int)$apt['id'],
-        'title' => $apt['patient_name'] . ' - ' . $apt['professional_name'] . ' (Sessão ' . $apt['session_number'] . ')',
+        'title' => '#' . ($apt['demand_id'] ?? '') . ' ' . $apt['patient_name'] . ' - ' . $apt['professional_name'] . ' (Sessão ' . $apt['session_number'] . ')',
         'start' => $apt['first_at'],
         'backgroundColor' => $color,
         'extendedProps' => [
