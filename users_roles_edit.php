@@ -50,7 +50,7 @@ foreach ($roles as $role) {
     $rid = (int)$role['id'];
     $checked = isset($current[$rid]) ? ' checked' : '';
     echo '<label class="pill" style="display:flex;align-items:center;gap:10px">';
-    echo '<input type="checkbox" name="role_ids[]" value="' . $rid . '"' . $checked . '> ';
+    echo '<input type="radio" name="role_ids" value="' . $rid . '"' . $checked . '> ';
     echo '<span><strong>' . h((string)$role['name']) . '</strong> <span style="color:hsl(var(--muted-foreground))">(' . h((string)$role['slug']) . ')</span></span>';
     echo '</label>';
 }

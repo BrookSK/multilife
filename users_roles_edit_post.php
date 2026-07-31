@@ -9,8 +9,11 @@ rbac_require_permission('users.manage');
 
 $id = (int)($_POST['id'] ?? 0);
 $roleIds = $_POST['role_ids'] ?? [];
+// Suportar tanto radio (valor unico) quanto checkbox (array)
 if (!is_array($roleIds)) {
-    $roleIds = [];
+    $roleIds = $roleIds !== '' ? [(int)$roleIds] : [];
+} else {
+    $roleIds = array_map('intval', $roleIds);
 }
 
 $stmt = db()->prepare('SELECT id, name, email FROM users WHERE id = :id');
