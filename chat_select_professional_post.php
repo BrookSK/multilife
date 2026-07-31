@@ -511,8 +511,9 @@ try {
         $patientData = $stmt->fetch();
         $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        // Enviar com template
-        $emailResult = email_send_with_template($operatorEmail, 'proposal_send', $variables, $healthInsurerId);
+        // Enviar com template - usar Message-ID deterministico para garantir threading
+        $deterministicMsgId = '<proposal-' . $authRequestId . '@multilife.onsolutionsbrasil.com.br>';
+        $emailResult = email_send_with_template($operatorEmail, 'proposal_send', $variables, $healthInsurerId, null, null, $deterministicMsgId);
         
         if (!$emailResult['success']) {
             throw new Exception($emailResult['message']);

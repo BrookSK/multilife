@@ -131,7 +131,7 @@ final class SmtpClient
         }
     }
 
-    public function send(string $fromEmail, string $fromName, string $toEmail, string $subject, string $bodyText, ?string $inReplyTo = null, ?string $references = null): string
+    public function send(string $fromEmail, string $fromName, string $toEmail, string $subject, string $bodyText, ?string $inReplyTo = null, ?string $references = null, ?string $customMessageId = null): string
     {
         $fromEmail = trim($fromEmail);
         $toEmail = trim($toEmail);
@@ -145,8 +145,8 @@ final class SmtpClient
             error_log("[SMTP] In-Reply-To: $inReplyTo");
         }
         
-        // Gerar Message-ID único para rastreamento
-        $messageId = '<' . uniqid('multilife-', true) . '@' . gethostname() . '>';
+        // Gerar Message-ID (usar customizado se fornecido)
+        $messageId = $customMessageId ? $customMessageId : '<' . uniqid('multilife-', true) . '@' . gethostname() . '>';
         error_log("[SMTP] Message-ID gerado: $messageId");
         
         $fp = $this->connect();

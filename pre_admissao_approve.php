@@ -403,9 +403,16 @@ try {
                     $originalMessageId = null;
                 }
                 
-                // Fallback: gerar Message-ID deterministico para a thread baseado no demand_id
+                // Fallback: gerar Message-ID deterministico baseado no authRequestId
                 if (!$originalMessageId && $demandId > 0) {
-                    $originalMessageId = '<demand-' . $demandId . '@multilife.onsolutionsbrasil.com.br>';
+                    // Buscar authRequestId da proposta
+                    try {
+                        $arIdStmt = db()->prepare("SELECT id FROM authorization_requests WHERE demand_id = ? ORDER BY id ASC LIMIT 1");
+                        $arIdStmt->execute([$demandId]);
+                        $firstArId = $arIdStmt->fetchColumn();
+                        if ($firstArId) { $originalMessageId = '<proposal-' . $firstArId . '@multilife.onsolutionsbrasil.com.br>'; }
+                    } catch (Throwable $e) {}
+                    if (!$originalMessageId) { $originalMessageId = '<demand-' . $demandId . '@multilife.onsolutionsbrasil.com.br>'; }
                     error_log("[PRE_ADMISSAO_APPROVE] Usando Message-ID deterministico: $originalMessageId");
                 }
                 
