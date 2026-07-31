@@ -40,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         $file = $_FILES[$fieldName];
         $fn = $file['name'];
         $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
-        if (!in_array($ext, ['pdf','jpg','jpeg','png','webp','heic','heif'], true) || $file['size'] > 10485760) {
-            $missingFiles[] = $label . ' (formato invalido)';
+        if ($file['size'] > 10485760) {
+            $missingFiles[] = $label . ' (arquivo muito grande)';
             continue;
         }
 
@@ -404,12 +404,12 @@ if ($profData) {
 
     echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:10px">';
     echo '<div style="font-size:14px;font-weight:700;margin-bottom:8px">📋 Ficha de Evolucao</div>';
-    echo '<input type="file" name="ficha_evolucao" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif" style="width:100%;font-size:13px">';
+    echo '<input type="file" name="ficha_evolucao" style="width:100%;font-size:13px">';
     echo '</div>';
 
     echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:10px">';
     echo '<div style="font-size:14px;font-weight:700;margin-bottom:8px">📊 Ficha de Produtividade</div>';
-    echo '<input type="file" name="ficha_produtividade" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif" style="width:100%;font-size:13px">';
+    echo '<input type="file" name="ficha_produtividade" style="width:100%;font-size:13px">';
     echo '</div>';
 
     echo '</div>';
