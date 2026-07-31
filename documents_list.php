@@ -50,10 +50,20 @@ if ($tab === 'sent') {
                     if ($sm === 'email' && $re !== '' && filter_var($re, FILTER_VALIDATE_EMAIL)) {
                         try {
                             require_once __DIR__ . '/app/email_base_template.php';
-                            $body = '<p>Segue documento enviado pela equipe MultiLife Care:</p><div style="background:#f9fafb;padding:18px;margin:20px 0;border-radius:8px"><p style="margin:0"><a href="https://multilife.onsolutionsbrasil.com.br' . $rp . '">' . htmlspecialchars($fn) . '</a></p></div>';
-                            $htmlBody = email_base_layout('Documento Enviado', $body);
+                            $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
+                            $docIcon = preg_match('/\.pdf$/i', $fn) ? '📄' : (preg_match('/\.(doc|docx)$/i', $fn) ? '📝' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $fn) ? '🖼️' : '📎'));
+                            $body = '<p style="font-size:15px;color:#374151">Olá, <strong>' . htmlspecialchars($rn) . '</strong>!</p>';
+                            $body .= '<p style="font-size:14px;color:#4b5563">A equipe MultiLife Care enviou um documento complementar para o seu atendimento.</p>';
+                            $body .= '<div style="background:#f9fafb;padding:20px;margin:20px 0;border-radius:10px;border:1px solid #e5e7eb">';
+                            $body .= '<h3 style="margin:0 0 12px;font-size:15px;font-weight:700;color:#374151">Documento Enviado</h3>';
+                            $body .= '<p style="margin:6px 0;font-size:14px">' . $docIcon . ' <a href="' . $baseUrl . $rp . '" style="color:#0284c7;text-decoration:underline;font-weight:600">' . htmlspecialchars($fn) . '</a></p>';
+                            if ($nt !== '') { $body .= '<p style="margin:12px 0 0;font-size:13px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:10px"><strong>Observação:</strong> ' . nl2br(htmlspecialchars($nt)) . '</p>'; }
+                            $body .= '</div>';
+                            $body .= '<p style="font-size:14px;color:#4b5563">Este documento também está disponível no seu <strong>Portal do Profissional</strong>, na seção de Documentos.</p>';
+                            $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+                            $htmlBody = email_base_layout('Documento Complementar Enviado', $body);
                             $smtp = new SmtpClient();
-                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento - ' . $fn, $htmlBody);
+                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento Complementar - ' . $fn, $htmlBody);
                         } catch (Throwable $e) {}
                     }
                     try { db()->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, health_insurer_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual',?,?,?,?,?,?,?,?,?)")->execute([$rt, $ri, $re, $hi > 0 ? $hi : null, $sm, auth_user_id(), $fn, $rp, $nt]); } catch (Throwable $e) {}
