@@ -28,6 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
     $fileFields = ['ficha_evolucao' => 'Ficha de Evolucao', 'ficha_produtividade' => 'Ficha de Produtividade'];
 
+    // Primeiro: salvar todos os arquivos
+    $uploadedFiles = [];
     foreach ($fileFields as $fieldName => $label) {
         if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) { continue; }
         $file = $_FILES[$fieldName];
@@ -40,54 +42,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         $un = time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
         if (!move_uploaded_file($file['tmp_name'], $dir . $un)) { continue; }
         $rp = '/uploads/manual_docs/' . $un;
-        $filesProcessed++;
+        $uploadedFiles[] = ['label' => $label, 'file_name' => $fn, 'file_path' => $rp];
+    }
 
+    if (!empty($uploadedFiles)) {
+        $filesProcessed = count($uploadedFiles);
         $stEmail = 'pendente'; $stWhats = 'pendente';
-        $noteText = $label . ($docNotes !== '' ? ' - ' . $docNotes : '');
 
-        // E-mail
+        // ENVIO UNICO POR E-MAIL (todas as fichas no mesmo email)
         if ($profEmail !== '' && filter_var($profEmail, FILTER_VALIDATE_EMAIL)) {
             try {
                 require_once __DIR__ . '/app/email_base_template.php';
                 $body = '<p style="font-size:15px;color:#374151">Ola, <strong>' . htmlspecialchars($profName) . '</strong>!</p>';
-                $body .= '<p style="font-size:14px;color:#4b5563">Segue <strong>' . $label . '</strong> enviada pela equipe administrativa.</p>';
-                $body .= '<div style="background:#f9fafb;padding:20px;margin:20px 0;border-radius:10px;border:1px solid #e5e7eb">';
-                $body .= '<p style="margin:6px 0;font-size:14px">📄 <a href="' . $baseUrl . $rp . '" style="color:#0284c7;font-weight:600">' . htmlspecialchars($fn) . '</a></p>';
-                if ($docNotes !== '') { $body .= '<p style="margin:10px 0 0;font-size:13px;color:#6b7280"><strong>Obs:</strong> ' . htmlspecialchars($docNotes) . '</p>'; }
-                $body .= '</div>';
+                $body .= '<p style="font-size:14px;color:#4b5563">A equipe administrativa enviou os documentos das sessoes. Confira abaixo:</p>';
+
+                foreach ($uploadedFiles as $idx => $uf) {
+                    if ($idx > 0) {
+                        $body .= '<div style="border-top:2px solid hsl(180 65% 46%);margin:24px 0;opacity:.3"></div>';
+                    }
+                    $docIcon = preg_match('/\.pdf$/i', $uf['file_name']) ? '📄' : '🖼️';
+                    $body .= '<div style="background:#f9fafb;padding:20px;margin:16px 0;border-radius:10px;border:1px solid #e5e7eb;border-left:4px solid hsl(180 65% 46%)">';
+                    $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">' . $docIcon . ' ' . $uf['label'] . '</h3>';
+                    $body .= '<p style="margin:6px 0;font-size:14px"><a href="' . $baseUrl . $uf['file_path'] . '" style="color:#0284c7;text-decoration:underline;font-weight:600">' . htmlspecialchars($uf['file_name']) . '</a></p>';
+                    $body .= '</div>';
+                }
+
+                if ($docNotes !== '') {
+                    $body .= '<div style="background:#fffbeb;padding:14px;border-radius:8px;margin:16px 0;border:1px solid #fde68a">';
+                    $body .= '<p style="margin:0;font-size:13px;color:#92400e"><strong>Observacao:</strong> ' . nl2br(htmlspecialchars($docNotes)) . '</p>';
+                    $body .= '</div>';
+                }
+
+                $body .= '<p style="font-size:14px;color:#4b5563;margin-top:20px">Estes documentos tambem estao disponiveis no seu <strong>Portal do Profissional</strong>.</p>';
                 $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
-                $htmlBody = email_base_layout($label, $body);
+
+                $emailTitle = count($uploadedFiles) > 1 ? 'Fichas de Sessao' : $uploadedFiles[0]['label'];
+                $emailSubject = count($uploadedFiles) > 1
+                    ? 'Fichas de Sessao - ' . implode(' e ', array_map(function($f) { return $f['label']; }, $uploadedFiles))
+                    : $uploadedFiles[0]['label'] . ' - ' . $uploadedFiles[0]['file_name'];
+
+                $htmlBody = email_base_layout($emailTitle, $body);
                 $smtpInstance = new SmtpClient();
-                $smtpInstance->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $profEmail, $label . ' - ' . $fn, $htmlBody);
+                $smtpInstance->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $profEmail, $emailSubject, $htmlBody);
                 $stEmail = 'enviado';
-                usleep(500000); // 0.5s delay entre envios
-            } catch (Throwable $e) { $stEmail = 'falha'; error_log("[ADMIN_SESSIONS] Erro e-mail $label: " . $e->getMessage()); }
+            } catch (Throwable $e) { $stEmail = 'falha'; error_log("[ADMIN_SESSIONS] Erro e-mail: " . $e->getMessage()); }
         }
 
-        // WhatsApp
+        // ENVIO UNICO POR WHATSAPP (uma mensagem com todos os docs)
         if ($profPhone !== '') {
             try {
                 $cleanPhone = preg_replace('/\D+/', '', $profPhone);
                 if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
                 if (strlen($cleanPhone) >= 12) {
                     $api = new EvolutionApiV1();
-                    $msg = "📋 *" . $label . "*\n\nOla, " . $profName . "!\n\nSegue documento enviado pela equipe:\n\n📄 " . $fn . "\n" . $baseUrl . $rp;
-                    if ($docNotes !== '') { $msg .= "\n\n📝 _" . $docNotes . "_"; }
+                    $msg = "📋 *Documentos das Sessoes*\n\nOla, " . $profName . "!\n\nA equipe enviou os seguintes documentos:\n";
+                    foreach ($uploadedFiles as $uf) {
+                        $msg .= "\n📄 *" . $uf['label'] . "*\n" . $baseUrl . $uf['file_path'] . "\n";
+                    }
+                    if ($docNotes !== '') { $msg .= "\n📝 _" . $docNotes . "_"; }
+                    $msg .= "\n\nDocumentos disponiveis tambem no Portal do Profissional.";
                     $res = $api->sendText($cleanPhone . '@s.whatsapp.net', $msg);
                     $stWhats = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
-                    usleep(500000); // 0.5s delay
                 }
-            } catch (Throwable $e) { $stWhats = 'falha'; error_log("[ADMIN_SESSIONS] Erro WhatsApp $label: " . $e->getMessage()); }
+            } catch (Throwable $e) { $stWhats = 'falha'; error_log("[ADMIN_SESSIONS] Erro WhatsApp: " . $e->getMessage()); }
         }
 
-        // Registrar log
-        try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, auth_user_id(), $fn, $rp, $noteText]); } catch (Throwable $e) {}
+        // Registrar no log (cada arquivo separadamente para historico)
+        foreach ($uploadedFiles as $uf) {
+            $noteText = $uf['label'] . ($docNotes !== '' ? ' - ' . $docNotes : '');
+            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
+        }
 
-        $results[] = $label . ': E-mail ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | WhatsApp ' . ($stWhats === 'enviado' ? '✅' : '❌');
-    }
-
-    if ($filesProcessed > 0) {
-        flash_set('success', 'Documento(s) enviado(s)! ' . implode(' — ', $results));
+        $results[] = 'E-mail: ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | Portal: ✅ | WhatsApp: ' . ($stWhats === 'enviado' ? '✅' : '❌');
+        flash_set('success', $filesProcessed . ' documento(s) enviado(s)! ' . implode(' — ', $results));
     } else {
         flash_set('error', 'Selecione pelo menos um arquivo para enviar.');
     }
