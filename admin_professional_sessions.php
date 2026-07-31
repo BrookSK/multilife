@@ -4,6 +4,11 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
+// Aumentar limites de upload para esta pagina
+@ini_set('upload_max_filesize', '50M');
+@ini_set('post_max_size', '55M');
+@ini_set('max_execution_time', '120');
+
 $db = db();
 
 // Profissional selecionado
@@ -46,8 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         $file = $_FILES[$fieldName];
         $fn = $file['name'];
         $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
-        if ($file['size'] > 10485760) {
-            $missingFiles[] = $label . ' (arquivo muito grande - max 10MB)';
+        if ($file['size'] > 52428800) {
+            $missingFiles[] = $label . ' (arquivo muito grande - max 50MB)';
             continue;
         }
 
