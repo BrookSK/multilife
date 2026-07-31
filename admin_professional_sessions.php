@@ -465,9 +465,22 @@ if ($profData) {
     echo '</form>';
 
     // JavaScript para carregar sessoes do atendimento selecionado
+    // Combinar sessoes existentes (billing_document_requirements) com sessoes geradas (baseado em session_quantity)
     $sessionsJs = [];
+    // Sessoes ja existentes no banco
     foreach ($allSessions as $s) {
         $sessionsJs[] = ['id' => (int)$s['id'], 'aid' => (int)$s['assignment_id'], 'num' => (int)$s['session_number'], 'date' => (string)($s['session_date'] ?? ''), 'st' => (string)($s['doc_status'] ?? 'pending')];
+    }
+    // Para atendimentos que nao tem sessoes no banco, gerar baseado na session_quantity
+    $assignmentsWithSessions = array_unique(array_column($allSessions, 'assignment_id'));
+    foreach ($patients as $pat) {
+        $aid = (int)$pat['assignment_id'];
+        if (!in_array($aid, $assignmentsWithSessions)) {
+            $qty = max(1, (int)$pat['session_quantity']);
+            for ($i = 1; $i <= $qty; $i++) {
+                $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+            }
+        }
     }
     echo '<script>';
     echo 'var SD=' . json_encode($sessionsJs, JSON_UNESCAPED_UNICODE) . ';';
