@@ -471,7 +471,8 @@ if ($profData) {
     }
     echo '<script>';
     echo 'var SD=' . json_encode($sessionsJs, JSON_UNESCAPED_UNICODE) . ';';
-    echo 'function loadSessions(){var a=document.getElementById("selAssignment").value;var s=document.getElementById("selSession");s.innerHTML="<option value=\\'\\'>Selecione...</option>";if(!a)return;for(var i=0;i<SD.length;i++){if(SD[i].aid==a){var o=document.createElement("option");o.value=SD[i].id;o.textContent="Sessao "+SD[i].num+(SD[i].date?" - "+SD[i].date:"")+" ("+SD[i].st+")";s.appendChild(o);}}}';    echo '</script>';
+    echo 'function loadSessions(){var a=document.getElementById("selAssignment").value,s=document.getElementById("selSession");s.innerHTML="<option>Selecione...</option>";if(!a)return;for(var i=0;i<SD.length;i++)if(SD[i].aid==a){var o=document.createElement("option");o.value=SD[i].id;o.textContent="Sessao "+SD[i].num+(SD[i].date?" - "+SD[i].date:"")+" ("+SD[i].st+")";s.appendChild(o)}}';
+    echo '</script>';
     echo '</section>';
 
     // Documentos da Operadora enviados ao profissional
