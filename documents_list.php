@@ -69,8 +69,17 @@ if ($tab === 'sent') {
                             if ($portalAtivo) { $body .= '<p style="font-size:14px;color:#4b5563">Este documento também está disponível no seu <strong>Portal do Profissional</strong>, na seção de Documentos.</p>'; }
                             $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
                             $htmlBody = email_base_layout('Documento Complementar Enviado', $body);
+                            // Threading - buscar Message-ID original do profissional
+                            $threadMsgId = null;
+                            if ($rt === 'professional' && $ri > 0) {
+                                try {
+                                    $thS = db()->prepare("SELECT ar.sent_message_id FROM authorization_requests ar INNER JOIN patient_assignments pa ON pa.demand_id = ar.demand_id WHERE pa.professional_user_id = ? AND ar.sent_message_id IS NOT NULL ORDER BY ar.id DESC LIMIT 1");
+                                    $thS->execute([$ri]);
+                                    $threadMsgId = $thS->fetchColumn() ?: null;
+                                } catch (Throwable $e) {}
+                            }
                             $smtp = new SmtpClient();
-                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento Complementar - ' . $fn, $htmlBody);
+                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Re: Proposta de Atendimento', $htmlBody, $threadMsgId, $threadMsgId);
                             $statusEmail = 'enviado';
                         } catch (Throwable $e) { $statusEmail = 'falha'; }
                     } else { $statusEmail = 'falha'; }
