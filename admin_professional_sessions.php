@@ -129,20 +129,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     $wApiKey = (string)admin_setting_get('evolution.api_key', '');
                     $wInstance = (string)admin_setting_get('evolution.instance', '');
 
-                    // Tentar instancia padrao das settings
-                    if ($wBaseUrl !== '' && $wApiKey !== '' && $wInstance !== '') {
-                        $api = new EvolutionApiV1($wBaseUrl, $wApiKey, $wInstance);
-                    }
+                    // Buscar instancia CONECTADA (nao confiar apenas na padrao)
+                    try {
+                        $instStmt = $db->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC, id ASC LIMIT 5");
+                        $instStmt->execute();
+                        $connectedInstances = $instStmt->fetchAll(PDO::FETCH_COLUMN);
+                        
+                        foreach ($connectedInstances as $instName) {
+                            if ((string)$instName === '' || $wBaseUrl === '' || $wApiKey === '') continue;
+                            try {
+                                $tryApi = new EvolutionApiV1($wBaseUrl, $wApiKey, (string)$instName);
+                                $connRes = $tryApi->connectionState();
+                                $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
+                                if (in_array($state, ['open', 'connected'], true)) {
+                                    $api = $tryApi;
+                                    error_log("[ADMIN_SESSIONS] WhatsApp: usando instancia conectada '$instName'");
+                                    break;
+                                }
+                            } catch (Throwable $e) { continue; }
+                        }
+                    } catch (Throwable $e) {}
 
-                    // Fallback: buscar instancia conectada no banco
-                    if ($api === null) {
+                    // Fallback: instancia padrao (pode falhar)
+                    if ($api === null && $wBaseUrl !== '' && $wApiKey !== '' && $wInstance !== '') {
                         try {
-                            $instStmt = $db->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC LIMIT 1");
-                            $instStmt->execute();
-                            $instName = $instStmt->fetchColumn();
-                            if ($instName && $wBaseUrl !== '' && $wApiKey !== '') {
-                                $api = new EvolutionApiV1($wBaseUrl, $wApiKey, (string)$instName);
-                            }
+                            $api = new EvolutionApiV1($wBaseUrl, $wApiKey, $wInstance);
+                            error_log("[ADMIN_SESSIONS] WhatsApp: fallback para instancia padrao '$wInstance'");
                         } catch (Throwable $e) {}
                     }
 
@@ -160,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                         if ($stWhats === 'falha') { error_log("[ADMIN_SESSIONS] WhatsApp falha HTTP=$httpCode response=" . json_encode($res['json'] ?? '')); }
                     } else {
                         $stWhats = 'falha';
-                        error_log("[ADMIN_SESSIONS] WhatsApp: nenhuma instancia configurada (base_url='$wBaseUrl' instance='$wInstance')");
+                        error_log("[ADMIN_SESSIONS] WhatsApp: nenhuma instancia disponivel");
                     }
                 }
             } catch (Throwable $e) { $stWhats = 'falha'; error_log("[ADMIN_SESSIONS] Erro WhatsApp: " . $e->getMessage()); }
