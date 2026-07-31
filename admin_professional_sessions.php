@@ -33,6 +33,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
     $profPhone = (string)($profInfo['phone'] ?? '');
     $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
 
+    // Buscar dados do atendimento e sessao selecionados
+    $atendimentoLabel = 'Atendimento #' . $assignmentId;
+    $sessaoLabel = 'Sessao';
+    $sessionNumber = 0;
+    if ($assignmentId > 0) {
+        try {
+            $aStmt = $db->prepare("SELECT pa.specialty, pa.service_type, pa.session_quantity, p.full_name as patient_name FROM patient_assignments pa INNER JOIN patients p ON p.id = pa.patient_id WHERE pa.id = ?");
+            $aStmt->execute([$assignmentId]);
+            $aData = $aStmt->fetch(PDO::FETCH_ASSOC);
+            if ($aData) {
+                $atendimentoLabel = ($aData['patient_name'] ?? '') . ' - ' . ($aData['specialty'] ?? $aData['service_type'] ?? '');
+            }
+        } catch (Throwable $e) {}
+    }
+    // Extrair numero da sessao do session_id (pode ser "123" ou "456_3")
+    $sessionIdStr = (string)($_POST['session_id'] ?? '');
+    if (strpos($sessionIdStr, '_') !== false) {
+        $parts = explode('_', $sessionIdStr);
+        $sessionNumber = (int)($parts[1] ?? 0);
+    } else {
+        try {
+            $sStmt = $db->prepare("SELECT session_number FROM billing_document_requirements WHERE id = ?");
+            $sStmt->execute([(int)$sessionIdStr]);
+            $sessionNumber = (int)($sStmt->fetchColumn() ?: 0);
+        } catch (Throwable $e) {}
+    }
+    if ($sessionNumber > 0) { $sessaoLabel = 'Sessao ' . $sessionNumber; }
     $fileFields = ['ficha_evolucao' => 'Ficha de Evolucao', 'ficha_produtividade' => 'Ficha de Produtividade'];
 
     // Primeiro: salvar todos os arquivos
@@ -79,7 +106,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
             try {
                 require_once __DIR__ . '/app/email_base_template.php';
                 $body = '<p style="font-size:15px;color:#374151">Ola, <strong>' . htmlspecialchars($profName) . '</strong>!</p>';
-                $body .= '<p style="font-size:14px;color:#4b5563">A equipe administrativa enviou os documentos das sessoes. Confira abaixo:</p>';
+                $body .= '<p style="font-size:14px;color:#4b5563">Voce recebeu novos documentos referentes ao atendimento abaixo:</p>';
+
+                // Info do atendimento e sessao
+                $body .= '<div style="background:#f0f9ff;padding:16px;margin:16px 0;border-radius:10px;border:1px solid #bae6fd;border-left:4px solid #0284c7">';
+                $body .= '<p style="margin:0 0 6px;font-size:14px"><strong>Atendimento:</strong> ' . htmlspecialchars($atendimentoLabel) . '</p>';
+                $body .= '<p style="margin:0;font-size:14px"><strong>Sessao:</strong> ' . htmlspecialchars($sessaoLabel) . '</p>';
+                $body .= '</div>';
 
                 foreach ($uploadedFiles as $idx => $uf) {
                     if ($idx > 0) {
@@ -108,10 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $body .= '<p style="font-size:14px;color:#4b5563;margin-top:20px">Estes documentos tambem estao disponiveis no seu <strong>Portal do Profissional</strong>.</p>';
                 $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
 
-                $emailTitle = count($uploadedFiles) > 1 ? 'Fichas de Sessao' : $uploadedFiles[0]['label'];
-                $emailSubject = count($uploadedFiles) > 1
-                    ? 'Fichas de Sessao - ' . implode(' e ', array_map(function($f) { return $f['label']; }, $uploadedFiles))
-                    : $uploadedFiles[0]['label'] . ' - ' . $uploadedFiles[0]['file_name'];
+                $emailTitle = 'Documentos da Sessao';
+                $emailSubject = 'Documentos - ' . $atendimentoLabel . ' - ' . $sessaoLabel;
 
                 $htmlBody = email_base_layout($emailTitle, $body);
                 $smtpInstance = new SmtpClient();
@@ -161,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     }
 
                     if ($api !== null) {
-                        $msg = "📋 *Documentos das Sessoes*\n\nOla, " . $profName . "!\n\nA equipe enviou os seguintes documentos:\n";
+                        $msg = "📋 *Documentos da Sessao*\n\nOla, " . $profName . "!\n\nVoce recebeu documentos referentes ao atendimento:\n\n🏥 *Atendimento:* " . $atendimentoLabel . "\n📅 *Sessao:* " . $sessaoLabel . "\n\n*Documentos enviados:*\n";
                         foreach ($uploadedFiles as $uf) {
                             $msg .= "\n📄 *" . $uf['label'] . "*\n" . $baseUrl . $uf['file_path'] . "\n";
                         }
