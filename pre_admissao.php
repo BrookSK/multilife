@@ -461,7 +461,7 @@ if ($selected) {
         }
     }
     echo '</select></label>';
-    echo '<input type="hidden" name="sessions_per_week" form="approveForm" value="' . $preSessionsPerWeek . '">';
+    echo '<input type="hidden" name="sessions_per_week" id="paSessionsPerWeek" form="approveForm" value="' . $preSessionsPerWeek . '">';
     echo '</div>';
     
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
@@ -622,8 +622,18 @@ echo 'var paSPW=document.getElementById("paSessionsPerWeek");';
 echo 'var paDW=document.getElementById("paDurationWeeks");';
 echo 'var paTS=document.getElementById("paTotalSessions");';
 echo 'function paCalcSessions(){';
-echo '  if(!paFreq||!paSPW||!paDW||!paTS)return;';
-echo '  var freq=paFreq.value;var spw=parseInt(paSPW.value)||1;var dw=parseInt(paDW.value)||0;';
+echo '  if(!paFreq||!paDW||!paTS)return;';
+echo '  var freq=paFreq.value;var dw=parseInt(paDW.value)||0;';
+echo '  var spw=1;';
+echo '  if(freq.indexOf("1x")>=0)spw=1;';
+echo '  else if(freq.indexOf("2x")>=0)spw=2;';
+echo '  else if(freq.indexOf("3x")>=0)spw=3;';
+echo '  else if(freq.indexOf("4x")>=0)spw=4;';
+echo '  else if(freq.indexOf("5x")>=0)spw=5;';
+echo '  else if(freq.indexOf("6x")>=0)spw=6;';
+echo '  else if(freq.indexOf("7x")>=0||freq==="daily")spw=7;';
+echo '  else if(freq==="weekly")spw=1;';
+echo '  if(paSPW)paSPW.value=spw;';
 echo '  var total=0;';
 echo '  if(freq==="daily"||freq==="7x_semana"){total=dw*7;}';
 echo '  else if(freq==="biweekly"||freq==="quinzenal"){total=Math.ceil(dw/2);}';
