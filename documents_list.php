@@ -65,7 +65,8 @@ if ($tab === 'sent') {
                             $body .= '<p style="margin:6px 0;font-size:14px">' . $docIcon . ' <a href="' . $baseUrl . $rp . '" style="color:#0284c7;text-decoration:underline;font-weight:600">' . htmlspecialchars($fn) . '</a></p>';
                             if ($nt !== '') { $body .= '<p style="margin:12px 0 0;font-size:13px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:10px"><strong>Observação:</strong> ' . nl2br(htmlspecialchars($nt)) . '</p>'; }
                             $body .= '</div>';
-                            $body .= '<p style="font-size:14px;color:#4b5563">Este documento também está disponível no seu <strong>Portal do Profissional</strong>, na seção de Documentos.</p>';
+                            $portalAtivo = (string)admin_setting_get('feature.portal_profissional_ativo', '0') === '1';
+                            if ($portalAtivo) { $body .= '<p style="font-size:14px;color:#4b5563">Este documento também está disponível no seu <strong>Portal do Profissional</strong>, na seção de Documentos.</p>'; }
                             $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
                             $htmlBody = email_base_layout('Documento Complementar Enviado', $body);
                             $smtp = new SmtpClient();
@@ -111,7 +112,8 @@ if ($tab === 'sent') {
                                 if ($wApi !== null) {
                                     $whatsMsg = "📎 *Documento Complementar*\n\nOlá, " . $rn . "!\n\nA equipe MultiLife Care enviou um documento complementar:\n\n📄 *" . $fn . "*\n" . $baseUrl . $rp;
                                     if ($nt !== '') { $whatsMsg .= "\n\n📝 _" . $nt . "_"; }
-                                    $whatsMsg .= "\n\nEste documento também está disponível no Portal do Profissional.";
+                                    $portalAtivoW = (string)admin_setting_get('feature.portal_profissional_ativo', '0') === '1';
+                                    if ($portalAtivoW) { $whatsMsg .= "\n\nEste documento também está disponível no Portal do Profissional."; }
                                     $res = $wApi->sendText($cleanPhone, $whatsMsg);
                                     $statusWhatsapp = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
                                 } else { $statusWhatsapp = 'falha'; }

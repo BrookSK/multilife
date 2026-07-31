@@ -131,12 +131,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     $body .= '<p style="margin:8px 0 0;font-size:12px;color:#9ca3af">Nao anexado: ' . htmlspecialchars(implode(', ', $missingFiles)) . '</p>';
                 }
 
-                // Botao CTA
-                $body .= '<div style="margin:28px 0 20px;text-align:center">';
-                $body .= '<a href="' . $baseUrl . '/profissional_registros.php" style="display:inline-block;padding:12px 32px;background:#00a884;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px">Visualizar Documentos</a>';
-                $body .= '</div>';
+                // Botao CTA - apenas se portal estiver liberado
+                if (!isset($portalLiberado)) { $portalLiberado = (string)admin_setting_get('feature.portal_profissional_ativo', '0') === '1'; }
+                if ($portalLiberado) {
+                    $body .= '<div style="margin:28px 0 20px;text-align:center">';
+                    $body .= '<a href="' . $baseUrl . '/profissional_registros.php" style="display:inline-block;padding:12px 32px;background:#00a884;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px">Visualizar Documentos</a>';
+                    $body .= '</div>';
+                }
 
-                $body .= '<p style="font-size:13px;color:#9ca3af;margin-top:16px;text-align:center">Estes documentos tambem estao disponiveis no seu Portal do Profissional.</p>';
+                // Mensagem sobre portal - apenas se estiver liberado
+                $portalLiberado = (string)admin_setting_get('feature.portal_profissional_ativo', '0') === '1';
+                if ($portalLiberado) {
+                    $body .= '<p style="font-size:13px;color:#9ca3af;margin-top:16px;text-align:center">Estes documentos tambem estao disponiveis no seu Portal do Profissional.</p>';
+                }
 
                 $emailTitle = 'Documentos da Sessao Disponiveis';
                 $emailSubject = 'Documentos - ' . $atendimentoLabel . ' - ' . $sessaoLabel;
@@ -194,7 +201,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                             $msg .= "\n📄 *" . $uf['label'] . "*\n" . $baseUrl . $uf['file_path'] . "\n";
                         }
                         if ($docNotes !== '') { $msg .= "\n📝 _" . $docNotes . "_"; }
-                        $msg .= "\n\nDocumentos disponiveis tambem no Portal do Profissional.";
+                        // Mensagem sobre portal - apenas se liberado
+                        $portalLiberadoWa = (string)admin_setting_get('feature.portal_profissional_ativo', '0') === '1';
+                        if ($portalLiberadoWa) { $msg .= "\n\nDocumentos disponiveis tambem no Portal do Profissional."; }
                         error_log("[ADMIN_SESSIONS] WhatsApp: enviando para $cleanPhone via instancia " . $api->getInstance());
                         $res = $api->sendText($cleanPhone, $msg);
                         $httpCode = (int)($res['status'] ?? 0);
