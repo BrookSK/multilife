@@ -347,9 +347,9 @@ if (!empty($insurerDocsList) || !empty($manualDocsForProf)) {
             $totalAtend = 0;
             foreach ($sessions as $docs) { $totalAtend += count($docs); }
             echo '<div style="margin-bottom:8px;border:1px solid hsl(var(--border));border-radius:8px;overflow:hidden">';
-            echo '<div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=this.nextElementSibling.style.display===\'none\'?\'▶\':\'▼\'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
-            echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($atendName) . ' <span style="font-weight:400;color:hsl(var(--muted-foreground))">(' . $totalAtend . ')</span></div>';
-            echo '<span style="font-size:11px;color:hsl(var(--muted-foreground))">▶</span>';
+            echo '<div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
+            echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($atendName) . ' (' . $totalAtend . ')</div>';
+            echo '<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:hsla(180,65%,46%,.15);color:hsl(var(--primary));font-size:12px;font-weight:700">+</span>';
             echo '</div>';
             echo '<div style="display:none;padding:4px 8px">';
 
@@ -401,9 +401,9 @@ if (!empty($manualDocsForProf) && empty($insurerDocsList)) {
         $totalAtend = 0;
         foreach ($sessions as $docs) { $totalAtend += count($docs); }
         echo '<div style="margin-bottom:8px;border:1px solid hsl(var(--border));border-radius:8px;overflow:hidden">';
-        echo '<div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=this.nextElementSibling.style.display===\'none\'?\'▶\':\'▼\'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
-        echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($atendName) . ' <span style="font-weight:400;color:hsl(var(--muted-foreground))">(' . $totalAtend . ')</span></div>';
-        echo '<span style="font-size:11px;color:hsl(var(--muted-foreground))">▶</span>';
+        echo '<div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
+        echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($atendName) . ' (' . $totalAtend . ')</div>';
+        echo '<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:hsla(180,65%,46%,.15);color:hsl(var(--primary));font-size:12px;font-weight:700">+</span>';
         echo '</div>';
         echo '<div style="display:none;padding:4px 8px">';
         foreach ($sessions as $sessName => $docs) {
