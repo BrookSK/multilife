@@ -23,6 +23,11 @@ if (!$user) {
     exit;
 }
 
+// Verificar se o usuario editado e profissional para ajustar link de volta
+$_editUserRoles = [];
+try { $rs = db()->prepare("SELECT r.slug FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?"); $rs->execute([$id]); $_editUserRoles = $rs->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) {}
+$_backUrl = in_array('profissional', $_editUserRoles, true) ? '/users_list.php?role=profissional' : '/users_list.php';
+
 view_header('Editar usuário');
 
 echo '<div class="card">';
@@ -32,7 +37,7 @@ echo '<div style="font-size:22px;font-weight:900;margin-bottom:6px">Editar usuá
 echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Atualize dados e senha (opcional).</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/users_list.php">Voltar</a>';
+echo '<a class="btn" href="' . $_backUrl . '">Voltar</a>';
 echo '<a class="btn" href="/users_roles_edit.php?id=' . (int)$user['id'] . '">Perfis</a>';
 echo '</div>';
 echo '</div>';
@@ -58,7 +63,7 @@ echo '<option value="active"' . ($st === 'active' ? ' selected' : '') . '>active
 echo '<option value="inactive"' . ($st === 'inactive' ? ' selected' : '') . '>inactive</option>';
 echo '</select></label>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
-echo '<a class="btn" href="/users_list.php">Cancelar</a>';
+echo '<a class="btn" href="' . $_backUrl . '">Cancelar</a>';
 echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 echo '</form>';

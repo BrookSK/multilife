@@ -19,6 +19,11 @@ if (!$user) {
     exit;
 }
 
+// Verificar se o usuario e profissional para ajustar link de volta
+$_editUserRoles2 = [];
+try { $rs2 = db()->prepare("SELECT r.slug FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?"); $rs2->execute([$id]); $_editUserRoles2 = $rs2->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) {}
+$_backUrl2 = in_array('profissional', $_editUserRoles2, true) ? '/users_list.php?role=profissional' : '/users_list.php';
+
 $roles = db()->query('SELECT id, name, slug FROM roles ORDER BY name ASC')->fetchAll();
 
 $stmt = db()->prepare('SELECT role_id FROM user_roles WHERE user_id = :uid');
@@ -37,7 +42,7 @@ echo '<div style="font-size:22px;font-weight:900">Perfis do usuário</div>';
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.5">' . h((string)$user['name']) . ' — ' . h((string)$user['email']) . '</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-echo '<a class="btn" href="/users_list.php">Voltar</a>';
+echo '<a class="btn" href="' . $_backUrl2 . '">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
@@ -56,7 +61,7 @@ foreach ($roles as $role) {
 }
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">';
-echo '<a class="btn" href="/users_list.php">Cancelar</a>';
+echo '<a class="btn" href="' . $_backUrl2 . '">Cancelar</a>';
 echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 echo '</form>';
