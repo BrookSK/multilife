@@ -83,13 +83,38 @@ if ($tab === 'sent') {
                             $cleanPhone = preg_replace('/\D+/', '', $rPhone);
                             if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
                             if (strlen($cleanPhone) >= 12) {
-                                $api = new EvolutionApiV1();
-                                $whatsMsg = "📎 *Documento Complementar*\n\nOlá, " . $rn . "!\n\nA equipe MultiLife Care enviou um documento complementar:\n\n📄 *" . $fn . "*\n" . $baseUrl . $rp;
-                                if ($nt !== '') { $whatsMsg .= "\n\n📝 _" . $nt . "_"; }
-                                $whatsMsg .= "\n\nEste documento também está disponível no Portal do Profissional.";
-                                $jid = $cleanPhone;
-                                $res = $api->sendText($jid, $whatsMsg);
-                                $statusWhatsapp = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
+                                $wApi = null;
+                                $wBaseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+                                $wApiKey = (string)admin_setting_get('evolution.api_key', '');
+                                // Buscar instancia conectada
+                                try {
+                                    $wInstStmt = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC, id ASC LIMIT 5");
+                                    $wInstStmt->execute();
+                                    $wInstList = $wInstStmt->fetchAll(PDO::FETCH_COLUMN);
+                                    foreach ($wInstList as $wInstName) {
+                                        if ((string)$wInstName === '' || $wBaseUrl === '' || $wApiKey === '') continue;
+                                        try {
+                                            $tryApi = new EvolutionApiV1($wBaseUrl, $wApiKey, (string)$wInstName);
+                                            $connRes = $tryApi->connectionState();
+                                            $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
+                                            if (in_array($state, ['open', 'connected'], true)) {
+                                                $wApi = $tryApi;
+                                                break;
+                                            }
+                                        } catch (Throwable $e) { continue; }
+                                    }
+                                } catch (Throwable $e) {}
+                                if ($wApi === null && $wBaseUrl !== '' && $wApiKey !== '') {
+                                    $wDefInst = (string)admin_setting_get('evolution.instance', '');
+                                    if ($wDefInst !== '') { try { $wApi = new EvolutionApiV1($wBaseUrl, $wApiKey, $wDefInst); } catch (Throwable $e) {} }
+                                }
+                                if ($wApi !== null) {
+                                    $whatsMsg = "📎 *Documento Complementar*\n\nOlá, " . $rn . "!\n\nA equipe MultiLife Care enviou um documento complementar:\n\n📄 *" . $fn . "*\n" . $baseUrl . $rp;
+                                    if ($nt !== '') { $whatsMsg .= "\n\n📝 _" . $nt . "_"; }
+                                    $whatsMsg .= "\n\nEste documento também está disponível no Portal do Profissional.";
+                                    $res = $wApi->sendText($cleanPhone, $whatsMsg);
+                                    $statusWhatsapp = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
+                                } else { $statusWhatsapp = 'falha'; }
                             } else { $statusWhatsapp = 'falha'; }
                         } catch (Throwable $e) { $statusWhatsapp = 'falha'; }
                     } else { $statusWhatsapp = 'falha'; }
