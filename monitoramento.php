@@ -7,9 +7,17 @@ rbac_require_permission('demands.manage');
 
 $db = db();
 
-// Buscar sessões de atendimentos aprovados (usa session_date se preenchido, senão usa admitted_at)
+// Buscar sessões de atendimentos aprovados (usa session_date + start_time da proposta)
 $sql = "SELECT bdr.id, 
-        COALESCE(bdr.session_date, DATE_ADD(pa.admitted_at, INTERVAL (bdr.session_number - 1) WEEK)) as first_at,
+        CONCAT(
+            COALESCE(bdr.session_date, DATE_ADD(DATE(pa.admitted_at), INTERVAL (bdr.session_number - 1) WEEK)),
+            ' ',
+            COALESCE(
+                (SELECT ar.start_time FROM authorization_requests ar WHERE ar.demand_id = pa.demand_id AND ar.start_time IS NOT NULL ORDER BY ar.id DESC LIMIT 1),
+                TIME(pa.admitted_at),
+                '08:00:00'
+            )
+        ) as first_at,
         bdr.session_number, bdr.status as session_status,
         pa.id as assignment_id, pa.status as assignment_status,
         COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.created_at,
