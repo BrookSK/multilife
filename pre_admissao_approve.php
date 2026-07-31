@@ -390,16 +390,18 @@ try {
                 try {
                     $threadStmt = db()->prepare("
                         SELECT sent_message_id FROM authorization_requests 
-                        WHERE demand_id = ? AND patient_id = ? AND sent_message_id IS NOT NULL 
-                        ORDER BY id DESC LIMIT 1
+                        WHERE demand_id = ? AND sent_message_id IS NOT NULL AND sent_message_id != ''
+                        ORDER BY id ASC LIMIT 1
                     ");
-                    $threadStmt->execute([$demandId, $assignment['patient_id']]);
+                    $threadStmt->execute([$demandId]);
                     $originalMessageId = $threadStmt->fetchColumn() ?: null;
                     if ($originalMessageId) {
-                        error_log("[PRE_ADMISSAO_APPROVE] Thread: respondendo ao Message-ID: $originalMessageId");
+                        error_log("[PRE_ADMISSAO_APPROVE] Thread operadora: respondendo ao Message-ID: $originalMessageId");
+                    } else {
+                        error_log("[PRE_ADMISSAO_APPROVE] Thread operadora: sent_message_id NAO encontrado para demand_id=$demandId");
                     }
                 } catch (Throwable $e) {
-                    error_log("[PRE_ADMISSAO_APPROVE] Erro ao buscar thread: " . $e->getMessage());
+                    error_log("[PRE_ADMISSAO_APPROVE] Erro ao buscar thread operadora: " . $e->getMessage());
                     $originalMessageId = null;
                 }
                 
