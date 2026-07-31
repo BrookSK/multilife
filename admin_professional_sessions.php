@@ -117,10 +117,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $body .= '<p style="margin:0;font-size:16px;font-weight:700;color:#111827">' . htmlspecialchars($sessaoLabel) . '</p>';
                 $body .= '</div>';
 
-                // Documentos - com links diretos para download
-                $body .= '<p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 12px">Documentos enviados:</p>';
+                // Documentos - cada um com botão estilizado abaixo
+                $body .= '<p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 16px">Documentos enviados:</p>';
                 foreach ($uploadedFiles as $uf) {
-                    $body .= '<p style="margin:10px 0;font-size:14px;color:#374151">&#10003; <strong>' . $uf['label'] . '</strong> — <a href="' . $baseUrl . $uf['file_path'] . '" style="color:#0284c7;text-decoration:underline">Abrir documento</a></p>';
+                    $body .= '<div style="margin-bottom:16px">';
+                    $body .= '<p style="margin:0 0 8px;font-size:14px;color:#374151">&#10003; <strong>' . $uf['label'] . '</strong></p>';
+                    $body .= '<a href="' . $baseUrl . $uf['file_path'] . '" target="_blank" style="display:inline-block;padding:8px 20px;background:#00a884;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:5px">Abrir Documento</a>';
+                    $body .= '</div>';
                 }
 
                 if ($docNotes !== '') {
