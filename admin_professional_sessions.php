@@ -117,10 +117,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $body .= '<p style="margin:0;font-size:16px;font-weight:700;color:#111827">' . htmlspecialchars($sessaoLabel) . '</p>';
                 $body .= '</div>';
 
-                // Documentos
+                // Documentos - com links diretos para download
                 $body .= '<p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 12px">Documentos enviados:</p>';
                 foreach ($uploadedFiles as $uf) {
-                    $body .= '<p style="margin:8px 0;font-size:14px;color:#374151">&#10003; <strong>' . $uf['label'] . '</strong></p>';
+                    $body .= '<p style="margin:10px 0;font-size:14px;color:#374151">&#10003; <strong>' . $uf['label'] . '</strong> — <a href="' . $baseUrl . $uf['file_path'] . '" style="color:#0284c7;text-decoration:underline">Abrir documento</a></p>';
                 }
 
                 if ($docNotes !== '') {
