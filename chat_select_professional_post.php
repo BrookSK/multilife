@@ -526,17 +526,29 @@ try {
         $sentAt = date('Y-m-d H:i:s');
         $responseDeadline = date('Y-m-d H:i:s', strtotime('+5 minutes'));
         
-        $stmt = $db->prepare(
-            'UPDATE authorization_requests 
-             SET sent_at = :sent, response_deadline = :deadline, sent_message_id = :msg_id
-             WHERE id = :id'
-        );
-        $stmt->execute([
-            'sent' => $sentAt,
-            'deadline' => $responseDeadline,
-            'msg_id' => $messageId,
-            'id' => $authRequestId
-        ]);
+        // Garantir que a coluna sent_message_id existe
+        try { $db->exec("ALTER TABLE authorization_requests ADD COLUMN sent_message_id VARCHAR(255) NULL"); } catch (Throwable $e) {}
+        
+        try {
+            $stmt = $db->prepare(
+                'UPDATE authorization_requests 
+                 SET sent_at = :sent, response_deadline = :deadline, sent_message_id = :msg_id
+                 WHERE id = :id'
+            );
+            $stmt->execute([
+                'sent' => $sentAt,
+                'deadline' => $responseDeadline,
+                'msg_id' => $messageId,
+                'id' => $authRequestId
+            ]);
+        } catch (Throwable $e) {
+            // Fallback sem sent_message_id
+            try {
+                $stmt = $db->prepare('UPDATE authorization_requests SET sent_at = :sent, response_deadline = :deadline WHERE id = :id');
+                $stmt->execute(['sent' => $sentAt, 'deadline' => $responseDeadline, 'id' => $authRequestId]);
+            } catch (Throwable $e2) {}
+            error_log("⚠️ Erro ao salvar sent_message_id: " . $e->getMessage());
+        }
         
         // Registrar histórico de envio
         $stmt = $db->prepare(

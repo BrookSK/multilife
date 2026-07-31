@@ -400,6 +400,13 @@ try {
                     }
                 } catch (Throwable $e) {
                     error_log("[PRE_ADMISSAO_APPROVE] Erro ao buscar thread: " . $e->getMessage());
+                    $originalMessageId = null;
+                }
+                
+                // Fallback: gerar Message-ID deterministico para a thread baseado no demand_id
+                if (!$originalMessageId && $demandId > 0) {
+                    $originalMessageId = '<demand-' . $demandId . '@multilife.onsolutionsbrasil.com.br>';
+                    error_log("[PRE_ADMISSAO_APPROVE] Usando Message-ID deterministico: $originalMessageId");
                 }
                 
                 // Buscar dados completos do profissional
