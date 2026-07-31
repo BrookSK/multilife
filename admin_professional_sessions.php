@@ -105,34 +105,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         if ($profEmail !== '' && filter_var($profEmail, FILTER_VALIDATE_EMAIL)) {
             try {
                 require_once __DIR__ . '/app/email_base_template.php';
-                $body = '<p style="font-size:15px;color:#374151">Ola, <strong>' . htmlspecialchars($profName) . '</strong>!</p>';
-                $body .= '<p style="font-size:14px;color:#4b5563">Voce recebeu novos documentos referentes ao atendimento abaixo:</p>';
 
-                // Info do atendimento e sessao
-                $body .= '<table style="width:100%;margin:16px 0;font-size:14px;color:#374151"><tr><td style="padding:6px 0"><strong>Atendimento:</strong> ' . htmlspecialchars($atendimentoLabel) . '</td></tr><tr><td style="padding:6px 0"><strong>Sessao:</strong> ' . htmlspecialchars($sessaoLabel) . '</td></tr></table>';
+                $body = '<p style="font-size:15px;color:#374151;margin-bottom:4px">Ola, <strong>' . htmlspecialchars($profName) . '</strong>!</p>';
+                $body .= '<p style="font-size:14px;color:#6b7280;line-height:1.6">Foram disponibilizados novos documentos referentes a uma de suas sessoes de atendimento. Confira abaixo as informacoes e acesse os arquivos enviados.</p>';
 
-                // Documentos
-                $body .= '<div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-top:8px">';
-                $body .= '<p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 12px">Documentos enviados:</p>';
-                foreach ($uploadedFiles as $idx => $uf) {
-                    $docIcon = preg_match('/\.pdf$/i', $uf['file_name']) ? '📄' : '📎';
-                    $body .= '<p style="margin:8px 0;font-size:14px">' . $docIcon . ' <strong>' . $uf['label'] . '</strong> — <a href="' . $baseUrl . $uf['file_path'] . '" style="color:#0284c7">' . htmlspecialchars($uf['file_name']) . '</a></p>';
-                }
+                // Bloco principal - Atendimento e Sessao
+                $body .= '<div style="margin:24px 0;padding:20px 24px;border-radius:8px;border:1px solid #e5e7eb">';
+                $body .= '<p style="margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:#6b7280;font-weight:600">Atendimento</p>';
+                $body .= '<p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#111827">' . htmlspecialchars($atendimentoLabel) . '</p>';
+                $body .= '<p style="margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:#6b7280;font-weight:600">Sessao</p>';
+                $body .= '<p style="margin:0;font-size:16px;font-weight:700;color:#111827">' . htmlspecialchars($sessaoLabel) . '</p>';
                 $body .= '</div>';
 
+                // Documentos
+                $body .= '<p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 12px">Documentos enviados:</p>';
+                foreach ($uploadedFiles as $uf) {
+                    $body .= '<p style="margin:8px 0;font-size:14px;color:#374151">&#10003; <strong>' . $uf['label'] . '</strong></p>';
+                }
+
                 if ($docNotes !== '') {
-                    $body .= '<p style="margin:16px 0 0;font-size:13px;color:#6b7280"><strong>Obs:</strong> ' . nl2br(htmlspecialchars($docNotes)) . '</p>';
+                    $body .= '<p style="margin:20px 0 0;font-size:13px;color:#6b7280"><em>Obs: ' . htmlspecialchars($docNotes) . '</em></p>';
                 }
 
-                // Informar fichas nao anexadas
                 if (!empty($missingFiles)) {
-                    $body .= '<p style="margin:12px 0 0;font-size:12px;color:#9ca3af">Nao anexado: ' . htmlspecialchars(implode(', ', $missingFiles)) . '</p>';
+                    $body .= '<p style="margin:8px 0 0;font-size:12px;color:#9ca3af">Nao anexado: ' . htmlspecialchars(implode(', ', $missingFiles)) . '</p>';
                 }
 
-                $body .= '<p style="font-size:13px;color:#6b7280;margin-top:20px">Estes documentos tambem estao disponiveis no seu <strong>Portal do Profissional</strong>.</p>';
-                $body .= '<p style="font-size:14px;color:#6b7280;margin-top:16px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+                // Botao CTA
+                $body .= '<div style="margin:28px 0 20px;text-align:center">';
+                $body .= '<a href="' . $baseUrl . '/profissional_registros.php" style="display:inline-block;padding:12px 32px;background:#00a884;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:6px">Visualizar Documentos</a>';
+                $body .= '</div>';
 
-                $emailTitle = 'Documentos da Sessao';
+                $body .= '<p style="font-size:13px;color:#9ca3af;margin-top:16px;text-align:center">Estes documentos tambem estao disponiveis no seu Portal do Profissional.</p>';
+
+                $emailTitle = 'Documentos da Sessao Disponiveis';
                 $emailSubject = 'Documentos - ' . $atendimentoLabel . ' - ' . $sessaoLabel;
 
                 $htmlBody = email_base_layout($emailTitle, $body);
