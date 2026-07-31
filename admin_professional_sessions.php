@@ -30,19 +30,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
     // Primeiro: salvar todos os arquivos
     $uploadedFiles = [];
+    $missingFiles = [];
     foreach ($fileFields as $fieldName => $label) {
-        if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) { continue; }
+        if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) {
+            $missingFiles[] = $label;
+            error_log("[ADMIN_SESSIONS] Arquivo nao selecionado: $fieldName (error=" . ($_FILES[$fieldName]['error'] ?? 'N/A') . ")");
+            continue;
+        }
         $file = $_FILES[$fieldName];
         $fn = $file['name'];
         $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
-        if (!in_array($ext, ['pdf','jpg','jpeg','png','webp','heic','heif'], true) || $file['size'] > 10485760) { continue; }
+        if (!in_array($ext, ['pdf','jpg','jpeg','png','webp','heic','heif'], true) || $file['size'] > 10485760) {
+            $missingFiles[] = $label . ' (formato invalido)';
+            continue;
+        }
 
         $dir = __DIR__ . '/uploads/manual_docs/';
         if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
         $un = time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-        if (!move_uploaded_file($file['tmp_name'], $dir . $un)) { continue; }
+        if (!move_uploaded_file($file['tmp_name'], $dir . $un)) {
+            $missingFiles[] = $label . ' (falha upload)';
+            continue;
+        }
         $rp = '/uploads/manual_docs/' . $un;
         $uploadedFiles[] = ['label' => $label, 'file_name' => $fn, 'file_path' => $rp];
+        error_log("[ADMIN_SESSIONS] Arquivo salvo: $fieldName -> $rp");
     }
 
     if (!empty($uploadedFiles)) {
@@ -70,6 +82,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 if ($docNotes !== '') {
                     $body .= '<div style="background:#fffbeb;padding:14px;border-radius:8px;margin:16px 0;border:1px solid #fde68a">';
                     $body .= '<p style="margin:0;font-size:13px;color:#92400e"><strong>Observacao:</strong> ' . nl2br(htmlspecialchars($docNotes)) . '</p>';
+                    $body .= '</div>';
+                }
+
+                // Informar fichas nao anexadas
+                if (!empty($missingFiles)) {
+                    $body .= '<div style="background:#f3f4f6;padding:12px;border-radius:8px;margin:16px 0;border:1px solid #d1d5db">';
+                    $body .= '<p style="margin:0;font-size:12px;color:#6b7280">⚠️ Nao anexado(s): ' . htmlspecialchars(implode(', ', $missingFiles)) . '</p>';
                     $body .= '</div>';
                 }
 
@@ -346,7 +365,7 @@ if ($profData) {
     echo '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
     echo '<div style="font-size:16px;font-weight:700">Documentos das Sessoes</div>';
     echo '</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Envie Fichas de Evolucao e Fichas de Produtividade diretamente ao profissional. Os documentos serao enviados por E-mail, Portal e WhatsApp.</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Envie Fichas de Evolucao e Fichas de Produtividade diretamente ao profissional. <strong>Selecione ambos os arquivos</strong> para enviar em um unico e-mail.</div>';
 
     echo '<form method="post" action="/admin_professional_sessions.php?prof_id=' . $profId . '" enctype="multipart/form-data">';
     echo '<input type="hidden" name="action" value="send_session_docs">';
