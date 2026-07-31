@@ -19,6 +19,8 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 // POST: Envio de fichas de sessao
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_session_docs' && $profId > 0) {
     $docNotes = trim((string)($_POST['doc_notes'] ?? ''));
+    $assignmentId = (int)($_POST['assignment_id'] ?? 0);
+    $sessionId = (int)($_POST['session_id'] ?? 0);
     $filesProcessed = 0;
     $results = [];
 
@@ -180,8 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
         // Registrar no log (cada arquivo separadamente para historico)
         foreach ($uploadedFiles as $uf) {
-            $noteText = $uf['label'] . ($docNotes !== '' ? ' - ' . $docNotes : '');
-            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
+            $noteText = $uf['label'] . ' - Atendimento #' . $assignmentId . ' Sessao #' . $sessionId . ($docNotes !== '' ? ' - ' . $docNotes : '');
+            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, assignment_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, $assignmentId > 0 ? $assignmentId : null, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
         }
 
         $results[] = 'E-mail: ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | Portal: ✅ | WhatsApp: ' . ($stWhats === 'enviado' ? '✅' : '❌');
@@ -418,33 +420,59 @@ if ($profData) {
     echo '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
     echo '<div style="font-size:16px;font-weight:700">Documentos das Sessoes</div>';
     echo '</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Envie Fichas de Evolucao e Fichas de Produtividade diretamente ao profissional. <strong>Selecione ambos os arquivos</strong> para enviar em um unico e-mail.</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Selecione o atendimento e a sessao para vincular os documentos corretamente.</div>';
 
     echo '<form method="post" action="/admin_professional_sessions.php?prof_id=' . $profId . '" enctype="multipart/form-data">';
     echo '<input type="hidden" name="action" value="send_session_docs">';
     echo '<input type="hidden" name="prof_id" value="' . $profId . '">';
 
-    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+    // Selecao de Atendimento
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">';
+    echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Atendimento *</label>';
+    echo '<select name="assignment_id" id="selAssignment" onchange="loadSessions()" required>';
+    echo '<option value="">Selecione o atendimento...</option>';
+    foreach ($patients as $pat) {
+        $patLabel = htmlspecialchars($pat['full_name']) . ' - ' . htmlspecialchars($pat['specialty'] ?? '') . ' (' . (int)$pat['session_quantity'] . ' sessoes)';
+        echo '<option value="' . (int)$pat['assignment_id'] . '">' . $patLabel . '</option>';
+    }
+    echo '</select></div>';
 
+    // Selecao de Sessao
+    echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Sessao *</label>';
+    echo '<select name="session_id" id="selSession" required>';
+    echo '<option value="">Selecione o atendimento primeiro</option>';
+    echo '</select></div>';
+    echo '</div>';
+
+    // Uploads
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
     echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:10px">';
     echo '<div style="font-size:14px;font-weight:700;margin-bottom:8px">📋 Ficha de Evolucao</div>';
     echo '<input type="file" name="ficha_evolucao" style="width:100%;font-size:13px">';
     echo '</div>';
-
     echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:10px">';
     echo '<div style="font-size:14px;font-weight:700;margin-bottom:8px">📊 Ficha de Produtividade</div>';
     echo '<input type="file" name="ficha_produtividade" style="width:100%;font-size:13px">';
     echo '</div>';
-
     echo '</div>';
 
-    echo '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Observacao (opcional)</label><input name="doc_notes" placeholder="Referente a sessao X, complemento..." style="width:100%"></div>';
+    echo '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Observacao (opcional)</label><input name="doc_notes" placeholder="Complemento, detalhes..." style="width:100%"></div>';
 
     echo '<div style="display:flex;align-items:center;gap:12px">';
     echo '<button type="submit" class="btn btnPrimary">Enviar Documentos</button>';
     echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Envio automatico por E-mail, Portal e WhatsApp</span>';
     echo '</div>';
     echo '</form>';
+
+    // JavaScript para carregar sessoes do atendimento selecionado
+    echo '<script>';
+    echo 'var sessionsData=' . json_encode(
+        array_map(function($s) {
+            return ['id' => (int)$s['id'], 'assignment_id' => (int)$s['assignment_id'], 'session_number' => (int)$s['session_number'], 'session_date' => $s['session_date'] ?? '', 'doc_status' => $s['doc_status'] ?? 'pending'];
+        }, $allSessions)
+    ) . ';';
+    echo 'function loadSessions(){var aid=document.getElementById("selAssignment").value;var sel=document.getElementById("selSession");sel.innerHTML="<option value=\\'\\'>Selecione...</option>";if(!aid)return;var filtered=sessionsData.filter(function(s){return s.assignment_id==aid;});for(var i=0;i<filtered.length;i++){var s=filtered[i];var o=document.createElement("option");o.value=s.id;o.textContent="Sessao "+s.session_number+(s.session_date?" - "+s.session_date:"")+" ("+s.doc_status+")";sel.appendChild(o);}}';
+    echo '</script>';
     echo '</section>';
 
     // Documentos da Operadora enviados ao profissional
