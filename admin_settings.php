@@ -27,6 +27,7 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_dashboard.php">Voltar</a>';
+echo '<a class="btn btnPrimary" href="/admin_feature_flags.php">Implantacao / Funcionalidades</a>';
 echo '</div>';
 echo '</div>';
 echo '</section>';

@@ -43,10 +43,16 @@ function view_header(string $title): void
     if ($isProfessional) {
         $menuItems = [
             ['title' => 'Meus Registros', 'path' => '/profissional_registros.php'],
-            ['title' => 'Agendamentos', 'path' => '/profissional_agendamentos.php'],
-            ['title' => 'Recebimentos', 'path' => '/profissional_recebimentos.php'],
-            ['title' => 'Minha Conta', 'path' => '/my_account.php'],
         ];
+        // Agendamentos - controlado por feature flag
+        if ((string)admin_setting_get('feature.profissional_acesso_agendamentos', '0') === '1') {
+            $menuItems[] = ['title' => 'Agendamentos', 'path' => '/profissional_agendamentos.php'];
+        }
+        // Recebimentos - controlado por feature flag
+        if ((string)admin_setting_get('feature.profissional_acesso_recebimentos', '0') === '1') {
+            $menuItems[] = ['title' => 'Recebimentos', 'path' => '/profissional_recebimentos.php'];
+        }
+        $menuItems[] = ['title' => 'Minha Conta', 'path' => '/my_account.php'];
     } else {
         // Buscar permissoes do usuario para filtrar menu
         $userPerms = [];

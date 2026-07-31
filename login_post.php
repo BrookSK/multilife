@@ -101,6 +101,23 @@ if (!password_verify($password, (string)$user['password_hash'])) {
     exit;
 }
 
+// Verificar se profissional pode acessar (feature flag)
+$loginUserRoles = [];
+try {
+    $rStmt = db()->prepare("SELECT r.slug FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?");
+    $rStmt->execute([$user['id']]);
+    $loginUserRoles = $rStmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {}
+
+$isOnlyProfessional = in_array('profissional', $loginUserRoles, true) && count($loginUserRoles) === 1;
+if ($isOnlyProfessional) {
+    $portalAtivo = (string)admin_setting_get('feature.portal_profissional_ativo', '0');
+    if ($portalAtivo !== '1') {
+        header('Location: /login.php?error=' . urlencode('O portal do profissional ainda nao esta disponivel. Em breve voce tera acesso.') . '&email=' . urlencode($email));
+        exit;
+    }
+}
+
 auth_login((int)$user['id']);
 header('Location: /dashboard.php');
 exit;
