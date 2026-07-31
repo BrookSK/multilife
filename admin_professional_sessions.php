@@ -113,7 +113,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $cleanPhone = preg_replace('/\D+/', '', $profPhone);
                 if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
                 if (strlen($cleanPhone) >= 12) {
-                    $api = new EvolutionApiV1();
+                    // Usar mesma logica do dispatcher para encontrar instancia conectada
+                    $api = null;
+                    try {
+                        // Tentar instancias conectadas
+                        $instStmt = $db->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' ORDER BY CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC, is_default DESC, id ASC");
+                        $instStmt->execute();
+                        $instList = $instStmt->fetchAll(PDO::FETCH_COLUMN);
+                        $wBaseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+                        $wApiKey = (string)admin_setting_get('evolution.api_key', '');
+                        foreach ($instList as $instName) {
+                            if ($instName === '' || $wBaseUrl === '') continue;
+                            try {
+                                $tryApi = new EvolutionApiV1($wBaseUrl, $wApiKey, $instName);
+                                $connState = $tryApi->connectionState();
+                                $state = strtolower(trim((string)($connState['json']['instance']['state'] ?? ($connState['json']['state'] ?? ''))));
+                                if (in_array($state, ['open', 'connected'], true)) {
+                                    $api = $tryApi;
+                                    break;
+                                }
+                            } catch (Throwable $e) { continue; }
+                        }
+                    } catch (Throwable $e) {}
+
+                    // Fallback: instancia padrao
+                    if ($api === null) { $api = new EvolutionApiV1(); }
+
                     $msg = "📋 *Documentos das Sessoes*\n\nOla, " . $profName . "!\n\nA equipe enviou os seguintes documentos:\n";
                     foreach ($uploadedFiles as $uf) {
                         $msg .= "\n📄 *" . $uf['label'] . "*\n" . $baseUrl . $uf['file_path'] . "\n";
@@ -121,8 +146,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     if ($docNotes !== '') { $msg .= "\n📝 _" . $docNotes . "_"; }
                     $msg .= "\n\nDocumentos disponiveis tambem no Portal do Profissional.";
                     $res = $api->sendText($cleanPhone, $msg);
-                    $stWhats = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
-                    if ($stWhats === 'falha') { error_log("[ADMIN_SESSIONS] WhatsApp response: " . json_encode($res)); }
+                    $httpCode = (int)($res['status'] ?? 0);
+                    $stWhats = ($httpCode >= 200 && $httpCode < 300) ? 'enviado' : 'falha';
+                    if ($stWhats === 'falha') { error_log("[ADMIN_SESSIONS] WhatsApp falha HTTP=$httpCode phone=$cleanPhone response=" . json_encode($res['json'] ?? $res['body_raw'] ?? '')); }
                 }
             } catch (Throwable $e) { $stWhats = 'falha'; error_log("[ADMIN_SESSIONS] Erro WhatsApp: " . $e->getMessage()); }
         }
