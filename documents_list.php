@@ -25,12 +25,11 @@ if ($tab === 'sent') {
     $sub = isset($_GET['sub']) ? (string)$_GET['sub'] : 'documentos';
     if (!in_array($sub, ['documentos', 'enviar', 'historico'], true)) { $sub = 'documentos'; }
 
-    // POST envio manual
+    // POST envio manual - envia por TODOS os canais (email + portal + whatsapp)
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_manual_doc') {
         $rt = trim((string)($_POST['recipient_type'] ?? ''));
         $ri = (int)($_POST['recipient_id'] ?? 0);
         $hi = (int)($_POST['health_insurer_id'] ?? 0);
-        $sm = trim((string)($_POST['send_method'] ?? 'email'));
         $nt = trim((string)($_POST['notes'] ?? ''));
         if ($ri > 0 && $rt !== '' && isset($_FILES['document']) && $_FILES['document']['error'] === UPLOAD_ERR_OK) {
             $fn = $_FILES['document']['name'];
@@ -43,14 +42,21 @@ if ($tab === 'sent') {
                     $rp = '/uploads/manual_docs/' . $un;
                     $re = '';
                     $rn = '';
+                    $rPhone = '';
                     try {
-                        if ($rt === 'professional') { $s = db()->prepare("SELECT name, email FROM users WHERE id = ?"); $s->execute([$ri]); $row = $s->fetch(PDO::FETCH_ASSOC); $re = (string)($row['email'] ?? ''); $rn = (string)($row['name'] ?? ''); }
-                        else { $s = db()->prepare("SELECT full_name, email FROM patients WHERE id = ?"); $s->execute([$ri]); $row = $s->fetch(PDO::FETCH_ASSOC); $re = (string)($row['email'] ?? ''); $rn = (string)($row['full_name'] ?? ''); }
+                        if ($rt === 'professional') { $s = db()->prepare("SELECT name, email, phone FROM users WHERE id = ?"); $s->execute([$ri]); $row = $s->fetch(PDO::FETCH_ASSOC); $re = (string)($row['email'] ?? ''); $rn = (string)($row['name'] ?? ''); $rPhone = (string)($row['phone'] ?? ''); }
+                        else { $s = db()->prepare("SELECT full_name, email, whatsapp FROM patients WHERE id = ?"); $s->execute([$ri]); $row = $s->fetch(PDO::FETCH_ASSOC); $re = (string)($row['email'] ?? ''); $rn = (string)($row['full_name'] ?? ''); $rPhone = (string)($row['whatsapp'] ?? ''); }
                     } catch (Throwable $e) {}
-                    if ($sm === 'email' && $re !== '' && filter_var($re, FILTER_VALIDATE_EMAIL)) {
+
+                    $statusEmail = 'pendente';
+                    $statusPortal = 'enviado';
+                    $statusWhatsapp = 'pendente';
+                    $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
+
+                    // 1. ENVIO POR E-MAIL
+                    if ($re !== '' && filter_var($re, FILTER_VALIDATE_EMAIL)) {
                         try {
                             require_once __DIR__ . '/app/email_base_template.php';
-                            $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
                             $docIcon = preg_match('/\.pdf$/i', $fn) ? '📄' : (preg_match('/\.(doc|docx)$/i', $fn) ? '📝' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $fn) ? '🖼️' : '📎'));
                             $body = '<p style="font-size:15px;color:#374151">Olá, <strong>' . htmlspecialchars($rn) . '</strong>!</p>';
                             $body .= '<p style="font-size:14px;color:#4b5563">A equipe MultiLife Care enviou um documento complementar para o seu atendimento.</p>';
@@ -64,10 +70,44 @@ if ($tab === 'sent') {
                             $htmlBody = email_base_layout('Documento Complementar Enviado', $body);
                             $smtp = new SmtpClient();
                             $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Documento Complementar - ' . $fn, $htmlBody);
-                        } catch (Throwable $e) {}
+                            $statusEmail = 'enviado';
+                        } catch (Throwable $e) { $statusEmail = 'falha'; }
+                    } else { $statusEmail = 'falha'; }
+
+                    // 2. PORTAL - sempre disponivel (o registro no document_send_logs ja garante)
+                    $statusPortal = 'enviado';
+
+                    // 3. ENVIO POR WHATSAPP
+                    if ($rPhone !== '') {
+                        try {
+                            $cleanPhone = preg_replace('/\D+/', '', $rPhone);
+                            if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
+                            if (strlen($cleanPhone) >= 12) {
+                                $api = new EvolutionApiV1();
+                                $whatsMsg = "📎 *Documento Complementar*\n\nOlá, " . $rn . "!\n\nA equipe MultiLife Care enviou um documento complementar:\n\n📄 *" . $fn . "*\n" . $baseUrl . $rp;
+                                if ($nt !== '') { $whatsMsg .= "\n\n📝 _" . $nt . "_"; }
+                                $whatsMsg .= "\n\nEste documento também está disponível no Portal do Profissional.";
+                                $jid = $cleanPhone . '@s.whatsapp.net';
+                                $res = $api->sendText($jid, $whatsMsg);
+                                $statusWhatsapp = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
+                            } else { $statusWhatsapp = 'falha'; }
+                        } catch (Throwable $e) { $statusWhatsapp = 'falha'; }
+                    } else { $statusWhatsapp = 'falha'; }
+
+                    // Registrar no log (todos os canais)
+                    try { db()->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, health_insurer_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual',?,?,?,?,?,?,?,?,?)")->execute([$rt, $ri, $re, $hi > 0 ? $hi : null, 'todos', auth_user_id(), $fn, $rp, $nt]); } catch (Throwable $e) {}
+
+                    // Mensagem de resultado
+                    $resultParts = [];
+                    $resultParts[] = 'E-mail: ' . ($statusEmail === 'enviado' ? '✅' : '❌');
+                    $resultParts[] = 'Portal: ' . ($statusPortal === 'enviado' ? '✅' : '❌');
+                    $resultParts[] = 'WhatsApp: ' . ($statusWhatsapp === 'enviado' ? '✅' : '❌');
+                    $allOk = ($statusEmail === 'enviado' && $statusWhatsapp === 'enviado');
+                    if ($allOk) {
+                        flash_set('success', 'Documento enviado por todos os canais! ' . implode(' | ', $resultParts));
+                    } else {
+                        flash_set('success', 'Documento processado. ' . implode(' | ', $resultParts));
                     }
-                    try { db()->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, health_insurer_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual',?,?,?,?,?,?,?,?,?)")->execute([$rt, $ri, $re, $hi > 0 ? $hi : null, $sm, auth_user_id(), $fn, $rp, $nt]); } catch (Throwable $e) {}
-                    flash_set('success', 'Documento enviado com sucesso!');
                     header('Location: /documents_list.php?tab=sent&sub=enviar');
                     exit;
                 }
@@ -182,10 +222,10 @@ if ($tab === 'sent') {
         echo '<div class="col6"><label>Operadora<select name="health_insurer_id"><option value="0">Nenhuma</option>';
         foreach ($insurers as $i) { echo '<option value="' . (int)$i['id'] . '">' . htmlspecialchars($i['name']) . '</option>'; }
         echo '</select></label></div>';
-        echo '<div class="col6"><label>Metodo *<select name="send_method" required><option value="email">E-mail</option><option value="portal">Portal</option></select></label></div>';
         echo '<div class="col12"><label>Arquivo *<input type="file" name="document" required accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"></label></div>';
         echo '<div class="col12"><label>Observacao<input name="notes" placeholder="Motivo do envio..."></label></div>';
         echo '</div>';
+        echo '<div style="margin-top:8px;padding:12px;background:#f0f9ff;border-radius:8px;font-size:12px;color:#0369a1">📡 O documento será enviado automaticamente por <strong>E-mail</strong>, <strong>Portal do Profissional</strong> e <strong>WhatsApp</strong>.</div>';
         echo '<div style="margin-top:16px"><button type="submit" class="btn btnPrimary">Enviar Documento</button></div>';
         echo '</form>';
         echo '</section>';
