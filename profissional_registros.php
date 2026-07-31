@@ -327,61 +327,49 @@ if (!empty($insurerDocsList) || !empty($manualDocsForProf)) {
         echo '</div>';
         echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:14px">Documentos enviados pela equipe administrativa.</div>';
 
-        // Campo de busca
-        echo '<input type="text" id="docSearch" placeholder="Buscar por nome, atendimento ou sessao..." oninput="filterDocs()" style="width:100%;margin-bottom:16px;padding:10px 14px;border:1px solid hsl(var(--border));border-radius:8px;font-size:13px">';
-
-        // Agrupar por atendimento (extrair do notes)
+        // Agrupar por atendimento e sessao
         $grouped = [];
         foreach ($manualDocsForProf as $doc) {
             $notes = (string)($doc['notes'] ?? '');
-            $groupKey = 'Outros Documentos';
+            $atendKey = 'Outros Documentos';
+            $sessKey = 'Geral';
             if (preg_match('/Atendimento #(\d+)/i', $notes, $m)) {
-                $groupKey = 'Atendimento #' . $m[1];
-                if (preg_match('/Sessao #(\d+)/i', $notes)) {
-                    // Manter no grupo do atendimento
-                }
-            } elseif (stripos($notes, 'Ficha de') !== false) {
-                $groupKey = 'Fichas de Sessao';
+                $atendKey = 'Atendimento #' . $m[1];
             }
-            $grouped[$groupKey][] = $doc;
+            if (preg_match('/Sessao #?(\d+)/i', $notes, $sm)) {
+                $sessKey = 'Sessao ' . $sm[1];
+            }
+            $grouped[$atendKey][$sessKey][] = $doc;
         }
 
-        echo '<div id="docsContainer">';
-        $groupIdx = 0;
-        foreach ($grouped as $groupName => $docs) {
-            $groupIdx++;
-            echo '<div class="docGroup" style="margin-bottom:12px;border:1px solid hsl(var(--border));border-radius:8px;overflow:hidden">';
-            echo '<div onclick="toggleGroup(this)" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
-            echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($groupName) . ' <span style="font-weight:400;color:hsl(var(--muted-foreground))">(' . count($docs) . ')</span></div>';
-            echo '<span style="font-size:11px;color:hsl(var(--muted-foreground));transition:transform .2s" class="groupArrow">▼</span>';
+        echo '<div>';
+        foreach ($grouped as $atendName => $sessions) {
+            $totalAtend = 0;
+            foreach ($sessions as $docs) { $totalAtend += count($docs); }
+            echo '<div style="margin-bottom:8px;border:1px solid hsl(var(--border));border-radius:8px;overflow:hidden">';
+            echo '<div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=this.nextElementSibling.style.display===\'none\'?\'▶\':\'▼\'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
+            echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($atendName) . ' <span style="font-weight:400;color:hsl(var(--muted-foreground))">(' . $totalAtend . ')</span></div>';
+            echo '<span style="font-size:11px;color:hsl(var(--muted-foreground))">▶</span>';
             echo '</div>';
-            echo '<div class="groupContent" style="display:' . ($groupIdx <= 2 ? 'block' : 'none') . ';padding:8px">';
-            foreach ($docs as $doc) {
-                $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $doc['file_name']) ? '🖼️' : '📎');
-                $sessInfo = '';
-                if (preg_match('/Sessao #?(\d+)/i', (string)($doc['notes'] ?? ''), $sm)) { $sessInfo = 'Sessao ' . $sm[1]; }
-                $typeInfo = '';
-                if (stripos((string)($doc['notes'] ?? ''), 'Evolucao') !== false) { $typeInfo = 'Ficha de Evolucao'; }
-                elseif (stripos((string)($doc['notes'] ?? ''), 'Produtividade') !== false) { $typeInfo = 'Ficha de Produtividade'; }
+            echo '<div style="display:none;padding:4px 8px">';
 
-                echo '<a href="' . h($doc['file_path']) . '" target="_blank" class="docItem" data-search="' . h(strtolower($doc['file_name'] . ' ' . ($doc['notes'] ?? '') . ' ' . $typeInfo . ' ' . $sessInfo)) . '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px;transition:background .15s">';
-                echo '<span style="flex-shrink:0">' . $icon . '</span>';
-                echo '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . h($doc['file_name']) . '</span>';
-                if ($typeInfo !== '') { echo '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:hsl(var(--accent));color:hsl(var(--accent-foreground));white-space:nowrap">' . $typeInfo . '</span>'; }
-                if ($sessInfo !== '') { echo '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;white-space:nowrap">' . $sessInfo . '</span>'; }
-                echo '<span style="flex-shrink:0;font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
-                echo '</a>';
+            foreach ($sessions as $sessName => $docs) {
+                if ($sessName !== 'Geral' || count($sessions) > 1) {
+                    echo '<div style="margin:8px 0 4px 8px;font-size:12px;font-weight:600;color:hsl(var(--muted-foreground))">' . h($sessName) . '</div>';
+                }
+                foreach ($docs as $doc) {
+                    $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $doc['file_name']) ? '🖼️' : '📎');
+                    echo '<a href="' . h($doc['file_path']) . '" target="_blank" style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin:2px 0;border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px">';
+                    echo '<span>' . $icon . '</span>';
+                    echo '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . h($doc['file_name']) . '</span>';
+                    echo '<span style="flex-shrink:0;font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
+                    echo '</a>';
+                }
             }
             echo '</div>';
             echo '</div>';
         }
         echo '</div>';
-
-        // JS para busca e accordion
-        echo '<script>';
-        echo 'function filterDocs(){var q=document.getElementById("docSearch").value.toLowerCase();var items=document.querySelectorAll(".docItem");items.forEach(function(el){el.style.display=el.getAttribute("data-search").indexOf(q)>=0?"flex":"none"});}';
-        echo 'function toggleGroup(el){var c=el.nextElementSibling;var a=el.querySelector(".groupArrow");if(c.style.display==="none"){c.style.display="block";a.style.transform="rotate(0)";}else{c.style.display="none";a.style.transform="rotate(-90deg)";}}';
-        echo '</script>';
         echo '</div>';
     }
     
@@ -391,24 +379,50 @@ if (!empty($insurerDocsList) || !empty($manualDocsForProf)) {
 // Documentos enviados manualmente (exibir mesmo se não houver docs da operadora)
 if (!empty($manualDocsForProf) && empty($insurerDocsList)) {
     echo '<section class="card col12">';
-    echo '<h3>Documentos Recebidos</h3>';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    echo '<h3 style="margin:0">Documentos Recebidos</h3>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground))">' . count($manualDocsForProf) . ' documento(s)</div>';
+    echo '</div>';
     echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:14px">Documentos enviados pela equipe administrativa.</div>';
 
-    echo '<input type="text" id="docSearch2" placeholder="Buscar..." oninput="filterDocs2()" style="width:100%;margin-bottom:14px;padding:10px 14px;border:1px solid hsl(var(--border));border-radius:8px;font-size:13px">';
-
-    echo '<div style="display:flex;flex-direction:column;gap:4px" id="docsContainer2">';
+    // Mesma estrutura de agrupamento
+    $grouped2 = [];
     foreach ($manualDocsForProf as $doc) {
-        $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $doc['file_name']) ? '🖼️' : '📎');
-        $searchData = strtolower($doc['file_name'] . ' ' . ($doc['notes'] ?? ''));
-        echo '<a href="' . h($doc['file_path']) . '" target="_blank" class="docItem2" data-s="' . h($searchData) . '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:hsl(var(--secondary));border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px">';
-        echo '<span>' . $icon . '</span>';
-        echo '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . h($doc['file_name']) . '</span>';
-        if (!empty($doc['notes'])) { echo '<span style="font-size:10px;color:hsl(var(--muted-foreground))">' . h(mb_strimwidth($doc['notes'], 0, 40, '...')) . '</span>'; }
-        echo '<span style="font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
-        echo '</a>';
+        $notes = (string)($doc['notes'] ?? '');
+        $atendKey = 'Outros Documentos';
+        $sessKey = 'Geral';
+        if (preg_match('/Atendimento #(\d+)/i', $notes, $m)) { $atendKey = 'Atendimento #' . $m[1]; }
+        if (preg_match('/Sessao #?(\d+)/i', $notes, $sm)) { $sessKey = 'Sessao ' . $sm[1]; }
+        $grouped2[$atendKey][$sessKey][] = $doc;
+    }
+
+    echo '<div>';
+    foreach ($grouped2 as $atendName => $sessions) {
+        $totalAtend = 0;
+        foreach ($sessions as $docs) { $totalAtend += count($docs); }
+        echo '<div style="margin-bottom:8px;border:1px solid hsl(var(--border));border-radius:8px;overflow:hidden">';
+        echo '<div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=this.nextElementSibling.style.display===\'none\'?\'▶\':\'▼\'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:hsl(var(--secondary));cursor:pointer;user-select:none">';
+        echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">' . h($atendName) . ' <span style="font-weight:400;color:hsl(var(--muted-foreground))">(' . $totalAtend . ')</span></div>';
+        echo '<span style="font-size:11px;color:hsl(var(--muted-foreground))">▶</span>';
+        echo '</div>';
+        echo '<div style="display:none;padding:4px 8px">';
+        foreach ($sessions as $sessName => $docs) {
+            if ($sessName !== 'Geral' || count($sessions) > 1) {
+                echo '<div style="margin:8px 0 4px 8px;font-size:12px;font-weight:600;color:hsl(var(--muted-foreground))">' . h($sessName) . '</div>';
+            }
+            foreach ($docs as $doc) {
+                $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(jpg|jpeg|png|webp)$/i', $doc['file_name']) ? '🖼️' : '📎');
+                echo '<a href="' . h($doc['file_path']) . '" target="_blank" style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin:2px 0;border-radius:6px;text-decoration:none;color:hsl(var(--foreground));font-size:13px">';
+                echo '<span>' . $icon . '</span>';
+                echo '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' . h($doc['file_name']) . '</span>';
+                echo '<span style="flex-shrink:0;font-size:11px;color:hsl(var(--primary))">Abrir ↗</span>';
+                echo '</a>';
+            }
+        }
+        echo '</div>';
+        echo '</div>';
     }
     echo '</div>';
-    echo '<script>function filterDocs2(){var q=document.getElementById("docSearch2").value.toLowerCase();document.querySelectorAll(".docItem2").forEach(function(el){el.style.display=el.getAttribute("data-s").indexOf(q)>=0?"flex":"none";});}</script>';
     echo '</section>';
 }
 
