@@ -8,7 +8,90 @@ $db = db();
 
 // Profissional selecionado
 $profId = isset($_GET['prof_id']) ? (int)$_GET['prof_id'] : 0;
+if ($profId === 0 && isset($_POST['prof_id'])) { $profId = (int)$_POST['prof_id']; }
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+
+// POST: Envio de fichas de sessao
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_session_docs' && $profId > 0) {
+    $docNotes = trim((string)($_POST['doc_notes'] ?? ''));
+    $filesProcessed = 0;
+    $results = [];
+
+    // Buscar dados do profissional
+    $profRow = $db->prepare("SELECT name, email, phone FROM users WHERE id = ?");
+    $profRow->execute([$profId]);
+    $profInfo = $profRow->fetch(PDO::FETCH_ASSOC);
+    $profName = (string)($profInfo['name'] ?? '');
+    $profEmail = (string)($profInfo['email'] ?? '');
+    $profPhone = (string)($profInfo['phone'] ?? '');
+    $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
+
+    $fileFields = ['ficha_evolucao' => 'Ficha de Evolucao', 'ficha_produtividade' => 'Ficha de Produtividade'];
+
+    foreach ($fileFields as $fieldName => $label) {
+        if (!isset($_FILES[$fieldName]) || $_FILES[$fieldName]['error'] !== UPLOAD_ERR_OK) { continue; }
+        $file = $_FILES[$fieldName];
+        $fn = $file['name'];
+        $ext = strtolower(pathinfo($fn, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['pdf','jpg','jpeg','png','webp','heic','heif'], true) || $file['size'] > 10485760) { continue; }
+
+        $dir = __DIR__ . '/uploads/manual_docs/';
+        if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+        $un = time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        if (!move_uploaded_file($file['tmp_name'], $dir . $un)) { continue; }
+        $rp = '/uploads/manual_docs/' . $un;
+        $filesProcessed++;
+
+        $stEmail = 'pendente'; $stWhats = 'pendente';
+        $noteText = $label . ($docNotes !== '' ? ' - ' . $docNotes : '');
+
+        // E-mail
+        if ($profEmail !== '' && filter_var($profEmail, FILTER_VALIDATE_EMAIL)) {
+            try {
+                require_once __DIR__ . '/app/email_base_template.php';
+                $body = '<p style="font-size:15px;color:#374151">Ola, <strong>' . htmlspecialchars($profName) . '</strong>!</p>';
+                $body .= '<p style="font-size:14px;color:#4b5563">Segue <strong>' . $label . '</strong> enviada pela equipe administrativa.</p>';
+                $body .= '<div style="background:#f9fafb;padding:20px;margin:20px 0;border-radius:10px;border:1px solid #e5e7eb">';
+                $body .= '<p style="margin:6px 0;font-size:14px">📄 <a href="' . $baseUrl . $rp . '" style="color:#0284c7;font-weight:600">' . htmlspecialchars($fn) . '</a></p>';
+                if ($docNotes !== '') { $body .= '<p style="margin:10px 0 0;font-size:13px;color:#6b7280"><strong>Obs:</strong> ' . htmlspecialchars($docNotes) . '</p>'; }
+                $body .= '</div>';
+                $body .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
+                $htmlBody = email_base_layout($label, $body);
+                $smtp = new SmtpClient();
+                $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $profEmail, $label . ' - ' . $fn, $htmlBody);
+                $stEmail = 'enviado';
+            } catch (Throwable $e) { $stEmail = 'falha'; }
+        }
+
+        // WhatsApp
+        if ($profPhone !== '') {
+            try {
+                $cleanPhone = preg_replace('/\D+/', '', $profPhone);
+                if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
+                if (strlen($cleanPhone) >= 12) {
+                    $api = new EvolutionApiV1();
+                    $msg = "📋 *" . $label . "*\n\nOla, " . $profName . "!\n\nSegue documento enviado pela equipe:\n\n📄 " . $fn . "\n" . $baseUrl . $rp;
+                    if ($docNotes !== '') { $msg .= "\n\n📝 _" . $docNotes . "_"; }
+                    $res = $api->sendText($cleanPhone . '@s.whatsapp.net', $msg);
+                    $stWhats = (isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300) ? 'enviado' : 'falha';
+                }
+            } catch (Throwable $e) { $stWhats = 'falha'; }
+        }
+
+        // Registrar log
+        try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, auth_user_id(), $fn, $rp, $noteText]); } catch (Throwable $e) {}
+
+        $results[] = $label . ': E-mail ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | WhatsApp ' . ($stWhats === 'enviado' ? '✅' : '❌');
+    }
+
+    if ($filesProcessed > 0) {
+        flash_set('success', 'Documento(s) enviado(s)! ' . implode(' — ', $results));
+    } else {
+        flash_set('error', 'Selecione pelo menos um arquivo para enviar.');
+    }
+    header('Location: /admin_professional_sessions.php?prof_id=' . $profId);
+    exit;
+}
 
 // Buscar lista de profissionais
 $profs = [];
@@ -227,6 +310,40 @@ if ($profData) {
             echo '</div>';
         }
     }
+    echo '</section>';
+
+    // === SEÇÃO: Documentos das Sessões (Envio de Fichas) ===
+    echo '<section class="card col12">';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+    echo '<div style="font-size:16px;font-weight:700">Documentos das Sessoes</div>';
+    echo '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Envie Fichas de Evolucao e Fichas de Produtividade diretamente ao profissional. Os documentos serao enviados por E-mail, Portal e WhatsApp.</div>';
+
+    echo '<form method="post" action="/admin_professional_sessions.php?prof_id=' . $profId . '" enctype="multipart/form-data">';
+    echo '<input type="hidden" name="action" value="send_session_docs">';
+    echo '<input type="hidden" name="prof_id" value="' . $profId . '">';
+
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+
+    echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:10px">';
+    echo '<div style="font-size:14px;font-weight:700;margin-bottom:8px">📋 Ficha de Evolucao</div>';
+    echo '<input type="file" name="ficha_evolucao" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif" style="width:100%;font-size:13px">';
+    echo '</div>';
+
+    echo '<div style="padding:16px;border:1px solid hsl(var(--border));border-radius:10px">';
+    echo '<div style="font-size:14px;font-weight:700;margin-bottom:8px">📊 Ficha de Produtividade</div>';
+    echo '<input type="file" name="ficha_produtividade" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif" style="width:100%;font-size:13px">';
+    echo '</div>';
+
+    echo '</div>';
+
+    echo '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Observacao (opcional)</label><input name="doc_notes" placeholder="Referente a sessao X, complemento..." style="width:100%"></div>';
+
+    echo '<div style="display:flex;align-items:center;gap:12px">';
+    echo '<button type="submit" class="btn btnPrimary">Enviar Documentos</button>';
+    echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Envio automatico por E-mail, Portal e WhatsApp</span>';
+    echo '</div>';
+    echo '</form>';
     echo '</section>';
 
     // Documentos da Operadora enviados ao profissional
