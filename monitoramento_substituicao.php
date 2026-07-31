@@ -97,7 +97,7 @@ echo '<div class="grid">';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Paciente:</strong> ' . h((string)$assignment['patient_name']) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Profissional atual:</strong> ' . h((string)($assignment['professional_name'] ?? '-')) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Especialidade:</strong> ' . h((string)($assignment['specialty'] ?? $assignment['service_type'] ?? '-')) . '</div></div>';
-echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequência:</strong> ' . h((string)($assignment['session_frequency'] ?? '-')) . '</div></div>';
+echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequência:</strong> ' . h(function_exists('frequency_translate') ? frequency_translate((string)($assignment['session_frequency'] ?? '-')) : (string)($assignment['session_frequency'] ?? '-')) . '</div></div>';
 echo '</div>';
 echo '</section>';
 

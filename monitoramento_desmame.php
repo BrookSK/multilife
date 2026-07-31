@@ -69,7 +69,7 @@ echo '<div class="grid">';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Paciente:</strong> ' . h((string)$assignment['patient_name']) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Profissional:</strong> ' . h((string)($assignment['professional_name'] ?? '-')) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Especialidade:</strong> ' . h((string)($assignment['specialty'] ?? $assignment['service_type'] ?? '-')) . '</div></div>';
-echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequência atual:</strong> ' . h((string)($assignment['session_frequency'] ?? 'Não definida')) . '</div></div>';
+echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequência atual:</strong> ' . h(function_exists('frequency_translate') ? frequency_translate((string)($assignment['session_frequency'] ?? 'Não definida')) : (string)($assignment['session_frequency'] ?? 'Não definida')) . '</div></div>';
 echo '<div class="col6"><div class="pill" style="display:block"><strong>Qtd. Sessões:</strong> ' . (int)($assignment['session_quantity'] ?? 0) . '</div></div>';
 echo '</div>';
 echo '</section>';

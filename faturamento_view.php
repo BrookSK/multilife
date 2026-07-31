@@ -144,7 +144,7 @@ echo '<tr><td style="font-weight:600;padding:8px 0">Profissional:</td><td>' . h(
 echo '<tr><td style="font-weight:600;padding:8px 0">Especialidade:</td><td>' . h($assignment['specialty'] ?? '-') . '</td></tr>';
 echo '<tr><td style="font-weight:600;padding:8px 0">Tipo de Serviço:</td><td>' . h($assignment['service_type'] ?? '-') . '</td></tr>';
 echo '<tr><td style="font-weight:600;padding:8px 0">Quantidade de Sessões:</td><td>' . (int)$assignment['session_quantity'] . '</td></tr>';
-echo '<tr><td style="font-weight:600;padding:8px 0">Frequência:</td><td>' . h($assignment['session_frequency'] ?? '-') . '</td></tr>';
+echo '<tr><td style="font-weight:600;padding:8px 0">Frequência:</td><td>' . h(function_exists('frequency_translate') ? frequency_translate($assignment['session_frequency'] ?? '-') : ($assignment['session_frequency'] ?? '-')) . '</td></tr>';
 echo '<tr><td style="font-weight:600;padding:8px 0">Status:</td><td><span class="pill">' . h($assignment['status']) . '</span></td></tr>';
 echo '</table>';
 echo '</section>';

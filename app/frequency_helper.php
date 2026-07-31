@@ -88,7 +88,24 @@ function frequency_get_weekdays(string $frequencyCode): array
  */
 function frequency_get_label(string $frequencyCode): string
 {
-    return FREQUENCY_LABELS[$frequencyCode] ?? $frequencyCode;
+    return FREQUENCY_LABELS[$frequencyCode] ?? frequency_translate($frequencyCode);
+}
+
+/**
+ * Traduz termos de frequência em inglês para português.
+ */
+function frequency_translate(string $value): string
+{
+    $translations = [
+        'daily' => 'Diário',
+        'weekly' => 'Semanal',
+        'biweekly' => 'Quinzenal',
+        'monthly' => 'Mensal',
+        'single' => 'Único',
+        'custom' => 'Personalizado',
+        'yearly' => 'Anual',
+    ];
+    return $translations[strtolower(trim($value))] ?? $value;
 }
 
 /**

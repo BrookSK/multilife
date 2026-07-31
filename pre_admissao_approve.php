@@ -427,7 +427,7 @@ try {
                 $body .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
                 $body .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Atendimento</h3>';
                 $body .= email_data_row('Sessões', ($assignment['session_quantity'] ?? '') . ' sessões');
-                $body .= email_data_row('Frequência', $assignment['session_frequency'] ?? '');
+                $body .= email_data_row('Frequência', frequency_translate($assignment['session_frequency'] ?? ''));
                 $body .= '</div>';
                 
                 $body .= email_divider();
@@ -474,7 +474,10 @@ try {
                 
                 $patName = $assignment['patient_name'] ?? 'Paciente';
                 $sessQty = $assignment['session_quantity'] ?? 0;
-                $sessFreq = $assignment['session_frequency'] ?? '';
+                $sessFreqRaw = $assignment['session_frequency'] ?? '';
+                // Traduzir frequência para português
+                $freqTranslations = ['daily' => 'Diário', 'weekly' => 'Semanal', 'biweekly' => 'Quinzenal', 'monthly' => 'Mensal', 'single' => 'Único', 'custom' => 'Personalizado'];
+                $sessFreq = $freqTranslations[$sessFreqRaw] ?? $sessFreqRaw;
                 $payVal = (float)($assignment['payment_value'] ?? 0);
                 
                 $pBody = '<p style="font-size:15px;color:#374151">Olá, <strong>' . htmlspecialchars($profNameForEmail) . '</strong>!</p>';
@@ -561,7 +564,6 @@ try {
                 }
                 
                 $pBody .= email_divider();
-                $pBody .= '<p style="font-size:14px;color:#374151">Por favor, entre em contato com o paciente para alinhar o início do atendimento.</p>';
                 $pBody .= '<p style="font-size:14px;color:#6b7280;margin-top:20px">Atenciosamente,<br><strong style="color:#00a884">Equipe MultiLife Care</strong></p>';
                 
                 $pHtml = email_base_layout('Atendimento Aprovado', $pBody);
