@@ -44,14 +44,13 @@ function view_header(string $title): void
         $menuItems = [
             ['title' => 'Meus Registros', 'path' => '/profissional_registros.php'],
         ];
-        // Agendamentos - controlado por feature flag
         if ((string)admin_setting_get('feature.profissional_acesso_agendamentos', '0') === '1') {
             $menuItems[] = ['title' => 'Agendamentos', 'path' => '/profissional_agendamentos.php'];
         }
-        // Recebimentos - controlado por feature flag
         if ((string)admin_setting_get('feature.profissional_acesso_recebimentos', '0') === '1') {
             $menuItems[] = ['title' => 'Recebimentos', 'path' => '/profissional_recebimentos.php'];
         }
+        $menuItems[] = ['title' => 'WhatsApp', 'path' => '/my_whatsapp.php'];
         $menuItems[] = ['title' => 'Minha Conta', 'path' => '/my_account.php'];
     } else {
         // Buscar permissoes do usuario para filtrar menu
@@ -82,6 +81,7 @@ function view_header(string $title): void
             ['title' => 'Usuários', 'path' => '/users_list.php', 'perm' => 'users.manage'],
             ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php', 'perm' => 'chat.manage'],
             ['title' => 'Pendências', 'path' => '/pending_items_list.php', 'perm' => null],
+            ['title' => 'WhatsApp', 'path' => '/my_whatsapp.php', 'perm' => null],
             ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php', 'perm' => 'admin.settings.manage'],
             ['title' => 'Configurações', 'path' => '/admin_settings.php', 'perm' => 'admin.settings.manage'],
         ];
