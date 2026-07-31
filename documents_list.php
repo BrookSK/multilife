@@ -71,15 +71,18 @@ if ($tab === 'sent') {
                             $htmlBody = email_base_layout('Documento Complementar Enviado', $body);
                             // Threading - buscar Message-ID original do profissional
                             $threadMsgId = null;
+                            $threadPatientName = '';
                             if ($rt === 'professional' && $ri > 0) {
                                 try {
-                                    $thS = db()->prepare("SELECT ar.sent_message_id FROM authorization_requests ar INNER JOIN patient_assignments pa ON pa.demand_id = ar.demand_id WHERE pa.professional_user_id = ? AND ar.sent_message_id IS NOT NULL ORDER BY ar.id DESC LIMIT 1");
+                                    $thS = db()->prepare("SELECT ar.sent_message_id, p.full_name FROM authorization_requests ar INNER JOIN patient_assignments pa ON pa.demand_id = ar.demand_id INNER JOIN patients p ON p.id = ar.patient_id WHERE pa.professional_user_id = ? AND ar.sent_message_id IS NOT NULL ORDER BY ar.id DESC LIMIT 1");
                                     $thS->execute([$ri]);
-                                    $threadMsgId = $thS->fetchColumn() ?: null;
+                                    $thRow = $thS->fetch(PDO::FETCH_ASSOC);
+                                    if ($thRow) { $threadMsgId = $thRow['sent_message_id']; $threadPatientName = (string)($thRow['full_name'] ?? ''); }
                                 } catch (Throwable $e) {}
                             }
+                            $threadSubject = $threadPatientName !== '' ? 'Re: Proposta de Atendimento - ' . $threadPatientName : 'Re: Proposta de Atendimento';
                             $smtp = new SmtpClient();
-                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, 'Re: Proposta de Atendimento', $htmlBody, $threadMsgId, $threadMsgId);
+                            $smtp->send((string)admin_setting_get('smtp.out.from_email', ''), (string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'), $re, $threadSubject, $htmlBody, $threadMsgId, $threadMsgId);
                             $statusEmail = 'enviado';
                         } catch (Throwable $e) { $statusEmail = 'falha'; }
                     } else { $statusEmail = 'falha'; }
