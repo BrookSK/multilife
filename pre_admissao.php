@@ -461,12 +461,12 @@ if ($selected) {
         }
     }
     echo '</select></label>';
-    echo '<label>Sessões por Semana *<input type="number" name="sessions_per_week" id="paSessionsPerWeek" form="approveForm" min="1" max="7" value="' . $preSessionsPerWeek . '" required></label>';
+    echo '<input type="hidden" name="sessions_per_week" form="approveForm" value="' . $preSessionsPerWeek . '">';
     echo '</div>';
     
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
     echo '<label>Duração (semanas) *<input type="number" name="duration_weeks" id="paDurationWeeks" form="approveForm" min="1" value="' . ($preDurationWeeks ?: '') . '" required></label>';
-    echo '<label>Total de Sessões *<input type="number" name="total_sessions" id="paTotalSessions" form="approveForm" min="1" value="' . $preTotalSessions . '" required></label>';
+    echo '<label>Total de Sessões<input type="number" name="total_sessions" id="paTotalSessions" form="approveForm" value="' . $preTotalSessions . '" readonly style="background:hsl(var(--muted));cursor:not-allowed"></label>';
     echo '</div>';
     
     echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">O total de sessões será calculado automaticamente com base na frequência e duração.</div>';
