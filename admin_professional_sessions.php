@@ -235,6 +235,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         }
 
         // Registrar no log (cada arquivo separadamente para historico)
+        // E ATUALIZAR billing_document_requirements para seguir fluxo de faturamento
+        $sessionIdStr = (string)($_POST['session_id'] ?? '');
+        $bdrId = 0;
+        if (strpos($sessionIdStr, '_') !== false) {
+            // Sessao gerada (nao existe no banco) - criar o registro
+            $parts = explode('_', $sessionIdStr);
+            $bdrAssignId = (int)($parts[0] ?? 0);
+            $bdrSessNum = (int)($parts[1] ?? 0);
+            if ($bdrAssignId > 0 && $bdrSessNum > 0) {
+                try {
+                    $db->prepare("INSERT INTO billing_document_requirements (assignment_id, professional_user_id, patient_id, session_number, status) SELECT ?, professional_user_id, patient_id, ?, 'uploaded' FROM patient_assignments WHERE id = ?")->execute([$bdrAssignId, $bdrSessNum, $bdrAssignId]);
+                    $bdrId = (int)$db->lastInsertId();
+                } catch (Throwable $e) { error_log("[ADMIN_SESSIONS] Erro ao criar billing_document_requirements: " . $e->getMessage()); }
+            }
+        } else {
+            $bdrId = (int)$sessionIdStr;
+            // Atualizar status para 'uploaded'
+            if ($bdrId > 0) {
+                try { $db->prepare("UPDATE billing_document_requirements SET status = 'uploaded', uploaded_at = NOW() WHERE id = ?")->execute([$bdrId]); } catch (Throwable $e) {}
+            }
+        }
+
+        // Salvar arquivos em billing_document_files (mesmo formato do portal do profissional)
+        if ($bdrId > 0) {
+            foreach ($uploadedFiles as $uf) {
+                $docType = (stripos($uf['label'], 'Produtividade') !== false) ? 'produtividade' : 'faturamento';
+                try {
+                    $db->prepare("INSERT INTO billing_document_files (requirement_id, document_type, file_path, file_size, mime_type, original_filename, uploaded_by_user_id, created_at) VALUES (?,?,?,0,'application/octet-stream',?,?,NOW())")->execute([$bdrId, $docType, $uf['file_path'], $uf['file_name'], auth_user_id()]);
+                } catch (Throwable $e) { error_log("[ADMIN_SESSIONS] Erro ao salvar billing_document_files: " . $e->getMessage()); }
+            }
+        }
+
         foreach ($uploadedFiles as $uf) {
             $noteText = $uf['label'] . ' - Atendimento #' . $assignmentId . ' Sessao #' . $sessionId . ($docNotes !== '' ? ' - ' . $docNotes : '');
             try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, assignment_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, $assignmentId > 0 ? $assignmentId : null, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
