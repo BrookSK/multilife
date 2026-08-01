@@ -70,7 +70,23 @@ try {
                         $header = imap_headerinfo($mbox, $msgNum);
                         if (!$header) continue;
 
-                        $subject = isset($header->subject) ? @imap_utf8((string)$header->subject) : '';
+                        $subjectRaw = isset($header->subject) ? (string)$header->subject : '';
+                        $subject = '';
+                        if ($subjectRaw !== '') {
+                            $decoded = @imap_mime_header_decode($subjectRaw);
+                            if (is_array($decoded)) {
+                                foreach ($decoded as $part) {
+                                    $charset = isset($part->charset) ? (string)$part->charset : 'default';
+                                    $text = isset($part->text) ? (string)$part->text : '';
+                                    if ($charset !== 'default' && $charset !== 'us-ascii' && $charset !== 'UTF-8') {
+                                        $subject .= @mb_convert_encoding($text, 'UTF-8', $charset);
+                                    } else {
+                                        $subject .= $text;
+                                    }
+                                }
+                            }
+                            if ($subject === '') { $subject = @imap_utf8($subjectRaw); }
+                        }
                         $fromAddr = '';
                         if (isset($header->from[0])) {
                             $fromAddr = strtolower(trim(($header->from[0]->mailbox ?? '') . '@' . ($header->from[0]->host ?? '')));
