@@ -510,16 +510,27 @@ if ($profData) {
 
     // Pre-calcular sessoes para filtrar atendimentos e gerar JS
     $sessionsJs = [];
+    // Mapear sessoes existentes por assignment para detectar parciais
+    $existingSessionsByAssignment = [];
     foreach ($allSessions as $s) {
         $sessionsJs[] = ['id' => (int)$s['id'], 'aid' => (int)$s['assignment_id'], 'num' => (int)$s['session_number'], 'date' => (string)($s['session_date'] ?? ''), 'st' => (string)($s['doc_status'] ?? 'pending')];
+        $existingSessionsByAssignment[(int)$s['assignment_id']][(int)$s['session_number']] = (string)($s['doc_status'] ?? 'pending');
     }
     $assignmentsWithSessions = array_unique(array_column($allSessions, 'assignment_id'));
     foreach ($patients as $pat) {
         $aid = (int)$pat['assignment_id'];
+        $qty = max(1, (int)$pat['session_quantity']);
         if (!in_array($aid, $assignmentsWithSessions)) {
-            $qty = max(1, (int)$pat['session_quantity']);
+            // Nenhuma sessao registrada - gerar todas como pendente
             for ($i = 1; $i <= $qty; $i++) {
                 $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+            }
+        } else {
+            // Sessoes parciais - gerar apenas as que NAO existem no banco
+            for ($i = 1; $i <= $qty; $i++) {
+                if (!isset($existingSessionsByAssignment[$aid][$i])) {
+                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+                }
             }
         }
     }
