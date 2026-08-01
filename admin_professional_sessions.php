@@ -245,9 +245,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
             $bdrSessNum = (int)($parts[1] ?? 0);
             if ($bdrAssignId > 0 && $bdrSessNum > 0) {
                 try {
-                    $db->prepare("INSERT INTO billing_document_requirements (assignment_id, professional_user_id, patient_id, session_number, status) SELECT ?, professional_user_id, patient_id, ?, 'uploaded' FROM patient_assignments WHERE id = ?")->execute([$bdrAssignId, $bdrSessNum, $bdrAssignId]);
-                    $bdrId = (int)$db->lastInsertId();
-                } catch (Throwable $e) { error_log("[ADMIN_SESSIONS] Erro ao criar billing_document_requirements: " . $e->getMessage()); }
+                    // Verificar se ja existe registro para esta sessao
+                    $existCheck = $db->prepare("SELECT id FROM billing_document_requirements WHERE assignment_id = ? AND session_number = ? LIMIT 1");
+                    $existCheck->execute([$bdrAssignId, $bdrSessNum]);
+                    $existingBdrId = $existCheck->fetchColumn();
+                    if ($existingBdrId) {
+                        $bdrId = (int)$existingBdrId;
+                        $db->prepare("UPDATE billing_document_requirements SET status = 'uploaded', uploaded_at = NOW(), updated_at = NOW() WHERE id = ?")->execute([$bdrId]);
+                    } else {
+                        $db->prepare("INSERT INTO billing_document_requirements (assignment_id, professional_user_id, patient_id, session_number, status, uploaded_at) SELECT ?, professional_user_id, patient_id, ?, 'uploaded', NOW() FROM patient_assignments WHERE id = ?")->execute([$bdrAssignId, $bdrSessNum, $bdrAssignId]);
+                        $bdrId = (int)$db->lastInsertId();
+                    }
+                } catch (Throwable $e) { error_log("[ADMIN_SESSIONS] Erro ao criar/atualizar billing_document_requirements: " . $e->getMessage()); }
             }
         } else {
             $bdrId = (int)$sessionIdStr;
@@ -268,8 +277,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
         }
 
         foreach ($uploadedFiles as $uf) {
-            $noteText = $uf['label'] . ' - Atendimento #' . $assignmentId . ' Sessao #' . $sessionId . ($docNotes !== '' ? ' - ' . $docNotes : '');
-            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, assignment_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, $assignmentId > 0 ? $assignmentId : null, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
+            $noteText = $uf['label'] . ' - Atendimento #' . $assignmentId . ' Sessao #' . $sessionNumber . ($docNotes !== '' ? ' - ' . $docNotes : '');
+            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, assignment_id, session_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, $assignmentId > 0 ? $assignmentId : null, $sessionNumber > 0 ? $sessionNumber : null, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
         }
 
         $results[] = 'E-mail: ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | Portal: ✅ | WhatsApp: ' . ($stWhats === 'enviado' ? '✅' : '❌');
@@ -516,20 +525,45 @@ if ($profData) {
         $sessionsJs[] = ['id' => (int)$s['id'], 'aid' => (int)$s['assignment_id'], 'num' => (int)$s['session_number'], 'date' => (string)($s['session_date'] ?? ''), 'st' => (string)($s['doc_status'] ?? 'pending')];
         $existingSessionsByAssignment[(int)$s['assignment_id']][(int)$s['session_number']] = (string)($s['doc_status'] ?? 'pending');
     }
+
+    // Buscar sessoes que ja tiveram documentos enviados via document_send_logs (fallback robusto)
+    $sentSessionsByAssignment = [];
+    try {
+        $sentLogsStmt = $db->prepare("
+            SELECT assignment_id, session_id, notes FROM document_send_logs 
+            WHERE recipient_id = ? AND assignment_id IS NOT NULL AND document_source = 'manual'
+        ");
+        $sentLogsStmt->execute([$profId]);
+        $sentLogs = $sentLogsStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($sentLogs as $sl) {
+            $aid = (int)$sl['assignment_id'];
+            // Usar campo session_id (session_number) se disponivel
+            $sessNum = (int)($sl['session_id'] ?? 0);
+            if ($sessNum > 0) {
+                $sentSessionsByAssignment[$aid][$sessNum] = true;
+            } elseif (preg_match('/Sessao #(\d+)/i', (string)$sl['notes'], $m)) {
+                // Fallback: extrair do campo notes
+                $sentSessionsByAssignment[$aid][(int)$m[1]] = true;
+            }
+        }
+    } catch (Throwable $e) {}
+
     $assignmentsWithSessions = array_unique(array_column($allSessions, 'assignment_id'));
     foreach ($patients as $pat) {
         $aid = (int)$pat['assignment_id'];
         $qty = max(1, (int)$pat['session_quantity']);
         if (!in_array($aid, $assignmentsWithSessions)) {
-            // Nenhuma sessao registrada - gerar todas como pendente
+            // Nenhuma sessao registrada no billing - gerar virtuais, excluindo as ja enviadas via logs
             for ($i = 1; $i <= $qty; $i++) {
-                $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+                $st = isset($sentSessionsByAssignment[$aid][$i]) ? 'uploaded' : 'pendente';
+                $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => $st];
             }
         } else {
             // Sessoes parciais - gerar apenas as que NAO existem no banco
             for ($i = 1; $i <= $qty; $i++) {
                 if (!isset($existingSessionsByAssignment[$aid][$i])) {
-                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+                    $st = isset($sentSessionsByAssignment[$aid][$i]) ? 'uploaded' : 'pendente';
+                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => $st];
                 }
             }
         }
