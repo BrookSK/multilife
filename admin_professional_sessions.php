@@ -278,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
         foreach ($uploadedFiles as $uf) {
             $noteText = $uf['label'] . ' - Atendimento #' . $assignmentId . ' Sessao #' . $sessionNumber . ($docNotes !== '' ? ' - ' . $docNotes : '');
-            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, assignment_id, session_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, $assignmentId > 0 ? $assignmentId : null, $sessionNumber > 0 ? $sessionNumber : null, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
+            try { $db->prepare("INSERT INTO document_send_logs (document_source, recipient_type, recipient_id, recipient_email, assignment_id, send_method, sent_by_user_id, file_name, file_path, notes) VALUES ('manual','professional',?,?,?,'todos',?,?,?,?)")->execute([$profId, $profEmail, $assignmentId > 0 ? $assignmentId : null, auth_user_id(), $uf['file_name'], $uf['file_path'], $noteText]); } catch (Throwable $e) {}
         }
 
         $results[] = 'E-mail: ' . ($stEmail === 'enviado' ? '✅' : '❌') . ' | Portal: ✅ | WhatsApp: ' . ($stWhats === 'enviado' ? '✅' : '❌');
@@ -530,20 +530,18 @@ if ($profData) {
     $sentSessionsByAssignment = [];
     try {
         $sentLogsStmt = $db->prepare("
-            SELECT assignment_id, session_id, notes FROM document_send_logs 
+            SELECT assignment_id, notes FROM document_send_logs 
             WHERE recipient_id = ? AND assignment_id IS NOT NULL AND document_source = 'manual'
         ");
-        $sentLogsStmt->execute([$profId]);
-        $sentLogs = $sentLogsStmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($sentLogs as $sl) {
-            $aid = (int)$sl['assignment_id'];
-            // Usar campo session_id (session_number) se disponivel
-            $sessNum = (int)($sl['session_id'] ?? 0);
-            if ($sessNum > 0) {
-                $sentSessionsByAssignment[$aid][$sessNum] = true;
-            } elseif (preg_match('/Sessao #(\d+)/i', (string)$sl['notes'], $m)) {
-                // Fallback: extrair do campo notes
-                $sentSessionsByAssignment[$aid][(int)$m[1]] = true;
+        if ($sentLogsStmt) {
+            $sentLogsStmt->execute([$profId]);
+            $sentLogs = $sentLogsStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($sentLogs as $sl) {
+                $aid = (int)$sl['assignment_id'];
+                // Extrair numero da sessao das notas (formato: "... Sessao #N ...")
+                if (preg_match('/Sessao #(\d+)/i', (string)($sl['notes'] ?? ''), $m)) {
+                    $sentSessionsByAssignment[$aid][(int)$m[1]] = true;
+                }
             }
         }
     } catch (Throwable $e) {}
