@@ -385,29 +385,82 @@ try {
                 require_once __DIR__ . '/app/email_base_template.php';
                 require_once __DIR__ . '/app/email_html_generators.php';
                 
-                // Buscar Message-ID da proposta original para manter thread de e-mail
+                // Buscar Message-ID do email ORIGINAL (Solicitacao de Orcamento) para manter toda conversa no mesmo thread
                 $originalMessageId = null;
+                $originalSubject = null;
                 try {
-                    $threadStmt = db()->prepare("
-                        SELECT sent_message_id FROM authorization_requests 
-                        WHERE demand_id = ? AND sent_message_id IS NOT NULL AND sent_message_id != ''
+                    // Prioridade 1: buscar do campo email_message_id/email_thread_id salvo na authorization_requests
+                    $arFieldsStmt = db()->prepare("
+                        SELECT email_message_id, email_thread_id FROM authorization_requests 
+                        WHERE demand_id = ? AND email_message_id IS NOT NULL AND email_message_id != ''
                         ORDER BY id ASC LIMIT 1
                     ");
-                    $threadStmt->execute([$demandId]);
-                    $originalMessageId = $threadStmt->fetchColumn() ?: null;
-                    if ($originalMessageId) {
-                        error_log("[PRE_ADMISSAO_APPROVE] Thread operadora: respondendo ao Message-ID: $originalMessageId");
-                    } else {
-                        error_log("[PRE_ADMISSAO_APPROVE] Thread operadora: sent_message_id NAO encontrado para demand_id=$demandId");
+                    $arFieldsStmt->execute([$demandId]);
+                    $arFields = $arFieldsStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($arFields) {
+                        $originalMessageId = $arFields['email_message_id'] ?: null;
+                        $originalSubject = $arFields['email_thread_id'] ?: null;
+                        error_log("[PRE_ADMISSAO_APPROVE] Thread: usando email_message_id salvo: $originalMessageId");
                     }
-                } catch (Throwable $e) {
-                    error_log("[PRE_ADMISSAO_APPROVE] Erro ao buscar thread operadora: " . $e->getMessage());
-                    $originalMessageId = null;
+                } catch (Throwable $e) {}
+                
+                // Prioridade 2: buscar Message-ID do email original via demands.source_email_id
+                if (!$originalMessageId) {
+                    try {
+                        $captStmt = db()->prepare("
+                            SELECT ie.message_id, ie.subject 
+                            FROM inbound_emails ie 
+                            INNER JOIN demands d ON d.source_email_id = ie.id 
+                            WHERE d.id = ? AND ie.message_id IS NOT NULL AND ie.message_id != '' 
+                            LIMIT 1
+                        ");
+                        $captStmt->execute([$demandId]);
+                        $captRow = $captStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($captRow) {
+                            $originalMessageId = $captRow['message_id'] ?: null;
+                            $originalSubject = $captRow['subject'] ?: null;
+                            error_log("[PRE_ADMISSAO_APPROVE] Thread: usando Message-ID do email original: $originalMessageId");
+                        }
+                    } catch (Throwable $e) {
+                        error_log("[PRE_ADMISSAO_APPROVE] Erro ao buscar email original: " . $e->getMessage());
+                    }
                 }
                 
-                // Fallback: gerar Message-ID deterministico baseado no authRequestId
+                // Fallback: buscar via origin_email da demanda
+                if (!$originalMessageId) {
+                    try {
+                        $originStmt = db()->prepare("SELECT origin_email FROM demands WHERE id = ?");
+                        $originStmt->execute([$demandId]);
+                        $originEmail3 = (string)($originStmt->fetchColumn() ?: '');
+                        if ($originEmail3 !== '') {
+                            $srcStmt4 = db()->prepare("SELECT message_id, subject FROM inbound_emails WHERE from_address = ? AND message_id IS NOT NULL AND message_id != '' ORDER BY id DESC LIMIT 1");
+                            $srcStmt4->execute([$originEmail3]);
+                            $srcRow4 = $srcStmt4->fetch(PDO::FETCH_ASSOC);
+                            if ($srcRow4) {
+                                $originalMessageId = $srcRow4['message_id'] ?: null;
+                                $originalSubject = $srcRow4['subject'] ?: null;
+                            }
+                        }
+                        error_log("[PRE_ADMISSAO_APPROVE] Thread fallback origin_email: " . ($originalMessageId ?: 'NULL'));
+                    } catch (Throwable $e) {}
+                }
+                
+                // Fallback 2: usar Message-ID da proposta (manter pelo menos na thread da proposta)
+                if (!$originalMessageId) {
+                    try {
+                        $threadStmt = db()->prepare("
+                            SELECT sent_message_id FROM authorization_requests 
+                            WHERE demand_id = ? AND sent_message_id IS NOT NULL AND sent_message_id != ''
+                            ORDER BY id ASC LIMIT 1
+                        ");
+                        $threadStmt->execute([$demandId]);
+                        $originalMessageId = $threadStmt->fetchColumn() ?: null;
+                        error_log("[PRE_ADMISSAO_APPROVE] Thread fallback proposta: " . ($originalMessageId ?: 'NULL'));
+                    } catch (Throwable $e) {}
+                }
+                
+                // Fallback 3: gerar Message-ID deterministico
                 if (!$originalMessageId && $demandId > 0) {
-                    // Buscar authRequestId da proposta
                     try {
                         $arIdStmt = db()->prepare("SELECT id FROM authorization_requests WHERE demand_id = ? ORDER BY id ASC LIMIT 1");
                         $arIdStmt->execute([$demandId]);
@@ -445,13 +498,29 @@ try {
                 
                 $htmlBody = email_base_layout('Atendimento Aprovado', $body);
                 
-                // Usar Re: no assunto para manter thread + passar In-Reply-To/References
-                $emailSubject = $originalMessageId 
-                    ? 'Re: Proposta de Atendimento - ' . ($assignment['patient_name'] ?? 'Paciente')
-                    : 'Atendimento Aprovado - ' . ($assignment['patient_name'] ?? 'Paciente');
+                // Usar Re: no assunto para manter thread (usar subject original se disponivel)
+                if ($originalMessageId && $originalSubject) {
+                    $baseSubject = preg_replace('/^(Re|Fwd|Fw|Enc):\s*/i', '', $originalSubject);
+                    $emailSubject = 'Re: ' . $baseSubject;
+                } elseif ($originalMessageId) {
+                    $emailSubject = 'Re: Proposta de Atendimento - ' . ($assignment['patient_name'] ?? 'Paciente');
+                } else {
+                    $emailSubject = 'Atendimento Aprovado - ' . ($assignment['patient_name'] ?? 'Paciente');
+                }
+                
+                // Montar References completo (email original + proposta) para melhor compatibilidade
+                $referencesChain = $originalMessageId;
+                try {
+                    $propMsgStmt = db()->prepare("SELECT sent_message_id FROM authorization_requests WHERE demand_id = ? AND sent_message_id IS NOT NULL AND sent_message_id != '' ORDER BY id DESC LIMIT 1");
+                    $propMsgStmt->execute([$demandId]);
+                    $proposalMsgId = $propMsgStmt->fetchColumn() ?: null;
+                    if ($proposalMsgId && $proposalMsgId !== $originalMessageId) {
+                        $referencesChain = $originalMessageId . ' ' . $proposalMsgId;
+                    }
+                } catch (Throwable $e) {}
                 
                 $client = new SmtpClient();
-                $client->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $htmlBody, $originalMessageId, $originalMessageId);
+                $client->send($fromEmail, $fromName, $operatorEmail, $emailSubject, $htmlBody, $originalMessageId, $referencesChain);
                 
                 error_log('[PRE_ADMISSAO_APPROVE] E-mail de confirmação enviado para: ' . $operatorEmail);
             }

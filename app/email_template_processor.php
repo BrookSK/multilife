@@ -103,8 +103,12 @@ function email_send_with_template(
     
     $templateId = (int)$template['id'];
     
-    // 2. Processar variáveis no assunto
-    $subject = email_process_variables($template['subject'], $variables);
+    // 2. Processar variáveis no assunto (respeitar override se fornecido para manter thread)
+    if (isset($variables['_override_subject']) && $variables['_override_subject'] !== '') {
+        $subject = $variables['_override_subject'];
+    } else {
+        $subject = email_process_variables($template['subject'], $variables);
+    }
     
     // 3. Processar variáveis no corpo HTML
     $bodyHtml = email_process_variables($template['body_html'], $variables);

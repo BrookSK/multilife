@@ -199,7 +199,30 @@ try {
         $patientData = $stmt->fetch();
         $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
         
-        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId, $auth['sent_message_id'] ?? null, $auth['sent_message_id'] ?? null);
+        // Buscar Message-ID do email original (Solicitacao de Orcamento) para manter thread
+        $resendInReplyTo = null;
+        $resendSubject = null;
+        try {
+            $demandId = (int)$auth['demand_id'];
+            $captStmt = $db->prepare("SELECT ie.message_id, ie.subject FROM inbound_emails ie INNER JOIN demands d ON d.source_email_id = ie.id WHERE d.id = ? AND ie.message_id IS NOT NULL AND ie.message_id != '' LIMIT 1");
+            $captStmt->execute([$demandId]);
+            $captRow = $captStmt->fetch(PDO::FETCH_ASSOC);
+            if ($captRow) {
+                $resendInReplyTo = $captRow['message_id'] ?: null;
+                $resendSubject = $captRow['subject'] ?: null;
+            }
+        } catch (Throwable $e) {}
+        // Fallback: usar sent_message_id da proposta anterior
+        if (!$resendInReplyTo) {
+            $resendInReplyTo = $auth['sent_message_id'] ?? null;
+        }
+        // Usar subject original se disponivel
+        if ($resendInReplyTo && $resendSubject) {
+            $baseSubject = preg_replace('/^(Re|Fwd|Fw|Enc):\s*/i', '', $resendSubject);
+            $variables['_override_subject'] = 'Re: ' . $baseSubject;
+        }
+        
+        $emailResult = email_send_with_template((string)$auth['operator_email'], 'proposal_resend', $variables, $healthInsurerId, $resendInReplyTo, $resendInReplyTo);
         
         if (!$emailResult['success']) {
             throw new Exception($emailResult['message']);

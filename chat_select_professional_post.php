@@ -514,14 +514,19 @@ try {
         // Enviar com template - responder ao email de captacao original para manter na mesma conversa
         $deterministicMsgId = '<proposal-' . $authRequestId . '@multilife.onsolutionsbrasil.com.br>';
         
-        // Buscar Message-ID do email de captacao original (inbound_emails)
+        // Buscar Message-ID e Subject do email de captacao original (inbound_emails)
         $captationMsgId = null;
+        $captationSubject = null;
         try {
-            // Tentar via demands.source_email_id -> inbound_emails.message_id
-            $srcStmt = $db->prepare("SELECT ie.message_id FROM inbound_emails ie INNER JOIN demands d ON d.source_email_id = ie.id WHERE d.id = ? AND ie.message_id IS NOT NULL AND ie.message_id != '' LIMIT 1");
+            // Tentar via demands.source_email_id -> inbound_emails.message_id + subject
+            $srcStmt = $db->prepare("SELECT ie.message_id, ie.subject FROM inbound_emails ie INNER JOIN demands d ON d.source_email_id = ie.id WHERE d.id = ? AND ie.message_id IS NOT NULL AND ie.message_id != '' LIMIT 1");
             $srcStmt->execute([$demandId]);
-            $captationMsgId = $srcStmt->fetchColumn() ?: null;
-            error_log("[PROPOSAL_SEND] Thread: source_email_id lookup para demand $demandId: " . ($captationMsgId ?: 'NULL'));
+            $srcRow = $srcStmt->fetch(PDO::FETCH_ASSOC);
+            if ($srcRow) {
+                $captationMsgId = $srcRow['message_id'] ?: null;
+                $captationSubject = $srcRow['subject'] ?: null;
+            }
+            error_log("[PROPOSAL_SEND] Thread: source_email_id lookup para demand $demandId: " . ($captationMsgId ?: 'NULL') . " | Subject: " . ($captationSubject ?: 'NULL'));
         } catch (Throwable $e) {
             error_log("[PROPOSAL_SEND] Thread: erro source_email_id: " . $e->getMessage());
         }
@@ -532,9 +537,13 @@ try {
                 $originStmt->execute([$demandId]);
                 $originEmail2 = (string)($originStmt->fetchColumn() ?: '');
                 if ($originEmail2 !== '') {
-                    $srcStmt2 = $db->prepare("SELECT message_id FROM inbound_emails WHERE from_address = ? AND message_id IS NOT NULL AND message_id != '' ORDER BY id DESC LIMIT 1");
+                    $srcStmt2 = $db->prepare("SELECT message_id, subject FROM inbound_emails WHERE from_address = ? AND message_id IS NOT NULL AND message_id != '' ORDER BY id DESC LIMIT 1");
                     $srcStmt2->execute([$originEmail2]);
-                    $captationMsgId = $srcStmt2->fetchColumn() ?: null;
+                    $srcRow2 = $srcStmt2->fetch(PDO::FETCH_ASSOC);
+                    if ($srcRow2) {
+                        $captationMsgId = $srcRow2['message_id'] ?: null;
+                        $captationSubject = $srcRow2['subject'] ?: null;
+                    }
                     error_log("[PROPOSAL_SEND] Thread: fallback by origin_email '$originEmail2': " . ($captationMsgId ?: 'NULL'));
                 }
             } catch (Throwable $e) {
@@ -546,15 +555,26 @@ try {
             try {
                 $domain = explode('@', $operatorEmail);
                 if (count($domain) > 1) {
-                    $srcStmt3 = $db->prepare("SELECT message_id FROM inbound_emails WHERE from_address LIKE ? AND message_id IS NOT NULL AND message_id != '' ORDER BY id DESC LIMIT 1");
+                    $srcStmt3 = $db->prepare("SELECT message_id, subject FROM inbound_emails WHERE from_address LIKE ? AND message_id IS NOT NULL AND message_id != '' ORDER BY id DESC LIMIT 1");
                     $srcStmt3->execute(['%@' . $domain[1]]);
-                    $captationMsgId = $srcStmt3->fetchColumn() ?: null;
+                    $srcRow3 = $srcStmt3->fetch(PDO::FETCH_ASSOC);
+                    if ($srcRow3) {
+                        $captationMsgId = $srcRow3['message_id'] ?: null;
+                        $captationSubject = $srcRow3['subject'] ?: null;
+                    }
                     error_log("[PROPOSAL_SEND] Thread: fallback by domain '@" . $domain[1] . "': " . ($captationMsgId ?: 'NULL'));
                 }
             } catch (Throwable $e) {}
         }
         
-        error_log("[PROPOSAL_SEND] Thread final: In-Reply-To=" . ($captationMsgId ?: 'NONE') . " | Custom-MsgId=$deterministicMsgId");
+        error_log("[PROPOSAL_SEND] Thread final: In-Reply-To=" . ($captationMsgId ?: 'NONE') . " | Custom-MsgId=$deterministicMsgId | OriginalSubject=" . ($captationSubject ?: 'NONE'));
+        
+        // Se temos o subject original, usar "Re: <subject>" para manter na mesma conversa
+        if ($captationMsgId && $captationSubject) {
+            // Remover prefixos Re:/Fwd: existentes e adicionar Re: uma vez
+            $baseSubject = preg_replace('/^(Re|Fwd|Fw|Enc):\s*/i', '', $captationSubject);
+            $variables['_override_subject'] = 'Re: ' . $baseSubject;
+        }
         
         $emailResult = email_send_with_template($operatorEmail, 'proposal_send', $variables, $healthInsurerId, $captationMsgId, $captationMsgId, $deterministicMsgId);
         
@@ -576,13 +596,16 @@ try {
         try {
             $stmt = $db->prepare(
                 'UPDATE authorization_requests 
-                 SET sent_at = :sent, response_deadline = :deadline, sent_message_id = :msg_id
+                 SET sent_at = :sent, response_deadline = :deadline, sent_message_id = :msg_id,
+                     email_message_id = :orig_msg_id, email_thread_id = :orig_subject
                  WHERE id = :id'
             );
             $stmt->execute([
                 'sent' => $sentAt,
                 'deadline' => $responseDeadline,
                 'msg_id' => $messageId,
+                'orig_msg_id' => $captationMsgId,
+                'orig_subject' => $captationSubject,
                 'id' => $authRequestId
             ]);
         } catch (Throwable $e) {
