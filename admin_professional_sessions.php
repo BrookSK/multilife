@@ -508,18 +508,50 @@ if ($profData) {
     echo '</div>';
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:16px">Selecione o atendimento e a sessao para vincular os documentos corretamente.</div>';
 
+    // Pre-calcular sessoes para filtrar atendimentos e gerar JS
+    $sessionsJs = [];
+    foreach ($allSessions as $s) {
+        $sessionsJs[] = ['id' => (int)$s['id'], 'aid' => (int)$s['assignment_id'], 'num' => (int)$s['session_number'], 'date' => (string)($s['session_date'] ?? ''), 'st' => (string)($s['doc_status'] ?? 'pending')];
+    }
+    $assignmentsWithSessions = array_unique(array_column($allSessions, 'assignment_id'));
+    foreach ($patients as $pat) {
+        $aid = (int)$pat['assignment_id'];
+        if (!in_array($aid, $assignmentsWithSessions)) {
+            $qty = max(1, (int)$pat['session_quantity']);
+            for ($i = 1; $i <= $qty; $i++) {
+                $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+            }
+        }
+    }
+
     echo '<form method="post" action="/admin_professional_sessions.php?prof_id=' . $profId . '" enctype="multipart/form-data">';
     echo '<input type="hidden" name="action" value="send_session_docs">';
     echo '<input type="hidden" name="prof_id" value="' . $profId . '">';
 
-    // Selecao de Atendimento
+    // Selecao de Atendimento - filtrar os que ainda tem sessoes pendentes
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">';
     echo '<div><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Atendimento *</label>';
     echo '<select name="assignment_id" id="selAssignment" onchange="loadSessions()" required>';
     echo '<option value="">Selecione o atendimento...</option>';
     foreach ($patients as $pat) {
-        $patLabel = htmlspecialchars($pat['full_name']) . ' - ' . htmlspecialchars($pat['specialty'] ?? '') . ' (' . (int)$pat['session_quantity'] . ' sessoes)';
-        echo '<option value="' . (int)$pat['assignment_id'] . '">' . $patLabel . '</option>';
+        $aid = (int)$pat['assignment_id'];
+        // Verificar se tem sessoes pendentes
+        $hasPending = false;
+        foreach ($sessionsJs as $sj) {
+            if ((int)$sj['aid'] === $aid && in_array($sj['st'], ['pending', 'pendente', 'rejected'], true)) {
+                $hasPending = true;
+                break;
+            }
+        }
+        // Se nao tem sessoes no JS (sera gerado), considerar como pendente
+        $hasAnySess = false;
+        foreach ($sessionsJs as $sj) { if ((int)$sj['aid'] === $aid) { $hasAnySess = true; break; } }
+        if (!$hasAnySess) { $hasPending = true; }
+
+        if ($hasPending) {
+            $patLabel = htmlspecialchars($pat['full_name']) . ' - ' . htmlspecialchars($pat['specialty'] ?? '') . ' (' . (int)$pat['session_quantity'] . ' sessoes)';
+            echo '<option value="' . $aid . '">' . $patLabel . '</option>';
+        }
     }
     echo '</select></div>';
 
@@ -550,27 +582,10 @@ if ($profData) {
     echo '</div>';
     echo '</form>';
 
-    // JavaScript para carregar sessoes do atendimento selecionado
-    // Combinar sessoes existentes (billing_document_requirements) com sessoes geradas (baseado em session_quantity)
-    $sessionsJs = [];
-    // Sessoes ja existentes no banco
-    foreach ($allSessions as $s) {
-        $sessionsJs[] = ['id' => (int)$s['id'], 'aid' => (int)$s['assignment_id'], 'num' => (int)$s['session_number'], 'date' => (string)($s['session_date'] ?? ''), 'st' => (string)($s['doc_status'] ?? 'pending')];
-    }
-    // Para atendimentos que nao tem sessoes no banco, gerar baseado na session_quantity
-    $assignmentsWithSessions = array_unique(array_column($allSessions, 'assignment_id'));
-    foreach ($patients as $pat) {
-        $aid = (int)$pat['assignment_id'];
-        if (!in_array($aid, $assignmentsWithSessions)) {
-            $qty = max(1, (int)$pat['session_quantity']);
-            for ($i = 1; $i <= $qty; $i++) {
-                $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
-            }
-        }
-    }
+    // JavaScript para carregar sessoes do atendimento selecionado (filtra sessoes ja enviadas)
     echo '<script>';
     echo 'var SD=' . json_encode($sessionsJs, JSON_UNESCAPED_UNICODE) . ';';
-    echo 'function loadSessions(){var a=document.getElementById("selAssignment").value,s=document.getElementById("selSession");s.innerHTML="<option>Selecione...</option>";if(!a)return;for(var i=0;i<SD.length;i++)if(SD[i].aid==a){var o=document.createElement("option");o.value=SD[i].id;o.textContent="Sessao "+SD[i].num+(SD[i].date?" - "+SD[i].date:"")+" ("+SD[i].st+")";s.appendChild(o)}}';
+    echo 'function loadSessions(){var a=document.getElementById("selAssignment").value,s=document.getElementById("selSession");s.innerHTML="<option>Selecione...</option>";if(!a)return;for(var i=0;i<SD.length;i++)if(SD[i].aid==a&&(SD[i].st=="pending"||SD[i].st=="pendente"||SD[i].st=="rejected")){var o=document.createElement("option");o.value=SD[i].id;o.textContent="Sessao "+SD[i].num+(SD[i].date?" - "+SD[i].date:"");s.appendChild(o)}}';
     echo '</script>';
     echo '</section>';
 
