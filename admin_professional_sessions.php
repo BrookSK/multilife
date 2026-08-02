@@ -336,7 +336,7 @@ if ($profId > 0) {
             $patients = $pStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
 
-        // Documentos pendentes (sessoes) - sem duplicatas
+        // Documentos pendentes (sessoes) - sem duplicatas, mantendo melhor status
         try {
             $dStmt = $db->prepare("
                 SELECT bdr.id, bdr.session_number, bdr.session_date, bdr.status as doc_status,
@@ -346,32 +346,35 @@ if ($profId > 0) {
                 FROM billing_document_requirements bdr
                 INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
                 INNER JOIN patients p ON p.id = pa.patient_id
-                INNER JOIN (
-                    SELECT assignment_id, session_number, MAX(
-                        CASE status 
-                            WHEN 'approved' THEN 4000000000 
-                            WHEN 'uploaded' THEN 3000000000 
-                            WHEN 'rejected' THEN 2000000000 
-                            ELSE 1000000000 
-                        END + id
-                    ) as best_score
-                    FROM billing_document_requirements
-                    WHERE professional_user_id = ?
-                    GROUP BY assignment_id, session_number
-                ) best ON bdr.assignment_id = best.assignment_id 
-                    AND bdr.session_number = best.session_number
-                    AND (CASE bdr.status 
-                            WHEN 'approved' THEN 4000000000 
-                            WHEN 'uploaded' THEN 3000000000 
-                            WHEN 'rejected' THEN 2000000000 
-                            ELSE 1000000000 
-                        END + bdr.id) = best.best_score
                 WHERE bdr.professional_user_id = ?
+                AND bdr.id = (
+                    SELECT b2.id FROM billing_document_requirements b2
+                    WHERE b2.assignment_id = bdr.assignment_id AND b2.session_number = bdr.session_number
+                    ORDER BY FIELD(b2.status, 'approved', 'uploaded', 'rejected', 'pending'), b2.id DESC
+                    LIMIT 1
+                )
                 ORDER BY pa.id ASC, bdr.session_number ASC
             ");
-            $dStmt->execute([$profId, $profId]);
+            $dStmt->execute([$profId]);
             $allSessions = $dStmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+            // Fallback: query simples sem deduplicacao (pode ter duplicatas mas nao quebra)
+            try {
+                $dStmt = $db->prepare("
+                    SELECT bdr.id, bdr.session_number, bdr.session_date, bdr.status as doc_status,
+                        bdr.file_path, bdr.uploaded_at,
+                        pa.id as assignment_id, pa.session_quantity,
+                        p.full_name as patient_name, pa.specialty
+                    FROM billing_document_requirements bdr
+                    INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
+                    INNER JOIN patients p ON p.id = pa.patient_id
+                    WHERE bdr.professional_user_id = ?
+                    ORDER BY pa.id ASC, bdr.session_number ASC
+                ");
+                $dStmt->execute([$profId]);
+                $allSessions = $dStmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Throwable $e2) {}
+        }
 
         $pendingDocs = array_filter($allSessions, function($d) {
             return in_array($d['doc_status'], ['pending', 'rejected'], true);
@@ -546,6 +549,36 @@ if ($profData) {
         $existingSessionsByAssignment[(int)$s['assignment_id']][(int)$s['session_number']] = (string)($s['doc_status'] ?? 'pending');
     }
 
+    // Buscar status REAL de todas as sessoes de todos os atendimentos deste profissional
+    // (inclui sessoes que podem ter professional_user_id diferente ou NULL)
+    $realSessionStatuses = [];
+    try {
+        $allAssignmentIds = array_map(function($p) { return (int)$p['assignment_id']; }, $patients);
+        if (!empty($allAssignmentIds)) {
+            $placeholders = implode(',', array_fill(0, count($allAssignmentIds), '?'));
+            $realStmt = $db->prepare("
+                SELECT assignment_id, session_number, status 
+                FROM billing_document_requirements 
+                WHERE assignment_id IN ($placeholders)
+                ORDER BY assignment_id, session_number
+            ");
+            $realStmt->execute($allAssignmentIds);
+            $realRows = $realStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($realRows as $rr) {
+                $aid = (int)$rr['assignment_id'];
+                $num = (int)$rr['session_number'];
+                $st = (string)$rr['status'];
+                // Manter o melhor status (approved > uploaded > rejected > pending)
+                $priority = ['approved' => 4, 'uploaded' => 3, 'rejected' => 2, 'pending' => 1];
+                $currentPriority = $priority[$realSessionStatuses[$aid][$num] ?? ''] ?? 0;
+                $newPriority = $priority[$st] ?? 0;
+                if ($newPriority > $currentPriority) {
+                    $realSessionStatuses[$aid][$num] = $st;
+                }
+            }
+        }
+    } catch (Throwable $e) {}
+
     // Buscar sessoes que ja tiveram documentos enviados via document_send_logs (fallback robusto)
     $sentSessionsByAssignment = [];
     try {
@@ -571,17 +604,31 @@ if ($profData) {
         $aid = (int)$pat['assignment_id'];
         $qty = max(1, (int)$pat['session_quantity']);
         if (!in_array($aid, $assignmentsWithSessions)) {
-            // Nenhuma sessao registrada no billing - gerar virtuais, excluindo as ja enviadas via logs
+            // Nenhuma sessao encontrada via professional_user_id - gerar virtuais usando status real do banco
             for ($i = 1; $i <= $qty; $i++) {
-                $st = isset($sentSessionsByAssignment[$aid][$i]) ? 'uploaded' : 'pendente';
-                $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => $st];
+                // Verificar status real no banco (busca por assignment_id, independente de professional_user_id)
+                $realSt = $realSessionStatuses[$aid][$i] ?? null;
+                if ($realSt) {
+                    // Sessao existe no banco - usar status real
+                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => $realSt];
+                } elseif (isset($sentSessionsByAssignment[$aid][$i])) {
+                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'uploaded'];
+                } else {
+                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+                }
             }
         } else {
-            // Sessoes parciais - gerar apenas as que NAO existem no banco
+            // Sessoes parciais - gerar apenas as que NAO existem no $allSessions
             for ($i = 1; $i <= $qty; $i++) {
                 if (!isset($existingSessionsByAssignment[$aid][$i])) {
-                    $st = isset($sentSessionsByAssignment[$aid][$i]) ? 'uploaded' : 'pendente';
-                    $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => $st];
+                    $realSt = $realSessionStatuses[$aid][$i] ?? null;
+                    if ($realSt) {
+                        $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => $realSt];
+                    } elseif (isset($sentSessionsByAssignment[$aid][$i])) {
+                        $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'uploaded'];
+                    } else {
+                        $sessionsJs[] = ['id' => $aid . '_' . $i, 'aid' => $aid, 'num' => $i, 'date' => '', 'st' => 'pendente'];
+                    }
                 }
             }
         }
