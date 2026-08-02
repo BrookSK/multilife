@@ -39,17 +39,36 @@ if (!$assignment) {
     exit;
 }
 
-// Buscar pendências de documentos
+// Buscar pendências de documentos (sem duplicatas - manter melhor status por sessão)
 $docsStmt = db()->prepare("
     SELECT 
         bdr.*,
         reviewer.name as reviewer_name
     FROM billing_document_requirements bdr
     LEFT JOIN users reviewer ON reviewer.id = bdr.reviewed_by_user_id
+    INNER JOIN (
+        SELECT session_number, MAX(
+            CASE status 
+                WHEN 'approved' THEN 4000000000 
+                WHEN 'uploaded' THEN 3000000000 
+                WHEN 'rejected' THEN 2000000000 
+                ELSE 1000000000 
+            END + id
+        ) as best_score
+        FROM billing_document_requirements
+        WHERE assignment_id = ?
+        GROUP BY session_number
+    ) best ON bdr.session_number = best.session_number 
+        AND (CASE bdr.status 
+                WHEN 'approved' THEN 4000000000 
+                WHEN 'uploaded' THEN 3000000000 
+                WHEN 'rejected' THEN 2000000000 
+                ELSE 1000000000 
+            END + bdr.id) = best.best_score
     WHERE bdr.assignment_id = ?
     ORDER BY bdr.session_number ASC
 ");
-$docsStmt->execute([$assignmentId]);
+$docsStmt->execute([$assignmentId, $assignmentId]);
 $documentRequirements = $docsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Buscar arquivos de cada requisito

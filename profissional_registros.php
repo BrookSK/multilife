@@ -31,7 +31,7 @@ $patientsStmt = db()->prepare("
 $patientsStmt->execute([$userId, $userId]);
 $patients = $patientsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Buscar documentos pendentes
+// Buscar documentos pendentes (sem duplicatas por sessão)
 $pendingDocsStmt = db()->prepare("
     SELECT 
         bdr.id,
@@ -49,6 +49,12 @@ $pendingDocsStmt = db()->prepare("
     INNER JOIN patients p ON p.id = pa.patient_id
     WHERE bdr.professional_user_id = ?
     AND bdr.status IN ('pending', 'rejected')
+    AND bdr.id = (
+        SELECT MIN(b2.id) FROM billing_document_requirements b2 
+        WHERE b2.assignment_id = bdr.assignment_id 
+        AND b2.session_number = bdr.session_number
+        AND b2.status IN ('pending', 'rejected')
+    )
     ORDER BY pa.id ASC, bdr.session_number ASC
     LIMIT 30
 ");

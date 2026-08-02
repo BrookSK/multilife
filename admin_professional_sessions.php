@@ -336,7 +336,7 @@ if ($profId > 0) {
             $patients = $pStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
 
-        // Documentos pendentes (sessoes)
+        // Documentos pendentes (sessoes) - sem duplicatas
         try {
             $dStmt = $db->prepare("
                 SELECT bdr.id, bdr.session_number, bdr.session_date, bdr.status as doc_status,
@@ -346,10 +346,30 @@ if ($profId > 0) {
                 FROM billing_document_requirements bdr
                 INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
                 INNER JOIN patients p ON p.id = pa.patient_id
+                INNER JOIN (
+                    SELECT assignment_id, session_number, MAX(
+                        CASE status 
+                            WHEN 'approved' THEN 4000000000 
+                            WHEN 'uploaded' THEN 3000000000 
+                            WHEN 'rejected' THEN 2000000000 
+                            ELSE 1000000000 
+                        END + id
+                    ) as best_score
+                    FROM billing_document_requirements
+                    WHERE professional_user_id = ?
+                    GROUP BY assignment_id, session_number
+                ) best ON bdr.assignment_id = best.assignment_id 
+                    AND bdr.session_number = best.session_number
+                    AND (CASE bdr.status 
+                            WHEN 'approved' THEN 4000000000 
+                            WHEN 'uploaded' THEN 3000000000 
+                            WHEN 'rejected' THEN 2000000000 
+                            ELSE 1000000000 
+                        END + bdr.id) = best.best_score
                 WHERE bdr.professional_user_id = ?
                 ORDER BY pa.id ASC, bdr.session_number ASC
             ");
-            $dStmt->execute([$profId]);
+            $dStmt->execute([$profId, $profId]);
             $allSessions = $dStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {}
 
