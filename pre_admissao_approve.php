@@ -218,13 +218,19 @@ try {
     
     for ($i = 0; $i < $totalSessions; $i++) {
         $sessionDate = isset($sessionDates[$i]) ? $sessionDates[$i] : null;
-        $createRequirementsStmt->execute([
-            $assignmentId,
-            $assignment['patient_id'],
-            $assignment['professional_user_id'],
-            $i + 1,
-            $sessionDate
-        ]);
+        $sessionNum = $i + 1;
+        // Verificar se ja existe registro para esta sessao (evitar duplicatas)
+        $existCheck = $db->prepare("SELECT id FROM billing_document_requirements WHERE assignment_id = ? AND session_number = ? LIMIT 1");
+        $existCheck->execute([$assignmentId, $sessionNum]);
+        if (!$existCheck->fetchColumn()) {
+            $createRequirementsStmt->execute([
+                $assignmentId,
+                $assignment['patient_id'],
+                $assignment['professional_user_id'],
+                $sessionNum,
+                $sessionDate
+            ]);
+        }
     }
     
     error_log("DEBUG APROVAÇÃO: Criadas " . $assignment['session_quantity'] . " pendências de documentos");
