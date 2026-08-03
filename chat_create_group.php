@@ -18,7 +18,7 @@ $professionals = db()->query(
 )->fetchAll();
 
 // Buscar especialidades
-$specialties = db()->query("SELECT id, name FROM specialties ORDER BY name ASC")->fetchAll();
+$specialties = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC")->fetchAll();
 
 view_header('Criar Grupo WhatsApp');
 

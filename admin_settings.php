@@ -243,8 +243,8 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<a class="btn btnPrimary" href="/specialties_create.php" style="font-size:12px;padding:6px 12px">Nova Especialidade</a>';
         echo '</div>';
         
-        // Buscar especialidades
-        $specStmt = db()->query('SELECT id, name, status FROM specialties ORDER BY name ASC');
+        // Buscar especialidades (apenas ativas)
+        $specStmt = db()->query('SELECT id, name, status FROM specialties WHERE status = \'active\' ORDER BY name ASC');
         $specialties = $specStmt->fetchAll();
         
         if (count($specialties) === 0) {
