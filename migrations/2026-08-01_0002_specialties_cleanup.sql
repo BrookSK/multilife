@@ -1,23 +1,13 @@
--- Limpeza de especialidades: manter apenas as listadas
--- Desativar todas as especialidades que NÃO estão na lista aprovada
+-- ============================================================
+-- LIMPEZA DE ESPECIALIDADES
+-- Manter APENAS as 13 especialidades aprovadas
+-- Executar diretamente no banco de dados
+-- ============================================================
 
-UPDATE specialties SET status = 'inactive' WHERE name NOT IN (
-    'Fisioterapia Motora',
-    'Fisioterapia Respiratória',
-    'Fisioterapia Motora/Respiratória',
-    'Fisioterapia',
-    'Nutrição',
-    'Fonoaudiologia',
-    'Terapia Ocupacional',
-    'Psicologia',
-    'Assistência Social',
-    'Medico',
-    'Enfermagem Supervisão',
-    'Enfermagem procedimento',
-    'Enfermagem'
-);
+-- PASSO 1: Desativar TODAS as especialidades
+UPDATE specialties SET status = 'inactive';
 
--- Inserir as especialidades que ainda não existem
+-- PASSO 2: Inserir as que não existem ainda (INSERT IGNORE ignora duplicatas no campo name)
 INSERT IGNORE INTO specialties (name, minimum_value, internal_cost, status) VALUES
 ('Fisioterapia Motora', 0.00, 0.00, 'active'),
 ('Fisioterapia Respiratória', 0.00, 0.00, 'active'),
@@ -33,7 +23,7 @@ INSERT IGNORE INTO specialties (name, minimum_value, internal_cost, status) VALU
 ('Enfermagem procedimento', 0.00, 0.00, 'active'),
 ('Enfermagem', 0.00, 0.00, 'active');
 
--- Garantir que as da lista estejam ativas (caso já existam mas estejam inativas)
+-- PASSO 3: Ativar APENAS as 13 da lista (garante que fiquem ativas mesmo que já existiam)
 UPDATE specialties SET status = 'active' WHERE name IN (
     'Fisioterapia Motora',
     'Fisioterapia Respiratória',
@@ -50,5 +40,5 @@ UPDATE specialties SET status = 'active' WHERE name IN (
     'Enfermagem'
 );
 
--- Verificação final
-SELECT id, name, status FROM specialties ORDER BY status DESC, name ASC;
+-- VERIFICAÇÃO: Listar resultado final
+SELECT id, name, status FROM specialties WHERE status = 'active' ORDER BY name;
