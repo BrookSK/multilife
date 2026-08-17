@@ -17,8 +17,13 @@ $sql = 'SELECT p.id, p.full_name, p.whatsapp, p.phone_primary, p.email
 $params = ['uid' => $uid];
 
 if ($q !== '') {
-    $sql .= ' AND (p.full_name LIKE :q OR p.cpf LIKE :q OR p.whatsapp LIKE :q OR p.phone_primary LIKE :q OR p.email LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (p.full_name LIKE :q1 OR p.cpf LIKE :q2 OR p.whatsapp LIKE :q3 OR p.phone_primary LIKE :q4 OR p.email LIKE :q5)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
+    $params['q5'] = $qLike;
 }
 
 $sql .= ' ORDER BY p.full_name ASC';

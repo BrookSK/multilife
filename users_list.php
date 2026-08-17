@@ -21,8 +21,10 @@ if ($roleFilter !== '') {
 }
 
 if ($q !== '') {
-    $where[] = '(u.name LIKE :q OR u.email LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $where[] = '(u.name LIKE :q1 OR u.email LIKE :q2)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
 }
 
 if (!empty($where)) {

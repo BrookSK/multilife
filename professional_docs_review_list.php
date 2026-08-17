@@ -23,8 +23,11 @@ $sql = 'SELECT d.id, d.patient_ref, d.sessions_count, d.status, d.due_at, d.subm
 $params = ['status' => $status];
 
 if ($q !== '') {
-    $sql .= ' AND (d.patient_ref LIKE :q OR u.name LIKE :q OR u.email LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (d.patient_ref LIKE :q1 OR u.name LIKE :q2 OR u.email LIKE :q3)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
 }
 
 $sql .= ' ORDER BY d.id DESC';

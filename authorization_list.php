@@ -35,8 +35,12 @@ if ($status !== '') {
 }
 
 if ($q !== '') {
-    $sql .= ' AND (d.title LIKE :q OR ar.operator_email LIKE :q OR u.name LIKE :q OR p.full_name LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (d.title LIKE :q1 OR ar.operator_email LIKE :q2 OR u.name LIKE :q3 OR p.full_name LIKE :q4)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
 }
 
 $sql .= ' ORDER BY ar.created_at DESC';

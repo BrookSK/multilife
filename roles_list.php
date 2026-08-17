@@ -12,8 +12,10 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $sql = 'SELECT id, name, slug, created_at FROM roles';
 $params = [];
 if ($q !== '') {
-    $sql .= ' WHERE name LIKE :q OR slug LIKE :q';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' WHERE name LIKE :q1 OR slug LIKE :q2';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
 }
 $sql .= ' ORDER BY id DESC';
 

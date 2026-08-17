@@ -56,8 +56,11 @@ if ($status === 'recebido') {
 }
 
 if ($q !== '') {
-    $sql .= ' AND (p.full_name LIKE :q OR u.name LIKE :q OR fe.description LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (p.full_name LIKE :q1 OR u.name LIKE :q2 OR fe.description LIKE :q3)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
 }
 
 $sql .= ' ORDER BY fe.id DESC';

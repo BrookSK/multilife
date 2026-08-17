@@ -12,8 +12,12 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $sql = 'SELECT id, name, evolution_group_jid, contacts_count, specialty, city, state, status, created_at FROM whatsapp_groups';
 $params = [];
 if ($q !== '') {
-    $sql .= ' WHERE name LIKE :q OR specialty LIKE :q OR city LIKE :q OR state LIKE :q';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' WHERE name LIKE :q1 OR specialty LIKE :q2 OR city LIKE :q3 OR state LIKE :q4';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
 }
 $sql .= ' ORDER BY id DESC';
 

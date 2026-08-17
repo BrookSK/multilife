@@ -55,8 +55,11 @@ if ($status === 'pago') {
 }
 
 if ($q !== '') {
-    $sql .= ' AND (u.name LIKE :q OR fe.description LIKE :q OR p.full_name LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (u.name LIKE :q1 OR fe.description LIKE :q2 OR p.full_name LIKE :q3)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
 }
 
 $sql .= ' ORDER BY fe.id DESC';

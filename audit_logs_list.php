@@ -52,8 +52,13 @@ if ($dateTo !== '') {
     $params['dt'] = $dateTo . ' 23:59:59';
 }
 if ($q !== '') {
-    $sql .= ' AND (a.module LIKE :q OR a.record_id LIKE :q OR a.ip LIKE :q OR CAST(a.old_data AS CHAR) LIKE :q OR CAST(a.new_data AS CHAR) LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (a.module LIKE :q1 OR a.record_id LIKE :q2 OR a.ip LIKE :q3 OR CAST(a.old_data AS CHAR) LIKE :q4 OR CAST(a.new_data AS CHAR) LIKE :q5)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
+    $params['q5'] = $qLike;
 }
 
 $sql .= ' ORDER BY a.id DESC LIMIT 500';

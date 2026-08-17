@@ -23,8 +23,13 @@ if ($status !== '') {
 }
 
 if ($q !== '') {
-    $sql .= ' AND (full_name LIKE :q OR email LIKE :q OR phone LIKE :q OR position LIKE :q OR department LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (full_name LIKE :q1 OR email LIKE :q2 OR phone LIKE :q3 OR position LIKE :q4 OR department LIKE :q5)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
+    $params['q5'] = $qLike;
 }
 
 $sql .= ' ORDER BY full_name ASC';

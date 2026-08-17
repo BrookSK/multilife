@@ -26,8 +26,10 @@ $sql = 'SELECT c.id, c.external_phone, c.contact_kind, c.status, c.assigned_user
 $params = ['status' => $status, 'uid' => $uid];
 
 if ($q !== '') {
-    $sql .= ' AND (c.external_phone LIKE :q OR c.last_message_preview LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (c.external_phone LIKE :q1 OR c.last_message_preview LIKE :q2)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
 }
 
 $sql .= ' ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC';

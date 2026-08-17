@@ -44,8 +44,13 @@ if ($status !== '' && $status !== 'confirmed') {
 }
 
 if ($q !== '') {
-    $where[] = '(d.title LIKE :q OR pa.specialty LIKE :q OR d.location_city LIKE :q OR p.full_name LIKE :q OR u.name LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $where[] = '(d.title LIKE :q1 OR pa.specialty LIKE :q2 OR d.location_city LIKE :q3 OR p.full_name LIKE :q4 OR u.name LIKE :q5)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
+    $params['q5'] = $qLike;
 }
 
 if (count($where) > 0) {

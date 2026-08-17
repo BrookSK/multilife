@@ -21,8 +21,12 @@ $sql = 'SELECT id, status, full_name, email, phone, council_abbr, council_number
 $params = ['status' => $status];
 
 if ($q !== '') {
-    $sql .= ' AND (full_name LIKE :q OR email LIKE :q OR phone LIKE :q OR council_number LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (full_name LIKE :q1 OR email LIKE :q2 OR phone LIKE :q3 OR council_number LIKE :q4)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
 }
 
 $sql .= ' ORDER BY id DESC';

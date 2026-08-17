@@ -352,8 +352,10 @@ foreach ($sections as $sectionTitle => $sectionData) {
         $sqlRoles = 'SELECT id, name, slug, created_at FROM roles';
         $paramsRoles = [];
         if ($qRoles !== '') {
-            $sqlRoles .= ' WHERE name LIKE :q OR slug LIKE :q';
-            $paramsRoles['q'] = '%' . $qRoles . '%';
+            $sqlRoles .= ' WHERE name LIKE :q1 OR slug LIKE :q2';
+            $qLike = '%' . $qRoles . '%';
+            $paramsRoles['q1'] = $qLike;
+            $paramsRoles['q2'] = $qLike;
         }
         $sqlRoles .= ' ORDER BY id DESC';
         
