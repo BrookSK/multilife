@@ -19,8 +19,13 @@ $sql = 'SELECT id, full_name, cpf, whatsapp, phone_primary, email, created_at,
 $params = [];
 
 if ($q !== '') {
-    $sql .= ' AND (full_name LIKE :q OR cpf LIKE :q OR whatsapp LIKE :q OR phone_primary LIKE :q OR email LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $sql .= ' AND (full_name LIKE :q1 OR cpf LIKE :q2 OR whatsapp LIKE :q3 OR phone_primary LIKE :q4 OR email LIKE :q5)';
+    $qLike = '%' . $q . '%';
+    $params['q1'] = $qLike;
+    $params['q2'] = $qLike;
+    $params['q3'] = $qLike;
+    $params['q4'] = $qLike;
+    $params['q5'] = $qLike;
 }
 
 if ($status !== '') {
