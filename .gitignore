@@ -2,3 +2,11 @@
 ROTEIRO_TESTES_WHATSAPP.md
 FUNCIONALIDADES_APRESENTACAO.md
 ROTEIRO_TESTES_AJUSTES_OPERACIONAIS.md
+
+# Planilhas de importação (dados temporários)
+imports/*.csv
+imports/*.xlsx
+imports/*.xls
+
+# Pasta duplicada do projeto
+multilife/
