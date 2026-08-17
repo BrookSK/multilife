@@ -375,15 +375,21 @@ function view_header(string $title): void
         // Pré-calcular se a URL atual casa com algum item que tem query string
         $exactMatchWithQuery = false;
         foreach ($menuItems as $it) {
-            if (strpos($it['path'], '?') !== false && $fullUri === $it['path']) {
-                $exactMatchWithQuery = true;
-                break;
+            if (strpos($it['path'], '?') !== false) {
+                // Verifica se a URL atual começa com o path do item (para funcionar com params extras como &q=)
+                $itemPath = $it['path'];
+                if ($fullUri === $itemPath || strpos($fullUri, $itemPath . '&') === 0 || strpos($fullUri, $itemPath) === 0) {
+                    $exactMatchWithQuery = true;
+                    break;
+                }
             }
         }
 
         foreach ($menuItems as $it) {
             if (strpos($it['path'], '?') !== false) {
-                $isActive = $fullUri === $it['path'];
+                // Para itens com query string, verificar se a URL começa com o path do item
+                $itemPath = $it['path'];
+                $isActive = ($fullUri === $itemPath) || (strpos($fullUri, $itemPath . '&') === 0);
             } else {
                 // Se ja existe um match exato com query, nao marcar item sem query do mesmo path
                 $isActive = ($path === $it['path']) && !$exactMatchWithQuery;
