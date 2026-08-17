@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Validação da Importação - MultiLife</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1a1a1a; padding: 20px 30px; line-height: 1.5; }
+  h1 { font-size: 20px; text-align: center; margin-bottom: 4px; color: #111; }
+  h2 { font-size: 14px; margin-top: 18px; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 2px solid #333; color: #222; }
+  h3 { font-size: 12px; margin-top: 12px; margin-bottom: 4px; color: #444; }
+  .subtitle { text-align: center; color: #666; font-size: 11px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
+  th, td { border: 1px solid #ccc; padding: 3px 6px; text-align: left; }
+  th { background: #f0f0f0; font-weight: 700; }
+  tr:nth-child(even) { background: #fafafa; }
+  .check { width: 14px; height: 14px; border: 1.5px solid #333; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .checklist li { list-style: none; margin-bottom: 4px; padding: 2px 0; }
+  .checklist { padding-left: 0; }
+  .section { page-break-inside: avoid; }
+  .summary-box { background: #f7f7f7; border: 1px solid #ddd; border-radius: 4px; padding: 10px 14px; margin: 10px 0; }
+  .summary-box p { margin: 2px 0; }
+  .highlight { background: #fffde7; padding: 2px 4px; font-weight: 700; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 2px; font-family: 'Consolas', monospace; font-size: 10px; }
+  .page-break { page-break-before: always; }
+  @media print {
+    body { padding: 10px 20px; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>VALIDAÇÃO DA IMPORTAÇÃO DE PLANILHAS</h1>
+<p class="subtitle">MultiLife Care - Data da importação: 14/08/2026</p>
+
+<div class="summary-box">
+  <p><strong>Total de Especialidades:</strong> 7</p>
+  <p><strong>Total de Pacientes Importados:</strong> 48</p>
+  <p><strong>Total de Profissionais Importados:</strong> 54</p>
+  <p><strong>Total de Monitoramentos (Atribuições):</strong> ~60</p>
+  <p><strong>Empresas:</strong> VIP CARE, GANEP LAR, LIFE CARE, DAY HOME CARE, APAS, AUSTA, ANERY</p>
+</div>
+
+<!-- ==================== ESPECIALIDADES ==================== -->
+<div class="section">
+<h2>1. ESPECIALIDADES</h2>
+<table>
+  <thead><tr><th>#</th><th>Especialidade</th><th style="width:80px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>2</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>3</td><td>Enfermagem</td><td></td></tr>
+    <tr><td>4</td><td>Medico</td><td></td></tr>
+    <tr><td>5</td><td>Nutrição</td><td></td></tr>
+    <tr><td>6</td><td>Terapia Ocupacional</td><td></td></tr>
+    <tr><td>7</td><td>Psicologia</td><td></td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ==================== PACIENTES ==================== -->
+<div class="section">
+<h2>2. PACIENTES (48 cadastrados)</h2>
+<table>
+  <thead><tr><th>#</th><th>Nome do Paciente</th><th>Empresa(s)</th><th style="width:60px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>EIKO HIRATA SHIMABUKURO</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>2</td><td>FERNANDA CRISTINA MEIKEN MONTEIRO</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>3</td><td>JOSE CLOVIS LORENA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>4</td><td>JOAO PEDRO CORREA GUIGUER</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>5</td><td>LUIZ CARLOS GONÇALVES ANJA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>6</td><td>LIVIA PACIFICO SILVA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>7</td><td>MARIA DE FATIMA COSSERMELLI SANTOS</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>8</td><td>MARIA JOSE BAZZO CUCHERA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>9</td><td>ROMEU ANTONIO SGARIBOLDI DA SILVA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>10</td><td>TALITA NABAS DE CARVALHO</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>11</td><td>RONILDO PAULO PEROTTI</td><td>DAY HOME CARE</td><td></td></tr>
+    <tr><td>12</td><td>ISAURA DE MORAES LEONEL FERREIRA</td><td>GANEP LAR</td><td></td></tr>
+    <tr><td>13</td><td>LUIZA CASERTA SCATENA</td><td>GANEP LAR</td><td></td></tr>
+    <tr><td>14</td><td>MARIA DO ROSARIO MARTINS HERMACULA</td><td>GANEP LAR</td><td></td></tr>
+    <tr><td>15</td><td>DIRCEU DOMINGUES DE OLIVEIRA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>16</td><td>DAVI LUCAS ZUCKER</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>17</td><td>DAVI LUIZ GOMES VIEIRA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>18</td><td>DANIEL SANCHES</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>19</td><td>ELVIRA RAMOS VIEIRA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>20</td><td>EDGAR STEFFEN</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>21</td><td>HERMELINDA ROSA ALBERTINI</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>22</td><td>ISABELLA FERNANDA PASSARO</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>23</td><td>LUIS ANTONIO MACHADO PIMENTEL</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>24</td><td>MARIANA CRISTINA RODRIGUES</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>25</td><td>NELSON GUTIERREZ</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>26</td><td>SEBASTIÃO SANTOS DA SILVA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>27</td><td>SUELI APARECIDA TRINDADE RODRIGUES GARCIA</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>28</td><td>VIRGINIA VERCELINO PRIMO</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>29</td><td>IRENE MACAGNAN GALVAO DE MOURA</td><td>APAS</td><td></td></tr>
+    <tr><td>30</td><td>CLAUDIONOR RIBEIRO AGUIAR</td><td>APAS</td><td></td></tr>
+    <tr><td>31</td><td>NIRDE ROSALIN BARBIERI</td><td>APAS</td><td></td></tr>
+    <tr><td>32</td><td>FRANCISCO JOAQUIM DA SILVA</td><td>GANEP LAR</td><td></td></tr>
+    <tr><td>33</td><td>GILDA ROSANA LEONEL</td><td>LIFE CARE</td><td></td></tr>
+    <tr><td>34</td><td>JOSE CARLOS PERES</td><td>ANERY</td><td></td></tr>
+    <tr><td>35</td><td>SYLVIA MARIA CANOAS MIZIARA</td><td>ANERY</td><td></td></tr>
+    <tr><td>36</td><td>THELMA LOPES ONOFRE DE FREITAS RIBEIRO</td><td>ANERY</td><td></td></tr>
+    <tr><td>37</td><td>HELENA KLEIN ALMEIDA</td><td>ANERY</td><td></td></tr>
+    <tr><td>38</td><td>LIGIA DA PENHA CAMPOS</td><td>ANERY</td><td></td></tr>
+    <tr><td>39</td><td>OTTO FERREIRA</td><td>ANERY</td><td></td></tr>
+    <tr><td>40</td><td>SHIRLEI DA CUNHA OLIVEIRA</td><td>ANERY</td><td></td></tr>
+    <tr><td>41</td><td>ELCO APPARECIDO FORNAZALI</td><td>LIFE CARE</td><td></td></tr>
+    <tr><td>42</td><td>GRACI LUIZA DE GODOI FORTES</td><td>LIFE CARE</td><td></td></tr>
+    <tr><td>43</td><td>NAELCIO FERREIRA</td><td>LIFE CARE</td><td></td></tr>
+    <tr><td>44</td><td>ANTONIO BUENO DE CAMARGO</td><td>LIFE CARE</td><td></td></tr>
+    <tr><td>45</td><td>LUCAS HENRIQUE OLIVEIRO CAMARGO</td><td>VIP CARE</td><td></td></tr>
+    <tr><td>46</td><td>EDINAMARA APARECIDA BISPO DE SOUZA</td><td>AUSTA</td><td></td></tr>
+    <tr><td>47</td><td>THEREZA VICENTIM CHERONE</td><td>AUSTA</td><td></td></tr>
+    <tr><td>48</td><td>NATHALY ROCHA DE SOUZA</td><td>ANERY</td><td></td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ==================== PROFISSIONAIS ==================== -->
+<div class="section page-break">
+<h2>3. PROFISSIONAIS (54 cadastrados)</h2>
+<p style="margin-bottom:6px;color:#666">Todos com email <code>@import.multilife.local</code> (fictício) e role "profissional"</p>
+<table>
+  <thead><tr><th>#</th><th>Nome</th><th>Telefone</th><th>Especialidade</th><th style="width:50px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Telma Mara Dos Santos Rodolpho</td><td>15 99734-7474</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>2</td><td>Ana Paula Ferreira Opaso Alvarez Antonucci e Silva</td><td>15 98137-7940</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>3</td><td>Soraia Fátima Marques Restivo</td><td>15 99603-1701</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>4</td><td>Vanessa Alcalá Grilo</td><td>15 99701-9033</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>5</td><td>Ana Alvarez</td><td>(15) 98137-7940</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>6</td><td>Luciana Taddeo dos Santos Missaci</td><td>15 99856-2727</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>7</td><td>Ana Laura Giriolli</td><td>11 98401-8168</td><td>Enfermagem</td><td></td></tr>
+    <tr><td>8</td><td>Cleonice Duarte de Araujo</td><td>15 99643-2674</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>9</td><td>Katia Ferreira de Lima Silva</td><td>11 95377-7388</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>10</td><td>Flavio Silva Pereira</td><td>11 97751-7876</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>11</td><td>Ledlei Quagliato</td><td>15 97405-0579</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>12</td><td>Cristina Pontes Diener Rosa</td><td>15 99792-2125</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>13</td><td>Marcela Aparecida de Oliveira Ribeiro</td><td>15 99622-6106</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>14</td><td>Willian Eduardo de Almeida</td><td>15 99673-8653</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>15</td><td>Daniella Ruotolo Joaquim</td><td>15 99677-2780</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>16</td><td>Francimara Aparecida Costa Pereira</td><td>15 99145-7779</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>17</td><td>Jean Roberto Campeoto</td><td>15 99799-1219</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>18</td><td>Katia Eliana Das Neves Soares</td><td>15 99795-9267</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>19</td><td>Tatiana Cristine Rachid</td><td>15 99721-0127</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>20</td><td>Anderson Codognoto</td><td>15 99703-0277</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>21</td><td>Elton Augusto Graciano</td><td>15 98831-3642</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>22</td><td>Cristina Pontes Silva</td><td>(15) 99792-2125</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>23</td><td>Maria Cristina de Carvalho</td><td>15 99682-0413</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>24</td><td>Mayara Kimberlin Alves</td><td>15 99825-0325</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>25</td><td>Yasmin dos Santos</td><td>11 96609-5536</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>26</td><td>Ellem Karoline Pavan</td><td>14 99711-5761</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>27</td><td>Jussara Aparecida Miranda Franco</td><td>14 99151-4548</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>28</td><td>Bianca Darzinia Fargiani Nishiyama</td><td>11 95656-8191</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>29</td><td>Luana Akemi Yamashita Thomaz</td><td>11 97626-4736</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>30</td><td>Karen Hikarai Matsubara de Souza</td><td>15 99662-8976</td><td>Enfermagem</td><td></td></tr>
+    <tr><td>31</td><td>Aline Cristina Dias Carmo</td><td>15 99151-7691</td><td>Nutrição</td><td></td></tr>
+    <tr><td>32</td><td>GUILHERME MENDES MOUCACHEN</td><td>15 99175-8559</td><td>Medico</td><td></td></tr>
+    <tr><td>33</td><td>Maria Ivani De Souza Pereira</td><td>11 99941-8143</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>34</td><td>Jaqueline Rodrigues de Oliveira Bonani</td><td>19 99704-7838</td><td>Enfermagem</td><td></td></tr>
+    <tr><td>35</td><td>Rafaela Aparecida Bernardes</td><td>19 98746-2968</td><td>Enfermagem</td><td></td></tr>
+    <tr><td>36</td><td>LILIANE GREEN FRREIRA</td><td>11 98203-2204</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>37</td><td>Giovanna C. Vitali</td><td>19 98264-9777</td><td>Fonoaudiologia</td><td></td></tr>
+    <tr><td>38</td><td>Lana Simone Wanzeller de Melo</td><td>19 99548-6744</td><td>Nutrição</td><td></td></tr>
+    <tr><td>39</td><td>Hugo Jaime Rodriguez Alvarez</td><td>11 93305-7934</td><td>Medico</td><td></td></tr>
+    <tr><td>40</td><td>Cristina dos Reis Bozelli</td><td>14 99694-7598</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>41</td><td>Camila Cibele Bezerra de Queiroz</td><td>17 98227-4318</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>42</td><td>Adriana Gonçalves Mendes</td><td>11 98348-6581</td><td>Fisioterapia</td><td></td></tr>
+    <tr><td>43</td><td>DR. SANDRO SEITI</td><td>16 99258-4608</td><td>Medico</td><td></td></tr>
+    <tr><td>44</td><td>Melina Destri Garcia</td><td>17 99602-2430</td><td>Medico</td><td></td></tr>
+    <tr><td>45</td><td>Ana Flávia de Freitas</td><td>17 98118-1030</td><td>Nutrição</td><td></td></tr>
+    <tr><td>46</td><td>Aryane Cunha Louzada</td><td>31 8774-8342</td><td>Nutrição</td><td></td></tr>
+    <tr><td>47</td><td>Elaine Cristina Teixeira Pinto</td><td>11 95970-5243</td><td>Nutrição</td><td></td></tr>
+    <tr><td>48</td><td>Jéssica Geronymo Frias Marciano</td><td>11 97183-1528</td><td>Nutrição</td><td></td></tr>
+    <tr><td>49</td><td>Camilo Diego Benedetti</td><td>15 99686-6517</td><td>Psicologia</td><td></td></tr>
+    <tr><td>50</td><td>Daniela da Conceição Perez Martim</td><td>(15)99107-1478</td><td>Psicologia</td><td></td></tr>
+    <tr><td>51</td><td>Roberta Cristina Santos Bravo</td><td>15 98114-2443</td><td>Terapia Ocupacional</td><td></td></tr>
+    <tr><td>52</td><td>Aldicéia Ribeiro Ferrari Gomes</td><td>18 99719-7521</td><td>Terapia Ocupacional</td><td></td></tr>
+    <tr><td>53</td><td>André Fortini Propheta</td><td>14 98232-9049</td><td>Terapia Ocupacional</td><td></td></tr>
+    <tr><td>54</td><td>Ana Carolina Abrantes Martinelli</td><td>12 99137-8599</td><td>Terapia Ocupacional</td><td></td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ==================== MONITORAMENTO ==================== -->
+<div class="section page-break">
+<h2>4. MONITORAMENTO (Atribuições Paciente-Profissional)</h2>
+<p style="margin-bottom:8px;color:#666">Verifique no sistema: Monitoramento > selecione o paciente > confirme especialidade, profissional, frequência e quantidade</p>
+
+<h3>4.1 FONOAUDIOLOGIA - VIP CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>EIKO HIRATA SHIMABUKURO</td><td>Telma Mara Dos Santos Rodolpho</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>FERNANDA CRISTINA MEIKEN MONTEIRO</td><td>Ana Paula Ferreira Opaso Alvarez</td><td>3x por semana</td><td>13</td><td></td></tr>
+    <tr><td>JOSE CLOVIS LORENA</td><td>Ana Paula Ferreira Opaso Alvarez</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>JOAO PEDRO CORREA GUIGUER</td><td>Soraia Fátima Marques Restivo</td><td>2x por semana</td><td>1</td><td></td></tr>
+    <tr><td>LUIZ CARLOS GONÇALVES ANJA</td><td>Vanessa Alcalá Grilo</td><td>1x por semana</td><td>5</td><td></td></tr>
+    <tr><td>LIVIA PACIFICO SILVA</td><td>Ana Alvarez</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>MARIA DE FATIMA COSSERMELLI SANTOS</td><td>Telma Mara Dos Santos Rodolpho</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>MARIA JOSE BAZZO CUCHERA</td><td>Telma Mara Dos Santos Rodolpho</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>ROMEU ANTONIO SGARIBOLDI DA SILVA</td><td>Vanessa Alcalá Grilo</td><td>5x por semana</td><td>21</td><td></td></tr>
+    <tr><td>TALITA NABAS DE CARVALHO</td><td>Luciana Taddeo dos Santos Missaci</td><td>2x por semana</td><td>6</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.2 FISIOTERAPIA - VIP CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>DIRCEU DOMINGUES DE OLIVEIRA</td><td>Ledlei Quagliato</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>DAVI LUCAS ZUCKER</td><td>Cristina Pontes Diener Rosa</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>DAVI LUCAS ZUCKER</td><td>Marcela Aparecida de Oliveira Ribeiro</td><td>3x por semana</td><td>14</td><td></td></tr>
+    <tr><td>DAVI LUIZ GOMES VIEIRA</td><td>Willian Eduardo de Almeida</td><td>1x por dia</td><td>31</td><td></td></tr>
+    <tr><td>DANIEL SANCHES</td><td>Ledlei Quagliato</td><td>3x por semana</td><td>3</td><td></td></tr>
+    <tr><td>ELVIRA RAMOS VIEIRA</td><td>Francimara Aparecida Costa Pereira</td><td>1x por dia</td><td>25</td><td></td></tr>
+    <tr><td>EDGAR STEFFEN</td><td>Jean Roberto Campeoto</td><td>1x por semana</td><td>4</td><td></td></tr>
+    <tr><td>EIKO HIRATA SHIMABUKURO</td><td>Katia Eliana Das Neves Soares</td><td>1x por dia</td><td>31</td><td></td></tr>
+    <tr><td>HERMELINDA ROSA ALBERTINI</td><td>Tatiana Cristine Rachid</td><td>3x por semana</td><td>14</td><td></td></tr>
+    <tr><td>ISABELLA FERNANDA PASSARO</td><td>Anderson Codognoto</td><td>1x por dia</td><td>31</td><td></td></tr>
+    <tr><td>LUIS ANTONIO MACHADO PIMENTEL</td><td>Ledlei Quagliato</td><td>2x por semana</td><td>9</td><td></td></tr>
+    <tr><td>LIVIA PACIFICO SILVA</td><td>Cristina Pontes Silva</td><td>3x por semana</td><td>13</td><td></td></tr>
+    <tr><td>MARIANA CRISTINA RODRIGUES</td><td>Maria Cristina de Carvalho</td><td>1x por dia</td><td>31</td><td></td></tr>
+    <tr><td>MARIA DE FATIMA COSSERMELLI SANTOS</td><td>Katia Eliana Das Neves Soares</td><td>1x por dia</td><td>31</td><td></td></tr>
+    <tr><td>MARIA JOSE BAZZO CUCHERA</td><td>Ledlei Quagliato</td><td>3x por semana</td><td>14</td><td></td></tr>
+    <tr><td>NELSON GUTIERREZ</td><td>Marcela Aparecida de Oliveira Ribeiro</td><td>1x por dia</td><td>31</td><td></td></tr>
+    <tr><td>SEBASTIÃO SANTOS DA SILVA</td><td>Ledlei Quagliato</td><td>3x por semana</td><td>14</td><td></td></tr>
+    <tr><td>VIRGINIA VERCELINO PRIMO</td><td>Yasmin dos Santos</td><td>2x por semana</td><td>9</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.3 FISIOTERAPIA - GANEP LAR</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>ISAURA DE MORAES LEONEL FERREIRA</td><td>Cleonice Duarte de Araujo</td><td>2x por semana</td><td>5</td><td></td></tr>
+    <tr><td>LUIZA CASERTA SCATENA</td><td>Katia Ferreira de Lima Silva</td><td>5x por semana</td><td>2</td><td></td></tr>
+    <tr><td>MARIA DO ROSARIO MARTINS HERMACULA</td><td>Flavio Silva Pereira</td><td>3x por semana</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.4 ENFERMAGEM - DAY HOME CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>RONILDO PAULO PEROTTI</td><td>Ana Laura Giriolli</td><td>1x por dia</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.5 ENFERMAGEM - GANEP LAR</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>ISAURA DE MORAES LEONEL FERREIRA</td><td>Karen Hikarai Matsubara de Souza</td><td>1x por dia</td><td>3</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.6 NUTRIÇÃO - GANEP LAR</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>ISAURA DE MORAES LEONEL FERREIRA</td><td>Aline Cristina Dias Carmo</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.7 MÉDICO - GANEP LAR</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>ISAURA DE MORAES LEONEL FERREIRA</td><td>GUILHERME MENDES MOUCACHEN</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.8 FISIOTERAPIA - LIFE CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>GILDA ROSANA LEONEL</td><td>Maria Ivani De Souza Pereira</td><td>1x por dia</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.9 ENFERMAGEM - LIFE CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>ELCO APPARECIDO FORNAZALI</td><td>Jaqueline Rodrigues de Oliveira Bonani</td><td>1x por mês</td><td>1</td><td></td></tr>
+    <tr><td>ELCO APPARECIDO FORNAZALI</td><td>Rafaela Aparecida Bernardes</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.10 FONOAUDIOLOGIA - LIFE CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>GRACI LUIZA DE GODOI FORTES</td><td>LILIANE GREEN FRREIRA</td><td>Avaliação</td><td>1</td><td></td></tr>
+    <tr><td>NAELCIO FERREIRA</td><td>Giovanna C. Vitali</td><td>2x por semana</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.11 NUTRIÇÃO - LIFE CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>NAELCIO FERREIRA</td><td>Lana Simone Wanzeller de Melo</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.12 MÉDICO - LIFE CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>ANTONIO BUENO DE CAMARGO</td><td>Hugo Jaime Rodriguez Alvarez</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.13 FISIOTERAPIA - ANERY</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>JOSE CARLOS PERES</td><td>Cristina dos Reis Bozelli</td><td>3x por semana</td><td>1</td><td></td></tr>
+    <tr><td>SYLVIA MARIA CANOAS MIZIARA</td><td>Camila Cibele Bezerra de Queiroz</td><td>3x por semana</td><td>1</td><td></td></tr>
+    <tr><td>THELMA LOPES ONOFRE DE FREITAS RIBEIRO</td><td>Adriana Gonçalves Mendes</td><td>1x por dia</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.14 MÉDICO - ANERY</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>JOSE CARLOS PERES</td><td>DR. SANDRO SEITI</td><td>1x por mês</td><td>1</td><td></td></tr>
+    <tr><td>SYLVIA MARIA CANOAS MIZIARA</td><td>Melina Destri Garcia</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.15 NUTRIÇÃO - ANERY</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>HELENA KLEIN ALMEIDA</td><td>Ana Flávia de Freitas</td><td>1x por mês</td><td>1</td><td></td></tr>
+    <tr><td>HELENA KLEIN ALMEIDA</td><td>Ana Flávia de Freitas</td><td>2x por mês</td><td>1</td><td></td></tr>
+    <tr><td>LIGIA DA PENHA CAMPOS</td><td>Aryane Cunha Louzada</td><td>1x por mês</td><td>1</td><td></td></tr>
+    <tr><td>OTTO FERREIRA</td><td>Elaine Cristina Teixeira Pinto</td><td>1x por mês</td><td>1</td><td></td></tr>
+    <tr><td>SHIRLEI DA CUNHA OLIVEIRA</td><td>Jéssica Geronymo Frias Marciano</td><td>1x por mês</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.16 PSICOLOGIA - VIP CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>LUIZ CARLOS GONÇALVES ANJA</td><td>Camilo Diego Benedetti</td><td>1x por semana</td><td>4</td><td></td></tr>
+    <tr><td>LIVIA PACIFICO SILVA</td><td>Daniela da Conceição Perez Martim</td><td>1x por semana</td><td>4</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.17 TERAPIA OCUPACIONAL - VIP CARE</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>LUCAS HENRIQUE OLIVEIRO CAMARGO</td><td>Roberta Cristina Santos Bravo</td><td>1x por semana</td><td>4</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.18 TERAPIA OCUPACIONAL - AUSTA</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>EDINAMARA APARECIDA BISPO DE SOUZA</td><td>Aldicéia Ribeiro Ferrari Gomes</td><td>2x por semana</td><td>1</td><td></td></tr>
+    <tr><td>THEREZA VICENTIM CHERONE</td><td>André Fortini Propheta</td><td>1x por semana</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.19 TERAPIA OCUPACIONAL - ANERY</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>NATHALY ROCHA DE SOUZA</td><td>Ana Carolina Abrantes Martinelli</td><td>1x por semana</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.20 FONOAUDIOLOGIA - APAS</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>CLAUDIONOR RIBEIRO AGUIAR</td><td>Jussara Aparecida Miranda Franco</td><td>Avaliação</td><td>1</td><td></td></tr>
+    <tr><td>NIRDE ROSALIN BARBIERI</td><td>Jussara Aparecida Miranda Franco</td><td>Avaliação</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.21 FISIOTERAPIA - APAS</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>IRENE MACAGNAN GALVAO DE MOURA</td><td>Ellem Karoline Pavan</td><td>Avaliação</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>4.22 FONOAUDIOLOGIA - GANEP LAR</h3>
+<table>
+  <thead><tr><th>Paciente</th><th>Profissional</th><th>Frequência</th><th>Qtd</th><th style="width:40px">OK?</th></tr></thead>
+  <tbody>
+    <tr><td>FRANCISCO JOAQUIM DA SILVA</td><td>Bianca Darzinia Fargiani Nishiyama</td><td>1x por dia</td><td>5</td><td></td></tr>
+    <tr><td>MARIA DO ROSARIO MARTINS HERMACULA</td><td>Luana Akemi Yamashita Thomaz</td><td>Avaliação</td><td>1</td><td></td></tr>
+  </tbody>
+</table>
+
+</div>
+
+<!-- ==================== ASSINATURA ==================== -->
+<div style="margin-top: 40px; border-top: 1px solid #ccc; padding-top: 16px;">
+  <p><strong>Conferido por:</strong> ________________________________________</p>
+  <p style="margin-top: 12px;"><strong>Data:</strong> _____/_____/_________</p>
+  <p style="margin-top: 12px;"><strong>Observações:</strong></p>
+  <div style="border: 1px solid #ddd; min-height: 60px; margin-top: 4px; padding: 8px;"></div>
+</div>
+
+</body>
+</html>
