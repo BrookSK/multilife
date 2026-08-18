@@ -31,7 +31,7 @@ if (!empty($where)) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
 }
 
-$sql .= ' GROUP BY u.id ORDER BY u.id DESC';
+$sql .= ' GROUP BY u.id ORDER BY u.id ASC';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);

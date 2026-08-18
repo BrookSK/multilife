@@ -43,7 +43,7 @@ if ($insurance !== '') {
     $params['ins'] = '%' . $insurance . '%';
 }
 
-$sql .= ' ORDER BY id DESC';
+$sql .= ' ORDER BY id ASC';
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
