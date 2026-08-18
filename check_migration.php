@@ -33,6 +33,15 @@ echo '</table>';
 echo '<hr>';
 echo '<h3>Rodar migration agora:</h3>';
 echo '<form method="post"><button type="submit" name="run" value="1" style="padding:10px 20px;font-size:16px;cursor:pointer;background:#4CAF50;color:white;border:none;border-radius:4px">RODAR MIGRATION DE CIDADES AGORA</button></form>';
+echo '<form method="post" style="margin-top:10px"><button type="submit" name="run_country" value="1" style="padding:10px 20px;font-size:16px;cursor:pointer;background:#2196F3;color:white;border:none;border-radius:4px">DEFINIR PAÍS = BRASIL PARA TODOS</button></form>';
+
+if (isset($_POST['run_country'])) {
+    echo '<hr><h3>Definindo país...</h3><pre>';
+    $affected = db()->exec("UPDATE patients SET address_country = 'Brasil' WHERE deleted_at IS NULL AND (address_country IS NULL OR address_country = '')");
+    echo "País 'Brasil' definido para {$affected} pacientes.\n";
+    echo '</pre>';
+    echo '<p style="color:green;font-weight:bold">Pronto!</p>';
+}
 
 if (isset($_POST['run'])) {
     echo '<hr><h3>Executando...</h3><pre>';
@@ -97,6 +106,10 @@ if (isset($_POST['run'])) {
         $updated += $affected;
         echo "  {$name} => {$city}/{$state} (linhas afetadas: {$affected})\n";
     }
+    
+    // Atualizar país para Brasil em todos os pacientes importados
+    $stmtCountry = db()->exec("UPDATE patients SET address_country = 'Brasil' WHERE deleted_at IS NULL AND (address_country IS NULL OR address_country = '')");
+    echo "\nPaís 'Brasil' definido para todos os pacientes sem país.\n";
     
     echo "\n\nTotal atualizado: {$updated} pacientes\n";
     echo '</pre>';
