@@ -19,6 +19,7 @@ header('Content-Type: text/plain; charset=utf-8');
 $migrations = [
     'migrations/2026-08-14_0002_fix_duplicate_professionals_and_specialties.sql',
     'migrations/2026-08-14_0003_update_patients_city.sql',
+    'migrations/2026-08-14_0004_update_patients_city_and_state.sql',
 ];
 
 $pdo = db();
