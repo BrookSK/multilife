@@ -6,87 +6,94 @@
 -- ============================================
 
 -- ============================================
--- 1. REMOVER MONITORAMENTOS (patient_assignments) DE TESTE
--- Remove atribuições vinculadas a profissionais importados (@import) 
--- ou demands de importação
+-- 1. IDENTIFICAR PACIENTES DE TESTE
+-- Paciente com "teste" no nome ou IDs específicos de teste
 -- ============================================
 
--- Remover billing_document_requirements vinculados a assignments de teste
+-- Remover billing_document_requirements de pacientes de teste
 DELETE bdr FROM billing_document_requirements bdr
 JOIN patient_assignments pa ON pa.id = bdr.assignment_id
-WHERE pa.professional_remote_jid LIKE '%@import.local%';
+JOIN patients p ON p.id = pa.patient_id
+WHERE LOWER(p.full_name) LIKE '%teste%' OR LOWER(p.full_name) LIKE '%testo%';
 
--- Remover patient_assignments de importação/teste
-DELETE FROM patient_assignments
-WHERE professional_remote_jid LIKE '%@import.local%';
-
--- Remover assignments de demands de importação
+-- Remover patient_assignments de pacientes de teste
 DELETE pa FROM patient_assignments pa
-JOIN demands d ON d.id = pa.demand_id
-WHERE d.description = 'Importado via planilha';
+JOIN patients p ON p.id = pa.patient_id
+WHERE LOWER(p.full_name) LIKE '%teste%' OR LOWER(p.full_name) LIKE '%testo%';
 
 -- ============================================
--- 2. REMOVER DEMANDS DE TESTE/IMPORTAÇÃO
+-- 2. IDENTIFICAR PROFISSIONAIS/USUÁRIOS DE TESTE
+-- Usuários com "teste" no nome ou email de teste
+-- ============================================
+
+-- Remover billing_document_requirements de profissionais de teste
+DELETE bdr FROM billing_document_requirements bdr
+JOIN patient_assignments pa ON pa.id = bdr.assignment_id
+JOIN users u ON u.id = pa.professional_user_id
+WHERE LOWER(u.name) LIKE '%teste%' OR LOWER(u.name) LIKE '%testo%';
+
+-- Remover patient_assignments de profissionais de teste
+DELETE pa FROM patient_assignments pa
+JOIN users u ON u.id = pa.professional_user_id
+WHERE LOWER(u.name) LIKE '%teste%' OR LOWER(u.name) LIKE '%testo%';
+
+-- ============================================
+-- 3. REMOVER DEMANDS DE TESTE
+-- Demands com "teste" no título ou criadas por usuários de teste
 -- ============================================
 DELETE FROM demand_status_logs WHERE demand_id IN (
-    SELECT id FROM demands WHERE description = 'Importado via planilha'
+    SELECT id FROM demands WHERE LOWER(title) LIKE '%teste%' OR LOWER(title) LIKE '%testo%'
 );
-
 DELETE FROM demand_dispatch_logs WHERE demand_id IN (
-    SELECT id FROM demands WHERE description = 'Importado via planilha'
+    SELECT id FROM demands WHERE LOWER(title) LIKE '%teste%' OR LOWER(title) LIKE '%testo%'
 );
-
-DELETE FROM demands WHERE description = 'Importado via planilha';
-
--- ============================================
--- 3. REMOVER PROFISSIONAIS DE TESTE (importados)
--- São os que têm email @import.multilife.local ou @importacao.multilife.local
--- ============================================
-
--- Remover roles primeiro
-DELETE ur FROM user_roles ur
-JOIN users u ON u.id = ur.user_id
-WHERE u.email LIKE '%@import%multilife%';
-
--- Remover os usuários de teste
-DELETE FROM users WHERE email LIKE '%@import%multilife%';
+DELETE FROM demands WHERE LOWER(title) LIKE '%teste%' OR LOWER(title) LIKE '%testo%';
 
 -- ============================================
--- 4. REMOVER PACIENTES DE TESTE (importados)
--- Remove pacientes que foram criados na data da importação
--- e que não têm CPF (foram importados só com nome)
+-- 4. REMOVER PACIENTES DE TESTE
 -- ============================================
 
--- Remover vínculos patient_professionals de pacientes de teste
+-- Remover vínculos
 DELETE pp FROM patient_professionals pp
 JOIN patients p ON p.id = pp.patient_id
-WHERE p.cpf IS NULL
-  AND p.email IS NULL
-  AND p.whatsapp IS NULL
-  AND DATE(p.created_at) = '2026-08-14';
+WHERE LOWER(p.full_name) LIKE '%teste%' OR LOWER(p.full_name) LIKE '%testo%';
 
--- Soft-delete dos pacientes de teste (marca como excluído)
-UPDATE patients
-SET deleted_at = NOW()
-WHERE cpf IS NULL
-  AND email IS NULL
-  AND whatsapp IS NULL
-  AND DATE(created_at) = '2026-08-14'
-  AND deleted_at IS NULL;
+-- Deletar pacientes de teste (hard delete)
+DELETE FROM patients WHERE LOWER(full_name) LIKE '%teste%' OR LOWER(full_name) LIKE '%testo%';
 
 -- ============================================
--- 5. VERIFICAÇÃO
+-- 5. REMOVER USUÁRIOS/PROFISSIONAIS DE TESTE
 -- ============================================
-SELECT 'Profissionais de teste restantes:' AS verificacao,
-       (SELECT COUNT(*) FROM users WHERE email LIKE '%@import%multilife%') AS total;
 
-SELECT 'Pacientes de teste (soft-deleted):' AS verificacao,
-       (SELECT COUNT(*) FROM patients WHERE DATE(created_at) = '2026-08-14' AND deleted_at IS NOT NULL) AS total;
+-- Remover roles
+DELETE ur FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+WHERE LOWER(u.name) LIKE '%teste%' OR LOWER(u.name) LIKE '%testo%'
+   OR LOWER(u.email) LIKE '%teste%' OR LOWER(u.email) LIKE '%testo%';
 
-SELECT 'Assignments de teste restantes:' AS verificacao,
-       (SELECT COUNT(*) FROM patient_assignments WHERE professional_remote_jid LIKE '%@import.local%') AS total;
+-- Remover audit logs de usuários de teste
+UPDATE audit_logs SET user_id = NULL WHERE user_id IN (
+    SELECT id FROM users WHERE LOWER(name) LIKE '%teste%' OR LOWER(name) LIKE '%testo%'
+       OR LOWER(email) LIKE '%teste%' OR LOWER(email) LIKE '%testo%'
+);
 
-SELECT 'Demands de importação restantes:' AS verificacao,
-       (SELECT COUNT(*) FROM demands WHERE description = 'Importado via planilha') AS total;
+-- Remover usuários de teste
+DELETE FROM users WHERE LOWER(name) LIKE '%teste%' OR LOWER(name) LIKE '%testo%'
+   OR LOWER(email) LIKE '%teste%' OR LOWER(email) LIKE '%testo%';
 
-SELECT 'Limpeza concluída!' AS resultado;
+-- ============================================
+-- 6. LIMPAR MONITORAMENTO ÓRFÃO
+-- Assignments que ficaram sem paciente ou profissional válido
+-- ============================================
+DELETE FROM patient_assignments WHERE patient_id NOT IN (SELECT id FROM patients WHERE deleted_at IS NULL);
+
+-- ============================================
+-- 7. VERIFICAÇÃO
+-- ============================================
+SELECT 'Pacientes de teste restantes:' AS verificacao,
+       (SELECT COUNT(*) FROM patients WHERE LOWER(full_name) LIKE '%teste%' OR LOWER(full_name) LIKE '%testo%') AS total;
+
+SELECT 'Usuários de teste restantes:' AS verificacao,
+       (SELECT COUNT(*) FROM users WHERE LOWER(name) LIKE '%teste%' OR LOWER(name) LIKE '%testo%') AS total;
+
+SELECT 'Limpeza de dados de teste concluída!' AS resultado;
