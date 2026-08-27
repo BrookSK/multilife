@@ -1362,7 +1362,16 @@ WAJS;
         echo '</div>';
         
         $linkedInstances = whatsapp_list_all_instances();
-        $usersStmt = db()->prepare("SELECT u.id, u.name, u.email FROM users u WHERE u.status = 'active' ORDER BY u.name ASC");
+        // Somente usuários da equipe: precisam ter algum papel (user_roles) e
+        // não podem ser registros importados em massa (@importacao.multilife.local).
+        $usersStmt = db()->prepare(
+            "SELECT u.id, u.name, u.email\n"
+            . "FROM users u\n"
+            . "WHERE u.status = 'active'\n"
+            . "AND u.email NOT LIKE '%@importacao.multilife.local'\n"
+            . "AND EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id)\n"
+            . "ORDER BY u.name ASC"
+        );
         $usersStmt->execute();
         $availableUsers = $usersStmt->fetchAll();
         
