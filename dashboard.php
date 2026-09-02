@@ -5,11 +5,32 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('admin.dashboard');
-
-view_header('Dashboard');
 
 $user = auth_user();
+$uid = auth_user_id();
+
+// Se for exclusivamente profissional (sem outras permissões admin), redirecionar para a área do profissional
+$roles = rbac_user_roles((int)$uid);
+$isOnlyProfessional = in_array('profissional', $roles, true)
+    && !rbac_user_can((int)$uid, 'admin.dashboard')
+    && !rbac_user_can((int)$uid, 'patients.manage')
+    && !rbac_user_can((int)$uid, 'finance.manage')
+    && !rbac_user_can((int)$uid, 'demands.manage');
+if ($isOnlyProfessional) {
+    header('Location: /profissional_registros.php');
+    exit;
+}
+
+// Determinar o que o usuário pode ver no dashboard, com base nas permissões
+$canAdmin      = rbac_user_can((int)$uid, 'admin.dashboard');
+$canDemands    = $canAdmin || rbac_user_can((int)$uid, 'demands.manage');
+$canPatients   = $canAdmin || rbac_user_can((int)$uid, 'patients.manage');
+$canFinance    = $canAdmin || rbac_user_can((int)$uid, 'finance.manage');
+$canAppoint    = $canAdmin || rbac_user_can((int)$uid, 'appointments.manage');
+$canAudit      = $canAdmin || rbac_user_can((int)$uid, 'audit.view');
+$canBackups    = $canAdmin || rbac_user_can((int)$uid, 'backups.manage');
+
+view_header('Dashboard');
 
 // Determinar saudação baseada no horário
 $hora = (int)date('H');
@@ -304,70 +325,75 @@ try {
 } catch (Throwable $e) {
 }
 
-// Cards de Atendimentos (4 em cima)
-echo '<div class="kpiGrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
+// Cards de Atendimentos/Captação (só para quem tem permissão de demandas, pacientes ou agendamentos)
+if ($canDemands || $canPatients || $canAppoint) {
+    echo '<div class="kpiGrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon">OK</div><div class="kpiChange">+12%</div></div>';
-echo '<div class="kpiValue">' . number_format($kpiAtendRealizados, 0, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Atendimentos Realizados</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon">OK</div><div class="kpiChange">+12%</div></div>';
+    echo '<div class="kpiValue">' . number_format($kpiAtendRealizados, 0, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Atendimentos Realizados</div>';
+    echo '</div></div>';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--destructive)/.10);color:hsl(var(--destructive))">X</div><div class="kpiChange">-5%</div></div>';
-echo '<div class="kpiValue">' . number_format($kpiAtendRecusados, 0, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Atendimentos Cancelados</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--destructive)/.10);color:hsl(var(--destructive))">X</div><div class="kpiChange">-5%</div></div>';
+    echo '<div class="kpiValue">' . number_format($kpiAtendRecusados, 0, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Atendimentos Cancelados</div>';
+    echo '</div></div>';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--primary)/.10);color:hsl(var(--primary))">HE</div><div class="kpiChange">+18%</div></div>';
-echo '<div class="kpiValue">' . number_format($kpiCaptacoesAtivas, 0, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Captações Ativas</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--primary)/.10);color:hsl(var(--primary))">HE</div><div class="kpiChange">+18%</div></div>';
+    echo '<div class="kpiValue">' . number_format($kpiCaptacoesAtivas, 0, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Captações Ativas</div>';
+    echo '</div></div>';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--warning)/.10);color:hsl(var(--warning))">⏸</div><div class="kpiChange">+3%</div></div>';
-echo '<div class="kpiValue">' . number_format($kpiCaptacoesPendentes, 0, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Captações Pendentes</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--warning)/.10);color:hsl(var(--warning))">⏸</div><div class="kpiChange">+3%</div></div>';
+    echo '<div class="kpiValue">' . number_format($kpiCaptacoesPendentes, 0, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Captações Pendentes</div>';
+    echo '</div></div>';
 
-echo '</div>';
+    echo '</div>';
 
-echo '<div style="height:12px"></div>';
+    echo '<div style="height:12px"></div>';
+}
 
-// Cards Financeiros (4 embaixo)
-echo '<div class="kpiGrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
+// Cards Financeiros (só para quem tem permissão financeira)
+if ($canFinance) {
+    echo '<div class="kpiGrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--success)/.10);color:hsl(var(--success))">R$</div><div class="kpiChange">+18%</div></div>';
-echo '<div class="kpiValue">R$ ' . number_format($kpiFaturamentoTotal, 2, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Faturamento Total</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--success)/.10);color:hsl(var(--success))">R$</div><div class="kpiChange">+18%</div></div>';
+    echo '<div class="kpiValue">R$ ' . number_format($kpiFaturamentoTotal, 2, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Faturamento Total</div>';
+    echo '</div></div>';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--warning)/.10);color:hsl(var(--warning))">$</div><div class="kpiChange">+3%</div></div>';
-echo '<div class="kpiValue">R$ ' . number_format($kpiCustosAndamento, 2, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Custos em Andamento</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--warning)/.10);color:hsl(var(--warning))">$</div><div class="kpiChange">+3%</div></div>';
+    echo '<div class="kpiValue">R$ ' . number_format($kpiCustosAndamento, 2, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Custos em Andamento</div>';
+    echo '</div></div>';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--info)/.10);color:hsl(var(--info))">↓</div><div class="kpiChange">+8%</div></div>';
-echo '<div class="kpiValue">R$ ' . number_format($kpiReceber, 2, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Contas a Receber</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--info)/.10);color:hsl(var(--info))">↓</div><div class="kpiChange">+8%</div></div>';
+    echo '<div class="kpiValue">R$ ' . number_format($kpiReceber, 2, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Contas a Receber</div>';
+    echo '</div></div>';
 
-echo '<div class="kpiCard"><div class="kpiBody">';
-echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--destructive)/.10);color:hsl(var(--destructive))">↑</div><div class="kpiChange">-2%</div></div>';
-echo '<div class="kpiValue">R$ ' . number_format($kpiPagar, 2, ',', '.') . '</div>';
-echo '<div class="kpiLabel">Contas a Pagar</div>';
-echo '</div></div>';
+    echo '<div class="kpiCard"><div class="kpiBody">';
+    echo '<div class="kpiTop"><div class="kpiIcon" style="background:hsla(var(--destructive)/.10);color:hsl(var(--destructive))">↑</div><div class="kpiChange">-2%</div></div>';
+    echo '<div class="kpiValue">R$ ' . number_format($kpiPagar, 2, ',', '.') . '</div>';
+    echo '<div class="kpiLabel">Contas a Pagar</div>';
+    echo '</div></div>';
 
-echo '</div>';
+    echo '</div>';
+}
 
 echo '<div style="height:18px"></div>';
 
 echo '<div class="grid">';
 
+if ($canFinance) {
 echo '<section class="card col6">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">';
 echo '<div style="font-weight:900">Faturamento — Últimos 6 meses</div>';
@@ -389,7 +415,9 @@ if (empty($chartFaturamento)) {
 echo '</tbody></table>';
 echo '</div>';
 echo '</section>';
+}
 
+if ($canAppoint || $canPatients) {
 echo '<section class="card col6">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">';
 echo '<div style="font-weight:900">Atendimentos por Mês</div>';
@@ -411,7 +439,9 @@ if (empty($chartAtendimentos)) {
 echo '</tbody></table>';
 echo '</div>';
 echo '</section>';
+}
 
+if ($canDemands) {
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">';
 echo '<div style="font-weight:900">Últimas Solicitações de Captação</div>';
@@ -449,7 +479,9 @@ echo '</tbody></table>';
 echo '</div>';
 
 echo '</section>';
+}
 
+if ($canBackups) {
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">';
 echo '<div>';
@@ -468,6 +500,15 @@ echo '</form>';
 echo '</div>';
 echo '</div>';
 echo '</section>';
+}
+
+// Se o usuário não tem nenhuma das seções acima, mostrar mensagem de boas-vindas com atalhos
+if (!$canDemands && !$canPatients && !$canFinance && !$canAppoint && !$canAudit && !$canBackups && !$canAdmin) {
+    echo '<section class="card col12">';
+    echo '<div style="font-weight:900;font-size:16px;margin-bottom:6px">Bem-vindo ao MultiLife</div>';
+    echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Use o menu lateral para acessar as áreas disponíveis para o seu perfil.</div>';
+    echo '</section>';
+}
 
 echo '</div>';
 
