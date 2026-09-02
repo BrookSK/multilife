@@ -601,6 +601,9 @@ try {
             // Buscar da tabela demand_interested_professionals
         } elseif ($chatType === 'todos') {
             // Todos: mostra tudo (privados, não arquivados)
+        } else {
+            // Padrão (all / atendimentos ativos): esconder conversas concluídas (resolvido)
+            $whereClauses[] = "(cc.status != 'resolvido' OR cc.status IS NULL)";
         }
         
         if (!empty($searchQuery)) {
@@ -1940,6 +1943,29 @@ if (empty($selectedChat)) {
     echo '</div>';
     echo '</div>';
     echo '<div class="whatsapp-chat-header-actions">';
+    // Botão Concluir / Reabrir conversa (não exibir para grupos)
+    if (!$isGroup) {
+        // Obter status atual do contato selecionado
+        $headerStatus = 'aguardando';
+        foreach ($chats as $chatItem) {
+            if (($chatItem['id'] ?? '') === $selectedChat) {
+                $headerStatus = $chatItem['status'] ?? 'aguardando';
+                break;
+            }
+        }
+        if ($headerStatus === 'resolvido') {
+            // Já concluída: botão para reabrir
+            echo '<button class="whatsapp-action-btn" onclick="reopenConversation()" title="Reabrir conversa" style="color:#f0ad4e">';
+            echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+            echo '</button>';
+        } else {
+            // Ativa: botão para concluir
+            echo '<button class="whatsapp-action-btn" onclick="concludeConversation()" title="Concluir conversa" style="color:#00a884">';
+            echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+            echo '</button>';
+        }
+    }
+    
     echo '<button class="whatsapp-action-btn" onclick="searchInChat()">';
     echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>';
     echo '</button>';
@@ -3221,6 +3247,46 @@ async function deleteQuickReply(id) {
     } catch (e) {
         alert("Erro ao excluir resposta rápida.");
     }
+}
+
+// ============================================
+// CONCLUSÃO DE CONVERSA
+// ============================================
+async function setConversationStatus(status) {
+    const chatId = window.chatId || new URLSearchParams(window.location.search).get("chat") || "";
+    if (!chatId) {
+        alert("Selecione uma conversa primeiro.");
+        return;
+    }
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("status", status);
+    try {
+        const resp = await fetch("/chat_conclude.php", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.success) {
+            // Recarregar para atualizar a listagem (a conversa sai da aba atual)
+            window.location.href = "/chat_web.php";
+        } else {
+            alert("Erro: " + (data.error || "desconhecido"));
+        }
+    } catch (e) {
+        alert("Erro ao atualizar a conversa.");
+    }
+}
+
+function concludeConversation() {
+    if (!confirm("Concluir esta conversa? Ela sairá dos atendimentos ativos e irá para a aba Concluídos.")) return;
+    setConversationStatus("resolvido");
+}
+
+function reopenConversation() {
+    setConversationStatus("aguardando");
+}
+
+// Função usada pelo <select> de status no painel lateral
+function updateStatus(status) {
+    setConversationStatus(status);
 }
 
 // Inicializar respostas rápidas quando a página carregar

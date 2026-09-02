@@ -465,6 +465,24 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
     $webhookInstanceName = $data['instance'] ?? ($GLOBALS['_webhookInstanceName'] ?? null);
     $stmtContact->execute([$normalizedJid, $webhookInstanceName, $displayName, $isGroup, $timestamp, $lastMessageText, $messageType]);
     
+    // REATIVAR CONVERSA: se a mensagem é do CLIENTE (fromMe=0) e o contato estava
+    // marcado como 'resolvido' (concluído), volta para 'aguardando' para reentrar no fluxo de atendimento.
+    if (!$fromMe) {
+        try {
+            $stmtReactivate = db()->prepare("
+                UPDATE chat_contacts
+                SET status = 'aguardando', updated_at = CURRENT_TIMESTAMP
+                WHERE remote_jid = ? AND status = 'resolvido'
+            ");
+            $stmtReactivate->execute([$normalizedJid]);
+            if ($stmtReactivate->rowCount() > 0) {
+                error_log("[SAVE_CONTACT] Conversa reativada (resolvido -> aguardando): '$normalizedJid'");
+            }
+        } catch (Exception $e) {
+            error_log("[SAVE_CONTACT] Erro ao reativar conversa: " . $e->getMessage());
+        }
+    }
+    
     error_log("[SAVE_CONTACT] Contato salvo com sucesso - normalizedJid: '$normalizedJid'");
 }
 
