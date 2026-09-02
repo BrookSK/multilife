@@ -1507,6 +1507,30 @@ echo '.whatsapp-input-area{padding:12px 16px;background:#ffffff;border-top:1px s
 echo '.whatsapp-input{flex:1;padding:10px 12px;border:none;border-radius:8px;font-size:15px;resize:none;max-height:120px;font-family:inherit}';
 echo '.whatsapp-send-btn{width:48px;height:48px;border-radius:50%;background:#00a884;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;transition:background .2s}';
 echo '.whatsapp-send-btn:hover{background:#06cf9c}';
+// Dropdown de respostas rápidas
+echo '.quick-replies-dropdown{position:absolute;bottom:calc(100% + 8px);left:0;right:0;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #d1d7db;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:1000}';
+echo '.qr-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f2f5;transition:background .1s}';
+echo '.qr-item:last-child{border-bottom:none}';
+echo '.qr-item:hover,.qr-item.qr-active{background:#f0f2f5}';
+echo '.qr-item-title{font-size:13px;font-weight:700;color:#111b21;display:flex;align-items:center;gap:6px}';
+echo '.qr-item-scope{font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;text-transform:uppercase}';
+echo '.qr-scope-global{background:#d9fdd3;color:#027a48}';
+echo '.qr-scope-individual{background:#e7f0fd;color:#1a56db}';
+echo '.qr-item-content{font-size:12px;color:#667781;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
+echo '.qr-empty{padding:14px;text-align:center;color:#667781;font-size:13px}';
+// Modal de gerenciamento de respostas rápidas
+echo '.qr-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:none;align-items:center;justify-content:center}';
+echo '.qr-modal-overlay.show{display:flex}';
+echo '.qr-modal{background:#fff;border-radius:14px;width:92%;max-width:640px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,.2)}';
+echo '.qr-modal-header{padding:18px 22px;border-bottom:1px solid #e9edef;display:flex;align-items:center;justify-content:space-between}';
+echo '.qr-modal-body{padding:18px 22px;overflow-y:auto}';
+echo '.qr-form-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}';
+echo '.qr-input{width:100%;padding:10px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-family:inherit}';
+echo '.qr-list-item{border:1px solid #e9edef;border-radius:10px;padding:12px;margin-bottom:8px}';
+echo '.qr-btn{padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px}';
+echo '.qr-btn-primary{background:#00a884;color:#fff}';
+echo '.qr-btn-secondary{background:#f0f2f5;color:#54656f}';
+echo '.qr-btn-danger{background:#fde8e8;color:#c81e1e}';
 echo '.whatsapp-send-btn:disabled{background:#d1d7db;cursor:not-allowed}';
 echo '@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
 echo '.whatsapp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#667781}';
@@ -2235,7 +2259,15 @@ function toggleRec(){
     
     echo '</div>';
     
-    echo '<textarea class="whatsapp-input" name="message" placeholder="Digite uma mensagem" rows="1" required></textarea>';
+    // Container relativo para o campo + dropdown de respostas rápidas
+    echo '<div style="flex:1;position:relative">';
+    echo '<div id="quickRepliesDropdown" class="quick-replies-dropdown" style="display:none"></div>';
+    echo '<textarea id="chatMessageInput" class="whatsapp-input" name="message" placeholder="Digite uma mensagem (use / para respostas rápidas)" rows="1" required style="width:100%"></textarea>';
+    echo '</div>';
+    // Botão para gerenciar respostas rápidas
+    echo '<button type="button" onclick="openQuickRepliesManager()" class="whatsapp-action-btn" title="Gerenciar respostas rápidas" style="align-self:center">';
+    echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/></svg>';
+    echo '</button>';
     echo '<button type="submit" class="whatsapp-send-btn">';
     echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
     echo '</button>';
@@ -2909,6 +2941,305 @@ function cadastrarPaciente() {
     const url = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
     window.open(url, "_blank");
 }
+
+// ============================================
+// RESPOSTAS RÁPIDAS (Quick Replies)
+// ============================================
+var _quickReplies = [];
+var _qrCanManageGlobal = false;
+var _qrActiveIndex = -1;
+var _qrFiltered = [];
+
+// Carregar respostas rápidas do servidor
+async function loadQuickReplies() {
+    try {
+        const resp = await fetch("/quick_replies_api.php?action=list");
+        const data = await resp.json();
+        if (data.ok) {
+            _quickReplies = data.items || [];
+            _qrCanManageGlobal = !!data.can_manage_global;
+        }
+    } catch (e) {
+        console.error("Erro ao carregar respostas rápidas:", e);
+    }
+}
+
+function getQuickInput() {
+    return document.getElementById("chatMessageInput");
+}
+function getQuickDropdown() {
+    return document.getElementById("quickRepliesDropdown");
+}
+
+// Mostrar dropdown filtrando pelo termo digitado após a "/"
+function showQuickRepliesDropdown(filterTerm) {
+    const dropdown = getQuickDropdown();
+    if (!dropdown) return;
+
+    const term = (filterTerm || "").toLowerCase();
+    _qrFiltered = _quickReplies.filter(function(qr) {
+        return qr.title.toLowerCase().indexOf(term) !== -1
+            || qr.content.toLowerCase().indexOf(term) !== -1;
+    });
+
+    if (_qrFiltered.length === 0) {
+        dropdown.innerHTML = "<div class=\"qr-empty\">Nenhuma resposta rápida encontrada. Clique no ícone ao lado para cadastrar.</div>";
+        dropdown.style.display = "block";
+        _qrActiveIndex = -1;
+        return;
+    }
+
+    let html = "";
+    _qrFiltered.forEach(function(qr, idx) {
+        const scopeLabel = qr.scope === "global" ? "Global" : "Minha";
+        const scopeClass = qr.scope === "global" ? "qr-scope-global" : "qr-scope-individual";
+        const preview = qr.content.length > 60 ? qr.content.substring(0, 60) + "..." : qr.content;
+        html += "<div class=\"qr-item" + (idx === 0 ? " qr-active" : "") + "\" data-idx=\"" + idx + "\" onclick=\"selectQuickReply(" + idx + ")\">";
+        html += "<div class=\"qr-item-title\">" + escapeHtml(qr.title) + " <span class=\"qr-item-scope " + scopeClass + "\">" + scopeLabel + "</span></div>";
+        html += "<div class=\"qr-item-content\">" + escapeHtml(preview) + "</div>";
+        html += "</div>";
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = "block";
+    _qrActiveIndex = 0;
+}
+
+function hideQuickRepliesDropdown() {
+    const dropdown = getQuickDropdown();
+    if (dropdown) dropdown.style.display = "none";
+    _qrActiveIndex = -1;
+    _qrFiltered = [];
+}
+
+// Selecionar uma resposta: preenche o campo (usuário revisa e envia)
+function selectQuickReply(idx) {
+    const input = getQuickInput();
+    if (!input || !_qrFiltered[idx]) return;
+    input.value = _qrFiltered[idx].content;
+    hideQuickRepliesDropdown();
+    input.focus();
+    // Ajustar altura do textarea
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+}
+
+// Detectar "/" no início do campo e abrir dropdown
+function handleQuickInput(e) {
+    const input = getQuickInput();
+    if (!input) return;
+    const val = input.value;
+    // Aciona só quando a mensagem começa com "/"
+    if (val.charAt(0) === "/") {
+        const term = val.substring(1);
+        showQuickRepliesDropdown(term);
+    } else {
+        hideQuickRepliesDropdown();
+    }
+}
+
+// Navegação por teclado no dropdown
+function handleQuickKeydown(e) {
+    const dropdown = getQuickDropdown();
+    if (!dropdown || dropdown.style.display === "none") return;
+    if (_qrFiltered.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+        e.preventDefault();
+        _qrActiveIndex = (_qrActiveIndex + 1) % _qrFiltered.length;
+        updateQuickActive();
+    } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        _qrActiveIndex = (_qrActiveIndex - 1 + _qrFiltered.length) % _qrFiltered.length;
+        updateQuickActive();
+    } else if (e.key === "Enter") {
+        // Enter seleciona a resposta ativa (não envia)
+        e.preventDefault();
+        if (_qrActiveIndex >= 0) selectQuickReply(_qrActiveIndex);
+    } else if (e.key === "Escape") {
+        hideQuickRepliesDropdown();
+    }
+}
+
+function updateQuickActive() {
+    const dropdown = getQuickDropdown();
+    if (!dropdown) return;
+    const items = dropdown.querySelectorAll(".qr-item");
+    items.forEach(function(el, i) {
+        if (i === _qrActiveIndex) {
+            el.classList.add("qr-active");
+            el.scrollIntoView({block: "nearest"});
+        } else {
+            el.classList.remove("qr-active");
+        }
+    });
+}
+
+// ---- Modal de gerenciamento ----
+function openQuickRepliesManager() {
+    let overlay = document.getElementById("qrModalOverlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "qrModalOverlay";
+        overlay.className = "qr-modal-overlay";
+        overlay.innerHTML = ""
+            + "<div class=\"qr-modal\">"
+            + "  <div class=\"qr-modal-header\">"
+            + "    <div style=\"font-size:17px;font-weight:700;color:#111b21\">Respostas Rápidas</div>"
+            + "    <button onclick=\"closeQuickRepliesManager()\" style=\"background:none;border:none;font-size:22px;cursor:pointer;color:#54656f\">&times;</button>"
+            + "  </div>"
+            + "  <div class=\"qr-modal-body\">"
+            + "    <div style=\"font-weight:700;margin-bottom:8px;color:#111b21\" id=\"qrFormTitle\">Nova resposta</div>"
+            + "    <input type=\"hidden\" id=\"qrEditId\" value=\"\">"
+            + "    <div class=\"qr-form-row\"><input class=\"qr-input\" id=\"qrTitle\" placeholder=\"Título / atalho (ex: saudacao)\" maxlength=\"120\"></div>"
+            + "    <div class=\"qr-form-row\"><textarea class=\"qr-input\" id=\"qrContent\" rows=\"3\" placeholder=\"Conteúdo da mensagem\"></textarea></div>"
+            + "    <div class=\"qr-form-row\" id=\"qrScopeRow\"></div>"
+            + "    <div class=\"qr-form-row\">"
+            + "      <button class=\"qr-btn qr-btn-primary\" onclick=\"saveQuickReply()\">Salvar</button>"
+            + "      <button class=\"qr-btn qr-btn-secondary\" onclick=\"resetQuickReplyForm()\">Limpar</button>"
+            + "    </div>"
+            + "    <hr style=\"border:none;border-top:1px solid #e9edef;margin:16px 0\">"
+            + "    <div style=\"font-weight:700;margin-bottom:8px;color:#111b21\">Cadastradas</div>"
+            + "    <div id=\"qrList\"></div>"
+            + "  </div>"
+            + "</div>";
+        document.body.appendChild(overlay);
+        overlay.addEventListener("click", function(e) {
+            if (e.target === overlay) closeQuickRepliesManager();
+        });
+    }
+    // Renderizar o seletor de escopo conforme permissão
+    const scopeRow = document.getElementById("qrScopeRow");
+    if (_qrCanManageGlobal) {
+        scopeRow.innerHTML = "<select class=\"qr-input\" id=\"qrScope\"><option value=\"individual\">Individual (só eu)</option><option value=\"global\">Global (todos autorizados)</option></select>";
+    } else {
+        scopeRow.innerHTML = "<input type=\"hidden\" id=\"qrScope\" value=\"individual\"><div style=\"font-size:12px;color:#667781\">Resposta individual (visível apenas para você)</div>";
+    }
+    overlay.classList.add("show");
+    renderQuickRepliesList();
+}
+
+function closeQuickRepliesManager() {
+    const overlay = document.getElementById("qrModalOverlay");
+    if (overlay) overlay.classList.remove("show");
+}
+
+function resetQuickReplyForm() {
+    document.getElementById("qrEditId").value = "";
+    document.getElementById("qrTitle").value = "";
+    document.getElementById("qrContent").value = "";
+    const scope = document.getElementById("qrScope");
+    if (scope && scope.tagName === "SELECT") scope.value = "individual";
+    document.getElementById("qrFormTitle").textContent = "Nova resposta";
+}
+
+function renderQuickRepliesList() {
+    const list = document.getElementById("qrList");
+    if (!list) return;
+    if (_quickReplies.length === 0) {
+        list.innerHTML = "<div class=\"qr-empty\">Nenhuma resposta cadastrada ainda.</div>";
+        return;
+    }
+    let html = "";
+    _quickReplies.forEach(function(qr) {
+        const scopeLabel = qr.scope === "global" ? "Global" : "Minha";
+        const scopeClass = qr.scope === "global" ? "qr-scope-global" : "qr-scope-individual";
+        // Só pode editar/excluir se for individual OU se puder gerenciar global
+        const canEdit = qr.scope === "individual" || _qrCanManageGlobal;
+        html += "<div class=\"qr-list-item\">";
+        html += "<div class=\"qr-item-title\">" + escapeHtml(qr.title) + " <span class=\"qr-item-scope " + scopeClass + "\">" + scopeLabel + "</span></div>";
+        html += "<div style=\"font-size:13px;color:#54656f;margin:6px 0;white-space:pre-wrap\">" + escapeHtml(qr.content) + "</div>";
+        if (canEdit) {
+            html += "<div style=\"display:flex;gap:8px\">";
+            html += "<button class=\"qr-btn qr-btn-secondary\" onclick=\"editQuickReply(" + qr.id + ")\">Editar</button>";
+            html += "<button class=\"qr-btn qr-btn-danger\" onclick=\"deleteQuickReply(" + qr.id + ")\">Excluir</button>";
+            html += "</div>";
+        }
+        html += "</div>";
+    });
+    list.innerHTML = html;
+}
+
+function editQuickReply(id) {
+    const qr = _quickReplies.find(function(x) { return x.id === id; });
+    if (!qr) return;
+    document.getElementById("qrEditId").value = qr.id;
+    document.getElementById("qrTitle").value = qr.title;
+    document.getElementById("qrContent").value = qr.content;
+    const scope = document.getElementById("qrScope");
+    if (scope && scope.tagName === "SELECT") scope.value = qr.scope;
+    document.getElementById("qrFormTitle").textContent = "Editar resposta";
+    document.getElementById("qrTitle").focus();
+}
+
+async function saveQuickReply() {
+    const id = document.getElementById("qrEditId").value;
+    const title = document.getElementById("qrTitle").value.trim();
+    const content = document.getElementById("qrContent").value.trim();
+    const scope = document.getElementById("qrScope").value;
+
+    if (!title || !content) {
+        alert("Preencha título e conteúdo.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("action", id ? "update" : "create");
+    if (id) formData.append("id", id);
+    formData.append("title", title);
+    formData.append("content", content);
+    formData.append("scope", scope);
+
+    try {
+        const resp = await fetch("/quick_replies_api.php", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.ok) {
+            await loadQuickReplies();
+            resetQuickReplyForm();
+            renderQuickRepliesList();
+        } else {
+            alert("Erro: " + (data.error || "desconhecido"));
+        }
+    } catch (e) {
+        alert("Erro ao salvar resposta rápida.");
+    }
+}
+
+async function deleteQuickReply(id) {
+    if (!confirm("Excluir esta resposta rápida?")) return;
+    const formData = new FormData();
+    formData.append("action", "delete");
+    formData.append("id", id);
+    try {
+        const resp = await fetch("/quick_replies_api.php", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.ok) {
+            await loadQuickReplies();
+            renderQuickRepliesList();
+        } else {
+            alert("Erro: " + (data.error || "desconhecido"));
+        }
+    } catch (e) {
+        alert("Erro ao excluir resposta rápida.");
+    }
+}
+
+// Inicializar respostas rápidas quando a página carregar
+document.addEventListener("DOMContentLoaded", function() {
+    loadQuickReplies();
+    const input = getQuickInput();
+    if (input) {
+        input.addEventListener("input", handleQuickInput);
+        input.addEventListener("keydown", handleQuickKeydown);
+    }
+    // Fechar dropdown ao clicar fora
+    document.addEventListener("click", function(e) {
+        const dropdown = getQuickDropdown();
+        const inp = getQuickInput();
+        if (dropdown && inp && e.target !== inp && !dropdown.contains(e.target)) {
+            hideQuickRepliesDropdown();
+        }
+    });
+});
 ';
 echo '</script>';
 
