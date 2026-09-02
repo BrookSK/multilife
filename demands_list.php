@@ -92,10 +92,13 @@ if ($dateTo !== '') {
 // patient_assignments.professional_user_id.
 $currentUid = (int)(auth_user_id() ?? 0);
 $currentRoles = rbac_user_roles($currentUid);
-$hasBroadAccess = !empty(array_intersect($currentRoles, ['admin', 'ti', 'captador', 'financeiro']));
-$isProfessionalOnly = in_array('profissional', $currentRoles, true) && !$hasBroadAccess;
+// Apenas admin e TI têm visão total do kanban.
+$hasFullAccess = !empty(array_intersect($currentRoles, ['admin', 'ti']));
+// Se o usuário tem o papel de profissional (e não é admin/ti), vê SOMENTE os cards
+// atribuídos a ele mesmo, mesmo que possua outros papéis (ex.: captador).
+$isProfessional = in_array('profissional', $currentRoles, true);
 
-if ($isProfessionalOnly) {
+if ($isProfessional && !$hasFullAccess) {
     $where[] = 'EXISTS (
         SELECT 1 FROM patient_assignments pa2
         WHERE pa2.demand_id = d.id AND pa2.professional_user_id = :prof_uid
