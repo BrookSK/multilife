@@ -339,7 +339,7 @@ if ($selected) {
     try {
         $stmtAuth = db()->prepare("
             SELECT ar.start_date, ar.start_time, ar.end_time, ar.frequency, ar.frequency_details,
-                   ar.sessions_per_week, ar.total_sessions, ar.duration_weeks,
+                   ar.sessions_per_week, ar.total_sessions, ar.duration_weeks, ar.is_indefinite,
                    ar.operator_email, ar.operator_name, ar.proposal_value, ar.agreed_value
             FROM authorization_requests ar
             WHERE ar.demand_id = ? AND ar.patient_id = (SELECT patient_id FROM patient_assignments WHERE id = ?)
@@ -441,11 +441,21 @@ if ($selected) {
     $preSessionsPerWeek = (int)($authRequest['sessions_per_week'] ?? 1);
     $preDurationWeeks = (int)($authRequest['duration_weeks'] ?? 0);
     $preTotalSessions = (int)($authRequest['total_sessions'] ?? $sessionQty);
+    $preIsIndefinite = (int)($authRequest['is_indefinite'] ?? 0);
     
     echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
     echo '<label>Data de Início *<input type="date" name="start_date" form="approveForm" value="' . h($preStartDate) . '" required></label>';
     echo '<label>Hora Início *<input type="time" name="start_time" form="approveForm" value="' . h($preStartTime ?: '08:00') . '" required></label>';
     echo '<label>Hora Fim *<input type="time" name="end_time" form="approveForm" value="' . h($preEndTime ?: '09:00') . '" required></label>';
+    echo '</div>';
+    
+    // Opção de tempo indefinido
+    echo '<div style="margin:12px 0;padding:12px;background:hsla(var(--warning)/.08);border-radius:6px">';
+    echo '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">';
+    echo '<input type="checkbox" name="is_indefinite" id="paIndefinite" form="approveForm" value="1" ' . ($preIsIndefinite ? 'checked' : '') . ' style="width:auto">';
+    echo 'Tempo indefinido (sem data final / número de semanas fixo)';
+    echo '</label>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Quando marcado, o atendimento permanece ativo até ser encerrado manualmente.</div>';
     echo '</div>';
     
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
@@ -469,12 +479,12 @@ if ($selected) {
     echo '<input type="hidden" name="sessions_per_week" id="paSessionsPerWeek" form="approveForm" value="' . $preSessionsPerWeek . '">';
     echo '</div>';
     
-    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-    echo '<label>Duração (semanas) *<input type="number" name="duration_weeks" id="paDurationWeeks" form="approveForm" min="1" value="' . ($preDurationWeeks ?: '') . '" required></label>';
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="paDurationRow">';
+    echo '<label>Duração (semanas) *<input type="number" name="duration_weeks" id="paDurationWeeks" form="approveForm" min="1" value="' . ($preDurationWeeks ?: '') . '" ' . ($preIsIndefinite ? '' : 'required') . '></label>';
     echo '<label>Total de Sessões<input type="number" name="total_sessions" id="paTotalSessions" form="approveForm" value="' . $preTotalSessions . '" readonly style="background:hsl(var(--muted));cursor:not-allowed"></label>';
     echo '</div>';
     
-    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">O total de sessões será calculado automaticamente com base na frequência e duração.</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px" id="paDurationHint">O total de sessões será calculado automaticamente com base na frequência e duração.</div>';
     echo '</div>';
     echo '</div>';
 
@@ -649,6 +659,24 @@ echo '}';
 echo 'if(paFreq)paFreq.addEventListener("change",paCalcSessions);';
 echo 'if(paSPW)paSPW.addEventListener("input",paCalcSessions);';
 echo 'if(paDW)paDW.addEventListener("input",paCalcSessions);';
+
+// Tempo indefinido: alterna a exigência de duração/semanas
+echo 'var paIndef=document.getElementById("paIndefinite");';
+echo 'var paDurRow=document.getElementById("paDurationRow");';
+echo 'var paDurHint=document.getElementById("paDurationHint");';
+echo 'function paToggleIndefinite(){';
+echo '  if(!paIndef)return;';
+echo '  var on=paIndef.checked;';
+echo '  if(paDW){';
+echo '    if(on){paDW.removeAttribute("required");paDW.value="";paDW.disabled=true;paDW.style.opacity="0.5";}';
+echo '    else{paDW.setAttribute("required","required");paDW.disabled=false;paDW.style.opacity="1";}';
+echo '  }';
+echo '  if(paTS){';
+echo '    if(on){paTS.value="";}else{paCalcSessions();}';
+echo '  }';
+echo '  if(paDurHint){paDurHint.textContent=on?"Atendimento por tempo indefinido: sem número de semanas ou data final. Permanece ativo até ser encerrado.":"O total de sessões será calculado automaticamente com base na frequência e duração.";}';
+echo '}';
+echo 'if(paIndef){paIndef.addEventListener("change",paToggleIndefinite);paToggleIndefinite();}';
 
 echo '})();';
 echo '</script>';

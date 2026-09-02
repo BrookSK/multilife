@@ -21,6 +21,7 @@ $formFrequency = trim((string)($_POST['frequency'] ?? ''));
 $formSessionsPerWeek = isset($_POST['sessions_per_week']) ? (int)$_POST['sessions_per_week'] : 0;
 $formDurationWeeks = isset($_POST['duration_weeks']) ? (int)$_POST['duration_weeks'] : 0;
 $formTotalSessions = isset($_POST['total_sessions']) ? (int)$_POST['total_sessions'] : 0;
+$formIsIndefinite = isset($_POST['is_indefinite']) && (string)$_POST['is_indefinite'] === '1' ? 1 : 0;
 
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
@@ -100,36 +101,61 @@ try {
     $startDate = new DateTime(); // Hoje (data da aprovação)
     
     // Prioridade 0: Se veio data de início do formulário de agendamento, usar
-    if ($formStartDate !== '' && $formFrequency !== '' && $formTotalSessions > 0) {
+    // Para tempo indefinido, não exigimos total de sessões (> 0).
+    if ($formStartDate !== '' && $formFrequency !== '' && ($formTotalSessions > 0 || $formIsIndefinite)) {
         $startDate = new DateTime($formStartDate);
         
-        // Atualizar session_quantity e session_frequency no assignment
-        $db->prepare("
-            UPDATE patient_assignments 
-            SET session_quantity = ?, session_frequency = ?
-            WHERE id = ?
-        ")->execute([$formTotalSessions, $formFrequency, $assignmentId]);
+        // Para indefinido, não há quantidade fixa: manter a quantidade existente ou 0
+        $assignmentSessionQty = $formIsIndefinite ? 0 : $formTotalSessions;
+        
+        // Atualizar session_quantity, session_frequency e flag indefinido no assignment
+        try {
+            $db->prepare("
+                UPDATE patient_assignments 
+                SET session_quantity = ?, session_frequency = ?, is_indefinite = ?
+                WHERE id = ?
+            ")->execute([$assignmentSessionQty, $formFrequency, $formIsIndefinite, $assignmentId]);
+        } catch (Exception $e) {
+            // Fallback caso a coluna is_indefinite ainda não exista
+            $db->prepare("
+                UPDATE patient_assignments 
+                SET session_quantity = ?, session_frequency = ?
+                WHERE id = ?
+            ")->execute([$assignmentSessionQty, $formFrequency, $assignmentId]);
+        }
         
         // Atualizar authorization_request com os dados de agendamento (se existir)
         try {
             $db->prepare("
                 UPDATE authorization_requests 
                 SET start_date = ?, start_time = ?, end_time = ?, frequency = ?, 
-                    sessions_per_week = ?, duration_weeks = ?, total_sessions = ?
+                    sessions_per_week = ?, duration_weeks = ?, total_sessions = ?, is_indefinite = ?
                 WHERE demand_id = ? AND patient_id = ?
                 ORDER BY id DESC LIMIT 1
             ")->execute([
                 $formStartDate, $formStartTime ?: '08:00:00', $formEndTime ?: '09:00:00',
-                $formFrequency, $formSessionsPerWeek ?: 1, $formDurationWeeks ?: 4, $formTotalSessions,
+                $formFrequency, $formSessionsPerWeek ?: 1,
+                $formIsIndefinite ? 0 : ($formDurationWeeks ?: 4),
+                $formIsIndefinite ? 0 : $formTotalSessions,
+                $formIsIndefinite,
                 $demandId, $assignment['patient_id']
             ]);
         } catch (Exception $e) {
             error_log("DEBUG APROVAÇÃO: Erro ao atualizar authorization_requests: " . $e->getMessage());
         }
         
+        // Para tempo indefinido, geramos um horizonte inicial de sessões (4 semanas)
+        // apenas para popular o calendário; o atendimento não encerra por atingir esse número.
+        $sessionsToGenerate = $formIsIndefinite
+            ? (($formSessionsPerWeek ?: 1) * 4)
+            : $formTotalSessions;
+        if ($sessionsToGenerate <= 0) {
+            $sessionsToGenerate = 4;
+        }
+        
         // Gerar datas usando tabela padronizada
         if (function_exists('frequency_generate_session_dates')) {
-            $generatedDates = frequency_generate_session_dates($formFrequency, $startDate, $formTotalSessions);
+            $generatedDates = frequency_generate_session_dates($formFrequency, $startDate, $sessionsToGenerate);
             if (count($generatedDates) > 0) {
                 $sessionDates = array_map(fn(DateTime $dt) => $dt->format('Y-m-d'), $generatedDates);
             }
@@ -138,14 +164,14 @@ try {
         // Fallback: calcular baseado em sessões por semana
         if (count($sessionDates) === 0 && $formSessionsPerWeek > 0) {
             $intervalDays = max(1, (int)floor(7 / $formSessionsPerWeek));
-            for ($i = 0; $i < $formTotalSessions; $i++) {
+            for ($i = 0; $i < $sessionsToGenerate; $i++) {
                 $sessDate = clone $startDate;
                 $sessDate->modify('+' . ($i * $intervalDays) . ' days');
                 $sessionDates[] = $sessDate->format('Y-m-d');
             }
         }
         
-        $totalSessions = $formTotalSessions;
+        $totalSessions = $formIsIndefinite ? count($sessionDates) : $formTotalSessions;
         error_log("DEBUG APROVAÇÃO: Usando dados do formulário - freq='$formFrequency' start='$formStartDate' total=$formTotalSessions sessões geradas=" . count($sessionDates));
     }
     

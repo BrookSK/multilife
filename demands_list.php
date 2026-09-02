@@ -86,6 +86,23 @@ if ($dateTo !== '') {
     $params['date_to'] = $dateTo;
 }
 
+// FILTRO POR PROFISSIONAL:
+// Se o usuário logado é profissional (role 'profissional') e NÃO tem acesso amplo
+// (admin/ti/captador), mostrar apenas as demandas atribuídas a ele mesmo via
+// patient_assignments.professional_user_id.
+$currentUid = (int)(auth_user_id() ?? 0);
+$currentRoles = rbac_user_roles($currentUid);
+$hasBroadAccess = !empty(array_intersect($currentRoles, ['admin', 'ti', 'captador', 'financeiro']));
+$isProfessionalOnly = in_array('profissional', $currentRoles, true) && !$hasBroadAccess;
+
+if ($isProfessionalOnly) {
+    $where[] = 'EXISTS (
+        SELECT 1 FROM patient_assignments pa2
+        WHERE pa2.demand_id = d.id AND pa2.professional_user_id = :prof_uid
+    )';
+    $params['prof_uid'] = $currentUid;
+}
+
 if (count($where) > 0) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
 }
