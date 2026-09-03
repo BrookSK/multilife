@@ -194,6 +194,14 @@ view_header('Configuração de Operadoras / Clientes');
                 <label style="display:block;margin-bottom:8px;font-weight:600">Documentação (Manuais, Formulários, Termos)</label>
                 <div id="documentsListContainer" style="margin-bottom:12px"></div>
                 <div style="border:2px dashed hsl(var(--border));border-radius:8px;padding:16px;text-align:center">
+                    <div style="margin-bottom:10px;text-align:left">
+                        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Documentação para:</label>
+                        <select id="docProfessionalType" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
+                            <option value="ambos">Ambos (novo e antigo)</option>
+                            <option value="novo">Profissional novo</option>
+                            <option value="antigo">Profissional antigo</option>
+                        </select>
+                    </div>
                     <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="uploadDocuments(this.files)">
                     <button type="button" onclick="document.getElementById('docFileInput').click()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">+ Adicionar Documento</button>
                     <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB)</div>
@@ -249,10 +257,16 @@ function loadDocuments(insurerId) {
                 return;
             }
             let html = '';
+            const typeBadges = {
+                'novo': '<span style="font-size:10px;font-weight:700;background:#d9fdd3;color:#027a48;padding:1px 6px;border-radius:8px;margin-left:6px">NOVO</span>',
+                'antigo': '<span style="font-size:10px;font-weight:700;background:#fdecc8;color:#b45309;padding:1px 6px;border-radius:8px;margin-left:6px">ANTIGO</span>',
+                'ambos': '<span style="font-size:10px;font-weight:700;background:#e7f0fd;color:#1a56db;padding:1px 6px;border-radius:8px;margin-left:6px">AMBOS</span>'
+            };
             data.documents.forEach(doc => {
                 const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : '🖼️'));
+                const badge = typeBadges[doc.professional_type] || typeBadges['ambos'];
                 html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:hsl(var(--secondary));border-radius:6px;margin-bottom:6px">';
-                html += '<a href="' + doc.file_path + '" target="_blank" style="font-size:13px;font-weight:500;color:hsl(var(--primary));text-decoration:none;display:flex;align-items:center;gap:6px">' + icon + ' ' + doc.file_name + '</a>';
+                html += '<a href="' + doc.file_path + '" target="_blank" style="font-size:13px;font-weight:500;color:hsl(var(--primary));text-decoration:none;display:flex;align-items:center;gap:6px">' + icon + ' ' + doc.file_name + badge + '</a>';
                 html += '<button type="button" onclick="deleteDocument(' + doc.id + ',' + insurerId + ')" style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--destructive));border:1px solid hsl(var(--destructive));border-radius:4px;cursor:pointer">×</button>';
                 html += '</div>';
             });
@@ -267,9 +281,11 @@ function uploadDocuments(files) {
     const insurerId = document.getElementById('insurerId').value;
     if (!insurerId) { alert('Salve a operadora primeiro.'); return; }
     
+    const profType = document.getElementById('docProfessionalType') ? document.getElementById('docProfessionalType').value : 'ambos';
     const formData = new FormData();
     formData.append('action', 'upload');
     formData.append('insurer_id', insurerId);
+    formData.append('professional_type', profType);
     for (let i = 0; i < files.length; i++) {
         formData.append('files[]', files[i]);
     }

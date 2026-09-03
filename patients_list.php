@@ -43,11 +43,30 @@ if ($insurance !== '') {
     $params['ins'] = '%' . $insurance . '%';
 }
 
-$sql .= ' ORDER BY id ASC';
+// ITEM 16: Paginação no backend
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
+$offset = ($page - 1) * $perPage;
+
+// Contagem total (reaproveita o WHERE já montado em $sql após "FROM patients ...")
+$countSql = preg_replace('/^SELECT .*? FROM patients/is', 'SELECT COUNT(*) FROM patients', $sql, 1);
+$countStmt = db()->prepare($countSql);
+$countStmt->execute($params);
+$totalRows = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalRows / $perPage));
+
+$sql .= ' ORDER BY id ASC LIMIT ' . (int)$perPage . ' OFFSET ' . (int)$offset;
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
+
+$buildPageUrl = function (int $p) use ($q, $status, $unit, $insurance): string {
+    $qs = array_filter([
+        'q' => $q, 'status' => $status, 'unit' => $unit, 'insurance' => $insurance, 'page' => $p,
+    ], fn($v) => $v !== '' && $v !== null);
+    return '/patients_list.php?' . http_build_query($qs);
+};
 
 view_header('Pacientes');
 
@@ -119,6 +138,22 @@ foreach ($rows as $r) {
 
 echo '</tbody></table>';
 echo '</div>';
+
+// Paginação (item 16)
+if ($totalPages > 1) {
+    echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+    if ($page > 1) echo '<a class="btn" href="' . h($buildPageUrl($page - 1)) . '">← Anterior</a>';
+    $start = max(1, $page - 2); $end = min($totalPages, $page + 2);
+    if ($start > 1) { echo '<a class="btn" href="' . h($buildPageUrl(1)) . '">1</a>'; if ($start > 2) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+    for ($i = $start; $i <= $end; $i++) {
+        echo $i === $page ? '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>' : '<a class="btn" href="' . h($buildPageUrl($i)) . '">' . $i . '</a>';
+    }
+    if ($end < $totalPages) { if ($end < $totalPages - 1) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; echo '<a class="btn" href="' . h($buildPageUrl($totalPages)) . '">' . $totalPages . '</a>'; }
+    if ($page < $totalPages) echo '<a class="btn" href="' . h($buildPageUrl($page + 1)) . '">Próxima →</a>';
+    echo '</div>';
+    echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . ' • ' . number_format($totalRows, 0, ',', '.') . ' pacientes</div>';
+}
+
 echo '</section>';
 
 echo '</div>';

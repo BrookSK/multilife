@@ -650,6 +650,120 @@ foreach ($jobs as $j) {
             continue;
         }
 
+        // ITEM 17: Adicionar profissionais a um grupo de captação em lote (background)
+        if ($provider === 'evolution' && $action === 'demand_dispatch_add_members') {
+            if (!is_array($payload)) {
+                throw new RuntimeException('Payload inválido (esperado JSON).');
+            }
+            $runId = (int)($payload['run_id'] ?? 0);
+            $ddDemandId = (int)($payload['demand_id'] ?? 0);
+            $groupJid = (string)($payload['group_jid'] ?? '');
+            $instanceName = (string)($payload['instance_name'] ?? '');
+            $phones = is_array($payload['phones'] ?? null) ? $payload['phones'] : [];
+
+            if ($groupJid === '' || empty($phones)) {
+                throw new RuntimeException('group_jid/phones ausentes no payload.');
+            }
+
+            // Marcar run como processando
+            try {
+                db()->prepare("UPDATE demand_dispatch_runs SET status = 'processing' WHERE id = ? AND status = 'queued'")->execute([$runId]);
+            } catch (Throwable $e) {}
+
+            // Instanciar Evolution com a instância resolvida (evita re-probing custoso)
+            try {
+                $api = new EvolutionApiV1(
+                    (string)admin_setting_get('evolution.base_url', ''),
+                    (string)admin_setting_get('evolution.api_key', ''),
+                    $instanceName !== '' ? $instanceName : (string)admin_setting_get('evolution.instance', '')
+                );
+            } catch (Throwable $e) {
+                throw new RuntimeException('Evolution API não configurada: ' . $e->getMessage());
+            }
+
+            // Idempotência: processar apenas os que ainda estão pendentes
+            $placeholders = implode(',', array_fill(0, count($phones), '?'));
+            $checkStmt = db()->prepare(
+                "SELECT phone FROM demand_dispatch_targets
+                 WHERE demand_id = ? AND group_jid = ? AND status = 'pending' AND phone IN ($placeholders)"
+            );
+            $checkStmt->execute(array_merge([$ddDemandId, $groupJid], array_values($phones)));
+            $toProcess = $checkStmt->fetchAll(PDO::FETCH_COLUMN);
+
+            $addedInBatch = 0;
+            $errorInBatch = 0;
+
+            if (!empty($toProcess)) {
+                // Montar JIDs para a Evolution
+                $jids = array_map(fn($p) => $p . '@s.whatsapp.net', $toProcess);
+                $addOk = false;
+                $addErrMsg = null;
+                try {
+                    $addRes = $api->updateGroupMembers($groupJid, 'add', $jids);
+                    $addCode = (int)($addRes['status'] ?? 0);
+                    $addOk = $addCode >= 200 && $addCode < 300;
+                    if (!$addOk) {
+                        $addErrMsg = 'HTTP ' . $addCode;
+                    }
+                } catch (Throwable $e) {
+                    $addErrMsg = mb_strimwidth($e->getMessage(), 0, 200, '');
+                }
+
+                // Marcar targets individualmente (falha do lote não perde rastreabilidade)
+                $updTarget = db()->prepare(
+                    "UPDATE demand_dispatch_targets
+                     SET status = :st, error_message = :err, processed_at = NOW()
+                     WHERE demand_id = :did AND group_jid = :jid AND phone = :phone"
+                );
+                foreach ($toProcess as $ph) {
+                    if ($addOk) {
+                        $updTarget->execute(['st' => 'added', 'err' => null, 'did' => $ddDemandId, 'jid' => $groupJid, 'phone' => $ph]);
+                        $addedInBatch++;
+                    } else {
+                        $updTarget->execute(['st' => 'error', 'err' => $addErrMsg, 'did' => $ddDemandId, 'jid' => $groupJid, 'phone' => $ph]);
+                        $errorInBatch++;
+                    }
+                }
+            }
+
+            // Atualizar contadores do run
+            try {
+                db()->prepare(
+                    "UPDATE demand_dispatch_runs
+                     SET processed_targets = processed_targets + :proc,
+                         added_count = added_count + :added,
+                         error_count = error_count + :err
+                     WHERE id = :id"
+                )->execute([
+                    'proc' => count($toProcess),
+                    'added' => $addedInBatch,
+                    'err' => $errorInBatch,
+                    'id' => $runId,
+                ]);
+
+                // Se todos os targets foram processados, marcar run como concluído
+                $runRow = db()->prepare("SELECT total_targets, processed_targets, error_count FROM demand_dispatch_runs WHERE id = ?");
+                $runRow->execute([$runId]);
+                $rr = $runRow->fetch(PDO::FETCH_ASSOC);
+                if ($rr && (int)$rr['processed_targets'] >= (int)$rr['total_targets']) {
+                    $finalStatus = ((int)$rr['error_count'] > 0) ? 'completed_with_errors' : 'completed';
+                    db()->prepare("UPDATE demand_dispatch_runs SET status = ? WHERE id = ?")->execute([$finalStatus, $runId]);
+                }
+            } catch (Throwable $e) {}
+
+            $updRun->execute([
+                'status' => 'success',
+                'attempts' => $attempts,
+                'last_error' => null,
+                'next_run_at' => null,
+                'last_run_at' => $runAt,
+                'id' => $id,
+            ]);
+            $success++;
+            integration_log($provider, 'job ' . $action, 'success', null, ['run_id' => $runId, 'batch' => count($phones)], ['added' => $addedInBatch, 'errors' => $errorInBatch], null, $attempts);
+            continue;
+        }
+
         if ($provider === 'evolution' && $action === 'professional_onboarding_credentials') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');

@@ -39,6 +39,14 @@ $sql = "SELECT bdr.id,
 
 $appointments = $db->query($sql)->fetchAll();
 
+// Carregar motivos de encerramento (item 5/11)
+$endReasons = [];
+try {
+    $endReasons = $db->query("SELECT id, name FROM treatment_end_reasons WHERE is_active = 1 ORDER BY is_system DESC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $endReasons = [];
+}
+
 $events = [];
 foreach ($appointments as $apt) {
     // Cor baseada no status da sessão
@@ -317,6 +325,17 @@ document.addEventListener('DOMContentLoaded', function() {
             btnSubst.innerHTML = '🔄 Substituir Profissional';
             actions.appendChild(btnSubst);
             
+            // Botão Finalizar Atendimento (itens 5 e 11)
+            const btnFinalize = document.createElement('button');
+            btnFinalize.className = 'btn';
+            btnFinalize.style.background = '#dc2626';
+            btnFinalize.style.color = '#fff';
+            btnFinalize.innerHTML = '🏁 Finalizar Atendimento';
+            btnFinalize.onclick = function() {
+                openFinalizeModal(p.assignment_id || info.event.id, p.patient_name, p.professional_name);
+            };
+            actions.appendChild(btnFinalize);
+            
             // Botão Confirmar Profissional (lembrete do atendimento do dia)
             const btnConfirm = document.createElement('button');
             btnConfirm.className = 'btn';
@@ -367,6 +386,98 @@ document.addEventListener('DOMContentLoaded', function() {
 function closeModal() {
     document.getElementById('modal').classList.remove('open');
 }
+
+// ============================================
+// FINALIZAR ATENDIMENTO (itens 5 e 11)
+// ============================================
+var _finalizeAssignmentId = null;
+function openFinalizeModal(assignmentId, patientName, professionalName) {
+    _finalizeAssignmentId = assignmentId;
+    document.getElementById('finalizePatient').textContent = patientName || '-';
+    document.getElementById('finalizeProfessional').textContent = professionalName || '-';
+    // Preencher data/hora atuais
+    var now = new Date();
+    var pad = function(n){return (n<10?'0':'')+n;};
+    document.getElementById('finalizeDate').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+    document.getElementById('finalizeTime').value = pad(now.getHours())+':'+pad(now.getMinutes());
+    document.getElementById('finalizeNotes').value = '';
+    document.getElementById('finalizeModal').classList.add('open');
+}
+function closeFinalizeModal() {
+    document.getElementById('finalizeModal').classList.remove('open');
+    _finalizeAssignmentId = null;
+}
+function submitFinalize() {
+    if (!_finalizeAssignmentId) return;
+    var reasonId = document.getElementById('finalizeReason').value;
+    if (!reasonId) { alert('Selecione o motivo do encerramento.'); return; }
+    var fd = new FormData();
+    fd.append('assignment_id', _finalizeAssignmentId);
+    fd.append('end_reason_id', reasonId);
+    fd.append('ended_date', document.getElementById('finalizeDate').value);
+    fd.append('ended_time', document.getElementById('finalizeTime').value);
+    fd.append('end_notes', document.getElementById('finalizeNotes').value);
+    var btn = document.getElementById('finalizeSubmitBtn');
+    btn.disabled = true; btn.innerHTML = '⏳ Finalizando...';
+    fetch('/assignment_finalize.php', { method: 'POST', body: fd })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if (data.success) {
+                alert('✅ Atendimento finalizado com sucesso!');
+                window.location.reload();
+            } else {
+                alert('❌ Erro: ' + (data.error || 'desconhecido'));
+                btn.disabled = false; btn.innerHTML = 'Finalizar';
+            }
+        })
+        .catch(function(){
+            alert('❌ Erro ao finalizar atendimento.');
+            btn.disabled = false; btn.innerHTML = 'Finalizar';
+        });
+}
 </script>
+
+<!-- Modal de Finalização de Atendimento -->
+<div id="finalizeModal" class="modal" onclick="if(event.target===this) closeFinalizeModal()">
+    <div class="modalContent" style="max-width:520px">
+        <div class="modalHeader">
+            <h2 class="modalTitle">🏁 Finalizar Atendimento</h2>
+            <button class="close" onclick="closeFinalizeModal()">×</button>
+        </div>
+        <div class="section">
+            <div class="info">
+                <div class="row"><span class="label">Paciente:</span><span class="value" id="finalizePatient">-</span></div>
+                <div class="row"><span class="label">Profissional:</span><span class="value" id="finalizeProfessional">-</span></div>
+            </div>
+        </div>
+        <div class="section">
+            <label style="display:block;font-weight:600;margin-bottom:6px">Motivo do encerramento *</label>
+            <select id="finalizeReason" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+                <option value="">Selecione...</option>
+                <?php foreach ($endReasons as $er): ?>
+                <option value="<?php echo (int)$er['id']; ?>"><?php echo h($er['name']); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="section" style="display:flex;gap:12px">
+            <div style="flex:1">
+                <label style="display:block;font-weight:600;margin-bottom:6px">Data</label>
+                <input type="date" id="finalizeDate" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+            </div>
+            <div style="flex:1">
+                <label style="display:block;font-weight:600;margin-bottom:6px">Hora</label>
+                <input type="time" id="finalizeTime" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+            </div>
+        </div>
+        <div class="section">
+            <label style="display:block;font-weight:600;margin-bottom:6px">Observações</label>
+            <textarea id="finalizeNotes" rows="3" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px;resize:vertical" placeholder="Observações do encerramento (opcional)"></textarea>
+        </div>
+        <div class="actions">
+            <button class="btn" style="background:#e5e7eb;color:#374151" onclick="closeFinalizeModal()">Cancelar</button>
+            <button class="btn" style="background:#dc2626" id="finalizeSubmitBtn" onclick="submitFinalize()">Finalizar</button>
+        </div>
+    </div>
+</div>
 
 <?php view_footer(); ?>

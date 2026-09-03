@@ -22,6 +22,7 @@ try {
             file_size INT UNSIGNED DEFAULT 0,
             mime_type VARCHAR(100) DEFAULT NULL,
             uploaded_by_user_id INT UNSIGNED DEFAULT NULL,
+            professional_type ENUM('novo','antigo','ambos') NOT NULL DEFAULT 'ambos',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_insurer (health_insurer_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -29,6 +30,8 @@ try {
 } catch (Throwable $e) {
     // Tabela já existe, ignorar
 }
+// Garantir coluna professional_type (item 13)
+try { $db->exec("ALTER TABLE health_insurer_documents ADD COLUMN professional_type ENUM('novo','antigo','ambos') NOT NULL DEFAULT 'ambos'"); } catch (Throwable $e) {}
 
 // GET: Listar documentos
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -36,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $insurerId = (int)($_GET['insurer_id'] ?? 0);
     
     if ($action === 'list' && $insurerId > 0) {
-        $stmt = $db->prepare("SELECT id, file_name, file_path, file_size, mime_type, created_at FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY created_at DESC");
+        $stmt = $db->prepare("SELECT id, file_name, file_path, file_size, mime_type, professional_type, created_at FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY professional_type, created_at DESC");
         $stmt->execute([$insurerId]);
         $docs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['success' => true, 'documents' => $docs]);
@@ -86,6 +89,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Multipart form (upload)
     $action = $_POST['action'] ?? '';
     $insurerId = (int)($_POST['insurer_id'] ?? 0);
+    $professionalType = (string)($_POST['professional_type'] ?? 'ambos');
+    if (!in_array($professionalType, ['novo', 'antigo', 'ambos'], true)) {
+        $professionalType = 'ambos';
+    }
     
     if ($action === 'upload' && $insurerId > 0) {
         $allowedTypes = [
@@ -145,10 +152,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $relativePath = '/uploads/insurer_docs/' . $insurerId . '/' . $uniqueName;
                 
                 $stmt = $db->prepare("
-                    INSERT INTO health_insurer_documents (health_insurer_id, file_name, file_path, file_size, mime_type, uploaded_by_user_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO health_insurer_documents (health_insurer_id, file_name, file_path, file_size, mime_type, uploaded_by_user_id, professional_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$insurerId, $fileName, $relativePath, $fileSize, $fileType, auth_user_id()]);
+                $stmt->execute([$insurerId, $fileName, $relativePath, $fileSize, $fileType, auth_user_id(), $professionalType]);
                 $uploaded++;
             } else {
                 $errors[] = "$fileName: falha ao salvar";

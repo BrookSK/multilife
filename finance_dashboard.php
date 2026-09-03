@@ -15,8 +15,13 @@ $period = isset($_GET['period']) ? (string)$_GET['period'] : 'month';
 $professionalId = isset($_GET['professional_id']) ? (int)$_GET['professional_id'] : 0;
 $specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
+// ITEM 12: período personalizado por datas
+$dateFrom = isset($_GET['date_from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET['date_from']) ? (string)$_GET['date_from'] : '';
+$dateTo = isset($_GET['date_to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET['date_to']) ? (string)$_GET['date_to'] : '';
+$useCustomRange = ($dateFrom !== '' && $dateTo !== '');
+if ($useCustomRange) { $period = 'custom'; }
 
-$allowedPeriods = ['day', 'week', 'month', 'year'];
+$allowedPeriods = ['day', 'week', 'month', 'year', 'custom'];
 if (!in_array($period, $allowedPeriods, true)) {
     $period = 'month';
 }
@@ -34,6 +39,9 @@ switch ($period) {
         break;
     case 'year':
         $dateFilter = 'YEAR(pa.created_at) = YEAR(CURDATE())';
+        break;
+    case 'custom':
+        $dateFilter = "DATE(pa.created_at) BETWEEN " . db()->quote($dateFrom) . " AND " . db()->quote($dateTo);
         break;
 }
 
@@ -78,6 +86,9 @@ switch ($period) {
         break;
     case 'year':
         $dateFilterFinancial = 'YEAR(fe.entry_date) = YEAR(CURDATE())';
+        break;
+    case 'custom':
+        $dateFilterFinancial = "DATE(fe.entry_date) BETWEEN " . db()->quote($dateFrom) . " AND " . db()->quote($dateTo);
         break;
 }
 
@@ -301,6 +312,25 @@ $cities = $db->query(
     "SELECT DISTINCT address_city FROM patients WHERE address_city IS NOT NULL AND address_city != '' AND deleted_at IS NULL ORDER BY address_city ASC"
 )->fetchAll();
 
+// ITEM 12: Série temporal para gráficos (últimos 12 meses de receitas x despesas)
+$chartData = ['labels' => [], 'income' => [], 'expense' => []];
+try {
+    $serieStmt = $db->query("
+        SELECT DATE_FORMAT(fe.entry_date, '%Y-%m') AS mes,
+               SUM(CASE WHEN fe.entry_type = 'income' THEN fe.amount ELSE 0 END) AS income,
+               SUM(CASE WHEN fe.entry_type = 'expense' THEN fe.amount ELSE 0 END) AS expense
+        FROM financial_entries fe
+        WHERE fe.is_active = 1 AND fe.entry_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+        GROUP BY DATE_FORMAT(fe.entry_date, '%Y-%m')
+        ORDER BY mes ASC
+    ");
+    foreach ($serieStmt->fetchAll(PDO::FETCH_ASSOC) as $srow) {
+        $chartData['labels'][] = date('m/Y', strtotime($srow['mes'] . '-01'));
+        $chartData['income'][] = round((float)$srow['income'], 2);
+        $chartData['expense'][] = round((float)$srow['expense'], 2);
+    }
+} catch (Throwable $e) {}
+
 view_header('Dashboard Financeiro');
 
 echo '<div class="grid">';
@@ -323,10 +353,14 @@ echo '<form method="get" action="/finance_dashboard.php" style="margin-top:14px;
 echo '<select name="period">';
 $periodLabels = ['day' => 'Hoje', 'week' => 'Esta semana', 'month' => 'Este mês', 'year' => 'Este ano'];
 foreach ($periodLabels as $k => $label) {
-    $sel = ($period === $k) ? ' selected' : '';
+    $sel = ($period === $k && !$useCustomRange) ? ' selected' : '';
     echo '<option value="' . h($k) . '"' . $sel . '>' . h($label) . '</option>';
 }
 echo '</select>';
+
+// Filtro por intervalo de datas personalizado (item 12)
+echo '<input type="date" name="date_from" value="' . h($dateFrom) . '" title="Data inicial" placeholder="De">';
+echo '<input type="date" name="date_to" value="' . h($dateTo) . '" title="Data final" placeholder="Até">';
 
 echo '<select name="professional_id">';
 echo '<option value="0">Todos profissionais</option>';
@@ -353,9 +387,18 @@ foreach ($cities as $c) {
 echo '</select>';
 
 echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
+if ($useCustomRange || $professionalId > 0 || $specialty !== '' || $city !== '') {
+    echo '<a class="btn" href="/finance_dashboard.php">Limpar</a>';
+}
 
 echo '</form>';
 
+echo '</section>';
+
+// ITEM 12: Gráfico de evolução (Receitas x Despesas - últimos 12 meses)
+echo '<section class="card col12" style="padding:24px">';
+echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Evolução Financeira (últimos 12 meses)</div>';
+echo '<div style="position:relative;height:320px"><canvas id="financeChart"></canvas></div>';
 echo '</section>';
 
 // Cards principais - Linha 1
@@ -632,5 +675,27 @@ if (empty($centrosComDados)) {
 echo '</section>';
 
 echo '</div>';
+
+// ITEM 12: Gráfico com Chart.js
+echo '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
+echo '<script>';
+echo 'var _fcLabels = ' . json_encode($chartData['labels']) . ';';
+echo 'var _fcIncome = ' . json_encode($chartData['income']) . ';';
+echo 'var _fcExpense = ' . json_encode($chartData['expense']) . ';';
+echo 'document.addEventListener("DOMContentLoaded", function(){';
+echo '  var el = document.getElementById("financeChart"); if(!el || typeof Chart === "undefined") return;';
+echo '  new Chart(el, {';
+echo '    type: "bar",';
+echo '    data: { labels: _fcLabels, datasets: [';
+echo '      { label: "Receitas", data: _fcIncome, backgroundColor: "rgba(16,185,129,0.7)", borderRadius: 4 },';
+echo '      { label: "Despesas", data: _fcExpense, backgroundColor: "rgba(220,38,38,0.7)", borderRadius: 4 }';
+echo '    ]},';
+echo '    options: { responsive: true, maintainAspectRatio: false,';
+echo '      plugins: { legend: { position: "top" }, tooltip: { callbacks: { label: function(c){ return c.dataset.label + ": R$ " + c.parsed.y.toLocaleString("pt-BR", {minimumFractionDigits:2}); } } } },';
+echo '      scales: { y: { beginAtZero: true, ticks: { callback: function(v){ return "R$ " + v.toLocaleString("pt-BR"); } } } }';
+echo '    }';
+echo '  });';
+echo '});';
+echo '</script>';
 
 view_footer();

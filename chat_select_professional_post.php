@@ -502,6 +502,30 @@ try {
     error_log("Destinatário: $operatorEmail");
     error_log("Usando template HTML para envio de proposta");
     
+    // ITEM 6: Verificar se o envio automático de autorização está habilitado.
+    // Config em admin_settings: feature.auto_send_authorization ('1' = habilitado, default).
+    $autoSendAuth = (string)admin_setting_get('feature.auto_send_authorization', '1');
+    if ($autoSendAuth !== '1') {
+        // Envio automático DESABILITADO: não envia e-mail. A proposta fica aguardando
+        // resposta e o usuário deve marcar manualmente como respondida em authorization_view.php.
+        error_log("[PROPOSAL_SEND] Envio automático DESABILITADO - proposta criada sem envio de e-mail.");
+        try {
+            $db->prepare(
+                'INSERT INTO authorization_request_history (authorization_request_id, action, proposal_value, notes, user_id)
+                 VALUES (:auth_id, :action, :proposal, :notes, :uid)'
+            )->execute([
+                'auth_id' => $authRequestId,
+                'action' => 'created',
+                'proposal' => $proposalValue,
+                'notes' => 'Envio automático desabilitado - aguardando confirmação manual da resposta',
+                'uid' => $userId,
+            ]);
+        } catch (Throwable $e) {}
+        flash_set('success', 'Solicitação criada. O envio automático de e-mail está desabilitado — registre manualmente a resposta na tela de Autorização.');
+        header('Location: /authorization_list.php?status=aguardando_autorizacao');
+        exit;
+    }
+    
     try {
         error_log("Iniciando envio de e-mail com template...");
         

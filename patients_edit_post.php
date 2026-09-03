@@ -7,6 +7,9 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('patients.manage');
 
+// Garantir coluna consolidada (item 8) - fallback caso a migration não tenha rodado
+try { db()->exec("ALTER TABLE patients ADD COLUMN clinical_summary TEXT NULL"); } catch (Throwable $e) {}
+
 $id = (int)($_POST['id'] ?? 0);
 
 $stmt = db()->prepare('SELECT * FROM patients WHERE id = :id AND deleted_at IS NULL');
@@ -154,6 +157,7 @@ $fields = [
     'emergency_name','emergency_relationship','emergency_phone',
     'insurance_name','insurance_card_number','insurance_valid_until','insurance_notes',
     'health_json','medical_history_json','documents_json','finance_json','lgpd_json','responsible_json',
+    'clinical_summary',
     'admin_status','unit','doctor_responsible',
 ];
 

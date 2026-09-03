@@ -32,6 +32,8 @@ const FREQUENCY_WEEKDAYS_MAP = [
     '7x_semana' => [1, 2, 3, 4, 5, 6, 7], // Diário
     'quinzenal' => [],                // 2x mês (sem dia fixo da semana)
     'mensal'    => [],                // 1x mês (sem dia fixo da semana)
+    'avaliacao' => [],                // Avaliação inicial única (1 sessão)
+    'pontual'   => [],                // Atendimento pontual/isolado (1 sessão)
 ];
 
 /**
@@ -47,6 +49,8 @@ const FREQUENCY_LABELS = [
     '7x_semana' => '7x/Semana (Diário)',
     'quinzenal' => 'Quinzenal (2x/Mês)',
     'mensal'    => 'Mensal (1x/Mês)',
+    'avaliacao' => 'Avaliação (sessão única inicial)',
+    'pontual'   => 'Atendimento pontual (sessão única)',
 ];
 
 /**
@@ -176,6 +180,11 @@ function frequency_generate_session_dates(string $frequencyCode, DateTime $start
     $dates = [];
     $days = FREQUENCY_WEEKDAYS_MAP[$frequencyCode] ?? [];
     
+    // Avaliação e Atendimento pontual: sempre uma única sessão na data de início.
+    if ($frequencyCode === 'avaliacao' || $frequencyCode === 'pontual') {
+        return [clone $startDate];
+    }
+    
     if ($frequencyCode === 'quinzenal') {
         // 1 na primeira quinzena, 1 na segunda quinzena
         $current = clone $startDate;
@@ -235,6 +244,16 @@ function frequency_normalize(string $input): string
     
     // Já é um código válido
     if (isset(FREQUENCY_WEEKDAYS_MAP[$input])) return $input;
+    
+    // Avaliação
+    if (str_contains($input, 'avalia')) {
+        return 'avaliacao';
+    }
+    
+    // Atendimento pontual / único / isolado
+    if (str_contains($input, 'pontual') || str_contains($input, 'único') || str_contains($input, 'unico') || str_contains($input, 'isolad') || str_contains($input, 'avulso')) {
+        return 'pontual';
+    }
     
     // Quinzenal
     if (str_contains($input, 'quinzenal') || str_contains($input, '2x/m') || str_contains($input, '2x mes') || str_contains($input, '2x mês')) {

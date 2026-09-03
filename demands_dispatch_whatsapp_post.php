@@ -503,15 +503,34 @@ if (count($groups) === 0) {
                 
                 error_log("[DISPATCH] ✅ Grupo criado automaticamente: '$groupName' (JID: $newGroupJid) com " . count($participants) . " participantes");
                 
-                // GARANTIA: Adicionar explicitamente TODOS os participantes ao grupo após criação
-                // Algumas versões da Evolution API ignoram o array 'participants' na criação do grupo
+                // GARANTIA: Adicionar explicitamente os participantes ao grupo após criação
+                // Algumas versões da Evolution API ignoram o array 'participants' na criação do grupo.
+                // ITEM 17: Para volumes grandes, enfileirar em lotes de background (evita timeout).
                 try {
                     usleep(1500000); // 1.5s delay para o grupo estabilizar
-                    $addResult = $api->updateGroupMembers($newGroupJid, 'add', $participantsFormatted);
-                    $addCode = (int)($addResult['status'] ?? 0);
-                    error_log("[DISPATCH] Adição explícita de participantes ao grupo: HTTP $addCode (" . count($participantsFormatted) . " números)");
-                    if ($addCode < 200 || $addCode >= 300) {
-                        error_log("[DISPATCH] ⚠️ Resposta da adição: " . json_encode($addResult['json'] ?? $addResult['body_raw'] ?? ''));
+                    if (count($participantsFormatted) > DEMAND_DISPATCH_BATCH_SIZE) {
+                        $rawPartPhones = array_map(fn($j) => preg_replace('/@.*/', '', (string)$j), $participantsFormatted);
+                        try {
+                            $enqC = demand_dispatch_enqueue_members(
+                                (int)$id,
+                                $newGroupJid,
+                                isset($newGroupDbId) ? (int)$newGroupDbId : null,
+                                $rawPartPhones,
+                                $usedInstanceName ?? (string)admin_setting_get('evolution.instance', ''),
+                                auth_user_id()
+                            );
+                            error_log("[DISPATCH] Participantes do novo grupo enfileirados em lote: run #{$enqC['run_id']}, {$enqC['total']} em {$enqC['jobs']} jobs.");
+                        } catch (Throwable $eqErr2) {
+                            error_log("[DISPATCH] Falha ao enfileirar (novo grupo), adição síncrona: " . $eqErr2->getMessage());
+                            $api->updateGroupMembers($newGroupJid, 'add', $participantsFormatted);
+                        }
+                    } else {
+                        $addResult = $api->updateGroupMembers($newGroupJid, 'add', $participantsFormatted);
+                        $addCode = (int)($addResult['status'] ?? 0);
+                        error_log("[DISPATCH] Adição explícita de participantes ao grupo: HTTP $addCode (" . count($participantsFormatted) . " números)");
+                        if ($addCode < 200 || $addCode >= 300) {
+                            error_log("[DISPATCH] ⚠️ Resposta da adição: " . json_encode($addResult['json'] ?? $addResult['body_raw'] ?? ''));
+                        }
                     }
                 } catch (Exception $e) {
                     error_log("[DISPATCH] Erro ao adicionar participantes explicitamente: " . $e->getMessage());
@@ -952,12 +971,37 @@ if (count($groups) > 0) {
             $phonesToAdd = array_values(array_unique($phonesToAdd));
             
             if (!empty($phonesToAdd)) {
-                // Adicionar ao grupo (a API ignora quem já é membro)
-                $syncApi->updateGroupMembers($targetJid, 'add', $phonesToAdd);
-                error_log("[DISPATCH] Sincronização de membros: adicionados " . count($phonesToAdd) . " números ao grupo $targetJid");
-                
-                // Pequeno delay para estabilizar
-                usleep(500000); // 500ms
+                // ITEM 17: Processamento em lotes/background.
+                // Para grandes volumes, adicionar todos de forma síncrona causa timeout.
+                // Se houver muitos profissionais, enfileiramos a adição em lotes de background.
+                // Extrair só os dígitos (o helper normaliza) a partir dos JIDs.
+                $rawPhones = array_map(function ($jid) {
+                    return preg_replace('/@.*/', '', (string)$jid);
+                }, $phonesToAdd);
+
+                if (count($rawPhones) > DEMAND_DISPATCH_BATCH_SIZE) {
+                    // Volume alto: enfileirar em background (não bloqueia a requisição)
+                    $syncInstanceName = method_exists($syncApi, 'getInstance') ? $syncApi->getInstance() : (string)admin_setting_get('evolution.instance', '');
+                    try {
+                        $enq = demand_dispatch_enqueue_members(
+                            (int)$id,
+                            $targetJid,
+                            isset($targetGroup['id']) ? (int)$targetGroup['id'] : null,
+                            $rawPhones,
+                            $syncInstanceName,
+                            auth_user_id()
+                        );
+                        error_log("[DISPATCH] Adição em lote enfileirada: run #{$enq['run_id']}, {$enq['total']} profissionais em {$enq['jobs']} jobs de background.");
+                    } catch (Throwable $eqErr) {
+                        error_log("[DISPATCH] Falha ao enfileirar lote, tentando adição síncrona: " . $eqErr->getMessage());
+                        $syncApi->updateGroupMembers($targetJid, 'add', $phonesToAdd);
+                    }
+                } else {
+                    // Volume pequeno: adicionar direto (a API ignora quem já é membro)
+                    $syncApi->updateGroupMembers($targetJid, 'add', $phonesToAdd);
+                    error_log("[DISPATCH] Sincronização de membros: adicionados " . count($phonesToAdd) . " números ao grupo $targetJid");
+                    usleep(500000); // 500ms
+                }
             }
         } catch (Exception $e) {
             error_log("[DISPATCH] Erro ao sincronizar membros do grupo: " . $e->getMessage());

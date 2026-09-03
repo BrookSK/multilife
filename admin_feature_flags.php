@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'feature.profissional_acesso_agendamentos' => ($_POST['profissional_acesso_agendamentos'] ?? '0'),
         'feature.profissional_acesso_recebimentos' => ($_POST['profissional_acesso_recebimentos'] ?? '0'),
         'feature.enviar_credenciais_profissional' => ($_POST['enviar_credenciais_profissional'] ?? '0'),
+        'feature.auto_send_authorization' => ($_POST['auto_send_authorization'] ?? '0'),
     ];
     admin_settings_set_many($flags, auth_user_id());
     flash_set('success', 'Configuracoes de implantacao atualizadas!');
@@ -30,6 +31,7 @@ $flags = [
     'feature.profissional_acesso_agendamentos' => (string)admin_setting_get('feature.profissional_acesso_agendamentos', '0'),
     'feature.profissional_acesso_recebimentos' => (string)admin_setting_get('feature.profissional_acesso_recebimentos', '0'),
     'feature.enviar_credenciais_profissional' => (string)admin_setting_get('feature.enviar_credenciais_profissional', '0'),
+    'feature.auto_send_authorization' => (string)admin_setting_get('feature.auto_send_authorization', '1'),
 ];
 
 view_header('Implantacao - Funcionalidades');
@@ -80,6 +82,7 @@ $flagsConfig = [
     ['key' => 'profissional_envio_documentos', 'label' => 'Permitir envio de documentos pelo portal', 'desc' => 'Os profissionais poderao enviar Fichas de Evolucao e Produtividade diretamente pelo portal. Quando desativado, a equipe interna cadastra manualmente.'],
     ['key' => 'profissional_acesso_agendamentos', 'label' => 'Permitir acesso a Agendamentos', 'desc' => 'Exibe a aba de Agendamentos no portal do profissional (calendario de sessoes).'],
     ['key' => 'profissional_acesso_recebimentos', 'label' => 'Permitir acesso a Recebimentos', 'desc' => 'Exibe a aba de Recebimentos no portal do profissional (valores pagos e pendentes).'],
+    ['key' => 'auto_send_authorization', 'label' => 'Envio automatico da autorizacao de proposta por e-mail', 'desc' => 'Quando ativado, o sistema envia automaticamente o e-mail de autorizacao a operadora/cliente (fluxo: Captacao -> Autorizacao -> Envio -> Resposta -> Pre-Admissao). Quando desativado, nao envia e-mail e o usuario registra manualmente que a autorizacao foi respondida.'],
 ];
 
 foreach ($flagsConfig as $fc) {

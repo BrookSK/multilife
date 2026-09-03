@@ -119,11 +119,11 @@ $tabs = [
     ['k' => 'end', 'l' => 'Endereço'],
     ['k' => 'emerg', 'l' => 'Emergência'],
     ['k' => 'conv', 'l' => 'Convênio'],
-    ['k' => 'saude', 'l' => 'Saúde'],
-    ['k' => 'hist', 'l' => 'Histórico Médico'],
+    ['k' => 'saude', 'l' => 'Histórico / Saúde'],
     ['k' => 'fin', 'l' => 'Financeiro'],
     ['k' => 'lgpd', 'l' => 'LGPD'],
     ['k' => 'resp', 'l' => 'Responsável'],
+    ['k' => 'eventos', 'l' => 'Eventos Clínicos'],
     ['k' => 'docs', 'l' => 'Documentos'],
     ['k' => 'adm', 'l' => 'Administrativo'],
 ];
@@ -195,19 +195,34 @@ echo '<div class="col12"><label>Observações<textarea name="insurance_notes" ro
 echo '</div>';
 echo '</div>';
 
+// ===== ABA CONSOLIDADA: HISTÓRICO / SAÚDE (item 8) =====
 echo '<div class="ptPanel" data-panel="saude">';
+
+// Campo principal consolidado
+$clinicalSummary = (string)($p['clinical_summary'] ?? '');
+echo '<div class="grid">';
+echo '<div class="col12">';
+echo '<label style="font-weight:700">Histórico / Informações Clínicas';
+echo '<textarea name="clinical_summary" rows="10" placeholder="Consolide aqui as informações clínicas do paciente: histórico médico, queixas, doenças, cirurgias, alergias, medicamentos em uso, condições, restrições, hábitos, etc.">' . h($clinicalSummary) . '</textarea>';
+echo '</label>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Campo único para consolidar as informações de saúde e histórico. Anexe documentos relacionados na aba "Documentos".</div>';
+echo '</div>';
+echo '</div>';
+
+// Campos detalhados antigos, recolhidos (preservam dados existentes)
+echo '<details style="margin-top:16px;border:1px solid hsl(var(--border));border-radius:8px;padding:12px">';
+echo '<summary style="cursor:pointer;font-weight:600;color:hsl(var(--muted-foreground))">Campos detalhados (opcional / legado)</summary>';
+echo '<div style="margin-top:12px">';
+echo '<div style="font-weight:600;margin-bottom:8px">Saúde</div>';
 echo '<div class="grid">';
 echo '<div class="col12"><label>Alergias<textarea name="health_allergies" rows="2">' . h($healthAllergies) . '</textarea></label></div>';
 echo '<div class="col12"><label>Medicamentos em uso<textarea name="health_medications" rows="2">' . h($healthMedications) . '</textarea></label></div>';
 echo '<div class="col12"><label>Condições / Diagnósticos<textarea name="health_conditions" rows="2">' . h($healthConditions) . '</textarea></label></div>';
 echo '<div class="col12"><label>Restrições / Observações clínicas<textarea name="health_restrictions" rows="2">' . h($healthRestrictions) . '</textarea></label></div>';
 echo '<div class="col6"><label>Tipo sanguíneo<input name="health_blood_type" maxlength="10" value="' . h($healthBloodType) . '"></label></div>';
-echo '<div class="col12"><label>Observações gerais<textarea name="health_notes" rows="3">' . h($healthNotes) . '</textarea></label></div>';
-echo '<div class="col12"><label>Saúde (JSON)<textarea name="health_json" rows="6" placeholder="{}">' . h((string)($p['health_json'] ?? '')) . '</textarea></label></div>';
+echo '<div class="col12"><label>Observações gerais<textarea name="health_notes" rows="2">' . h($healthNotes) . '</textarea></label></div>';
 echo '</div>';
-echo '</div>';
-
-echo '<div class="ptPanel" data-panel="hist">';
+echo '<div style="font-weight:600;margin:16px 0 8px">Histórico Médico</div>';
 echo '<div class="grid">';
 echo '<div class="col12"><label>Queixas principais<textarea name="mh_main_complaints" rows="2">' . h($mhMainComplaints) . '</textarea></label></div>';
 echo '<div class="col12"><label>Doenças prévias<textarea name="mh_past_diseases" rows="2">' . h($mhPastDiseases) . '</textarea></label></div>';
@@ -215,9 +230,13 @@ echo '<div class="col12"><label>Cirurgias<textarea name="mh_surgeries" rows="2">
 echo '<div class="col12"><label>Internações<textarea name="mh_hospitalizations" rows="2">' . h($mhHospitalizations) . '</textarea></label></div>';
 echo '<div class="col12"><label>Histórico familiar<textarea name="mh_family_history" rows="2">' . h($mhFamilyHistory) . '</textarea></label></div>';
 echo '<div class="col12"><label>Hábitos (sono, álcool, tabaco, etc.)<textarea name="mh_habits" rows="2">' . h($mhHabits) . '</textarea></label></div>';
-echo '<div class="col12"><label>Observações<textarea name="mh_notes" rows="3">' . h($mhNotes) . '</textarea></label></div>';
-echo '<div class="col12"><label>Histórico médico (JSON)<textarea name="medical_history_json" rows="6" placeholder="{}">' . h((string)($p['medical_history_json'] ?? '')) . '</textarea></label></div>';
+echo '<div class="col12"><label>Observações<textarea name="mh_notes" rows="2">' . h($mhNotes) . '</textarea></label></div>';
 echo '</div>';
+// Manter os JSON legados como hidden para não perder dados
+echo '<input type="hidden" name="health_json" value="' . h((string)($p['health_json'] ?? '')) . '">';
+echo '<input type="hidden" name="medical_history_json" value="' . h((string)($p['medical_history_json'] ?? '')) . '">';
+echo '</div>';
+echo '</details>';
 echo '</div>';
 
 echo '<div class="ptPanel" data-panel="fin">';
@@ -255,6 +274,73 @@ echo '<div class="col6"><label>Telefone<input name="responsible_phone" maxlength
 echo '<div class="col6"><label>E-mail<input type="email" name="responsible_email" maxlength="190" value="' . h($respEmail) . '"></label></div>';
 echo '<div class="col12"><label>Observações<textarea name="responsible_notes" rows="3">' . h($respNotes) . '</textarea></label></div>';
 echo '<div class="col12"><label>Responsável (JSON)<textarea name="responsible_json" rows="6" placeholder="{}">' . h((string)($p['responsible_json'] ?? '')) . '</textarea></label></div>';
+echo '</div>';
+echo '</div>';
+
+// ===== ABA EVENTOS CLÍNICOS (item 7) =====
+echo '<div class="ptPanel" data-panel="eventos">';
+echo '<div style="margin-bottom:16px;color:hsl(var(--muted-foreground));font-size:14px">Registre eventos clínicos datados: internação, alta, óbito e outros. O registro de óbito encerra os atendimentos do paciente.</div>';
+
+// Garantir tabela
+try {
+    db()->exec("CREATE TABLE IF NOT EXISTS patient_clinical_events (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        patient_id BIGINT UNSIGNED NOT NULL,
+        event_type ENUM('internacao','obito','alta','retorno','transferencia','outro') NOT NULL,
+        event_date DATE NOT NULL,
+        event_time TIME NULL,
+        notes TEXT NULL,
+        created_by_user_id INT UNSIGNED NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_pce_patient (patient_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (Throwable $e) {}
+
+$eventsStmt = db()->prepare("SELECT ev.*, u.name AS created_by_name FROM patient_clinical_events ev LEFT JOIN users u ON u.id = ev.created_by_user_id WHERE ev.patient_id = :pid ORDER BY ev.event_date DESC, ev.event_time DESC");
+$eventsStmt->execute(['pid' => (int)$p['id']]);
+$clinicalEvents = $eventsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$eventLabels = ['internacao' => 'Internação', 'obito' => 'Óbito', 'alta' => 'Alta', 'retorno' => 'Retorno', 'transferencia' => 'Transferência', 'outro' => 'Outro'];
+
+// Aviso se paciente encerrado
+if (!empty($p['is_closed'])) {
+    echo '<div style="padding:12px;background:hsla(var(--destructive)/.10);border:1px solid hsl(var(--destructive));border-radius:8px;margin-bottom:16px;color:hsl(var(--destructive));font-weight:700">⚠️ Paciente encerrado (' . h((string)($p['closed_reason'] ?? 'óbito')) . '). Os atendimentos relacionados foram finalizados.</div>';
+}
+
+if (count($clinicalEvents) > 0) {
+    echo '<div style="overflow:auto;margin-bottom:16px"><table>';
+    echo '<thead><tr><th>Evento</th><th>Data</th><th>Hora</th><th>Observações</th><th>Registrado por</th></tr></thead><tbody>';
+    foreach ($clinicalEvents as $ev) {
+        echo '<tr>';
+        echo '<td><strong>' . h($eventLabels[$ev['event_type']] ?? $ev['event_type']) . '</strong></td>';
+        echo '<td>' . h(date('d/m/Y', strtotime((string)$ev['event_date']))) . '</td>';
+        echo '<td>' . h($ev['event_time'] ? substr((string)$ev['event_time'], 0, 5) : '-') . '</td>';
+        echo '<td>' . h((string)($ev['notes'] ?? '-')) . '</td>';
+        echo '<td>' . h((string)($ev['created_by_name'] ?? '-')) . '</td>';
+        echo '</tr>';
+    }
+    echo '</tbody></table></div>';
+} else {
+    echo '<div class="pill" style="display:block;margin-bottom:16px">Nenhum evento clínico registrado.</div>';
+}
+
+// Form de registro (posta em endpoint próprio, fora do form principal)
+echo '<div style="border-top:1px solid hsl(var(--border));padding-top:16px">';
+echo '<div style="font-weight:700;margin-bottom:12px">Registrar novo evento</div>';
+echo '<form method="post" action="/patient_clinical_event_post.php" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">';
+echo '<input type="hidden" name="patient_id" value="' . (int)$p['id'] . '">';
+echo '<label>Tipo de evento<select name="event_type" required>';
+foreach ($eventLabels as $ek => $el) {
+    echo '<option value="' . h($ek) . '">' . h($el) . '</option>';
+}
+echo '</select></label>';
+echo '<label>Data<input type="date" name="event_date" required value="' . h(date('Y-m-d')) . '"></label>';
+echo '<label>Hora<input type="time" name="event_time" value="' . h(date('H:i')) . '"></label>';
+echo '<label style="grid-column:1/-1">Observações<textarea name="notes" rows="2" placeholder="Detalhes do evento (opcional)"></textarea></label>';
+echo '<div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn btnPrimary" type="submit">Registrar evento</button></div>';
+echo '</form>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:8px">⚠️ Ao registrar um óbito, o paciente é marcado como encerrado e os atendimentos ativos são finalizados. O histórico é preservado.</div>';
 echo '</div>';
 echo '</div>';
 

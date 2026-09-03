@@ -24,8 +24,8 @@ function view_header(string $title): void
         ");
         $roleStmt->execute([$user['id']]);
         $userRoles = $roleStmt->fetchAll(PDO::FETCH_COLUMN);
-        // Roles administrativas que dão acesso ao menu completo
-        $adminRoles = ['admin', 'analista', 'captador', 'ti', 'financeiro', 'coordenador', 'gerente', 'gerente_rh', 'gerente-rh', 'supervisor', 'rh'];
+        // Roles administrativas que dão acesso ao menu completo (perfis reestruturados)
+        $adminRoles = ['admin', 'captador', 'admissao', 'financeiro', 'auditoria'];
         $hasAdminRole = !empty(array_intersect($userRoles, $adminRoles));
         // Fallback: qualquer role que nao seja profissional/paciente e administrativa
         if (!$hasAdminRole) {
@@ -86,8 +86,8 @@ function view_header(string $title): void
             ['title' => 'Configurações', 'path' => '/admin_settings.php', 'perm' => 'admin.settings.manage'],
         ];
 
-        // Roles com acesso total (admin e ti veem tudo)
-        $isFullAccess = !empty(array_intersect($userRoles, ['admin', 'ti']));
+        // Roles com acesso total ao menu (apenas admin)
+        $isFullAccess = !empty(array_intersect($userRoles, ['admin']));
 
         $menuItems = [];
         foreach ($allMenuItems as $item) {

@@ -9,15 +9,38 @@ rbac_require_permission('users.manage');
 
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $roleFilter = isset($_GET['role']) ? trim((string)$_GET['role']) : '';
+$statusFilter = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
+$typeFilter = isset($_GET['type']) ? trim((string)$_GET['type']) : ''; // equipe | profissional
 
-$sql = 'SELECT u.id, u.name, u.email, u.status, u.created_at FROM users u';
-$params = [];
+// ITEM 16: Paginação no backend
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
+$offset = ($page - 1) * $perPage;
+
+// Buscar todas as roles para o filtro de perfil (item 15)
+$allRoles = db()->query("SELECT slug, name FROM roles ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Construção dinâmica do WHERE
 $where = [];
+$params = [];
+$needsRoleJoin = false;
 
 if ($roleFilter !== '') {
-    $sql .= ' LEFT JOIN user_roles ur ON ur.user_id = u.id LEFT JOIN roles r ON r.id = ur.role_id';
+    $needsRoleJoin = true;
     $where[] = 'r.slug = :role';
     $params['role'] = $roleFilter;
+}
+
+// Filtro por tipo: profissional = tem role profissional; equipe = NÃO tem role profissional
+if ($typeFilter === 'profissional') {
+    $where[] = "EXISTS (SELECT 1 FROM user_roles ur2 JOIN roles r2 ON r2.id = ur2.role_id WHERE ur2.user_id = u.id AND r2.slug = 'profissional')";
+} elseif ($typeFilter === 'equipe') {
+    $where[] = "NOT EXISTS (SELECT 1 FROM user_roles ur2 JOIN roles r2 ON r2.id = ur2.role_id WHERE ur2.user_id = u.id AND r2.slug = 'profissional')";
+}
+
+if ($statusFilter !== '' && in_array($statusFilter, ['active', 'inactive'], true)) {
+    $where[] = 'u.status = :status';
+    $params['status'] = $statusFilter;
 }
 
 if ($q !== '') {
@@ -27,15 +50,31 @@ if ($q !== '') {
     $params['q2'] = $qLike;
 }
 
-if (!empty($where)) {
-    $sql .= ' WHERE ' . implode(' AND ', $where);
-}
+$joinSql = $needsRoleJoin ? ' LEFT JOIN user_roles ur ON ur.user_id = u.id LEFT JOIN roles r ON r.id = ur.role_id' : '';
+$whereSql = !empty($where) ? ' WHERE ' . implode(' AND ', $where) : '';
 
-$sql .= ' GROUP BY u.id ORDER BY u.id ASC';
+// Total para paginação
+$countSql = 'SELECT COUNT(DISTINCT u.id) FROM users u' . $joinSql . $whereSql;
+$countStmt = db()->prepare($countSql);
+$countStmt->execute($params);
+$totalUsers = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalUsers / $perPage));
+
+// Query paginada
+$sql = 'SELECT u.id, u.name, u.email, u.status, u.created_at FROM users u' . $joinSql . $whereSql
+     . ' GROUP BY u.id ORDER BY u.id ASC LIMIT ' . (int)$perPage . ' OFFSET ' . (int)$offset;
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
+
+// Helper para preservar filtros nos links de paginação
+$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter): string {
+    $qs = array_filter([
+        'q' => $q, 'role' => $roleFilter, 'status' => $statusFilter, 'type' => $typeFilter, 'page' => $p,
+    ], fn($v) => $v !== '' && $v !== null);
+    return '/users_list.php?' . http_build_query($qs);
+};
 
 $pageTitle = $roleFilter === 'profissional' ? 'Profissionais' : 'Usuários';
 $pageDescription = $roleFilter === 'profissional' ? 'Gerencie profissionais e seus acessos.' : 'Gerencie usuários e seus acessos.';
@@ -55,13 +94,39 @@ echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-echo '<form method="get" action="/users_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
-if ($roleFilter !== '') {
-    echo '<input type="hidden" name="role" value="' . h($roleFilter) . '">';
+echo '<form method="get" action="/users_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar por nome ou e-mail" style="flex:1;min-width:200px">';
+
+// Filtro tipo (equipe / profissional)
+echo '<select name="type" style="min-width:150px">';
+echo '<option value="">Todos os tipos</option>';
+echo '<option value="equipe"' . ($typeFilter === 'equipe' ? ' selected' : '') . '>Equipe (interno)</option>';
+echo '<option value="profissional"' . ($typeFilter === 'profissional' ? ' selected' : '') . '>Profissionais</option>';
+echo '</select>';
+
+// Filtro perfil (role)
+echo '<select name="role" style="min-width:150px">';
+echo '<option value="">Todos os perfis</option>';
+foreach ($allRoles as $ar) {
+    $sel = ($roleFilter === $ar['slug']) ? ' selected' : '';
+    echo '<option value="' . h($ar['slug']) . '"' . $sel . '>' . h($ar['name']) . '</option>';
 }
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar por nome ou e-mail" style="flex:1;min-width:220px">';
-echo '<button class="btn" type="submit">Buscar</button>';
+echo '</select>';
+
+// Filtro status
+echo '<select name="status" style="min-width:130px">';
+echo '<option value="">Todos os status</option>';
+echo '<option value="active"' . ($statusFilter === 'active' ? ' selected' : '') . '>Ativo</option>';
+echo '<option value="inactive"' . ($statusFilter === 'inactive' ? ' selected' : '') . '>Inativo</option>';
+echo '</select>';
+
+echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
+if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '') {
+    echo '<a class="btn" href="/users_list.php">Limpar</a>';
+}
 echo '</form>';
+
+echo '<div style="margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">' . number_format($totalUsers, 0, ',', '.') . ' usuário(s) encontrado(s)</div>';
 
 echo '</section>';
 
@@ -100,6 +165,32 @@ foreach ($rows as $r) {
 echo '</tbody>';
 echo '</table>';
 echo '</div>';
+
+// Controles de paginação (item 16)
+if ($totalPages > 1) {
+    echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+    if ($page > 1) {
+        echo '<a class="btn" href="' . h($buildPageUrl($page - 1)) . '">← Anterior</a>';
+    }
+    // Janela de páginas
+    $start = max(1, $page - 2);
+    $end = min($totalPages, $page + 2);
+    if ($start > 1) { echo '<a class="btn" href="' . h($buildPageUrl(1)) . '">1</a>'; if ($start > 2) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+    for ($i = $start; $i <= $end; $i++) {
+        if ($i === $page) {
+            echo '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>';
+        } else {
+            echo '<a class="btn" href="' . h($buildPageUrl($i)) . '">' . $i . '</a>';
+        }
+    }
+    if ($end < $totalPages) { if ($end < $totalPages - 1) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; echo '<a class="btn" href="' . h($buildPageUrl($totalPages)) . '">' . $totalPages . '</a>'; }
+    if ($page < $totalPages) {
+        echo '<a class="btn" href="' . h($buildPageUrl($page + 1)) . '">Próxima →</a>';
+    }
+    echo '</div>';
+    echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . '</div>';
+}
+
 echo '</section>';
 
 echo '</div>';

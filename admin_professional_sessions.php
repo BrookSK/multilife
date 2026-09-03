@@ -15,6 +15,9 @@ $db = db();
 $profId = isset($_GET['prof_id']) ? (int)$_GET['prof_id'] : 0;
 if ($profId === 0 && isset($_POST['prof_id'])) { $profId = (int)$_POST['prof_id']; }
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+// ITEM 9: alternância de visão (profissional | especialidade)
+$viewMode = isset($_GET['view']) && $_GET['view'] === 'specialty' ? 'specialty' : 'professional';
+$selSpecialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 
 // POST: Envio de fichas de sessao
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_session_docs' && $profId > 0) {
@@ -397,27 +400,116 @@ echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</section>';
 
-// Busca de profissional
+// ITEM 9: Abas de alternância de visão
 echo '<section class="card col12">';
-echo '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Selecionar Profissional</div>';
-echo '<form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
-echo '<div style="flex:1;min-width:200px"><input name="q" value="' . htmlspecialchars($q) . '" placeholder="Buscar por nome, e-mail ou especialidade..."></div>';
-echo '<button class="btn btnPrimary" type="submit">Buscar</button>';
-if ($q !== '' || $profId > 0) { echo '<a class="btn" href="/admin_professional_sessions.php">Limpar</a>'; }
-echo '</form>';
+echo '<div style="display:flex;gap:8px;border-bottom:2px solid hsl(var(--border));margin-bottom:16px">';
+$tabProfCls = $viewMode === 'professional' ? 'border-bottom:3px solid hsl(var(--primary));color:hsl(var(--primary));font-weight:700' : 'color:hsl(var(--muted-foreground))';
+$tabSpecCls = $viewMode === 'specialty' ? 'border-bottom:3px solid hsl(var(--primary));color:hsl(var(--primary));font-weight:700' : 'color:hsl(var(--muted-foreground))';
+echo '<a href="/admin_professional_sessions.php?view=professional" style="padding:10px 18px;text-decoration:none;' . $tabProfCls . '">👨‍⚕️ Por Profissional</a>';
+echo '<a href="/admin_professional_sessions.php?view=specialty" style="padding:10px 18px;text-decoration:none;' . $tabSpecCls . '">🩺 Por Especialidade</a>';
+echo '</div>';
 
-// Lista de profissionais para selecionar
-if ($profId === 0 && !empty($profs)) {
-    echo '<div style="margin-top:16px;overflow:auto"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Especialidade</th><th style="text-align:right">Acoes</th></tr></thead><tbody>';
-    foreach ($profs as $p) {
-        echo '<tr>';
-        echo '<td style="font-weight:600">' . htmlspecialchars($p['name']) . '</td>';
-        echo '<td style="font-size:12px">' . htmlspecialchars($p['email'] ?? '') . '</td>';
-        echo '<td style="font-size:12px">' . htmlspecialchars($p['specialty'] ?? '-') . '</td>';
-        echo '<td style="text-align:right"><a class="btn btnPrimary" href="/admin_professional_sessions.php?prof_id=' . (int)$p['id'] . '" style="font-size:12px;padding:6px 12px">Acessar</a></td>';
-        echo '</tr>';
+if ($viewMode === 'professional') {
+    // ===== VISÃO POR PROFISSIONAL (existente) =====
+    echo '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Selecionar Profissional</div>';
+    echo '<form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+    echo '<input type="hidden" name="view" value="professional">';
+    echo '<div style="flex:1;min-width:200px"><input name="q" value="' . htmlspecialchars($q) . '" placeholder="Buscar por nome, e-mail ou especialidade..."></div>';
+    echo '<button class="btn btnPrimary" type="submit">Buscar</button>';
+    if ($q !== '' || $profId > 0) { echo '<a class="btn" href="/admin_professional_sessions.php">Limpar</a>'; }
+    echo '</form>';
+
+    if ($profId === 0 && !empty($profs)) {
+        echo '<div style="margin-top:16px;overflow:auto"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Especialidade</th><th style="text-align:right">Acoes</th></tr></thead><tbody>';
+        foreach ($profs as $p) {
+            echo '<tr>';
+            echo '<td style="font-weight:600">' . htmlspecialchars($p['name']) . '</td>';
+            echo '<td style="font-size:12px">' . htmlspecialchars($p['email'] ?? '') . '</td>';
+            echo '<td style="font-size:12px">' . htmlspecialchars($p['specialty'] ?? '-') . '</td>';
+            echo '<td style="text-align:right"><a class="btn btnPrimary" href="/admin_professional_sessions.php?prof_id=' . (int)$p['id'] . '" style="font-size:12px;padding:6px 12px">Acessar</a></td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table></div>';
     }
-    echo '</tbody></table></div>';
+} else {
+    // ===== VISÃO POR ESPECIALIDADE (item 9) =====
+    echo '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Selecionar Especialidade</div>';
+    $specListStmt = $db->query("SELECT name FROM specialties WHERE status = 'active' ORDER BY name ASC");
+    $specList = $specListStmt->fetchAll(PDO::FETCH_COLUMN);
+    echo '<form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+    echo '<input type="hidden" name="view" value="specialty">';
+    echo '<select name="specialty" style="flex:1;min-width:220px">';
+    echo '<option value="">Selecione a especialidade...</option>';
+    foreach ($specList as $spName) {
+        $sel = ($selSpecialty === $spName) ? ' selected' : '';
+        echo '<option value="' . htmlspecialchars($spName) . '"' . $sel . '>' . htmlspecialchars($spName) . '</option>';
+    }
+    echo '</select>';
+    echo '<button class="btn btnPrimary" type="submit">Ver</button>';
+    echo '</form>';
+
+    if ($selSpecialty !== '') {
+        // Profissionais, pacientes e sessões da especialidade
+        $specStmt = $db->prepare("
+            SELECT pa.id AS assignment_id, pa.session_quantity, pa.session_frequency, pa.status AS assignment_status,
+                   COALESCE(pa.agreed_value, pa.payment_value) AS value_per_session,
+                   u.id AS professional_id, u.name AS professional_name,
+                   p.id AS patient_id, p.full_name AS patient_name,
+                   (SELECT COUNT(*) FROM billing_document_requirements bdr WHERE bdr.assignment_id = pa.id) AS total_sessions,
+                   (SELECT COUNT(*) FROM billing_document_requirements bdr WHERE bdr.assignment_id = pa.id AND bdr.status IN ('approved','paid')) AS approved_sessions,
+                   (SELECT COUNT(*) FROM billing_document_requirements bdr WHERE bdr.assignment_id = pa.id AND bdr.status = 'pending') AS pending_sessions
+            FROM patient_assignments pa
+            INNER JOIN users u ON u.id = pa.professional_user_id
+            INNER JOIN patients p ON p.id = pa.patient_id
+            WHERE pa.specialty = :spec AND p.deleted_at IS NULL
+            ORDER BY u.name ASC, p.full_name ASC
+        ");
+        $specStmt->execute(['spec' => $selSpecialty]);
+        $specRows = $specStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($specRows)) {
+            echo '<div style="margin-top:16px;padding:14px;background:hsla(var(--muted)/.2);border-radius:8px;color:hsl(var(--muted-foreground))">Nenhum atendimento encontrado para esta especialidade.</div>';
+        } else {
+            // Agrupar por profissional
+            $byProf = [];
+            foreach ($specRows as $sr) {
+                $byProf[$sr['professional_id']]['name'] = $sr['professional_name'];
+                $byProf[$sr['professional_id']]['rows'][] = $sr;
+            }
+
+            // Resumo da especialidade
+            $totalAtend = count($specRows);
+            $totalProfs = count($byProf);
+            $totalPacientes = count(array_unique(array_column($specRows, 'patient_id')));
+            echo '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">';
+            echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Profissionais</div><div style="font-size:24px;font-weight:800">' . $totalProfs . '</div></div>';
+            echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Pacientes</div><div style="font-size:24px;font-weight:800">' . $totalPacientes . '</div></div>';
+            echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Atendimentos</div><div style="font-size:24px;font-weight:800">' . $totalAtend . '</div></div>';
+            echo '</div>';
+
+            foreach ($byProf as $profIdKey => $profGroup) {
+                echo '<div style="margin-top:16px;border:1px solid hsl(var(--border));border-radius:10px;overflow:hidden">';
+                echo '<div style="padding:10px 14px;background:hsla(var(--primary)/.06);font-weight:700;display:flex;justify-content:space-between;align-items:center">';
+                echo '<span>👨‍⚕️ ' . htmlspecialchars($profGroup['name']) . '</span>';
+                echo '<a class="btn" href="/admin_professional_sessions.php?prof_id=' . (int)$profIdKey . '" style="font-size:11px;padding:4px 10px">Abrir profissional</a>';
+                echo '</div>';
+                echo '<div style="overflow:auto"><table><thead><tr><th>Paciente</th><th>Frequência</th><th>Sessões</th><th>Aprovadas</th><th>Pendentes</th><th>Valor/sessão</th><th>Status</th></tr></thead><tbody>';
+                foreach ($profGroup['rows'] as $sr) {
+                    echo '<tr>';
+                    echo '<td style="font-weight:600">' . htmlspecialchars($sr['patient_name']) . '</td>';
+                    echo '<td style="font-size:12px">' . htmlspecialchars((string)($sr['session_frequency'] ?? '-')) . '</td>';
+                    echo '<td>' . (int)$sr['total_sessions'] . '</td>';
+                    echo '<td style="color:#059669;font-weight:600">' . (int)$sr['approved_sessions'] . '</td>';
+                    echo '<td style="color:#d97706;font-weight:600">' . (int)$sr['pending_sessions'] . '</td>';
+                    echo '<td>R$ ' . number_format((float)$sr['value_per_session'], 2, ',', '.') . '</td>';
+                    echo '<td><span style="font-size:11px">' . htmlspecialchars((string)$sr['assignment_status']) . '</span></td>';
+                    echo '</tr>';
+                }
+                echo '</tbody></table></div>';
+                echo '</div>';
+            }
+        }
+    }
 }
 echo '</section>';
 

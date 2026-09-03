@@ -63,31 +63,48 @@ if ($q !== '') {
     $params['q3'] = $qLike;
 }
 
-$sql .= ' ORDER BY fe.id DESC';
+// ITEM 16: Calcular resumo financeiro com AGREGAÇÃO (todos os registros, não só a página)
+$sumSql = preg_replace(
+    '/^SELECT .*? FROM financial_entries/is',
+    "SELECT
+        SUM(CASE WHEN fe.status = 'pendente' THEN fe.amount ELSE 0 END) AS total_pendente,
+        SUM(CASE WHEN fe.status = 'recebido' THEN fe.amount ELSE 0 END) AS total_recebido,
+        SUM(CASE WHEN fe.status = 'pendente' THEN 1 ELSE 0 END) AS qtd_pendente,
+        SUM(CASE WHEN fe.status = 'recebido' THEN 1 ELSE 0 END) AS qtd_recebido,
+        COUNT(*) AS total_count
+     FROM financial_entries",
+    $sql,
+    1
+);
+$sumStmt = db()->prepare($sumSql);
+$sumStmt->execute($params);
+$sumRow = $sumStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$totalPendente = (float)($sumRow['total_pendente'] ?? 0);
+$totalRecebido = (float)($sumRow['total_recebido'] ?? 0);
+$qtdPendente = (int)($sumRow['qtd_pendente'] ?? 0);
+$qtdRecebido = (int)($sumRow['qtd_recebido'] ?? 0);
+$totalRows = (int)($sumRow['total_count'] ?? 0);
+
+$totalGeral = $totalPendente + $totalRecebido;
+$qtdGeral = $qtdPendente + $qtdRecebido;
+
+// Paginação
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 30;
+$offset = ($page - 1) * $perPage;
+$totalPages = max(1, (int)ceil($totalRows / $perPage));
+
+$sql .= ' ORDER BY fe.id DESC LIMIT ' . (int)$perPage . ' OFFSET ' . (int)$offset;
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-// Calcular resumo financeiro
-$totalPendente = 0;
-$totalRecebido = 0;
-$qtdPendente = 0;
-$qtdRecebido = 0;
-
-foreach ($rows as $r) {
-    $valor = (float)$r['amount'];
-    if ((string)$r['status'] === 'pendente') {
-        $totalPendente += $valor;
-        $qtdPendente++;
-    } elseif ((string)$r['status'] === 'recebido') {
-        $totalRecebido += $valor;
-        $qtdRecebido++;
-    }
-}
-
-$totalGeral = $totalPendente + $totalRecebido;
-$qtdGeral = $qtdPendente + $qtdRecebido;
+$buildPageUrl = function (int $p): string {
+    $qs = $_GET;
+    $qs['page'] = $p;
+    return '/finance_receivable_list.php?' . http_build_query($qs);
+};
 
 view_header('Financeiro - Contas a Receber');
 
@@ -279,6 +296,22 @@ if (count($rows) === 0) {
 
 echo '</tbody></table>';
 echo '</div>';
+
+// Paginação (item 16)
+if ($totalPages > 1) {
+    echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+    if ($page > 1) echo '<a class="btn" href="' . h($buildPageUrl($page - 1)) . '">← Anterior</a>';
+    $start = max(1, $page - 2); $end = min($totalPages, $page + 2);
+    if ($start > 1) { echo '<a class="btn" href="' . h($buildPageUrl(1)) . '">1</a>'; if ($start > 2) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+    for ($i = $start; $i <= $end; $i++) {
+        echo $i === $page ? '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>' : '<a class="btn" href="' . h($buildPageUrl($i)) . '">' . $i . '</a>';
+    }
+    if ($end < $totalPages) { if ($end < $totalPages - 1) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; echo '<a class="btn" href="' . h($buildPageUrl($totalPages)) . '">' . $totalPages . '</a>'; }
+    if ($page < $totalPages) echo '<a class="btn" href="' . h($buildPageUrl($page + 1)) . '">Próxima →</a>';
+    echo '</div>';
+    echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . '</div>';
+}
+
 echo '</section>';
 
 echo '</div>';
