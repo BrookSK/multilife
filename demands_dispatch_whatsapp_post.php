@@ -274,47 +274,58 @@ if (count($groups) === 0) {
             }
         }
         
-        // Adicionar números de instâncias conectadas
-        $connectedNumbers = whatsapp_get_all_connected_numbers();
-        foreach ($connectedNumbers as $connNum) {
-            if (!in_array($connNum, $participants, true)) {
-                $participants[] = $connNum;
+        // MODO DE TESTE: quando ligado, NÃO adiciona equipe MultiLife (instâncias, usuário logado, admins/captadores).
+        // Só entram no grupo os profissionais marcados como teste (já filtrados acima).
+        if (!$captacaoTestMode) {
+            // Adicionar números de instâncias conectadas
+            $connectedNumbers = whatsapp_get_all_connected_numbers();
+            foreach ($connectedNumbers as $connNum) {
+                if (!in_array($connNum, $participants, true)) {
+                    $participants[] = $connNum;
+                }
             }
-        }
-        
-        // Adicionar telefone do usuário logado
-        $stmtCurUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
-        $stmtCurUser->execute([auth_user_id()]);
-        $curUserRow = $stmtCurUser->fetch();
-        if ($curUserRow && !empty($curUserRow['phone'])) {
-            $curPhone = preg_replace('/\D+/', '', (string)$curUserRow['phone']);
-            if (strlen($curPhone) === 10 || strlen($curPhone) === 11) $curPhone = '55' . $curPhone;
-            if (strlen($curPhone) >= 12 && !in_array($curPhone, $participants, true)) {
-                $participants[] = $curPhone;
+
+            // Adicionar telefone do usuário logado
+            $stmtCurUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
+            $stmtCurUser->execute([auth_user_id()]);
+            $curUserRow = $stmtCurUser->fetch();
+            if ($curUserRow && !empty($curUserRow['phone'])) {
+                $curPhone = preg_replace('/\D+/', '', (string)$curUserRow['phone']);
+                if (strlen($curPhone) === 10 || strlen($curPhone) === 11) $curPhone = '55' . $curPhone;
+                if (strlen($curPhone) >= 12 && !in_array($curPhone, $participants, true)) {
+                    $participants[] = $curPhone;
+                }
             }
-        }
-        
-        // Adicionar telefones de usuários com permissão demands.manage
-        $stmtAdmins = db()->prepare("
-            SELECT DISTINCT u.phone FROM users u
-            INNER JOIN user_roles ur ON ur.user_id = u.id
-            INNER JOIN roles r ON r.id = ur.role_id
-            INNER JOIN role_permissions rp ON rp.role_id = r.id
-            INNER JOIN permissions p ON p.id = rp.permission_id
-            WHERE u.status = 'active' AND p.slug = 'demands.manage'
-            AND u.phone IS NOT NULL AND u.phone != ''
-        ");
-        $stmtAdmins->execute();
-        foreach ($stmtAdmins->fetchAll(PDO::FETCH_COLUMN) as $aPhone) {
-            $cleanA = preg_replace('/\D+/', '', (string)$aPhone);
-            if (strlen($cleanA) === 10 || strlen($cleanA) === 11) $cleanA = '55' . $cleanA;
-            if (strlen($cleanA) >= 12 && !in_array($cleanA, $participants, true)) {
-                $participants[] = $cleanA;
+
+            // Adicionar telefones de usuários com permissão demands.manage
+            $stmtAdmins = db()->prepare("
+                SELECT DISTINCT u.phone FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                INNER JOIN roles r ON r.id = ur.role_id
+                INNER JOIN role_permissions rp ON rp.role_id = r.id
+                INNER JOIN permissions p ON p.id = rp.permission_id
+                WHERE u.status = 'active' AND p.slug = 'demands.manage'
+                AND u.phone IS NOT NULL AND u.phone != ''
+            ");
+            $stmtAdmins->execute();
+            foreach ($stmtAdmins->fetchAll(PDO::FETCH_COLUMN) as $aPhone) {
+                $cleanA = preg_replace('/\D+/', '', (string)$aPhone);
+                if (strlen($cleanA) === 10 || strlen($cleanA) === 11) $cleanA = '55' . $cleanA;
+                if (strlen($cleanA) >= 12 && !in_array($cleanA, $participants, true)) {
+                    $participants[] = $cleanA;
+                }
             }
         }
         
         $participants = array_values(array_unique($participants));
         if (empty($participants)) {
+            // No modo de teste, NÃO usar o número da equipe/admin como fallback.
+            // Se não há profissional de teste marcado, aborta a captação com aviso claro.
+            if ($captacaoTestMode) {
+                flash_set('error', 'Modo de teste da captacao ligado, mas nenhum "profissional de teste" foi encontrado para esta especialidade. Marque ao menos um profissional como teste (ou desligue o modo de teste em Configuracoes > Funcionalidades).');
+                header('Location: /demands_view.php?id=' . $id);
+                exit;
+            }
             $participants[] = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
         }
         
@@ -932,45 +943,49 @@ if (count($groups) > 0) {
                 }
             }
             
-            // Adicionar números de instâncias conectadas também
-            $instanceNumbers = whatsapp_get_all_connected_numbers();
-            foreach ($instanceNumbers as $num) {
-                $phonesToAdd[] = $num . '@s.whatsapp.net';
-            }
-            
-            // Adicionar o telefone do usuário que está realizando a captação
-            $stmtSyncUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
-            $stmtSyncUser->execute([auth_user_id()]);
-            $syncUserRow = $stmtSyncUser->fetch();
-            if ($syncUserRow && !empty($syncUserRow['phone'])) {
-                $syncUserPhone = preg_replace('/\D+/', '', (string)$syncUserRow['phone']);
-                if (strlen($syncUserPhone) === 10 || strlen($syncUserPhone) === 11) {
-                    $syncUserPhone = '55' . $syncUserPhone;
+            // MODO DE TESTE: quando ligado, NÃO adiciona equipe MultiLife (instâncias, usuário logado, admins/captadores).
+            // Só entram no grupo os profissionais marcados como teste (já filtrados acima).
+            if (!$captacaoTestMode) {
+                // Adicionar números de instâncias conectadas também
+                $instanceNumbers = whatsapp_get_all_connected_numbers();
+                foreach ($instanceNumbers as $num) {
+                    $phonesToAdd[] = $num . '@s.whatsapp.net';
                 }
-                if (strlen($syncUserPhone) >= 12) {
-                    $phonesToAdd[] = $syncUserPhone . '@s.whatsapp.net';
+
+                // Adicionar o telefone do usuário que está realizando a captação
+                $stmtSyncUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
+                $stmtSyncUser->execute([auth_user_id()]);
+                $syncUserRow = $stmtSyncUser->fetch();
+                if ($syncUserRow && !empty($syncUserRow['phone'])) {
+                    $syncUserPhone = preg_replace('/\D+/', '', (string)$syncUserRow['phone']);
+                    if (strlen($syncUserPhone) === 10 || strlen($syncUserPhone) === 11) {
+                        $syncUserPhone = '55' . $syncUserPhone;
+                    }
+                    if (strlen($syncUserPhone) >= 12) {
+                        $phonesToAdd[] = $syncUserPhone . '@s.whatsapp.net';
+                    }
                 }
-            }
-            
-            // Adicionar telefones de usuários com permissão de gerenciar captação
-            $stmtSyncAdmins = db()->prepare("
-                SELECT DISTINCT u.phone FROM users u
-                INNER JOIN user_roles ur ON ur.user_id = u.id
-                INNER JOIN roles r ON r.id = ur.role_id
-                INNER JOIN role_permissions rp ON rp.role_id = r.id
-                INNER JOIN permissions p ON p.id = rp.permission_id
-                WHERE u.status = 'active' 
-                AND p.slug = 'demands.manage'
-                AND u.phone IS NOT NULL AND u.phone != ''
-            ");
-            $stmtSyncAdmins->execute();
-            foreach ($stmtSyncAdmins->fetchAll(PDO::FETCH_COLUMN) as $adminPh) {
-                $cleanAdmin = preg_replace('/\D+/', '', (string)$adminPh);
-                if (strlen($cleanAdmin) === 10 || strlen($cleanAdmin) === 11) {
-                    $cleanAdmin = '55' . $cleanAdmin;
-                }
-                if (strlen($cleanAdmin) >= 12) {
-                    $phonesToAdd[] = $cleanAdmin . '@s.whatsapp.net';
+
+                // Adicionar telefones de usuários com permissão de gerenciar captação
+                $stmtSyncAdmins = db()->prepare("
+                    SELECT DISTINCT u.phone FROM users u
+                    INNER JOIN user_roles ur ON ur.user_id = u.id
+                    INNER JOIN roles r ON r.id = ur.role_id
+                    INNER JOIN role_permissions rp ON rp.role_id = r.id
+                    INNER JOIN permissions p ON p.id = rp.permission_id
+                    WHERE u.status = 'active' 
+                    AND p.slug = 'demands.manage'
+                    AND u.phone IS NOT NULL AND u.phone != ''
+                ");
+                $stmtSyncAdmins->execute();
+                foreach ($stmtSyncAdmins->fetchAll(PDO::FETCH_COLUMN) as $adminPh) {
+                    $cleanAdmin = preg_replace('/\D+/', '', (string)$adminPh);
+                    if (strlen($cleanAdmin) === 10 || strlen($cleanAdmin) === 11) {
+                        $cleanAdmin = '55' . $cleanAdmin;
+                    }
+                    if (strlen($cleanAdmin) >= 12) {
+                        $phonesToAdd[] = $cleanAdmin . '@s.whatsapp.net';
+                    }
                 }
             }
             
