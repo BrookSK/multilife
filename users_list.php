@@ -11,6 +11,7 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $roleFilter = isset($_GET['role']) ? trim((string)$_GET['role']) : '';
 $statusFilter = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
 $typeFilter = isset($_GET['type']) ? trim((string)$_GET['type']) : ''; // equipe | profissional
+$specialtyFilter = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 
 // ITEM 16: Paginação no backend
 $page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
@@ -19,6 +20,9 @@ $offset = ($page - 1) * $perPage;
 
 // Buscar todas as roles para o filtro de perfil (item 15)
 $allRoles = db()->query("SELECT slug, name FROM roles ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Especialidades cadastradas (para o filtro de especialidade)
+$allSpecialties = db()->query("SELECT name FROM specialties WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN);
 
 // Construção dinâmica do WHERE
 $where = [];
@@ -43,6 +47,12 @@ if ($statusFilter !== '' && in_array($statusFilter, ['active', 'inactive'], true
     $params['status'] = $statusFilter;
 }
 
+// Filtro por especialidade
+if ($specialtyFilter !== '') {
+    $where[] = 'u.specialty = :specialty';
+    $params['specialty'] = $specialtyFilter;
+}
+
 if ($q !== '') {
     $where[] = '(u.name LIKE :q1 OR u.email LIKE :q2)';
     $qLike = '%' . $q . '%';
@@ -61,7 +71,7 @@ $totalUsers = (int)$countStmt->fetchColumn();
 $totalPages = max(1, (int)ceil($totalUsers / $perPage));
 
 // Query paginada
-$sql = 'SELECT u.id, u.name, u.email, u.status, u.created_at FROM users u' . $joinSql . $whereSql
+$sql = 'SELECT u.id, u.name, u.email, u.status, u.specialty, u.created_at FROM users u' . $joinSql . $whereSql
      . ' GROUP BY u.id ORDER BY u.id ASC LIMIT ' . (int)$perPage . ' OFFSET ' . (int)$offset;
 
 $stmt = db()->prepare($sql);
@@ -69,9 +79,10 @@ $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
 // Helper para preservar filtros nos links de paginação
-$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter): string {
+$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter, $specialtyFilter): string {
     $qs = array_filter([
-        'q' => $q, 'role' => $roleFilter, 'status' => $statusFilter, 'type' => $typeFilter, 'page' => $p,
+        'q' => $q, 'role' => $roleFilter, 'status' => $statusFilter, 'type' => $typeFilter,
+        'specialty' => $specialtyFilter, 'page' => $p,
     ], fn($v) => $v !== '' && $v !== null);
     return '/users_list.php?' . http_build_query($qs);
 };
@@ -113,6 +124,15 @@ foreach ($allRoles as $ar) {
 }
 echo '</select>';
 
+// Filtro especialidade
+echo '<select name="specialty" style="min-width:170px">';
+echo '<option value="">Todas as especialidades</option>';
+foreach ($allSpecialties as $spName) {
+    $sel = ($specialtyFilter === $spName) ? ' selected' : '';
+    echo '<option value="' . h($spName) . '"' . $sel . '>' . h($spName) . '</option>';
+}
+echo '</select>';
+
 // Filtro status
 echo '<select name="status" style="min-width:130px">';
 echo '<option value="">Todos os status</option>';
@@ -121,7 +141,7 @@ echo '<option value="inactive"' . ($statusFilter === 'inactive' ? ' selected' : 
 echo '</select>';
 
 echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
-if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '') {
+if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '' || $specialtyFilter !== '') {
     echo '<a class="btn" href="/users_list.php">Limpar</a>';
 }
 echo '</form>';
@@ -134,7 +154,7 @@ echo '<section class="card col12">';
 echo '<div style="overflow:auto">';
 echo '<table>';
 echo '<thead><tr>';
-echo '<th>ID</th><th>Nome</th><th>E-mail</th><th>Status</th><th>Criado</th><th style="text-align:right">Ações</th>';
+echo '<th>ID</th><th>Nome</th><th>E-mail</th><th>Especialidade</th><th>Status</th><th>Criado</th><th style="text-align:right">Ações</th>';
 echo '</tr></thead>';
 echo '<tbody>';
 foreach ($rows as $r) {
@@ -142,6 +162,7 @@ foreach ($rows as $r) {
     echo '<td>' . (int)$r['id'] . '</td>';
     echo '<td style="font-weight:700">' . h((string)$r['name']) . '</td>';
     echo '<td>' . h((string)$r['email']) . '</td>';
+    echo '<td>' . h((string)($r['specialty'] ?? '') ?: '-') . '</td>';
     echo '<td>' . h((string)$r['status']) . '</td>';
     echo '<td>' . h((string)$r['created_at']) . '</td>';
     echo '<td style="text-align:right">';
