@@ -47,6 +47,106 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     }
 }
 
+// ============================================================
+// DECODIFICAR @lid → número real + nome (item: resolver Linked IDs)
+// ============================================================
+// 1) Montar mapa LID → número real a partir dos contatos da Evolution.
+$lidToPhone = [];
+if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
+    try {
+        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+        $contactsRes = $api->findContacts();
+        $contactsJson = $contactsRes['json'] ?? [];
+        if (is_array($contactsJson)) {
+            foreach ($contactsJson as $c) {
+                // A Evolution v2 pode trazer 'id' (jid real) e 'lid' no mesmo contato,
+                // ou o remoteJid com o número e um campo separado de lid.
+                $cid = (string)($c['id'] ?? ($c['remoteJid'] ?? ''));
+                $clid = (string)($c['lid'] ?? '');
+                // Extrair número real do jid (formato NUMERO@s.whatsapp.net)
+                if ($clid !== '' && $cid !== '' && strpos($cid, '@s.whatsapp.net') !== false) {
+                    $realNum = preg_replace('/@.*/', '', $cid);
+                    $lidNum = preg_replace('/@.*/', '', $clid);
+                    if ($realNum !== '' && $lidNum !== '') {
+                        $lidToPhone[$lidNum] = $realNum;
+                    }
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        // segue sem o mapa
+    }
+}
+
+// 2) Mapa telefone → nome do profissional (para exibir quem é)
+$phoneToName = [];
+try {
+    $usersRows = db()->query("SELECT name, phone FROM users WHERE phone IS NOT NULL AND phone <> ''")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($usersRows as $ur) {
+        $digits = preg_replace('/\D+/', '', (string)$ur['phone']);
+        if ($digits === '') continue;
+        // Normalizar com e sem 55 para casar
+        $variants = [$digits];
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $variants[] = '55' . $digits;
+        }
+        if (strpos($digits, '55') === 0) {
+            $variants[] = substr($digits, 2);
+        }
+        foreach ($variants as $v) {
+            $phoneToName[$v] = (string)$ur['name'];
+        }
+    }
+} catch (Throwable $e) {}
+
+/**
+ * Resolve um participante (id do WhatsApp) em ['phone' => ..., 'name' => ..., 'raw' => ...].
+ */
+function resolveParticipant(array $participant, array $lidToPhone, array $phoneToName): array
+{
+    $rawId = (string)($participant['id'] ?? '');
+    // Alguns retornos trazem o número real em outro campo
+    $altJid = (string)($participant['jid'] ?? ($participant['phoneNumber'] ?? ''));
+
+    $phone = '';
+    if ($rawId !== '') {
+        $numPart = preg_replace('/@.*/', '', $rawId);
+        if (strpos($rawId, '@lid') !== false) {
+            // Tentar decodificar via mapa de contatos
+            $phone = $lidToPhone[$numPart] ?? '';
+        } else {
+            // Já é número real (@s.whatsapp.net) ou numérico
+            $phone = $numPart;
+        }
+    }
+    // Fallback: campo alternativo
+    if ($phone === '' && $altJid !== '' && strpos($altJid, '@lid') === false) {
+        $phone = preg_replace('/@.*/', '', $altJid);
+    }
+
+    // Nome via cruzamento com users
+    $name = '';
+    if ($phone !== '') {
+        $name = $phoneToName[$phone] ?? ($phoneToName[ltrim($phone, '55')] ?? ($phoneToName['55' . $phone] ?? ''));
+    }
+
+    // Formatar telefone para exibição
+    $displayPhone = $phone;
+    if ($phone !== '' && strpos($phone, '55') === 0 && strlen($phone) >= 12) {
+        $rest = substr($phone, 2);
+        $ddd = substr($rest, 0, 2);
+        $num = substr($rest, 2);
+        $displayPhone = '(' . $ddd . ') ' . $num;
+    }
+
+    return [
+        'phone' => $phone,
+        'display_phone' => $displayPhone !== '' ? $displayPhone : '(número não identificado)',
+        'name' => $name !== '' ? $name : 'Não identificado',
+        'raw' => $rawId,
+    ];
+}
+
 // Buscar profissionais disponíveis para adicionar
 $professionals = db()->query(
     "SELECT u.id, u.name, u.phone
@@ -77,10 +177,14 @@ if (empty($participants)) {
     foreach ($participants as $participant) {
         $participantId = $participant['id'] ?? '';
         $isAdmin = isset($participant['admin']) && $participant['admin'] === 'admin';
+        $resolved = resolveParticipant($participant, $lidToPhone, $phoneToName);
         
         echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid hsl(var(--border))">';
         echo '<div>';
-        echo '<div style="font-weight:600">' . h($participantId) . '</div>';
+        echo '<div style="font-weight:600">' . h($resolved['name']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">' . h($resolved['display_phone']) . '</div>';
+        // Mostrar o ID cru (lid) em fonte pequena para referência técnica
+        echo '<div style="font-size:10px;color:hsl(var(--muted-foreground));opacity:.6">' . h($participantId) . '</div>';
         if ($isAdmin) {
             echo '<div style="font-size:12px;color:hsl(var(--primary))">Administrador</div>';
         }
