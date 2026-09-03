@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'feature.profissional_acesso_recebimentos' => ($_POST['profissional_acesso_recebimentos'] ?? '0'),
         'feature.enviar_credenciais_profissional' => ($_POST['enviar_credenciais_profissional'] ?? '0'),
         'feature.auto_send_authorization' => ($_POST['auto_send_authorization'] ?? '0'),
+        'feature.captacao_test_mode' => ($_POST['captacao_test_mode'] ?? '0'),
     ];
     admin_settings_set_many($flags, auth_user_id());
     flash_set('success', 'Configuracoes de implantacao atualizadas!');
@@ -32,6 +33,7 @@ $flags = [
     'feature.profissional_acesso_recebimentos' => (string)admin_setting_get('feature.profissional_acesso_recebimentos', '0'),
     'feature.enviar_credenciais_profissional' => (string)admin_setting_get('feature.enviar_credenciais_profissional', '0'),
     'feature.auto_send_authorization' => (string)admin_setting_get('feature.auto_send_authorization', '1'),
+    'feature.captacao_test_mode' => (string)admin_setting_get('feature.captacao_test_mode', '0'),
 ];
 
 view_header('Implantacao - Funcionalidades');
@@ -83,6 +85,7 @@ $flagsConfig = [
     ['key' => 'profissional_acesso_agendamentos', 'label' => 'Permitir acesso a Agendamentos', 'desc' => 'Exibe a aba de Agendamentos no portal do profissional (calendario de sessoes).'],
     ['key' => 'profissional_acesso_recebimentos', 'label' => 'Permitir acesso a Recebimentos', 'desc' => 'Exibe a aba de Recebimentos no portal do profissional (valores pagos e pendentes).'],
     ['key' => 'auto_send_authorization', 'label' => 'Envio automatico da autorizacao de proposta por e-mail', 'desc' => 'Quando ativado, o sistema envia automaticamente o e-mail de autorizacao a operadora/cliente (fluxo: Captacao -> Autorizacao -> Envio -> Resposta -> Pre-Admissao). Quando desativado, nao envia e-mail e o usuario registra manualmente que a autorizacao foi respondida.'],
+    ['key' => 'captacao_test_mode', 'label' => 'Modo de teste da captacao', 'desc' => 'Quando ativado, a captacao adiciona aos grupos APENAS os profissionais marcados como "profissional de teste" (para validar o fluxo sem disparar para todos). Quando desativado (padrao), adiciona todos os profissionais da especialidade normalmente.'],
 ];
 
 foreach ($flagsConfig as $fc) {

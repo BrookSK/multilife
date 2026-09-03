@@ -13,7 +13,10 @@ $specialties = $specialtiesStmt->fetchAll();
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status FROM users WHERE id = :id');
+// Garantir coluna is_test_professional (fallback)
+try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+
+$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status, is_test_professional FROM users WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $user = $stmt->fetch();
 
@@ -62,6 +65,14 @@ $st = (string)$user['status'];
 echo '<option value="active"' . ($st === 'active' ? ' selected' : '') . '>active</option>';
 echo '<option value="inactive"' . ($st === 'inactive' ? ' selected' : '') . '>inactive</option>';
 echo '</select></label>';
+
+// Marcar como profissional de teste (usado no modo de teste da captação)
+$isTest = (int)($user['is_test_professional'] ?? 0) === 1;
+echo '<label style="display:flex;align-items:center;gap:8px;padding:12px;background:hsla(var(--warning)/.08);border-radius:8px;cursor:pointer">';
+echo '<input type="checkbox" name="is_test_professional" value="1"' . ($isTest ? ' checked' : '') . ' style="width:auto">';
+echo '<span><strong>Profissional de teste</strong><br><span style="font-size:12px;color:hsl(var(--muted-foreground))">Quando o modo de teste da captação estiver ativo, apenas profissionais marcados aqui serão adicionados aos grupos.</span></span>';
+echo '</label>';
+
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="' . $_backUrl . '">Cancelar</a>';
 echo '<button class="btn btnPrimary" type="submit">Salvar</button>';

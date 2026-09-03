@@ -14,6 +14,10 @@ $phoneRaw = trim((string)($_POST['phone'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
+$isTestProfessional = isset($_POST['is_test_professional']) && (string)$_POST['is_test_professional'] === '1' ? 1 : 0;
+
+// Garantir coluna (fallback)
+try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 
 $phone = null;
 if ($phoneRaw !== '') {
@@ -76,11 +80,11 @@ db()->beginTransaction();
 try {
     if ($password !== '') {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, password_hash = :hash WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'hash' => $hash, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test, password_hash = :hash WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'hash' => $hash, 'id' => $id]);
     } else {
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'id' => $id]);
     }
 
     $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status];

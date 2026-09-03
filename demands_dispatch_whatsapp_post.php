@@ -7,6 +7,12 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('demands.manage');
 
+// MODO DE TESTE DA CAPTAÇÃO: quando ativo, só adiciona profissionais marcados como teste.
+// Garante a coluna (fallback) e define o filtro SQL adicional aplicado às queries de profissionais.
+try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+$captacaoTestMode = ((string)admin_setting_get('feature.captacao_test_mode', '0') === '1');
+$testModeSqlFilter = $captacaoTestMode ? ' AND u.is_test_professional = 1' : '';
+
 $id = (int)($_POST['id'] ?? 0);
 $subRequestId = (int)($_POST['sub_request_id'] ?? 0);
 
@@ -246,7 +252,7 @@ if (count($groups) === 0) {
                 OR u.specialty LIKE ?
                 OR LOWER(u.specialty) LIKE LOWER(?)
             )
-            AND u.phone IS NOT NULL AND u.phone != ''
+            AND u.phone IS NOT NULL AND u.phone != ''" . $testModeSqlFilter . "
         ");
         // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
         // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra),
@@ -910,7 +916,7 @@ if (count($groups) > 0) {
                     OR u.specialty LIKE ?
                     OR LOWER(u.specialty) LIKE LOWER(?)
                 )
-                AND u.phone IS NOT NULL AND u.phone != ''
+                AND u.phone IS NOT NULL AND u.phone != ''" . $testModeSqlFilter . "
             ");
             $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
             $syncProfPhones = $syncProfsStmt->fetchAll(PDO::FETCH_COLUMN);
