@@ -18,15 +18,53 @@ $eventDate = trim((string)($_POST['event_date'] ?? ''));
 $eventTime = trim((string)($_POST['event_time'] ?? ''));
 $notes = trim((string)($_POST['notes'] ?? ''));
 
-$allowedTypes = ['internacao', 'obito', 'alta', 'retorno', 'transferencia', 'outro'];
-
-if ($patientId <= 0 || !in_array($eventType, $allowedTypes, true) || $eventDate === '') {
+if ($patientId <= 0 || $eventType === '' || $eventDate === '') {
     flash_set('error', 'Dados do evento inválidos.');
     header('Location: /patients_edit.php?id=' . $patientId);
     exit;
 }
 
 $db = db();
+
+// Tipos de evento configuráveis (tela: clinical_event_types.php).
+// Validamos o tipo contra os tipos ATIVOS e descobrimos se ele encerra o paciente.
+$triggersClosure = false;
+$typeIsValid = false;
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS clinical_event_types (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        name VARCHAR(120) NOT NULL,
+        slug VARCHAR(120) NOT NULL,
+        triggers_closure TINYINT(1) NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        is_system TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uk_clinical_event_slug (slug)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $tStmt = $db->prepare("SELECT triggers_closure FROM clinical_event_types WHERE slug = :slug AND is_active = 1 LIMIT 1");
+    $tStmt->execute(['slug' => $eventType]);
+    $tRow = $tStmt->fetch(PDO::FETCH_ASSOC);
+    if ($tRow) {
+        $typeIsValid = true;
+        $triggersClosure = ((int)$tRow['triggers_closure'] === 1);
+    }
+} catch (Throwable $e) {}
+
+// Fallback: se a tabela de tipos ainda não existir/estiver vazia, aceita os tipos base.
+if (!$typeIsValid) {
+    $baseTypes = ['internacao', 'obito', 'alta', 'retorno', 'transferencia', 'outro'];
+    if (in_array($eventType, $baseTypes, true)) {
+        $typeIsValid = true;
+        $triggersClosure = ($eventType === 'obito');
+    }
+}
+
+if (!$typeIsValid) {
+    flash_set('error', 'Tipo de evento inválido ou inativo.');
+    header('Location: /patients_edit.php?id=' . $patientId);
+    exit;
+}
 
 try {
     // Garantir tabela e colunas
@@ -46,6 +84,8 @@ try {
         "ALTER TABLE patients ADD COLUMN is_closed TINYINT(1) NOT NULL DEFAULT 0",
         "ALTER TABLE patients ADD COLUMN closed_at DATETIME NULL",
         "ALTER TABLE patients ADD COLUMN closed_reason VARCHAR(60) NULL",
+        // event_type passa a aceitar tipos configuráveis (slug livre), não só o ENUM fixo.
+        "ALTER TABLE patient_clinical_events MODIFY COLUMN event_type VARCHAR(120) NOT NULL",
     ] as $alter) {
         try { $db->exec($alter); } catch (Throwable $e) {}
     }
@@ -66,22 +106,29 @@ try {
         'uid' => auth_user_id(),
     ]);
 
-    // Se óbito: encerrar paciente e finalizar atendimentos ativos
-    if ($eventType === 'obito') {
+    // Tipos configurados para encerrar (ex.: Óbito): encerra o paciente e finaliza atendimentos ativos.
+    if ($triggersClosure) {
         $endedAt = $eventDate . ' ' . ($eventTime !== '' ? $eventTime . ':00' : '00:00:00');
 
-        // Marcar paciente como encerrado
+        // Marcar paciente como encerrado (guarda o slug do tipo como motivo do encerramento)
+        $closedReason = substr($eventType, 0, 60);
+        $adminStatus = ($eventType === 'obito') ? 'Óbito' : 'Encerrado';
         $db->prepare("
             UPDATE patients
-            SET is_closed = 1, closed_at = :closed_at, closed_reason = 'obito', admin_status = 'Óbito'
+            SET is_closed = 1, closed_at = :closed_at, closed_reason = :reason, admin_status = :adm
             WHERE id = :pid
-        ")->execute(['closed_at' => $endedAt, 'pid' => $patientId]);
+        ")->execute(['closed_at' => $endedAt, 'reason' => $closedReason, 'adm' => $adminStatus, 'pid' => $patientId]);
 
-        // Buscar motivo 'obito' em treatment_end_reasons
+        // Buscar motivo correspondente em treatment_end_reasons (tenta pelo slug do tipo, senão 'obito')
         $reasonId = null;
         try {
-            $rid = $db->query("SELECT id FROM treatment_end_reasons WHERE slug = 'obito' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-            $reasonId = $rid ? (int)$rid['id'] : null;
+            $rid = $db->prepare("SELECT id FROM treatment_end_reasons WHERE slug = :slug LIMIT 1");
+            $rid->execute(['slug' => $eventType]);
+            $rrow = $rid->fetch(PDO::FETCH_ASSOC);
+            if (!$rrow) {
+                $rrow = $db->query("SELECT id FROM treatment_end_reasons WHERE slug = 'obito' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            }
+            $reasonId = $rrow ? (int)$rrow['id'] : null;
         } catch (Throwable $e) {}
 
         // Finalizar atendimentos ativos do paciente (garantir colunas antes)
@@ -94,12 +141,13 @@ try {
             try { $db->exec($alter); } catch (Throwable $e) {}
         }
 
+        $closureNote = 'Encerrado automaticamente por registro de evento clínico (' . $eventType . ')';
         $db->prepare("
             UPDATE patient_assignments
             SET status = 'completed',
                 ended_at = COALESCE(ended_at, :ended_at),
                 end_reason_id = COALESCE(end_reason_id, :reason_id),
-                end_notes = COALESCE(end_notes, 'Encerrado automaticamente por registro de óbito'),
+                end_notes = COALESCE(end_notes, :closure_note),
                 ended_by_user_id = COALESCE(ended_by_user_id, :uid),
                 completed_at = COALESCE(completed_at, :ended_at2)
             WHERE patient_id = :pid
@@ -107,6 +155,7 @@ try {
         ")->execute([
             'ended_at' => $endedAt,
             'reason_id' => $reasonId,
+            'closure_note' => $closureNote,
             'uid' => auth_user_id(),
             'ended_at2' => $endedAt,
             'pid' => $patientId,

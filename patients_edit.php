@@ -301,7 +301,32 @@ $eventsStmt = db()->prepare("SELECT ev.*, u.name AS created_by_name FROM patient
 $eventsStmt->execute(['pid' => (int)$p['id']]);
 $clinicalEvents = $eventsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$eventLabels = ['internacao' => 'Internação', 'obito' => 'Óbito', 'alta' => 'Alta', 'retorno' => 'Retorno', 'transferencia' => 'Transferência', 'outro' => 'Outro'];
+// Tipos de evento configuráveis (tela: clinical_event_types.php). Fallback nos tipos base.
+$eventLabels = [];
+try {
+    db()->exec("CREATE TABLE IF NOT EXISTS clinical_event_types (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        name VARCHAR(120) NOT NULL,
+        slug VARCHAR(120) NOT NULL,
+        triggers_closure TINYINT(1) NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        is_system TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uk_clinical_event_slug (slug)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $hasAnyType = (int)db()->query("SELECT COUNT(*) FROM clinical_event_types")->fetchColumn();
+    if ($hasAnyType === 0) {
+        $seedTypes = [['Internação','internacao',0],['Óbito','obito',1],['Alta','alta',0],['Retorno','retorno',0],['Transferência','transferencia',0],['Outro','outro',0]];
+        $insSeed = db()->prepare("INSERT INTO clinical_event_types (name, slug, triggers_closure, is_active, is_system) VALUES (?, ?, ?, 1, 1)");
+        foreach ($seedTypes as $st) { try { $insSeed->execute([$st[0], $st[1], $st[2]]); } catch (Throwable $e) {} }
+    }
+    $typeRows = db()->query("SELECT slug, name FROM clinical_event_types WHERE is_active = 1 ORDER BY is_system DESC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($typeRows as $tr) { $eventLabels[(string)$tr['slug']] = (string)$tr['name']; }
+} catch (Throwable $e) {}
+if (count($eventLabels) === 0) {
+    $eventLabels = ['internacao' => 'Internação', 'obito' => 'Óbito', 'alta' => 'Alta', 'retorno' => 'Retorno', 'transferencia' => 'Transferência', 'outro' => 'Outro'];
+}
 
 // Aviso se paciente encerrado
 if (!empty($p['is_closed'])) {
@@ -325,22 +350,27 @@ if (count($clinicalEvents) > 0) {
     echo '<div class="pill" style="display:block;margin-bottom:16px">Nenhum evento clínico registrado.</div>';
 }
 
-// Form de registro (posta em endpoint próprio, fora do form principal)
+// Form de registro de evento clínico.
+// IMPORTANTE: HTML não permite <form> dentro de <form>. Como esta seção está dentro do
+// form principal de edição do paciente, os campos usam o atributo form="clinicalEventForm"
+// e o <form> real é renderizado fora do form principal (logo após o fechamento dele).
 echo '<div style="border-top:1px solid hsl(var(--border));padding-top:16px">';
 echo '<div style="font-weight:700;margin-bottom:12px">Registrar novo evento</div>';
-echo '<form method="post" action="/patient_clinical_event_post.php" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">';
-echo '<input type="hidden" name="patient_id" value="' . (int)$p['id'] . '">';
-echo '<label>Tipo de evento<select name="event_type" required>';
+echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">';
+echo '<label>Tipo de evento<select name="event_type" form="clinicalEventForm" required>';
 foreach ($eventLabels as $ek => $el) {
     echo '<option value="' . h($ek) . '">' . h($el) . '</option>';
 }
 echo '</select></label>';
-echo '<label>Data<input type="date" name="event_date" required value="' . h(date('Y-m-d')) . '"></label>';
-echo '<label>Hora<input type="time" name="event_time" value="' . h(date('H:i')) . '"></label>';
-echo '<label style="grid-column:1/-1">Observações<textarea name="notes" rows="2" placeholder="Detalhes do evento (opcional)"></textarea></label>';
-echo '<div style="grid-column:1/-1;display:flex;justify-content:flex-end"><button class="btn btnPrimary" type="submit">Registrar evento</button></div>';
-echo '</form>';
-echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:8px">⚠️ Ao registrar um óbito, o paciente é marcado como encerrado e os atendimentos ativos são finalizados. O histórico é preservado.</div>';
+echo '<label>Data<input type="date" name="event_date" form="clinicalEventForm" required value="' . h(date('Y-m-d')) . '"></label>';
+echo '<label>Hora<input type="time" name="event_time" form="clinicalEventForm" value="' . h(date('H:i')) . '"></label>';
+echo '<label style="grid-column:1/-1">Observações<textarea name="notes" form="clinicalEventForm" rows="2" placeholder="Detalhes do evento (opcional)"></textarea></label>';
+echo '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">';
+echo '<a href="/clinical_event_types.php" style="font-size:13px;color:hsl(var(--primary))">⚙️ Configurar tipos de evento</a>';
+echo '<button class="btn btnPrimary" type="submit" form="clinicalEventForm">Registrar evento</button>';
+echo '</div>';
+echo '</div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:8px">⚠️ Alguns tipos (ex.: Óbito) encerram o paciente e finalizam os atendimentos ativos. O histórico é preservado.</div>';
 echo '</div>';
 echo '</div>';
 
@@ -435,6 +465,13 @@ echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
 echo '</div>';
 
 echo '</form>';
+
+// Form real do evento clínico (fora do form principal, referenciado via form="clinicalEventForm").
+// Contém apenas os campos ocultos e o action; os campos visíveis estão na aba "Eventos Clínicos".
+echo '<form id="clinicalEventForm" method="post" action="/patient_clinical_event_post.php" style="display:none">';
+echo '<input type="hidden" name="patient_id" value="' . (int)$p['id'] . '">';
+echo '</form>';
+
 echo '</section>';
 
 echo '<script>';

@@ -28,6 +28,7 @@ echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_dashboard.php">Voltar</a>';
 echo '<a class="btn" href="/treatment_end_reasons.php">Motivos de Encerramento</a>';
+echo '<a class="btn" href="/clinical_event_types.php">Tipos de Evento Clínico</a>';
 echo '<a class="btn btnPrimary" href="/admin_feature_flags.php">Implantacao / Funcionalidades</a>';
 echo '</div>';
 echo '</div>';
