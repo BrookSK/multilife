@@ -449,13 +449,22 @@ if ($selected) {
     echo '<label>Hora Fim *<input type="time" name="end_time" form="approveForm" value="' . h($preEndTime ?: '09:00') . '" required></label>';
     echo '</div>';
     
-    // Opção de tempo indefinido
-    echo '<div style="margin:12px 0;padding:12px;background:hsla(var(--warning)/.08);border-radius:6px">';
-    echo '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">';
-    echo '<input type="checkbox" name="is_indefinite" id="paIndefinite" form="approveForm" value="1" ' . ($preIsIndefinite ? 'checked' : '') . ' style="width:auto">';
-    echo 'Tempo indefinido (sem data final / número de semanas fixo)';
+    // Opção de tempo indefinido (toggle switch)
+    echo '<div id="paIndefiniteBox" style="margin:12px 0;padding:14px 16px;background:hsla(var(--warning)/.10);border:1px solid hsla(var(--warning)/.35);border-radius:10px;transition:background .15s,border-color .15s">';
+    echo '<label for="paIndefinite" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin:0">';
+    // Switch visual
+    echo '<span style="position:relative;display:inline-block;flex:0 0 auto;width:44px;height:24px;margin-top:1px">';
+    echo '<input type="checkbox" name="is_indefinite" id="paIndefinite" form="approveForm" value="1" ' . ($preIsIndefinite ? 'checked' : '') . ' style="position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2">';
+    echo '<span id="paIndefiniteTrack" style="position:absolute;inset:0;border-radius:999px;background:' . ($preIsIndefinite ? 'hsl(var(--warning))' : 'hsl(var(--muted))') . ';transition:background .15s"></span>';
+    echo '<span id="paIndefiniteThumb" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s;transform:translateX(' . ($preIsIndefinite ? '20px' : '0') . ')"></span>';
+    echo '</span>';
+    // Texto
+    echo '<span style="display:flex;flex-direction:column;gap:2px">';
+    echo '<span style="font-weight:600;font-size:14px">Tempo indefinido</span>';
+    echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.4">Sem data final e sem número fixo de semanas. O atendimento permanece ativo até ser encerrado manualmente.</span>';
+    echo '<span id="paIndefiniteBadge" style="' . ($preIsIndefinite ? '' : 'display:none;') . 'align-self:flex-start;margin-top:6px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:hsl(var(--warning));color:#111">● ATIVADO — duração e semanas desativadas</span>';
+    echo '</span>';
     echo '</label>';
-    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Quando marcado, o atendimento permanece ativo até ser encerrado manualmente.</div>';
     echo '</div>';
     
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
@@ -668,21 +677,30 @@ echo 'if(paFreq)paFreq.addEventListener("change",paCalcSessions);';
 echo 'if(paSPW)paSPW.addEventListener("input",paCalcSessions);';
 echo 'if(paDW)paDW.addEventListener("input",paCalcSessions);';
 
-// Tempo indefinido: alterna a exigência de duração/semanas
+// Tempo indefinido: alterna visual do switch + exigência/visibilidade de duração e semanas
 echo 'var paIndef=document.getElementById("paIndefinite");';
 echo 'var paDurRow=document.getElementById("paDurationRow");';
 echo 'var paDurHint=document.getElementById("paDurationHint");';
+echo 'var paIndefTrack=document.getElementById("paIndefiniteTrack");';
+echo 'var paIndefThumb=document.getElementById("paIndefiniteThumb");';
+echo 'var paIndefBadge=document.getElementById("paIndefiniteBadge");';
+echo 'var paIndefBox=document.getElementById("paIndefiniteBox");';
 echo 'function paToggleIndefinite(){';
 echo '  if(!paIndef)return;';
 echo '  var on=paIndef.checked;';
+echo '  if(paIndefTrack){paIndefTrack.style.background=on?"hsl(var(--warning))":"hsl(var(--muted))";}';
+echo '  if(paIndefThumb){paIndefThumb.style.transform=on?"translateX(20px)":"translateX(0)";}';
+echo '  if(paIndefBadge){paIndefBadge.style.display=on?"inline-block":"none";}';
+echo '  if(paIndefBox){paIndefBox.style.background=on?"hsla(var(--warning)/.18)":"hsla(var(--warning)/.10)";paIndefBox.style.borderColor=on?"hsl(var(--warning))":"hsla(var(--warning)/.35)";}';
+echo '  if(paDurRow){paDurRow.style.display=on?"none":"grid";}';
 echo '  if(paDW){';
-echo '    if(on){paDW.removeAttribute("required");paDW.value="";paDW.disabled=true;paDW.style.opacity="0.5";}';
-echo '    else{paDW.setAttribute("required","required");paDW.disabled=false;paDW.style.opacity="1";}';
+echo '    if(on){paDW.removeAttribute("required");paDW.value="";}';
+echo '    else{paDW.setAttribute("required","required");}';
 echo '  }';
 echo '  if(paTS){';
 echo '    if(on){paTS.value="";}else{paCalcSessions();}';
 echo '  }';
-echo '  if(paDurHint){paDurHint.textContent=on?"Atendimento por tempo indefinido: sem número de semanas ou data final. Permanece ativo até ser encerrado.":"O total de sessões será calculado automaticamente com base na frequência e duração.";}';
+echo '  if(paDurHint){paDurHint.style.display=on?"none":"block";}';
 echo '}';
 echo 'if(paIndef){paIndef.addEventListener("change",paToggleIndefinite);paToggleIndefinite();}';
 
