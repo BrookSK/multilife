@@ -70,7 +70,7 @@ $autoSendAuthView = (string)admin_setting_get('feature.auto_send_authorization',
 if ($autoSendAuthView !== '1' && (string)$auth['status'] === 'aguardando_autorizacao') {
     echo '<form method="post" action="/authorization_mark_responded_post.php" style="display:inline" onsubmit="return confirm(\'Confirmar que a autorização foi respondida/aprovada? O fluxo seguirá para a Pré-Admissão.\')">';
     echo '<input type="hidden" name="auth_id" value="' . $authId . '">';
-    echo '<button type="submit" class="btn btnPrimary">✅ Marcar como respondida</button>';
+    echo '<button type="submit" class="btn btnPrimary">✅ Marcar como aprovada</button>';
     echo '</form>';
 }
 echo '</div>';
