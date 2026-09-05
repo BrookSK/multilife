@@ -41,9 +41,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)($_POST['id'] ?? 0);
         $db->prepare("UPDATE treatment_end_reasons SET is_active = 1 - is_active WHERE id = ?")->execute([$id]);
         flash_set('success', 'Motivo atualizado.');
-    } elseif ($action === 'delete') {
+    } elseif ($action === 'edit') {
         $id = (int)($_POST['id'] ?? 0);
-        $db->prepare("DELETE FROM treatment_end_reasons WHERE id = ? AND is_system = 0")->execute([$id]);
+        $name = trim((string)($_POST['name'] ?? ''));
+        if ($id > 0 && $name !== '') {
+            $db->prepare("UPDATE treatment_end_reasons SET name = ? WHERE id = ?")->execute([$name, $id]);
+            flash_set('success', 'Motivo atualizado.');
+        } else {
+            flash_set('error', 'Informe um nome válido para o motivo.');
+        }
+    } elseif ($action === 'delete') {
+        // Qualquer motivo pode ser excluído (inclusive os de sistema).
+        $id = (int)($_POST['id'] ?? 0);
+        $db->prepare("DELETE FROM treatment_end_reasons WHERE id = ?")->execute([$id]);
         flash_set('success', 'Motivo removido.');
     }
     header('Location: /treatment_end_reasons.php');
@@ -71,18 +81,48 @@ echo '</form>';
 echo '<div style="overflow:auto;margin-top:16px"><table>';
 echo '<thead><tr><th>Motivo</th><th>Tipo</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead><tbody>';
 foreach ($reasons as $r) {
+    $rid = (int)$r['id'];
     echo '<tr>';
-    echo '<td style="font-weight:600">' . h((string)$r['name']) . '</td>';
+    // Nome: modo exibição + modo edição (inline, alternados por JS)
+    echo '<td style="font-weight:600">';
+    echo '<span id="reasonName' . $rid . '">' . h((string)$r['name']) . '</span>';
+    echo '<form method="post" id="reasonEditForm' . $rid . '" style="display:none;gap:8px;align-items:center">';
+    echo '<input type="hidden" name="action" value="edit">';
+    echo '<input type="hidden" name="id" value="' . $rid . '">';
+    echo '<input name="name" value="' . h((string)$r['name']) . '" required style="min-width:220px">';
+    echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
+    echo '<button class="btn" type="button" onclick="reasonCancelEdit(' . $rid . ')">Cancelar</button>';
+    echo '</form>';
+    echo '</td>';
     echo '<td>' . ($r['is_system'] ? '<span class="badge badgeInfo">Sistema</span>' : 'Personalizado') . '</td>';
     echo '<td>' . ($r['is_active'] ? '<span class="badge badgeSuccess">Ativo</span>' : '<span class="badge badgeDanger">Inativo</span>') . '</td>';
-    echo '<td style="text-align:right">';
-    echo '<form method="post" style="display:inline"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="' . (int)$r['id'] . '"><button class="btn" type="submit">' . ($r['is_active'] ? 'Desativar' : 'Ativar') . '</button></form> ';
-    if (!$r['is_system']) {
-        echo '<form method="post" style="display:inline" onsubmit="return confirm(\'Excluir este motivo?\')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="' . (int)$r['id'] . '"><button class="btn" type="submit">Excluir</button></form>';
-    }
+    echo '<td style="text-align:right" id="reasonActions' . $rid . '">';
+    echo '<button class="btn" type="button" onclick="reasonStartEdit(' . $rid . ')">Editar</button> ';
+    echo '<form method="post" style="display:inline"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="' . $rid . '"><button class="btn" type="submit">' . ($r['is_active'] ? 'Desativar' : 'Ativar') . '</button></form> ';
+    echo '<form method="post" style="display:inline" onsubmit="return confirm(\'Excluir este motivo?\')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="' . $rid . '"><button class="btn btnDanger" type="submit">Excluir</button></form>';
     echo '</td></tr>';
 }
 echo '</tbody></table></div>';
+
+// JS: alternar entre exibição e edição inline do nome
+echo '<script>';
+echo 'function reasonStartEdit(id){';
+echo '  var n=document.getElementById("reasonName"+id);';
+echo '  var f=document.getElementById("reasonEditForm"+id);';
+echo '  var a=document.getElementById("reasonActions"+id);';
+echo '  if(n)n.style.display="none";';
+echo '  if(f)f.style.display="flex";';
+echo '  if(a)a.style.opacity="0.4";';
+echo '}';
+echo 'function reasonCancelEdit(id){';
+echo '  var n=document.getElementById("reasonName"+id);';
+echo '  var f=document.getElementById("reasonEditForm"+id);';
+echo '  var a=document.getElementById("reasonActions"+id);';
+echo '  if(n)n.style.display="inline";';
+echo '  if(f)f.style.display="none";';
+echo '  if(a)a.style.opacity="1";';
+echo '}';
+echo '</script>';
 echo '</section></div>';
 
 view_footer();
