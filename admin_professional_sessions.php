@@ -4,6 +4,42 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('appointments.manage');
 
+/**
+ * Renderiza os controles de paginação. $urlFor recebe o número da página e devolve a URL.
+ */
+function session_render_pagination(int $page, int $totalPages, callable $urlFor): void
+{
+    if ($totalPages <= 1) {
+        return;
+    }
+    echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+    if ($page > 1) {
+        echo '<a class="btn" href="' . htmlspecialchars($urlFor($page - 1)) . '">← Anterior</a>';
+    }
+    $start = max(1, $page - 2);
+    $end = min($totalPages, $page + 2);
+    if ($start > 1) {
+        echo '<a class="btn" href="' . htmlspecialchars($urlFor(1)) . '">1</a>';
+        if ($start > 2) { echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+    }
+    for ($i = $start; $i <= $end; $i++) {
+        if ($i === $page) {
+            echo '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>';
+        } else {
+            echo '<a class="btn" href="' . htmlspecialchars($urlFor($i)) . '">' . $i . '</a>';
+        }
+    }
+    if ($end < $totalPages) {
+        if ($end < $totalPages - 1) { echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+        echo '<a class="btn" href="' . htmlspecialchars($urlFor($totalPages)) . '">' . $totalPages . '</a>';
+    }
+    if ($page < $totalPages) {
+        echo '<a class="btn" href="' . htmlspecialchars($urlFor($page + 1)) . '">Próxima →</a>';
+    }
+    echo '</div>';
+    echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . '</div>';
+}
+
 // Aumentar limites de upload para esta pagina
 @ini_set('upload_max_filesize', '50M');
 @ini_set('post_max_size', '55M');
@@ -18,6 +54,10 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 // ITEM 9: alternância de visão (profissional | especialidade)
 $viewMode = isset($_GET['view']) && $_GET['view'] === 'specialty' ? 'specialty' : 'professional';
 $selSpecialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
+
+// Paginação das listagens (por profissional / por especialidade)
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
 
 // POST: Envio de fichas de sessao
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_session_docs' && $profId > 0) {
@@ -420,8 +460,15 @@ if ($viewMode === 'professional') {
     echo '</form>';
 
     if ($profId === 0 && !empty($profs)) {
-        echo '<div style="margin-top:16px;overflow:auto"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Especialidade</th><th style="text-align:right">Acoes</th></tr></thead><tbody>';
-        foreach ($profs as $p) {
+        // Paginação da lista de profissionais
+        $totalProfsList = count($profs);
+        $totalPagesProf = max(1, (int)ceil($totalProfsList / $perPage));
+        $pageProf = min($page, $totalPagesProf);
+        $profsPage = array_slice($profs, ($pageProf - 1) * $perPage, $perPage);
+
+        echo '<div style="margin-top:14px;color:hsl(var(--muted-foreground));font-size:13px">' . $totalProfsList . ' profissional(is).</div>';
+        echo '<div style="margin-top:8px;overflow:auto"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Especialidade</th><th style="text-align:right">Acoes</th></tr></thead><tbody>';
+        foreach ($profsPage as $p) {
             echo '<tr>';
             echo '<td style="font-weight:600">' . htmlspecialchars($p['name']) . '</td>';
             echo '<td style="font-size:12px">' . htmlspecialchars($p['email'] ?? '') . '</td>';
@@ -430,6 +477,12 @@ if ($viewMode === 'professional') {
             echo '</tr>';
         }
         echo '</tbody></table></div>';
+
+        // Controles de paginação (preserva a busca)
+        session_render_pagination($pageProf, $totalPagesProf, function (int $pp) use ($q) {
+            $qs = array_filter(['view' => 'professional', 'q' => $q, 'page' => $pp], fn($v) => $v !== '' && $v !== null);
+            return '/admin_professional_sessions.php?' . http_build_query($qs);
+        });
     }
 } else {
     // ===== VISÃO POR ESPECIALIDADE (item 9) =====
@@ -477,7 +530,7 @@ if ($viewMode === 'professional') {
                 $byProf[$sr['professional_id']]['rows'][] = $sr;
             }
 
-            // Resumo da especialidade
+            // Resumo da especialidade (totais GERAIS, não da página)
             $totalAtend = count($specRows);
             $totalProfs = count($byProf);
             $totalPacientes = count(array_unique(array_column($specRows, 'patient_id')));
@@ -487,7 +540,14 @@ if ($viewMode === 'professional') {
             echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Atendimentos</div><div style="font-size:24px;font-weight:800">' . $totalAtend . '</div></div>';
             echo '</div>';
 
-            foreach ($byProf as $profIdKey => $profGroup) {
+            // Paginação POR PROFISSIONAL dentro da especialidade
+            $totalPagesSpec = max(1, (int)ceil($totalProfs / $perPage));
+            $pageSpec = min($page, $totalPagesSpec);
+            $byProfPage = array_slice($byProf, ($pageSpec - 1) * $perPage, $perPage, true);
+
+            echo '<div style="color:hsl(var(--muted-foreground));font-size:13px;margin-bottom:4px">Mostrando profissionais ' . ((($pageSpec - 1) * $perPage) + 1) . '–' . min($pageSpec * $perPage, $totalProfs) . ' de ' . $totalProfs . '.</div>';
+
+            foreach ($byProfPage as $profIdKey => $profGroup) {
                 echo '<div style="margin-top:16px;border:1px solid hsl(var(--border));border-radius:10px;overflow:hidden">';
                 echo '<div style="padding:10px 14px;background:hsla(var(--primary)/.06);font-weight:700;display:flex;justify-content:space-between;align-items:center">';
                 echo '<span>👨‍⚕️ ' . htmlspecialchars($profGroup['name']) . '</span>';
@@ -508,6 +568,12 @@ if ($viewMode === 'professional') {
                 echo '</tbody></table></div>';
                 echo '</div>';
             }
+
+            // Controles de paginação (preserva a especialidade selecionada)
+            session_render_pagination($pageSpec, $totalPagesSpec, function (int $pp) use ($selSpecialty) {
+                $qs = array_filter(['view' => 'specialty', 'specialty' => $selSpecialty, 'page' => $pp], fn($v) => $v !== '' && $v !== null);
+                return '/admin_professional_sessions.php?' . http_build_query($qs);
+            });
         }
     }
 }
