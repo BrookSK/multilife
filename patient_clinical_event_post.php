@@ -66,12 +66,15 @@ if (!$typeIsValid) {
     exit;
 }
 
+// IMPORTANTE: todos os comandos DDL (CREATE/ALTER) devem rodar ANTES de beginTransaction().
+// No MySQL, DDL causa commit implícito e encerraria a transação, gerando o erro
+// "There is no active transaction" no commit final.
 try {
-    // Garantir tabela e colunas
+    // Garantir tabela de eventos
     $db->exec("CREATE TABLE IF NOT EXISTS patient_clinical_events (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         patient_id BIGINT UNSIGNED NOT NULL,
-        event_type ENUM('internacao','obito','alta','retorno','transferencia','outro') NOT NULL,
+        event_type VARCHAR(120) NOT NULL,
         event_date DATE NOT NULL,
         event_time TIME NULL,
         notes TEXT NULL,
@@ -80,12 +83,17 @@ try {
         PRIMARY KEY (id),
         KEY idx_pce_patient (patient_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Garantir colunas em patients, patient_clinical_events e patient_assignments (tudo antes da transação)
     foreach ([
         "ALTER TABLE patients ADD COLUMN is_closed TINYINT(1) NOT NULL DEFAULT 0",
         "ALTER TABLE patients ADD COLUMN closed_at DATETIME NULL",
         "ALTER TABLE patients ADD COLUMN closed_reason VARCHAR(60) NULL",
         // event_type passa a aceitar tipos configuráveis (slug livre), não só o ENUM fixo.
         "ALTER TABLE patient_clinical_events MODIFY COLUMN event_type VARCHAR(120) NOT NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN ended_at DATETIME NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN end_reason_id INT UNSIGNED NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN end_notes TEXT NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN ended_by_user_id INT UNSIGNED NULL",
     ] as $alter) {
         try { $db->exec($alter); } catch (Throwable $e) {}
     }
@@ -131,16 +139,7 @@ try {
             $reasonId = $rrow ? (int)$rrow['id'] : null;
         } catch (Throwable $e) {}
 
-        // Finalizar atendimentos ativos do paciente (garantir colunas antes)
-        foreach ([
-            "ALTER TABLE patient_assignments ADD COLUMN ended_at DATETIME NULL",
-            "ALTER TABLE patient_assignments ADD COLUMN end_reason_id INT UNSIGNED NULL",
-            "ALTER TABLE patient_assignments ADD COLUMN end_notes TEXT NULL",
-            "ALTER TABLE patient_assignments ADD COLUMN ended_by_user_id INT UNSIGNED NULL",
-        ] as $alter) {
-            try { $db->exec($alter); } catch (Throwable $e) {}
-        }
-
+        // (As colunas de encerramento já foram garantidas antes da transação.)
         $closureNote = 'Encerrado automaticamente por registro de evento clínico (' . $eventType . ')';
         $db->prepare("
             UPDATE patient_assignments

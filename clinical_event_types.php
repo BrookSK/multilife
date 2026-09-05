@@ -18,6 +18,28 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('patients.manage');
 
+/**
+ * Renderiza um toggle switch (estilo iOS) para a opção "Encerra o paciente".
+ * @param string $name  nome do campo (checkbox)
+ * @param bool   $on    estado inicial
+ * @param string $id    id único do input (para o JS animar)
+ */
+function cet_closure_toggle(string $name, bool $on, string $id): string
+{
+    $track = $on ? 'hsl(var(--destructive))' : 'hsl(var(--muted))';
+    $thumb = $on ? 'translateX(20px)' : 'translateX(0)';
+    $labelColor = $on ? 'hsl(var(--destructive))' : 'hsl(var(--muted-foreground))';
+    $html  = '<label for="' . h($id) . '" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap;font-size:13px;font-weight:600">';
+    $html .= '<span style="position:relative;display:inline-block;width:44px;height:24px;flex:0 0 auto">';
+    $html .= '<input type="checkbox" id="' . h($id) . '" name="' . h($name) . '" value="1" ' . ($on ? 'checked' : '') . ' onchange="cetToggleClosure(this)" style="position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2">';
+    $html .= '<span class="cetTrack" style="position:absolute;inset:0;border-radius:999px;background:' . $track . ';transition:background .15s"></span>';
+    $html .= '<span class="cetThumb" style="position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s;transform:' . $thumb . '"></span>';
+    $html .= '</span>';
+    $html .= '<span class="cetLabelTxt" style="color:' . $labelColor . '">Encerra o paciente</span>';
+    $html .= '</label>';
+    return $html;
+}
+
 $db = db();
 
 // Garantir tabela
@@ -108,10 +130,10 @@ echo '<a class="btn" href="/admin_settings.php">Voltar</a>';
 echo '</div>';
 
 // Form de criação
-echo '<form method="post" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+echo '<form method="post" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">';
 echo '<input type="hidden" name="action" value="create">';
 echo '<input name="name" placeholder="Novo tipo (ex: Alta hospitalar)" required style="flex:1;min-width:220px">';
-echo '<label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap"><input type="checkbox" name="triggers_closure" value="1" style="width:auto"> Encerra o paciente</label>';
+echo cet_closure_toggle('triggers_closure', false, 'cetCreateClosure');
 echo '<button class="btn btnPrimary" type="submit">Adicionar</button>';
 echo '</form>';
 
@@ -127,7 +149,7 @@ foreach ($types as $t) {
     echo '<input type="hidden" name="action" value="edit">';
     echo '<input type="hidden" name="id" value="' . $tid . '">';
     echo '<input name="name" value="' . h((string)$t['name']) . '" required style="min-width:200px">';
-    echo '<label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" name="triggers_closure" value="1" ' . ((int)$t['triggers_closure'] === 1 ? 'checked' : '') . ' style="width:auto"> Encerra paciente</label>';
+    echo cet_closure_toggle('triggers_closure', (int)$t['triggers_closure'] === 1, 'cetEditClosure' . $tid);
     echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
     echo '<button class="btn" type="button" onclick="cetCancelEdit(' . $tid . ')">Cancelar</button>';
     echo '</form>';
@@ -151,6 +173,17 @@ echo '</section></div>';
 echo '<script>';
 echo 'function cetStartEdit(id){var n=document.getElementById("cetName"+id),f=document.getElementById("cetEditForm"+id),a=document.getElementById("cetActions"+id);if(n)n.style.display="none";if(f)f.style.display="flex";if(a)a.style.opacity="0.4";}';
 echo 'function cetCancelEdit(id){var n=document.getElementById("cetName"+id),f=document.getElementById("cetEditForm"+id),a=document.getElementById("cetActions"+id);if(n)n.style.display="inline";if(f)f.style.display="none";if(a)a.style.opacity="1";}';
+// Anima o toggle "Encerra o paciente"
+echo 'function cetToggleClosure(cb){';
+echo '  var wrap=cb.closest("label"); if(!wrap) return;';
+echo '  var on=cb.checked;';
+echo '  var track=wrap.querySelector(".cetTrack");';
+echo '  var thumb=wrap.querySelector(".cetThumb");';
+echo '  var txt=wrap.querySelector(".cetLabelTxt");';
+echo '  if(track)track.style.background=on?"hsl(var(--destructive))":"hsl(var(--muted))";';
+echo '  if(thumb)thumb.style.transform=on?"translateX(20px)":"translateX(0)";';
+echo '  if(txt)txt.style.color=on?"hsl(var(--destructive))":"hsl(var(--muted-foreground))";';
+echo '}';
 echo '</script>';
 
 view_footer();
