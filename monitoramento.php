@@ -33,7 +33,7 @@ $sql = "SELECT bdr.id,
         INNER JOIN patients p ON p.id = bdr.patient_id
         INNER JOIN users u ON u.id = bdr.professional_user_id
         LEFT JOIN demands d ON d.id = pa.demand_id
-        WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval', 'completed')
+        WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval')
         AND pa.admitted_at IS NOT NULL
         ORDER BY first_at ASC";
 
@@ -142,6 +142,7 @@ body{margin:0;padding:0;overflow:hidden}
         <div style="flex:1">
             <h1 class="title" style="margin:0">Monitoramento de Atendimentos</h1>
             <div style="margin-top:6px;color:#6b7280;font-size:14px;line-height:1.6">Visualize e acompanhe todos os atendimentos em calendário</div>
+            <a href="/atendimentos_finalizados.php" class="btn" style="display:inline-block;margin-top:10px;font-size:13px;padding:8px 14px">📁 Ver atendimentos finalizados</a>
         </div>
         <div class="legend">
             <div class="legendItem">

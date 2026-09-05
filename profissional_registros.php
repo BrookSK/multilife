@@ -71,6 +71,7 @@ echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Meus Registros</div>';
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Pacientes atribuídos e documentos pendentes</div>';
 echo '</div>';
+echo '<a href="/atendimentos_finalizados.php" class="btn">📁 Meus atendimentos finalizados</a>';
 echo '</div>';
 echo '</section>';
 
