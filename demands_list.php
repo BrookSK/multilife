@@ -24,14 +24,8 @@ if (!in_array($status, $allowedStatuses, true)) {
     $status = '';
 }
 
-$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state, 
-        CASE WHEN pa.status = "completed" THEN "concluido" ELSE d.status END AS status,
-        d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
-        pa.completed_at
-        FROM demands d
-        LEFT JOIN users u ON u.id = d.assumed_by_user_id
-        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
-
+// Filtros do Kanban. O WHERE base (busca, especialidade, cidade, datas, escopo por perfil)
+// é montado aqui e reutilizado por cada coluna na paginação backend (mais abaixo).
 $where = [];
 $params = [];
 
@@ -110,15 +104,31 @@ if (!$hasFullAccess && $isProfessional) {
     $params['capt_uid'] = $currentUid;
 }
 
-if (count($where) > 0) {
-    $sql .= ' WHERE ' . implode(' AND ', $where);
+// ITEM 16: Paginação backend do Kanban POR COLUNA.
+// Antes, uma única query trazia até 500 demandas e o front paginava. Agora cada
+// coluna (status) consulta apenas seus próprios cards com LIMIT/OFFSET, e a página
+// de cada coluna vem por query string page_<status> (ex.: page_em_captacao=2).
+// Assim nunca carregamos todos os registros de uma vez.
+$kanbanPerPage = 25; // cards por página, por coluna
+
+// Guardar o WHERE/params base SEM o filtro de status (o status é aplicado por coluna).
+// A condição de status adicionada acima em $where só é usada para decidir quais colunas
+// exibir; para a consulta por coluna montamos o WHERE de novo sem ela.
+$baseWhereParts = [];
+$baseParams = [];
+foreach ($where as $cond) {
+    // Ignorar a condição de status do formulário (será substituída pela da coluna)
+    if (strpos($cond, 'd.status = :status') !== false || strpos($cond, 'pa.status = :pa_status') !== false) {
+        continue;
+    }
+    $baseWhereParts[] = $cond;
+}
+foreach ($params as $pk => $pv) {
+    if ($pk === 'status' || $pk === 'pa_status') { continue; }
+    $baseParams[$pk] = $pv;
 }
 
-$sql .= ' ORDER BY d.id DESC LIMIT 500';
-
-$stmt = db()->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
+$statusFilter = $status; // '' = todas as colunas; senão, só a coluna filtrada
 
 view_header('Captação - Demandas');
 
@@ -155,13 +165,68 @@ $byStatus = [
     'concluido' => [],
     'cancelado' => [],
 ];
+$colTotals = [];   // total de cards por coluna (para paginação)
+$colPages = [];    // página atual por coluna
 
-foreach ($rows as $r) {
-    $st = (string)$r['status'];
-    if (!isset($byStatus[$st])) {
-        $byStatus[$st] = [];
+// Base SELECT/JOIN reutilizada por coluna
+$baseSelect = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state,
+        CASE WHEN pa.status = "completed" THEN "concluido" ELSE d.status END AS status,
+        d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
+        pa.completed_at
+        FROM demands d
+        LEFT JOIN users u ON u.id = d.assumed_by_user_id
+        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
+$baseCount = 'SELECT COUNT(*)
+        FROM demands d
+        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
+
+foreach (array_keys($byStatus) as $colStatus) {
+    // Se há filtro de status e não é essa coluna, pula (coluna fica vazia).
+    if ($statusFilter !== '' && $statusFilter !== $colStatus) {
+        $colTotals[$colStatus] = 0;
+        $colPages[$colStatus] = 1;
+        continue;
     }
-    $byStatus[$st][] = $r;
+
+    // Monta WHERE da coluna = base + condição de status desta coluna
+    $colWhere = $baseWhereParts;
+    $colParams = $baseParams;
+    if ($colStatus === 'concluido') {
+        $colWhere[] = 'pa.status = :col_status';
+        $colParams['col_status'] = 'completed';
+        // Concluídos: apenas últimos 30 dias (filtro no backend)
+        $colWhere[] = 'pa.completed_at >= :col_since';
+        $colParams['col_since'] = date('Y-m-d H:i:s', strtotime('-30 days'));
+    } elseif ($colStatus === 'cancelado') {
+        $colWhere[] = 'd.status = :col_status';
+        $colParams['col_status'] = $colStatus;
+        // Cancelados: apenas últimos 30 dias (filtro no backend)
+        $colWhere[] = 'COALESCE(d.updated_at, d.created_at) >= :col_since';
+        $colParams['col_since'] = date('Y-m-d H:i:s', strtotime('-30 days'));
+    } else {
+        $colWhere[] = 'd.status = :col_status';
+        $colParams['col_status'] = $colStatus;
+    }
+    $colWhereSql = count($colWhere) > 0 ? (' WHERE ' . implode(' AND ', $colWhere)) : '';
+
+    // Total da coluna
+    $cStmt = db()->prepare($baseCount . $colWhereSql);
+    $cStmt->execute($colParams);
+    $colTotal = (int)$cStmt->fetchColumn();
+    $colTotals[$colStatus] = $colTotal;
+
+    // Página atual desta coluna (query string page_<status>)
+    $pageKey = 'page_' . $colStatus;
+    $colPage = isset($_GET[$pageKey]) && ctype_digit((string)$_GET[$pageKey]) ? max(1, (int)$_GET[$pageKey]) : 1;
+    $colTotalPages = max(1, (int)ceil($colTotal / $kanbanPerPage));
+    if ($colPage > $colTotalPages) { $colPage = $colTotalPages; }
+    $colPages[$colStatus] = $colPage;
+    $colOffset = ($colPage - 1) * $kanbanPerPage;
+
+    // Cards da coluna (só a página atual)
+    $lStmt = db()->prepare($baseSelect . $colWhereSql . ' ORDER BY d.id DESC LIMIT ' . (int)$kanbanPerPage . ' OFFSET ' . (int)$colOffset);
+    $lStmt->execute($colParams);
+    $byStatus[$colStatus] = $lStmt->fetchAll();
 }
 
 echo '<div class="grid">';
@@ -238,60 +303,64 @@ echo '<section class="card col12">';
 echo '<div class="kanbanScroll">';
 echo '<div class="kanbanRow">';
 
+// Helper: monta URL preservando os filtros e trocando só a página de UMA coluna
+$buildKanbanColUrl = function (string $colStatus, int $p) use ($status, $q, $specialty, $city, $assumedBy, $dateFrom, $dateTo): string {
+    $qs = array_filter([
+        'status' => $status,
+        'q' => $q,
+        'specialty' => $specialty,
+        'city' => $city,
+        'assumed_by' => $assumedBy,
+        'date_from' => $dateFrom,
+        'date_to' => $dateTo,
+        ('page_' . $colStatus) => $p,
+    ], fn($v) => $v !== '' && $v !== null);
+    return '/demands_list.php?' . http_build_query($qs);
+};
+
 foreach ($columns as $col) {
     $colId = (string)$col['id'];
-    $items = $byStatus[$colId] ?? [];
-    
-    // Coluna "Concluídos": apenas últimos 30 dias (baseado em completed_at do patient_assignment), máximo 20 cards
-    if ($colId === 'concluido') {
-        $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
-        $filtered = [];
-        foreach ($items as $item) {
-            // Usar completed_at do patient_assignment
-            $completedDate = $item['completed_at'] ?? null;
-            if ($completedDate && $completedDate >= $thirtyDaysAgo) {
-                $filtered[] = $item;
-            }
-        }
-        $items = array_slice($filtered, 0, 20);
-    }
-    
-    // Coluna "Cancelado": apenas últimos 30 dias (baseado em updated_at), máximo 20 cards
-    if ($colId === 'cancelado') {
-        $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
-        $filtered = [];
-        foreach ($items as $item) {
-            $updateDate = $item['updated_at'] ?? $item['created_at'];
-            if ($updateDate >= $thirtyDaysAgo) {
-                $filtered[] = $item;
-            }
-        }
-        $items = array_slice($filtered, 0, 20);
-    }
+    $items = $byStatus[$colId] ?? [];   // já vem paginado do backend (página atual da coluna)
 
-    $totalItems = count($items);
+    // Total real da coluna (todas as páginas) e paginação backend
+    $colTotal = (int)($colTotals[$colId] ?? count($items));
+    $colPage = (int)($colPages[$colId] ?? 1);
+    $colTotalPages = max(1, (int)ceil($colTotal / $kanbanPerPage));
+
+    // Dentro da página carregada (até 25 cards), mantemos a navegação leve de 5 em 5 no front.
     $itemsPerPage = 5;
-    $needsPagination = $totalItems > $itemsPerPage;
-    
-    echo '<div class="kanbanCol" data-column-id="' . h($colId) . '" data-total-items="' . $totalItems . '" data-items-per-page="' . $itemsPerPage . '">';
+    $needsFrontPagination = count($items) > $itemsPerPage;
+
+    echo '<div class="kanbanCol" data-column-id="' . h($colId) . '" data-total-items="' . count($items) . '" data-items-per-page="' . $itemsPerPage . '">';
     echo '<div class="kanbanColHead">';
-    
-    // Setas de navegação (só aparecem se tiver mais de 5 cards)
-    if ($needsPagination) {
+
+    // Navegação BACKEND entre páginas da coluna (aparece quando há mais que 25 cards no total)
+    if ($colTotalPages > 1) {
         echo '<div class="kanbanPagination">';
-        echo '<button class="kanbanPaginationBtn kanbanPaginationPrev" onclick="paginateKanban(\'' . h($colId) . '\', -1)" disabled>';
-        echo '◀';
-        echo '</button>';
-        echo '<span class="kanbanPaginationInfo"><span class="kanbanCurrentPage">1</span>/<span class="kanbanTotalPages">' . ceil($totalItems / $itemsPerPage) . '</span></span>';
-        echo '<button class="kanbanPaginationBtn kanbanPaginationNext" onclick="paginateKanban(\'' . h($colId) . '\', 1)">';
-        echo '▶';
-        echo '</button>';
+        if ($colPage > 1) {
+            echo '<a class="kanbanPaginationBtn" href="' . h($buildKanbanColUrl($colId, $colPage - 1)) . '" title="Página anterior">◀</a>';
+        } else {
+            echo '<button class="kanbanPaginationBtn" disabled>◀</button>';
+        }
+        echo '<span class="kanbanPaginationInfo">' . $colPage . '/' . $colTotalPages . '</span>';
+        if ($colPage < $colTotalPages) {
+            echo '<a class="kanbanPaginationBtn" href="' . h($buildKanbanColUrl($colId, $colPage + 1)) . '" title="Próxima página">▶</a>';
+        } else {
+            echo '<button class="kanbanPaginationBtn" disabled>▶</button>';
+        }
+        echo '</div>';
+    } elseif ($needsFrontPagination) {
+        // Só uma página no backend, mas mais de 5 cards: paginação leve no front (setas JS)
+        echo '<div class="kanbanPagination">';
+        echo '<button class="kanbanPaginationBtn kanbanPaginationPrev" onclick="paginateKanban(\'' . h($colId) . '\', -1)" disabled>◀</button>';
+        echo '<span class="kanbanPaginationInfo"><span class="kanbanCurrentPage">1</span>/<span class="kanbanTotalPages">' . ceil(count($items) / $itemsPerPage) . '</span></span>';
+        echo '<button class="kanbanPaginationBtn kanbanPaginationNext" onclick="paginateKanban(\'' . h($colId) . '\', 1)">▶</button>';
         echo '</div>';
     }
-    
+
     echo '<span class="kanbanEmoji">' . h((string)$col['emoji']) . '</span>';
     echo '<div class="kanbanTitle">' . h((string)$col['title']) . '</div>';
-    echo '<div class="kanbanCount">' . (int)$totalItems . '</div>';
+    echo '<div class="kanbanCount">' . (int)$colTotal . '</div>';
     echo '</div>';
 
     echo '<div class="kanbanLane">';

@@ -48,45 +48,84 @@ $sql = 'SELECT fe.id, fe.amount,
 
 $params = [];
 
+// Cláusula WHERE compartilhada (aba + busca), aplicada tanto na listagem quanto na contagem/resumo.
+$whereExtra = '';
 if ($status === 'pago') {
-    $sql .= ' AND fe.status = "paid"';
+    $whereExtra .= ' AND fe.status = "paid"';
 } elseif ($status === 'pendente') {
-    $sql .= ' AND fe.status = "pending"';
+    $whereExtra .= ' AND fe.status = "pending"';
 }
 
 if ($q !== '') {
-    $sql .= ' AND (u.name LIKE :q1 OR fe.description LIKE :q2 OR p.full_name LIKE :q3)';
+    $whereExtra .= ' AND (u.name LIKE :q1 OR fe.description LIKE :q2 OR p.full_name LIKE :q3)';
     $qLike = '%' . $q . '%';
     $params['q1'] = $qLike;
     $params['q2'] = $qLike;
     $params['q3'] = $qLike;
 }
 
-$sql .= ' ORDER BY fe.id DESC';
+$sql .= $whereExtra;
+
+// ITEM 16: Paginação no backend
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
+$offset = ($page - 1) * $perPage;
+
+// Contagem total (mesmos joins/filtros) para calcular páginas
+$countSql = 'SELECT COUNT(*)
+    FROM financial_entries fe
+    LEFT JOIN users u ON u.id = fe.professional_user_id
+    LEFT JOIN patients p ON p.id = fe.patient_id
+    LEFT JOIN patient_assignments pa ON pa.id = fe.assignment_id
+    LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+    WHERE fe.entry_type = "expense" AND fe.is_active = 1' . $whereExtra;
+$countStmt = db()->prepare($countSql);
+$countStmt->execute($params);
+$totalRows = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalRows / $perPage));
+
+$sql .= ' ORDER BY fe.id DESC LIMIT ' . (int)$perPage . ' OFFSET ' . (int)$offset;
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-// Calcular resumo financeiro
-$totalPendente = 0;
-$totalPago = 0;
-$qtdPendente = 0;
-$qtdPago = 0;
-
-foreach ($rows as $r) {
-    $valor = (float)$r['amount'];
-    if ((string)$r['status'] === 'pendente') {
-        $totalPendente += $valor;
-        $qtdPendente++;
-    } elseif ((string)$r['status'] === 'pago') {
-        $totalPago += $valor;
-        $qtdPago++;
-    }
+// Resumo financeiro: calculado sobre TODOS os registros filtrados (não só a página atual).
+// Independe da aba selecionada para mostrar sempre pendente + pago do universo filtrado por busca.
+$summaryWhere = '';
+$summaryParams = [];
+if ($q !== '') {
+    $summaryWhere = ' AND (u.name LIKE :q1 OR fe.description LIKE :q2 OR p.full_name LIKE :q3)';
+    $summaryParams['q1'] = '%' . $q . '%';
+    $summaryParams['q2'] = '%' . $q . '%';
+    $summaryParams['q3'] = '%' . $q . '%';
 }
+$sumStmt = db()->prepare(
+    'SELECT
+        COALESCE(SUM(CASE WHEN fe.status = "pending" THEN fe.amount ELSE 0 END), 0) AS total_pendente,
+        COALESCE(SUM(CASE WHEN fe.status = "paid" THEN fe.amount ELSE 0 END), 0) AS total_pago,
+        SUM(CASE WHEN fe.status = "pending" THEN 1 ELSE 0 END) AS qtd_pendente,
+        SUM(CASE WHEN fe.status = "paid" THEN 1 ELSE 0 END) AS qtd_pago
+     FROM financial_entries fe
+     LEFT JOIN users u ON u.id = fe.professional_user_id
+     LEFT JOIN patients p ON p.id = fe.patient_id
+     WHERE fe.entry_type = "expense" AND fe.is_active = 1' . $summaryWhere
+);
+$sumStmt->execute($summaryParams);
+$sumRow = $sumStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$totalPendente = (float)($sumRow['total_pendente'] ?? 0);
+$totalPago = (float)($sumRow['total_pago'] ?? 0);
+$qtdPendente = (int)($sumRow['qtd_pendente'] ?? 0);
+$qtdPago = (int)($sumRow['qtd_pago'] ?? 0);
 
 $totalGeral = $totalPendente + $totalPago;
 $qtdGeral = $qtdPendente + $qtdPago;
+
+// Helper para preservar filtros (aba + busca) nos links de paginação
+$buildPageUrl = function (int $p) use ($tab, $q): string {
+    $qs = array_filter(['tab' => $tab, 'q' => $q, 'page' => $p], fn($v) => $v !== '' && $v !== null);
+    return '/finance_payable_list.php?' . http_build_query($qs);
+};
 
 view_header('Financeiro - Contas a Pagar');
 
@@ -275,6 +314,22 @@ if (count($rows) === 0) {
 
 echo '</tbody></table>';
 echo '</div>';
+
+// Paginação (item 16)
+if ($totalPages > 1) {
+    echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+    if ($page > 1) echo '<a class="btn" href="' . h($buildPageUrl($page - 1)) . '">← Anterior</a>';
+    $start = max(1, $page - 2); $end = min($totalPages, $page + 2);
+    if ($start > 1) { echo '<a class="btn" href="' . h($buildPageUrl(1)) . '">1</a>'; if ($start > 2) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+    for ($i = $start; $i <= $end; $i++) {
+        echo $i === $page ? '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>' : '<a class="btn" href="' . h($buildPageUrl($i)) . '">' . $i . '</a>';
+    }
+    if ($end < $totalPages) { if ($end < $totalPages - 1) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; echo '<a class="btn" href="' . h($buildPageUrl($totalPages)) . '">' . $totalPages . '</a>'; }
+    if ($page < $totalPages) echo '<a class="btn" href="' . h($buildPageUrl($page + 1)) . '">Próxima →</a>';
+    echo '</div>';
+    echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . ' • ' . number_format($totalRows, 0, ',', '.') . ' registro(s)</div>';
+}
+
 echo '</section>';
 
 echo '</div>';

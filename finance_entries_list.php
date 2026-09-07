@@ -90,58 +90,84 @@ $sqlManuais = "
     WHERE fe.is_active = 1 AND fe.amount > 0
 ";
 
-// Combinar tudo com UNION ALL
-$sql = "SELECT * FROM (($sqlReceitas) UNION ALL ($sqlDespesas) UNION ALL ($sqlManuais)) AS all_entries WHERE 1=1";
+// Base combinada (UNION ALL das 3 fontes)
+$baseUnion = "(($sqlReceitas) UNION ALL ($sqlDespesas) UNION ALL ($sqlManuais)) AS all_entries";
 
+// Filtros (aplicados sobre o conjunto combinado). WHERE compartilhado entre listagem, contagem e totais.
+$whereSql = ' WHERE 1=1';
 $params = [];
 
 if ($entryType !== 'all') {
-    $sql .= " AND entry_type = :entry_type";
+    $whereSql .= " AND entry_type = :entry_type";
     $params['entry_type'] = $entryType;
 }
 
 if ($status !== 'all') {
-    $sql .= " AND status = :status";
+    $whereSql .= " AND status = :status";
     $params['status'] = $status;
 }
 
 if ($searchQuery !== '') {
-    $sql .= " AND (patient_name LIKE :search OR professional_name LIKE :search OR description LIKE :search OR category LIKE :search)";
+    $whereSql .= " AND (patient_name LIKE :search OR professional_name LIKE :search OR description LIKE :search OR category LIKE :search)";
     $params['search'] = '%' . $searchQuery . '%';
 }
 
-// Filtro por centro de custo
 if ($costCenter !== '') {
-    $sql .= " AND cost_center = :cost_center";
+    $whereSql .= " AND cost_center = :cost_center";
     $params['cost_center'] = $costCenter;
 }
 
-// Filtro por período
 if ($periodMonth !== '' && $periodYear !== '') {
-    $sql .= " AND DATE_FORMAT(entry_date, '%Y-%m') = :period";
+    $whereSql .= " AND DATE_FORMAT(entry_date, '%Y-%m') = :period";
     $params['period'] = $periodYear . '-' . str_pad($periodMonth, 2, '0', STR_PAD_LEFT);
 } elseif ($periodYear !== '') {
-    $sql .= " AND YEAR(entry_date) = :year";
+    $whereSql .= " AND YEAR(entry_date) = :year";
     $params['year'] = $periodYear;
 }
 
-$sql .= " ORDER BY entry_date DESC, created_at DESC LIMIT 500";
+// ITEM 16: Paginação no backend
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
+$offset = ($page - 1) * $perPage;
 
+// Contagem total sobre o conjunto filtrado
+$countStmt = $db->prepare("SELECT COUNT(*) FROM " . $baseUnion . $whereSql);
+$countStmt->execute($params);
+$totalRows = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalRows / $perPage));
+
+// Totais (receitas/despesas/saldo) sobre TODOS os registros filtrados, não só a página
+$sumStmt = $db->prepare(
+    "SELECT
+        COALESCE(SUM(CASE WHEN entry_type = 'income' THEN amount ELSE 0 END), 0) AS total_income,
+        COALESCE(SUM(CASE WHEN entry_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expense
+     FROM " . $baseUnion . $whereSql
+);
+$sumStmt->execute($params);
+$sumRow = $sumStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$totalIncome = (float)($sumRow['total_income'] ?? 0);
+$totalExpense = (float)($sumRow['total_expense'] ?? 0);
+$balance = $totalIncome - $totalExpense;
+
+// Listagem paginada
+$sql = "SELECT * FROM " . $baseUnion . $whereSql . " ORDER BY entry_date DESC, created_at DESC LIMIT " . (int)$perPage . " OFFSET " . (int)$offset;
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
 $entries = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Calcular totais
-$totalIncome = 0;
-$totalExpense = 0;
-foreach ($entries as $entry) {
-    if ($entry['entry_type'] === 'income') {
-        $totalIncome += (float)$entry['amount'];
-    } else {
-        $totalExpense += (float)$entry['amount'];
-    }
-}
-$balance = $totalIncome - $totalExpense;
+// Helper para preservar filtros nos links de paginação
+$buildPageUrl = function (int $p) use ($entryType, $status, $searchQuery, $periodMonth, $periodYear, $costCenter): string {
+    $qs = array_filter([
+        'type' => $entryType !== 'all' ? $entryType : '',
+        'status' => $status !== 'all' ? $status : '',
+        'q' => $searchQuery,
+        'month' => $periodMonth,
+        'year' => $periodYear,
+        'cost_center' => $costCenter,
+        'page' => $p,
+    ], fn($v) => $v !== '' && $v !== null);
+    return '/finance_entries_list.php?' . http_build_query($qs);
+};
 
 view_header('Lançamentos Financeiros');
 
@@ -252,7 +278,7 @@ echo '</section>';
 
 // Lista de lançamentos
 echo '<section class="card col12">';
-echo '<h3>Lançamentos (' . count($entries) . ')</h3>';
+echo '<h3>Lançamentos (' . number_format($totalRows, 0, ',', '.') . ')</h3>';
 
 if (count($entries) === 0) {
     echo '<div style="padding:40px;text-align:center;color:#667781">Nenhum lançamento encontrado</div>';
@@ -297,6 +323,21 @@ if (count($entries) === 0) {
     
     echo '</tbody></table>';
     echo '</div>';
+
+    // Paginação (item 16)
+    if ($totalPages > 1) {
+        echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+        if ($page > 1) echo '<a class="btn" href="' . h($buildPageUrl($page - 1)) . '">← Anterior</a>';
+        $start = max(1, $page - 2); $end = min($totalPages, $page + 2);
+        if ($start > 1) { echo '<a class="btn" href="' . h($buildPageUrl(1)) . '">1</a>'; if ($start > 2) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+        for ($i = $start; $i <= $end; $i++) {
+            echo $i === $page ? '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>' : '<a class="btn" href="' . h($buildPageUrl($i)) . '">' . $i . '</a>';
+        }
+        if ($end < $totalPages) { if ($end < $totalPages - 1) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; echo '<a class="btn" href="' . h($buildPageUrl($totalPages)) . '">' . $totalPages . '</a>'; }
+        if ($page < $totalPages) echo '<a class="btn" href="' . h($buildPageUrl($page + 1)) . '">Próxima →</a>';
+        echo '</div>';
+        echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . ' • ' . number_format($totalRows, 0, ',', '.') . ' lançamento(s)</div>';
+    }
 }
 
 echo '</section>';
