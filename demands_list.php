@@ -104,31 +104,25 @@ if (!$hasFullAccess && $isProfessional) {
     $params['capt_uid'] = $currentUid;
 }
 
-// ITEM 16: Paginação backend do Kanban POR COLUNA.
-// Antes, uma única query trazia até 500 demandas e o front paginava. Agora cada
-// coluna (status) consulta apenas seus próprios cards com LIMIT/OFFSET, e a página
-// de cada coluna vem por query string page_<status> (ex.: page_em_captacao=2).
-// Assim nunca carregamos todos os registros de uma vez.
-$kanbanPerPage = 25; // cards por página, por coluna
+// Query única (uma consulta) — o agrupamento por status é feito em PHP mais abaixo.
+// O scroll interno de cada coluna (CSS) cuida de exibir muitos cards sem travar a tela.
+$sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state,
+        CASE WHEN pa.status = "completed" THEN "concluido" ELSE d.status END AS status,
+        d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
+        pa.completed_at
+        FROM demands d
+        LEFT JOIN users u ON u.id = d.assumed_by_user_id
+        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
 
-// Guardar o WHERE/params base SEM o filtro de status (o status é aplicado por coluna).
-// A condição de status adicionada acima em $where só é usada para decidir quais colunas
-// exibir; para a consulta por coluna montamos o WHERE de novo sem ela.
-$baseWhereParts = [];
-$baseParams = [];
-foreach ($where as $cond) {
-    // Ignorar a condição de status do formulário (será substituída pela da coluna)
-    if (strpos($cond, 'd.status = :status') !== false || strpos($cond, 'pa.status = :pa_status') !== false) {
-        continue;
-    }
-    $baseWhereParts[] = $cond;
-}
-foreach ($params as $pk => $pv) {
-    if ($pk === 'status' || $pk === 'pa_status') { continue; }
-    $baseParams[$pk] = $pv;
+if (count($where) > 0) {
+    $sql .= ' WHERE ' . implode(' AND ', $where);
 }
 
-$statusFilter = $status; // '' = todas as colunas; senão, só a coluna filtrada
+$sql .= ' ORDER BY d.id DESC LIMIT 500';
+
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
 
 view_header('Captação - Demandas');
 
@@ -165,69 +159,13 @@ $byStatus = [
     'concluido' => [],
     'cancelado' => [],
 ];
-$colTotals = [];   // total de cards por coluna (para paginação)
-$colPages = [];    // página atual por coluna
 
-// Base SELECT/JOIN reutilizada por coluna
-$baseSelect = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state,
-        CASE WHEN pa.status = "completed" THEN "concluido" ELSE d.status END AS status,
-        d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
-        pa.completed_at
-        FROM demands d
-        LEFT JOIN users u ON u.id = d.assumed_by_user_id
-        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
-$baseCount = 'SELECT COUNT(*)
-        FROM demands d
-        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
-
-foreach (array_keys($byStatus) as $colStatus) {
-    // Se há filtro de status e não é essa coluna, pula (coluna fica vazia).
-    if ($statusFilter !== '' && $statusFilter !== $colStatus) {
-        $colTotals[$colStatus] = 0;
-        $colPages[$colStatus] = 1;
-        continue;
+foreach ($rows as $r) {
+    $st = (string)$r['status'];
+    if (!isset($byStatus[$st])) {
+        $byStatus[$st] = [];
     }
-
-    // Monta WHERE da coluna = base + condição de status desta coluna
-    $colWhere = $baseWhereParts;
-    $colParams = $baseParams;
-    if ($colStatus === 'concluido') {
-        $colWhere[] = 'pa.status = :col_status';
-        $colParams['col_status'] = 'completed';
-        // Concluídos: apenas últimos 30 dias (filtro no backend)
-        $colWhere[] = 'pa.completed_at >= :col_since';
-        $colParams['col_since'] = date('Y-m-d H:i:s', strtotime('-30 days'));
-    } elseif ($colStatus === 'cancelado') {
-        $colWhere[] = 'd.status = :col_status';
-        $colParams['col_status'] = $colStatus;
-        // Cancelados: apenas últimos 30 dias (filtro no backend)
-        $colWhere[] = 'COALESCE(d.updated_at, d.created_at) >= :col_since';
-        $colParams['col_since'] = date('Y-m-d H:i:s', strtotime('-30 days'));
-    } else {
-        $colWhere[] = 'd.status = :col_status';
-        $colParams['col_status'] = $colStatus;
-    }
-    $colWhereSql = count($colWhere) > 0 ? (' WHERE ' . implode(' AND ', $colWhere)) : '';
-
-    // Total da coluna
-    $cStmt = db()->prepare($baseCount . $colWhereSql);
-    $cStmt->execute($colParams);
-    $colTotal = (int)$cStmt->fetchColumn();
-    $colTotals[$colStatus] = $colTotal;
-
-    // Quantos cards carregar nesta coluna. Começa em $kanbanPerPage (25) e o botão
-    // "Carregar mais" aumenta via query string load_<status> (ex.: load_em_captacao=50).
-    // O scroll interno da coluna cuida da rolagem; o "Carregar mais" traz mais do backend.
-    $loadKey = 'load_' . $colStatus;
-    $colLimit = isset($_GET[$loadKey]) && ctype_digit((string)$_GET[$loadKey]) ? max($kanbanPerPage, (int)$_GET[$loadKey]) : $kanbanPerPage;
-    // Teto de segurança para não carregar volume absurdo de uma vez
-    $colLimit = min($colLimit, 500);
-    $colPages[$colStatus] = 1;
-
-    // Cards da coluna (do começo até o limite atual)
-    $lStmt = db()->prepare($baseSelect . $colWhereSql . ' ORDER BY d.id DESC LIMIT ' . (int)$colLimit);
-    $lStmt->execute($colParams);
-    $byStatus[$colStatus] = $lStmt->fetchAll();
+    $byStatus[$st][] = $r;
 }
 
 echo '<div class="grid">';
@@ -304,53 +242,53 @@ echo '<section class="card col12">';
 echo '<div class="kanbanScroll">';
 echo '<div class="kanbanRow">';
 
-// Helper: monta URL preservando os filtros e todos os "load_<status>" atuais,
-// aumentando o limite de UMA coluna (para o botão "Carregar mais"). Âncora leva de volta à coluna.
-$buildKanbanLoadUrl = function (string $colStatus, int $newLimit) use ($status, $q, $specialty, $city, $assumedBy, $dateFrom, $dateTo): string {
-    $qs = [
-        'status' => $status,
-        'q' => $q,
-        'specialty' => $specialty,
-        'city' => $city,
-        'assumed_by' => $assumedBy,
-        'date_from' => $dateFrom,
-        'date_to' => $dateTo,
-    ];
-    // Preservar os limites já expandidos de outras colunas
-    foreach ($_GET as $gk => $gv) {
-        if (is_string($gk) && strpos($gk, 'load_') === 0 && ctype_digit((string)$gv)) {
-            $qs[$gk] = (int)$gv;
-        }
-    }
-    $qs['load_' . $colStatus] = $newLimit;
-    $qs = array_filter($qs, fn($v) => $v !== '' && $v !== null);
-    return '/demands_list.php?' . http_build_query($qs) . '#col_' . $colStatus;
-};
-
 foreach ($columns as $col) {
     $colId = (string)$col['id'];
-    $items = $byStatus[$colId] ?? [];   // já vem paginado do backend (página atual da coluna)
+    $items = $byStatus[$colId] ?? [];
 
-    // Total real da coluna (todos os cards que batem no filtro).
-    $colTotal = (int)($colTotals[$colId] ?? count($items));
-    $colLoaded = count($items);                 // quantos vieram nesta primeira carga (LIMIT do backend)
-    $colHasMore = $colTotal > $colLoaded;        // ainda há cards além dos carregados
+    // Coluna "Concluídos": apenas últimos 30 dias (baseado em completed_at do patient_assignment)
+    if ($colId === 'concluido') {
+        $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
+        $filtered = [];
+        foreach ($items as $item) {
+            $completedDate = $item['completed_at'] ?? null;
+            if ($completedDate && $completedDate >= $thirtyDaysAgo) {
+                $filtered[] = $item;
+            }
+        }
+        $items = $filtered;
+    }
 
-    echo '<div class="kanbanCol" id="col_' . h($colId) . '" data-column-id="' . h($colId) . '" data-total="' . $colTotal . '" data-loaded="' . $colLoaded . '">';
+    // Coluna "Cancelado": apenas últimos 30 dias (baseado em updated_at)
+    if ($colId === 'cancelado') {
+        $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
+        $filtered = [];
+        foreach ($items as $item) {
+            $updateDate = $item['updated_at'] ?? $item['created_at'];
+            if ($updateDate >= $thirtyDaysAgo) {
+                $filtered[] = $item;
+            }
+        }
+        $items = $filtered;
+    }
+
+    $colTotal = count($items);
+
+    echo '<div class="kanbanCol" data-column-id="' . h($colId) . '">';
     echo '<div class="kanbanColHead">';
     echo '<span class="kanbanEmoji">' . h((string)$col['emoji']) . '</span>';
     echo '<div class="kanbanTitle">' . h((string)$col['title']) . '</div>';
     echo '<div class="kanbanCount">' . (int)$colTotal . '</div>';
     echo '</div>';
 
-    // Lane com SCROLL vertical interno: mostra ~5 cards e rola o restante dentro da coluna.
+    // Lane com SCROLL vertical interno: mostra alguns cards e rola o restante dentro da coluna,
+    // sem travar/mover a página inteira.
     echo '<div class="kanbanLane">';
 
     if (count($items) === 0) {
         echo '<div class="kanbanEmpty">Vazio</div>';
     } else {
-        foreach ($items as $idx => $r) {
-            $pageIndex = (int)floor($idx / $itemsPerPage);
+        foreach ($items as $r) {
             $loc = trim((string)$r['location_city']);
             $uf = trim((string)$r['location_state']);
             $locTxt = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : '-';
@@ -433,13 +371,6 @@ foreach ($columns as $col) {
             echo '</div>';
             echo '</a>';
         }
-
-        // Se ainda há cards além dos carregados, link para carregar o próximo lote (+25)
-        if ($colHasMore) {
-            $nextLimit = $colLoaded + $kanbanPerPage;
-            $restantes = $colTotal - $colLoaded;
-            echo '<a class="kanbanLoadMore" href="' . h($buildKanbanLoadUrl($colId, $nextLimit)) . '">Carregar mais (' . $restantes . ' restante' . ($restantes > 1 ? 's' : '') . ')</a>';
-        }
     }
 
     echo '</div>';
@@ -509,10 +440,6 @@ echo '.kanbanLane::-webkit-scrollbar{width:8px}';
 echo '.kanbanLane::-webkit-scrollbar-thumb{background:hsl(var(--muted-foreground)/.35);border-radius:8px}';
 echo '.kanbanLane::-webkit-scrollbar-thumb:hover{background:hsl(var(--muted-foreground)/.55)}';
 echo '.kanbanLane::-webkit-scrollbar-track{background:transparent}';
-// Botão "Carregar mais" no fim da coluna
-echo '.kanbanLoadMore{margin-top:6px;width:100%;padding:8px;font-size:12px;font-weight:600;background:hsla(var(--primary)/.08);color:hsl(var(--primary));border:1px dashed hsl(var(--primary)/.4);border-radius:8px;cursor:pointer;transition:background .15s}';
-echo '.kanbanLoadMore:hover{background:hsla(var(--primary)/.16)}';
-echo '.kanbanLoadMore:disabled{opacity:.5;cursor:default}';
 echo '</style>';
 
 // Sincronizar e-mails em background ao carregar (apenas IMAP poll, extração é via CRON)
