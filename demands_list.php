@@ -215,16 +215,17 @@ foreach (array_keys($byStatus) as $colStatus) {
     $colTotal = (int)$cStmt->fetchColumn();
     $colTotals[$colStatus] = $colTotal;
 
-    // Página atual desta coluna (query string page_<status>)
-    $pageKey = 'page_' . $colStatus;
-    $colPage = isset($_GET[$pageKey]) && ctype_digit((string)$_GET[$pageKey]) ? max(1, (int)$_GET[$pageKey]) : 1;
-    $colTotalPages = max(1, (int)ceil($colTotal / $kanbanPerPage));
-    if ($colPage > $colTotalPages) { $colPage = $colTotalPages; }
-    $colPages[$colStatus] = $colPage;
-    $colOffset = ($colPage - 1) * $kanbanPerPage;
+    // Quantos cards carregar nesta coluna. Começa em $kanbanPerPage (25) e o botão
+    // "Carregar mais" aumenta via query string load_<status> (ex.: load_em_captacao=50).
+    // O scroll interno da coluna cuida da rolagem; o "Carregar mais" traz mais do backend.
+    $loadKey = 'load_' . $colStatus;
+    $colLimit = isset($_GET[$loadKey]) && ctype_digit((string)$_GET[$loadKey]) ? max($kanbanPerPage, (int)$_GET[$loadKey]) : $kanbanPerPage;
+    // Teto de segurança para não carregar volume absurdo de uma vez
+    $colLimit = min($colLimit, 500);
+    $colPages[$colStatus] = 1;
 
-    // Cards da coluna (só a página atual)
-    $lStmt = db()->prepare($baseSelect . $colWhereSql . ' ORDER BY d.id DESC LIMIT ' . (int)$kanbanPerPage . ' OFFSET ' . (int)$colOffset);
+    // Cards da coluna (do começo até o limite atual)
+    $lStmt = db()->prepare($baseSelect . $colWhereSql . ' ORDER BY d.id DESC LIMIT ' . (int)$colLimit);
     $lStmt->execute($colParams);
     $byStatus[$colStatus] = $lStmt->fetchAll();
 }
@@ -303,9 +304,10 @@ echo '<section class="card col12">';
 echo '<div class="kanbanScroll">';
 echo '<div class="kanbanRow">';
 
-// Helper: monta URL preservando os filtros e trocando só a página de UMA coluna
-$buildKanbanColUrl = function (string $colStatus, int $p) use ($status, $q, $specialty, $city, $assumedBy, $dateFrom, $dateTo): string {
-    $qs = array_filter([
+// Helper: monta URL preservando os filtros e todos os "load_<status>" atuais,
+// aumentando o limite de UMA coluna (para o botão "Carregar mais"). Âncora leva de volta à coluna.
+$buildKanbanLoadUrl = function (string $colStatus, int $newLimit) use ($status, $q, $specialty, $city, $assumedBy, $dateFrom, $dateTo): string {
+    $qs = [
         'status' => $status,
         'q' => $q,
         'specialty' => $specialty,
@@ -313,56 +315,35 @@ $buildKanbanColUrl = function (string $colStatus, int $p) use ($status, $q, $spe
         'assumed_by' => $assumedBy,
         'date_from' => $dateFrom,
         'date_to' => $dateTo,
-        ('page_' . $colStatus) => $p,
-    ], fn($v) => $v !== '' && $v !== null);
-    return '/demands_list.php?' . http_build_query($qs);
+    ];
+    // Preservar os limites já expandidos de outras colunas
+    foreach ($_GET as $gk => $gv) {
+        if (is_string($gk) && strpos($gk, 'load_') === 0 && ctype_digit((string)$gv)) {
+            $qs[$gk] = (int)$gv;
+        }
+    }
+    $qs['load_' . $colStatus] = $newLimit;
+    $qs = array_filter($qs, fn($v) => $v !== '' && $v !== null);
+    return '/demands_list.php?' . http_build_query($qs) . '#col_' . $colStatus;
 };
 
 foreach ($columns as $col) {
     $colId = (string)$col['id'];
     $items = $byStatus[$colId] ?? [];   // já vem paginado do backend (página atual da coluna)
 
-    // Total real da coluna (todas as páginas) e paginação backend
+    // Total real da coluna (todos os cards que batem no filtro).
     $colTotal = (int)($colTotals[$colId] ?? count($items));
-    $colPage = (int)($colPages[$colId] ?? 1);
-    $colTotalPages = max(1, (int)ceil($colTotal / $kanbanPerPage));
+    $colLoaded = count($items);                 // quantos vieram nesta primeira carga (LIMIT do backend)
+    $colHasMore = $colTotal > $colLoaded;        // ainda há cards além dos carregados
 
-    // Dentro da página carregada (até 25 cards), mantemos a navegação leve de 5 em 5 no front.
-    $itemsPerPage = 5;
-    $needsFrontPagination = count($items) > $itemsPerPage;
-
-    echo '<div class="kanbanCol" data-column-id="' . h($colId) . '" data-total-items="' . count($items) . '" data-items-per-page="' . $itemsPerPage . '">';
+    echo '<div class="kanbanCol" id="col_' . h($colId) . '" data-column-id="' . h($colId) . '" data-total="' . $colTotal . '" data-loaded="' . $colLoaded . '">';
     echo '<div class="kanbanColHead">';
-
-    // Navegação BACKEND entre páginas da coluna (aparece quando há mais que 25 cards no total)
-    if ($colTotalPages > 1) {
-        echo '<div class="kanbanPagination">';
-        if ($colPage > 1) {
-            echo '<a class="kanbanPaginationBtn" href="' . h($buildKanbanColUrl($colId, $colPage - 1)) . '" title="Página anterior">◀</a>';
-        } else {
-            echo '<button class="kanbanPaginationBtn" disabled>◀</button>';
-        }
-        echo '<span class="kanbanPaginationInfo">' . $colPage . '/' . $colTotalPages . '</span>';
-        if ($colPage < $colTotalPages) {
-            echo '<a class="kanbanPaginationBtn" href="' . h($buildKanbanColUrl($colId, $colPage + 1)) . '" title="Próxima página">▶</a>';
-        } else {
-            echo '<button class="kanbanPaginationBtn" disabled>▶</button>';
-        }
-        echo '</div>';
-    } elseif ($needsFrontPagination) {
-        // Só uma página no backend, mas mais de 5 cards: paginação leve no front (setas JS)
-        echo '<div class="kanbanPagination">';
-        echo '<button class="kanbanPaginationBtn kanbanPaginationPrev" onclick="paginateKanban(\'' . h($colId) . '\', -1)" disabled>◀</button>';
-        echo '<span class="kanbanPaginationInfo"><span class="kanbanCurrentPage">1</span>/<span class="kanbanTotalPages">' . ceil(count($items) / $itemsPerPage) . '</span></span>';
-        echo '<button class="kanbanPaginationBtn kanbanPaginationNext" onclick="paginateKanban(\'' . h($colId) . '\', 1)">▶</button>';
-        echo '</div>';
-    }
-
     echo '<span class="kanbanEmoji">' . h((string)$col['emoji']) . '</span>';
     echo '<div class="kanbanTitle">' . h((string)$col['title']) . '</div>';
     echo '<div class="kanbanCount">' . (int)$colTotal . '</div>';
     echo '</div>';
 
+    // Lane com SCROLL vertical interno: mostra ~5 cards e rola o restante dentro da coluna.
     echo '<div class="kanbanLane">';
 
     if (count($items) === 0) {
@@ -384,9 +365,7 @@ foreach ($columns as $col) {
                 $badgeCls = 'badgeDanger';
             }
             
-            // Visibilidade: apenas esconder se NÃO for primeira página
-            $hideCard = ($pageIndex > 0);
-            
+            // Todos os cards carregados ficam visíveis; o scroll interno da coluna cuida do excesso.
             // Borda vermelha em cards aguardando_captacao com mais de 10 minutos sem assumir
             $redBorder = false;
             if ($colId === 'aguardando_captacao' && !$r['assumed_by_user_id']) {
@@ -397,23 +376,14 @@ foreach ($columns as $col) {
                     $redBorder = true;
                 }
             }
-            
-            // Construir atributo style
+
+            // Construir atributo style (só borda de alerta, sem esconder)
             $styleAttr = '';
-            if ($hideCard || $redBorder) {
-                $styleParts = [];
-                if ($hideCard) {
-                    $styleParts[] = 'display:none';
-                }
-                if ($redBorder) {
-                    $styleParts[] = 'border:2px solid hsl(0,84%,60%)';
-                    $styleParts[] = 'box-shadow:0 0 8px hsla(0,84%,60%,.3)';
-                }
-                $styleAttr = ' style="' . implode(';', $styleParts) . '"';
+            if ($redBorder) {
+                $styleAttr = ' style="border:2px solid hsl(0,84%,60%);box-shadow:0 0 8px hsla(0,84%,60%,.3)"';
             }
 
-            echo '<!-- Card idx=' . $idx . ' pageIndex=' . $pageIndex . ' hideCard=' . ($hideCard ? 'YES' : 'NO') . ' -->';
-            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '" data-page-index="' . $pageIndex . '"' . $styleAttr . '>';
+            echo '<a class="kanbanCard" href="/demands_view.php?id=' . (int)$r['id'] . '"' . $styleAttr . '>';
             echo '<div class="kanbanCardBody">';
             echo '<div class="kanbanCardTop">';
             echo '<div class="kanbanCardTitle"><span style="color:hsl(var(--muted-foreground));font-weight:600;font-size:11px">#' . (int)$r['id'] . '</span> ' . h((string)$r['title']) . '</div>';
@@ -462,6 +432,13 @@ foreach ($columns as $col) {
             echo '</div>';
             echo '</div>';
             echo '</a>';
+        }
+
+        // Se ainda há cards além dos carregados, link para carregar o próximo lote (+25)
+        if ($colHasMore) {
+            $nextLimit = $colLoaded + $kanbanPerPage;
+            $restantes = $colTotal - $colLoaded;
+            echo '<a class="kanbanLoadMore" href="' . h($buildKanbanLoadUrl($colId, $nextLimit)) . '">Carregar mais (' . $restantes . ' restante' . ($restantes > 1 ? 's' : '') . ')</a>';
         }
     }
 
@@ -523,15 +500,19 @@ echo '<script>';
 echo '(function(){var fab=document.getElementById("newDemandFab");var ov=document.getElementById("newDemandOverlay");var m=document.getElementById("newDemandModal");var close=document.getElementById("newDemandClose");var cancel=document.getElementById("newDemandCancel");if(!fab||!ov||!m)return;var open=function(){ov.style.display="block";m.style.display="block";try{var i=m.querySelector("input[name=title]");if(i)i.focus();}catch(e){}};var shut=function(){ov.style.display="none";m.style.display="none";};fab.addEventListener("click",open);if(close)close.addEventListener("click",shut);if(cancel)cancel.addEventListener("click",shut);ov.addEventListener("click",shut);document.addEventListener("keydown",function(e){if(e.key==="Escape")shut();});})();';
 echo '</script>';
 
-echo '<script src="/demands_list_pagination.js?v=' . time() . '"></script>';
-
 echo '<style>';
-echo '.kanbanPagination{display:flex;align-items:center;gap:8px;margin-right:12px}';
-echo '.kanbanPaginationBtn{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:700;transition:all .2s}';
-echo '.kanbanPaginationBtn:hover:not(:disabled){background:hsl(var(--primary)/.9);transform:scale(1.05)}';
-echo '.kanbanPaginationBtn:disabled{opacity:.3;cursor:not-allowed}';
-echo '.kanbanPaginationInfo{font-size:13px;font-weight:600;color:hsl(var(--foreground));min-width:40px;text-align:center}';
 echo '.kanbanColHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}';
+// Lane com scroll vertical interno: mostra ~5 cards (altura fixa) e rola o resto dentro da coluna.
+// A página não trava; só a lista de cards da coluna rola.
+echo '.kanbanLane{max-height:calc(100vh - 320px);overflow-y:auto;overflow-x:hidden;padding-right:4px;display:flex;flex-direction:column;gap:8px}';
+echo '.kanbanLane::-webkit-scrollbar{width:8px}';
+echo '.kanbanLane::-webkit-scrollbar-thumb{background:hsl(var(--muted-foreground)/.35);border-radius:8px}';
+echo '.kanbanLane::-webkit-scrollbar-thumb:hover{background:hsl(var(--muted-foreground)/.55)}';
+echo '.kanbanLane::-webkit-scrollbar-track{background:transparent}';
+// Botão "Carregar mais" no fim da coluna
+echo '.kanbanLoadMore{margin-top:6px;width:100%;padding:8px;font-size:12px;font-weight:600;background:hsla(var(--primary)/.08);color:hsl(var(--primary));border:1px dashed hsl(var(--primary)/.4);border-radius:8px;cursor:pointer;transition:background .15s}';
+echo '.kanbanLoadMore:hover{background:hsla(var(--primary)/.16)}';
+echo '.kanbanLoadMore:disabled{opacity:.5;cursor:default}';
 echo '</style>';
 
 // Sincronizar e-mails em background ao carregar (apenas IMAP poll, extração é via CRON)
