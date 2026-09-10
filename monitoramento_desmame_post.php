@@ -18,6 +18,11 @@ $newMonthDays = isset($_POST['month_days']) && is_array($_POST['month_days'])
     ? array_values(array_unique(array_filter(array_map('intval', $_POST['month_days']), fn($d) => $d >= 1 && $d <= 31)))
     : [];
 
+// Modo "posição + dia da semana" (para quinzenal/mensal): ex.: 1ª quinta-feira do mês
+$monthMode = isset($_POST['month_mode']) ? (string)$_POST['month_mode'] : 'fixed_day';
+$weekPositions = isset($_POST['week_position']) && is_array($_POST['week_position']) ? $_POST['week_position'] : [];
+$weekWeekdays = isset($_POST['week_weekday']) && is_array($_POST['week_weekday']) ? array_map('intval', $_POST['week_weekday']) : [];
+
 // Se não veio weekdays do formulário mas temos frequência padronizada, usar a tabela
 if (count($newWeekdays) === 0 && $newFrequency !== '' && function_exists('frequency_get_weekdays')) {
     $freqCode = $newFrequency;
@@ -67,7 +72,21 @@ $db->beginTransaction();
 try {
     // Atualizar o atendimento principal
     $weekdaysJson = (!$isMonthlyFreq && count($newWeekdays) > 0) ? json_encode(array_values(array_unique($newWeekdays))) : null;
-    $monthDaysJson = ($isMonthlyFreq && count($newMonthDays) > 0) ? json_encode(array_values($newMonthDays)) : null;
+    // month_days guarda a configuração mensal: dia fixo OU posição+dia da semana
+    $monthDaysJson = null;
+    if ($isMonthlyFreq) {
+        if ($monthMode === 'weekday_position' && count($weekPositions) > 0) {
+            $pairs = [];
+            for ($wp = 0; $wp < count($weekPositions); $wp++) {
+                if (isset($weekWeekdays[$wp])) {
+                    $pairs[] = ['pos' => (string)$weekPositions[$wp], 'weekday' => (int)$weekWeekdays[$wp]];
+                }
+            }
+            $monthDaysJson = json_encode(['mode' => 'weekday_position', 'pairs' => $pairs]);
+        } elseif (count($newMonthDays) > 0) {
+            $monthDaysJson = json_encode(['mode' => 'fixed_day', 'days' => array_values($newMonthDays)]);
+        }
+    }
     $upd = $db->prepare('UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty, weekdays = :wd, month_days = :md WHERE id = :id');
     $upd->execute([
         'freq' => $newFrequency,
@@ -91,26 +110,72 @@ try {
         $newDates = [];
         $needed = count($pendingSessions);
 
-        if ($isMonthlyFreq && count($newMonthDays) > 0) {
-            // Frequência mensal/quinzenal: distribuir nos DIAS DO MÊS escolhidos, mês a mês.
+        if ($isMonthlyFreq) {
+            // Frequência mensal/quinzenal: duas modalidades de seleção de datas.
             sort($newMonthDays);
             $cursorMonth = (int)$startDate->format('n');
             $cursorYear = (int)$startDate->format('Y');
             $safety = 0;
-            while (count($newDates) < $needed && $safety < 400) {
-                $safety++;
-                $daysInMonth = (int)date('t', mktime(0, 0, 0, $cursorMonth, 1, $cursorYear));
-                foreach ($newMonthDays as $dm) {
-                    if ($dm > $daysInMonth) { continue; } // ex.: dia 31 em fevereiro
-                    $candidate = sprintf('%04d-%02d-%02d', $cursorYear, $cursorMonth, $dm);
-                    // Só datas de hoje em diante
-                    if ($candidate >= $startDate->format('Y-m-d') && count($newDates) < $needed) {
-                        $newDates[] = $candidate;
+
+            if ($monthMode === 'weekday_position' && count($weekPositions) > 0) {
+                // MODO 2: posição + dia da semana (ex.: "1ª quinta-feira do mês")
+                // Para cada par posição+dia, calcular a data exata em cada mês.
+                $wdPairs = [];
+                for ($wp = 0; $wp < count($weekPositions); $wp++) {
+                    if (isset($weekWeekdays[$wp])) {
+                        $wdPairs[] = ['pos' => (string)$weekPositions[$wp], 'day' => (int)$weekWeekdays[$wp]];
                     }
                 }
-                // avançar um mês
-                $cursorMonth++;
-                if ($cursorMonth > 12) { $cursorMonth = 1; $cursorYear++; }
+                while (count($newDates) < $needed && $safety < 400) {
+                    $safety++;
+                    foreach ($wdPairs as $pair) {
+                        if (count($newDates) >= $needed) break;
+                        $pos = $pair['pos']; // '1','2','3','4','last'
+                        $wday = $pair['day']; // 1=seg..7=dom
+                        $candidate = null;
+                        if ($pos === 'last') {
+                            // Última ocorrência do dia da semana no mês
+                            $lastDay = (int)date('t', mktime(0, 0, 0, $cursorMonth, 1, $cursorYear));
+                            for ($dd = $lastDay; $dd >= 1; $dd--) {
+                                $dt = mktime(0, 0, 0, $cursorMonth, $dd, $cursorYear);
+                                if ((int)date('N', $dt) === $wday) { $candidate = date('Y-m-d', $dt); break; }
+                            }
+                        } else {
+                            // N-ésima ocorrência (1ª, 2ª, 3ª, 4ª)
+                            $nth = (int)$pos;
+                            $count = 0;
+                            $daysInMonth = (int)date('t', mktime(0, 0, 0, $cursorMonth, 1, $cursorYear));
+                            for ($dd = 1; $dd <= $daysInMonth; $dd++) {
+                                $dt = mktime(0, 0, 0, $cursorMonth, $dd, $cursorYear);
+                                if ((int)date('N', $dt) === $wday) {
+                                    $count++;
+                                    if ($count === $nth) { $candidate = date('Y-m-d', $dt); break; }
+                                }
+                            }
+                        }
+                        if ($candidate !== null && $candidate >= $startDate->format('Y-m-d')) {
+                            $newDates[] = $candidate;
+                        }
+                    }
+                    // avançar um mês
+                    $cursorMonth++;
+                    if ($cursorMonth > 12) { $cursorMonth = 1; $cursorYear++; }
+                }
+            } elseif (count($newMonthDays) > 0) {
+                // MODO 1: dia fixo do mês (ex.: todo dia 25)
+                while (count($newDates) < $needed && $safety < 400) {
+                    $safety++;
+                    $daysInMonth = (int)date('t', mktime(0, 0, 0, $cursorMonth, 1, $cursorYear));
+                    foreach ($newMonthDays as $dm) {
+                        if ($dm > $daysInMonth) { continue; }
+                        $candidate = sprintf('%04d-%02d-%02d', $cursorYear, $cursorMonth, $dm);
+                        if ($candidate >= $startDate->format('Y-m-d') && count($newDates) < $needed) {
+                            $newDates[] = $candidate;
+                        }
+                    }
+                    $cursorMonth++;
+                    if ($cursorMonth > 12) { $cursorMonth = 1; $cursorYear++; }
+                }
             }
         } elseif (!$isMonthlyFreq && count($newWeekdays) > 0) {
             // Frequência semanal/diária: distribuir nos DIAS DA SEMANA fixos.

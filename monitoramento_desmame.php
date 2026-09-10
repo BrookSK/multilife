@@ -132,10 +132,22 @@ echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:6
 echo '<div id="fixedDaysInputs"></div>';
 echo '</div>';
 
-// (B) Bloco de DIA DO MÊS (quinzenal/mensal) — calendário de 1 a 31
-echo '<div id="monthDaysBlock" style="display:none;margin-top:6px">';
-echo '<label style="font-weight:700;display:block;margin-bottom:6px" id="monthDaysLabel">Dias do mês</label>';
-echo '<div id="monthDaysHint" style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:8px"></div>';
+// (B) Bloco MENSAL/QUINZENAL — duas modalidades de escolha:
+//     1) Dia fixo do mês (ex.: todo dia 25)
+//     2) Posição + dia da semana (ex.: 1ª quinta-feira, última sexta-feira)
+echo '<div id="monthDaysBlock" style="display:none;margin-top:6px;border:1px solid hsl(var(--border));border-radius:10px;padding:14px">';
+echo '<label style="font-weight:700;display:block;margin-bottom:8px" id="monthDaysLabel">Quando o atendimento ocorre no mês?</label>';
+echo '<div id="monthDaysHint" style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px"></div>';
+
+// Escolha do MODO
+echo '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">';
+echo '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600"><input type="radio" name="month_mode" value="fixed_day" class="mm-mode" checked style="width:auto"> Dia fixo do mês</label>';
+echo '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600"><input type="radio" name="month_mode" value="weekday_position" class="mm-mode" style="width:auto"> Dia da semana (ex.: 1ª quinta-feira)</label>';
+echo '</div>';
+
+// MODO 1: dia fixo do mês (calendário 1..31)
+echo '<div id="mmFixedDay">';
+echo '<div style="font-size:13px;font-weight:600;margin-bottom:6px" id="mmFixedDayLabel">Selecione o(s) dia(s) do mês:</div>';
 echo '<div style="display:grid;grid-template-columns:repeat(7,minmax(38px,1fr));gap:6px;max-width:340px">';
 for ($d = 1; $d <= 31; $d++) {
     $checked = in_array($d, $currentMonthDays, true) ? ' checked' : '';
@@ -144,6 +156,36 @@ for ($d = 1; $d <= 31; $d++) {
     echo '</label>';
 }
 echo '</div>';
+echo '</div>';
+
+// MODO 2: posição + dia da semana
+echo '<div id="mmWeekdayPos" style="display:none">';
+echo '<div style="font-size:13px;font-weight:600;margin-bottom:8px" id="mmWeekdayPosLabel">Selecione a semana e o dia:</div>';
+echo '<div style="display:grid;gap:12px;max-width:420px">';
+// Linha 1 (sempre visível)
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
+echo '<select name="week_position[]" class="wp-pos" style="min-width:150px">';
+$posOptions = ['1' => '1ª semana', '2' => '2ª semana', '3' => '3ª semana', '4' => '4ª semana', 'last' => 'Última semana'];
+foreach ($posOptions as $pv => $pl) { echo '<option value="' . h($pv) . '">' . h($pl) . '</option>'; }
+echo '</select>';
+echo '<select name="week_weekday[]" class="wp-day" style="min-width:150px">';
+$wdOptions = [1 => 'Segunda-feira', 2 => 'Terça-feira', 3 => 'Quarta-feira', 4 => 'Quinta-feira', 5 => 'Sexta-feira', 6 => 'Sábado', 7 => 'Domingo'];
+foreach ($wdOptions as $wv => $wl) { echo '<option value="' . $wv . '">' . h($wl) . '</option>'; }
+echo '</select>';
+echo '</div>';
+// Linha 2 (só para quinzenal — 2ª ocorrência do mês)
+echo '<div id="mmWeekdayPos2" style="display:none;gap:10px;flex-wrap:wrap;align-items:center">';
+echo '<select name="week_position[]" class="wp-pos" style="min-width:150px">';
+foreach ($posOptions as $pv => $pl) { $selp = ($pv === '3') ? ' selected' : ''; echo '<option value="' . h($pv) . '"' . $selp . '>' . h($pl) . '</option>'; }
+echo '</select>';
+echo '<select name="week_weekday[]" class="wp-day" style="min-width:150px">';
+foreach ($wdOptions as $wv => $wl) { echo '<option value="' . $wv . '">' . h($wl) . '</option>'; }
+echo '</select>';
+echo '</div>';
+echo '</div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:8px">Ex.: "1ª quinta-feira do mês" agenda sempre na primeira quinta-feira de cada mês.</div>';
+echo '</div>';
+
 echo '</div>';
 
 // (C) Aviso de sessão única (avaliação/pontual)
@@ -214,12 +256,16 @@ echo '    if (FREQ_SINGLE.indexOf(freq) !== -1) {';
 echo '      singleBlock.style.display = "block";';
 echo '    } else if (FREQ_MONTHLY.indexOf(freq) !== -1) {';
 echo '      monthBlock.style.display = "block";';
-echo '      if (freq === "quinzenal" || freq === "biweekly") {';
-echo '        monthLabel.textContent = "Dias do mês (quinzenal — 2 atendimentos/mês)";';
-echo '        monthHint.textContent = "Selecione 2 dias do mês (ex.: dia 5 e dia 20), um em cada quinzena.";';
+echo '      var isQuinzenal = (freq === "quinzenal" || freq === "biweekly");';
+echo '      var pos2 = document.getElementById("mmWeekdayPos2");';
+echo '      if (isQuinzenal) {';
+echo '        monthLabel.textContent = "Quando ocorre (quinzenal — 2x por mês)?";';
+echo '        monthHint.textContent = "Escolha se é por dia fixo do mês (2 dias) ou por dia da semana (2 ocorrências, ex.: 1ª e 3ª quinta-feira).";';
+echo '        if (pos2) pos2.style.display = "flex";';
 echo '      } else {';
-echo '        monthLabel.textContent = "Dia do mês (mensal — 1 atendimento/mês)";';
-echo '        monthHint.textContent = "Selecione 1 dia do mês (ex.: dia 10).";';
+echo '        monthLabel.textContent = "Quando ocorre (mensal — 1x por mês)?";';
+echo '        monthHint.textContent = "Escolha se é por dia fixo do mês (ex.: dia 25) ou por dia da semana (ex.: 1ª quinta-feira).";';
+echo '        if (pos2) pos2.style.display = "none";';
 echo '      }';
 echo '    } else if (days.length > 0) {';
 echo '      // 1x a 6x/semana ou diário: dias fixos automáticos';
@@ -237,6 +283,17 @@ echo '      });';
 echo '    }';
 echo '  }';
 echo '  freqSelect.addEventListener("change", render);';
+// Alternância entre "dia fixo do mês" e "posição + dia da semana"
+echo '  function renderMonthMode() {';
+echo '    var mode = document.querySelector(".mm-mode:checked");';
+echo '    var m = mode ? mode.value : "fixed_day";';
+echo '    var fx = document.getElementById("mmFixedDay");';
+echo '    var wp = document.getElementById("mmWeekdayPos");';
+echo '    if (fx) fx.style.display = (m === "fixed_day") ? "block" : "none";';
+echo '    if (wp) wp.style.display = (m === "weekday_position") ? "block" : "none";';
+echo '  }';
+echo '  document.querySelectorAll(".mm-mode").forEach(function(r){ r.addEventListener("change", renderMonthMode); });';
+echo '  renderMonthMode();';
 echo '  render();';
 echo '});';
 // Validação no submit
@@ -248,9 +305,15 @@ echo '  errDiv.style.display = "none";';
 echo '  if (!freq) { e.preventDefault(); errDiv.style.display="block"; errDiv.textContent="Selecione a nova frequência."; return false; }';
 echo '  if (FREQ_SINGLE.indexOf(freq) !== -1) { return true; }'; // sessão única: ok
 echo '  if (FREQ_MONTHLY.indexOf(freq) !== -1) {';
-echo '    var md = document.querySelectorAll(".md-check:checked").length;';
+echo '    var mode = document.querySelector(".mm-mode:checked");';
+echo '    var m = mode ? mode.value : "fixed_day";';
 echo '    var need = (freq === "mensal" || freq === "monthly") ? 1 : 2;';
-echo '    if (md < 1) { e.preventDefault(); errDiv.style.display="block"; errDiv.textContent="Selecione o(s) dia(s) do mês no calendário (esperado: " + need + ")."; return false; }';
+echo '    if (m === "fixed_day") {';
+echo '      var md = document.querySelectorAll(".md-check:checked").length;';
+echo '      if (md < 1) { e.preventDefault(); errDiv.style.display="block"; errDiv.textContent="Selecione o(s) dia(s) do mês no calendário (esperado: " + need + ")."; return false; }';
+echo '    } else {';
+echo '      // weekday_position: os selects já têm valor padrão, então sempre válido';
+echo '    }';
 echo '    return true;';
 echo '  }';
 echo '  // semanais/diário: os dias são fixos (hidden inputs), não precisa validar seleção manual';
