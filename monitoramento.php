@@ -7,6 +7,9 @@ rbac_require_permission('demands.manage');
 
 $db = db();
 
+// Garantir coluna is_indefinite (fallback caso a migration não tenha rodado)
+try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN is_indefinite TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+
 // Buscar sessões de atendimentos aprovados (usa session_date + start_time da proposta)
 $sql = "SELECT bdr.id, 
         CONCAT(
@@ -27,7 +30,8 @@ $sql = "SELECT bdr.id,
         p.address_city as patient_city, p.address_state as patient_state,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
-        pa.service_type, pa.payment_value, pa.session_quantity
+        pa.service_type, pa.payment_value, pa.session_quantity,
+        pa.session_frequency, pa.is_indefinite
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = bdr.patient_id
@@ -60,7 +64,11 @@ foreach ($appointments as $apt) {
     
     $events[] = [
         'id' => (int)$apt['id'],
-        'title' => '#' . ($apt['demand_id'] ?? '') . ' ' . $apt['patient_name'] . ' - ' . $apt['professional_name'] . ' (Sessão ' . $apt['session_number'] . ')',
+        'title' => (
+            ((string)($apt['session_frequency'] ?? '') === 'avaliacao' ? '🩺 [AVALIAÇÃO] ' :
+            ((string)($apt['session_frequency'] ?? '') === 'pontual' ? '📌 [PONTUAL] ' : ''))
+            . '#' . ($apt['demand_id'] ?? '') . ' ' . $apt['patient_name'] . ' - ' . $apt['professional_name'] . ' (Sessão ' . $apt['session_number'] . ')'
+        ),
         'start' => $apt['first_at'],
         'backgroundColor' => $color,
         'extendedProps' => [
@@ -78,12 +86,14 @@ foreach ($appointments as $apt) {
             'professional_name' => $apt['professional_name'],
             'professional_phone' => $apt['professional_phone'] ?? '',
             'professional_email' => $apt['professional_email'] ?? '',
-            'status' => $apt['status'],
+            'status' => $apt['assignment_status'] ?? '',
             'value_per_session' => (float)($apt['value_per_session'] ?? 0),
             'session_quantity' => (int)($apt['session_quantity'] ?? 0),
             'payment_value' => (float)($apt['payment_value'] ?? 0),
             'specialty' => $apt['specialty'] ?? '',
             'service_type' => $apt['service_type'] ?? '',
+            'session_frequency' => $apt['session_frequency'] ?? '',
+            'is_indefinite' => (int)($apt['is_indefinite'] ?? 0),
             'location_city' => $apt['location_city'] ?? '',
             'location_state' => $apt['location_state'] ?? '',
             'created_at' => $apt['created_at'] ?? ''
@@ -178,6 +188,7 @@ body{margin:0;padding:0;overflow:hidden}
             <div class="info">
                 <div class="row"><span class="label">ID do Atendimento:</span><span class="value" id="aptId">-</span></div>
                 <div class="row"><span class="label">Status:</span><span class="value" id="aptStatus">-</span></div>
+                <div class="row"><span class="label">Modalidade:</span><span class="value" id="aptModality">-</span></div>
                 <div class="row"><span class="label">Data/Hora:</span><span class="value" id="aptDate">-</span></div>
                 <div class="row"><span class="label">Especialidade:</span><span class="value" id="aptSpecialty">-</span></div>
                 <div class="row"><span class="label">Tipo de Serviço:</span><span class="value" id="aptServiceType">-</span></div>
@@ -242,11 +253,40 @@ document.addEventListener('DOMContentLoaded', function() {
             // Informações Gerais
             document.getElementById('aptId').textContent = '#' + info.event.id;
             const statusMap = {
+                'admitted': '🟢 Admitido (em atendimento)',
+                'awaiting_documents': '🟡 Aguardando documentos',
+                'awaiting_financial_approval': '🟠 Aguardando aprovação financeira',
+                'approved': '🔵 Aprovado',
+                'completed': '✅ Finalizado',
                 'agendado': '🟢 Agendado',
                 'pendente_formulario': '🟡 Pendente Formulário',
                 'realizado': '🔵 Realizado'
             };
-            document.getElementById('aptStatus').textContent = statusMap[p.status] || p.status;
+            document.getElementById('aptStatus').textContent = statusMap[p.status] || (p.status || 'Não informado');
+
+            // Modalidade do atendimento (item 10): Avaliação, Pontual, ou frequência recorrente.
+            const freqMap = {
+                'avaliacao': '🩺 Avaliação inicial (sessão única)',
+                'pontual': '📌 Atendimento pontual (sessão única)',
+                'daily': 'Diária',
+                '1x_semana': '1x por semana',
+                '2x_semana': '2x por semana',
+                '3x_semana': '3x por semana',
+                '4x_semana': '4x por semana',
+                '5x_semana': '5x por semana',
+                '6x_semana': '6x por semana',
+                '7x_semana': '7x por semana',
+                'weekly': 'Semanal',
+                'quinzenal': 'Quinzenal',
+                'biweekly': 'Quinzenal',
+                'mensal': 'Mensal',
+                'monthly': 'Mensal'
+            };
+            let modalityTxt = freqMap[p.session_frequency] || (p.session_frequency ? p.session_frequency : 'Não informada');
+            if (Number(p.is_indefinite) === 1) {
+                modalityTxt += ' • Tempo indefinido';
+            }
+            document.getElementById('aptModality').textContent = modalityTxt;
             document.getElementById('aptDate').textContent = new Date(info.event.start).toLocaleString('pt-BR');
             document.getElementById('aptSpecialty').textContent = p.specialty || 'Não informado';
             document.getElementById('aptServiceType').textContent = p.service_type || 'Não informado';
