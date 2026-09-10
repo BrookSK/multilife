@@ -105,6 +105,7 @@ if (function_exists('frequency_get_options')) {
 }
 echo '</select></label></div>';
 echo '<div class="col6"><label>Nova qtd. de sessões (opcional)<input type="number" name="new_session_quantity" min="1" value="' . (int)($assignment['session_quantity'] ?? '') . '"></label></div>';
+echo '</div>'; // fecha .grid dos dois campos
 
 // Seleção de dias — comportamento dinâmico por frequência:
 //  - 1x a 6x/semana e diário: dias FIXOS automáticos (só exibe, não deixa escolher)
@@ -199,8 +200,7 @@ echo '</div>';
 echo '<style>';
 echo '.md-check:checked + span{background:hsl(var(--primary));color:#fff;border-radius:6px;padding:4px 8px;display:inline-block}';
 echo '</style>';
-echo '<div class="col12"><label>Motivo da alteração<textarea name="reason" rows="3" required placeholder="Ex: Paciente apresentou melhora significativa, reduzindo necessidade de atendimento..."></textarea></label></div>';
-echo '</div>';
+echo '<div class="col12" style="margin-top:12px"><label>Motivo da alteração<textarea name="reason" rows="3" required placeholder="Ex: Paciente apresentou melhora significativa, reduzindo necessidade de atendimento..." style="width:100%"></textarea></label></div>';
 
 // Opção de aplicar a todos
 if (count($otherAssignments) > 0) {
