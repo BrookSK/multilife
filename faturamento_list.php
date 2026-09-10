@@ -44,30 +44,56 @@ $sql = "
     WHERE 1=1
 ";
 
+// Condição de status da aba (compartilhada entre contagem e listagem)
+$statusWhere = '';
 if ($tab === 'awaiting_documents') {
-    $sql .= " AND pa.status = 'admitted'";
+    $statusWhere = " AND pa.status = 'admitted'";
 } elseif ($tab === 'awaiting_approval') {
-    $sql .= " AND pa.status = 'awaiting_financial_approval'";
+    $statusWhere = " AND pa.status = 'awaiting_financial_approval'";
 } elseif ($tab === 'approved') {
-    $sql .= " AND pa.status IN ('approved')";
+    $statusWhere = " AND pa.status IN ('approved')";
 } elseif ($tab === 'completed') {
-    $sql .= " AND pa.status = 'completed'";
+    $statusWhere = " AND pa.status = 'completed'";
 }
 
+$searchWhere = '';
+$searchArgs = [];
 if ($searchQuery !== '') {
-    $sql .= " AND (p.full_name LIKE ? OR u.name LIKE ?)";
+    $searchWhere = " AND (p.full_name LIKE ? OR u.name LIKE ?)";
+    $searchParam = '%' . $searchQuery . '%';
+    $searchArgs = [$searchParam, $searchParam];
 }
 
-$sql .= " ORDER BY pa.created_at DESC";
+$sql .= $statusWhere . $searchWhere;
+
+// ITEM 16: Paginação no backend
+$page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
+$offset = ($page - 1) * $perPage;
+
+// Contagem total (mesmos filtros de aba + busca)
+$countStmt = db()->prepare(
+    "SELECT COUNT(*)
+     FROM patient_assignments pa
+     LEFT JOIN patients p ON p.id = pa.patient_id
+     LEFT JOIN users u ON u.id = pa.professional_user_id
+     WHERE 1=1" . $statusWhere . $searchWhere
+);
+$countStmt->execute($searchArgs);
+$totalRows = (int)$countStmt->fetchColumn();
+$totalPages = max(1, (int)ceil($totalRows / $perPage));
+
+$sql .= " ORDER BY pa.created_at DESC LIMIT " . (int)$perPage . " OFFSET " . (int)$offset;
 
 $stmt = db()->prepare($sql);
-if ($searchQuery !== '') {
-    $searchParam = '%' . $searchQuery . '%';
-    $stmt->execute([$searchParam, $searchParam]);
-} else {
-    $stmt->execute();
-}
+$stmt->execute($searchArgs);
 $assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Helper de paginação preservando aba e busca
+$buildPageUrl = function (int $p) use ($tab, $searchQuery): string {
+    $qs = array_filter(['tab' => $tab, 'q' => $searchQuery, 'page' => $p], fn($v) => $v !== '' && $v !== null);
+    return '/faturamento_list.php?' . http_build_query($qs);
+};
 
 view_header('Faturamento');
 
@@ -169,6 +195,21 @@ if (count($assignments) === 0) {
     
     echo '</tbody></table>';
     echo '</div>';
+
+    // Paginação (item 16)
+    if ($totalPages > 1) {
+        echo '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap">';
+        if ($page > 1) echo '<a class="btn" href="' . h($buildPageUrl($page - 1)) . '">← Anterior</a>';
+        $start = max(1, $page - 2); $end = min($totalPages, $page + 2);
+        if ($start > 1) { echo '<a class="btn" href="' . h($buildPageUrl(1)) . '">1</a>'; if ($start > 2) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; }
+        for ($i = $start; $i <= $end; $i++) {
+            echo $i === $page ? '<span class="btn btnPrimary" style="pointer-events:none">' . $i . '</span>' : '<a class="btn" href="' . h($buildPageUrl($i)) . '">' . $i . '</a>';
+        }
+        if ($end < $totalPages) { if ($end < $totalPages - 1) echo '<span style="color:hsl(var(--muted-foreground))">…</span>'; echo '<a class="btn" href="' . h($buildPageUrl($totalPages)) . '">' . $totalPages . '</a>'; }
+        if ($page < $totalPages) echo '<a class="btn" href="' . h($buildPageUrl($page + 1)) . '">Próxima →</a>';
+        echo '</div>';
+        echo '<div style="text-align:center;margin-top:8px;font-size:13px;color:hsl(var(--muted-foreground))">Página ' . $page . ' de ' . $totalPages . ' • ' . number_format($totalRows, 0, ',', '.') . ' atendimento(s)</div>';
+    }
 }
 
 echo '</section>';
