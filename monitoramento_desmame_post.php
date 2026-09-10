@@ -13,6 +13,10 @@ $newSessionQty = (int)($_POST['new_session_quantity'] ?? 0);
 $reason = trim((string)($_POST['reason'] ?? ''));
 $applyToAll = isset($_POST['apply_to_all']) && $_POST['apply_to_all'] === '1';
 $newWeekdays = isset($_POST['weekdays']) && is_array($_POST['weekdays']) ? array_map('intval', $_POST['weekdays']) : [];
+// Dias do mês (para quinzenal/mensal): valores 1..31
+$newMonthDays = isset($_POST['month_days']) && is_array($_POST['month_days'])
+    ? array_values(array_unique(array_filter(array_map('intval', $_POST['month_days']), fn($d) => $d >= 1 && $d <= 31)))
+    : [];
 
 // Se não veio weekdays do formulário mas temos frequência padronizada, usar a tabela
 if (count($newWeekdays) === 0 && $newFrequency !== '' && function_exists('frequency_get_weekdays')) {
@@ -24,6 +28,12 @@ if (count($newWeekdays) === 0 && $newFrequency !== '' && function_exists('freque
         $newWeekdays = frequency_get_weekdays($freqCode);
     }
 }
+
+// Garantir coluna month_days (fallback)
+try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN month_days VARCHAR(120) NULL"); } catch (Throwable $e) {}
+
+// Frequências mensais (usam dia do mês em vez de dia da semana)
+$isMonthlyFreq = in_array($newFrequency, ['quinzenal', 'biweekly', 'mensal', 'monthly'], true);
 
 if ($assignmentId <= 0 || $newFrequency === '' || $reason === '') {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
@@ -56,33 +66,55 @@ $db = db();
 $db->beginTransaction();
 try {
     // Atualizar o atendimento principal
-    $weekdaysJson = count($newWeekdays) > 0 ? json_encode(array_values(array_unique($newWeekdays))) : null;
-    $upd = $db->prepare('UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty, weekdays = :wd WHERE id = :id');
+    $weekdaysJson = (!$isMonthlyFreq && count($newWeekdays) > 0) ? json_encode(array_values(array_unique($newWeekdays))) : null;
+    $monthDaysJson = ($isMonthlyFreq && count($newMonthDays) > 0) ? json_encode(array_values($newMonthDays)) : null;
+    $upd = $db->prepare('UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty, weekdays = :wd, month_days = :md WHERE id = :id');
     $upd->execute([
         'freq' => $newFrequency,
         'qty' => $newSessionQty > 0 ? $newSessionQty : $oldSessionQty,
         'wd' => $weekdaysJson,
+        'md' => $monthDaysJson,
         'id' => $assignmentId,
     ]);
 
     // Recalcular sessões futuras (manter as passadas/já realizadas)
-    if (count($newWeekdays) > 0) {
-        // Buscar sessões pendentes (futuras) para recalcular
-        $stmtPending = $db->prepare(
-            "SELECT id, session_number FROM billing_document_requirements 
-             WHERE assignment_id = :aid AND status = 'pending' AND (session_date IS NULL OR session_date >= CURDATE())
-             ORDER BY session_number ASC"
-        );
-        $stmtPending->execute(['aid' => $assignmentId]);
-        $pendingSessions = $stmtPending->fetchAll();
+    $stmtPending = $db->prepare(
+        "SELECT id, session_number FROM billing_document_requirements 
+         WHERE assignment_id = :aid AND status = 'pending' AND (session_date IS NULL OR session_date >= CURDATE())
+         ORDER BY session_number ASC"
+    );
+    $stmtPending->execute(['aid' => $assignmentId]);
+    $pendingSessions = $stmtPending->fetchAll();
 
-        if (count($pendingSessions) > 0) {
-            // Calcular novas datas a partir de hoje
-            $startDate = new DateTime();
-            $newDates = [];
+    if (count($pendingSessions) > 0) {
+        $startDate = new DateTime();
+        $newDates = [];
+        $needed = count($pendingSessions);
+
+        if ($isMonthlyFreq && count($newMonthDays) > 0) {
+            // Frequência mensal/quinzenal: distribuir nos DIAS DO MÊS escolhidos, mês a mês.
+            sort($newMonthDays);
+            $cursorMonth = (int)$startDate->format('n');
+            $cursorYear = (int)$startDate->format('Y');
+            $safety = 0;
+            while (count($newDates) < $needed && $safety < 400) {
+                $safety++;
+                $daysInMonth = (int)date('t', mktime(0, 0, 0, $cursorMonth, 1, $cursorYear));
+                foreach ($newMonthDays as $dm) {
+                    if ($dm > $daysInMonth) { continue; } // ex.: dia 31 em fevereiro
+                    $candidate = sprintf('%04d-%02d-%02d', $cursorYear, $cursorMonth, $dm);
+                    // Só datas de hoje em diante
+                    if ($candidate >= $startDate->format('Y-m-d') && count($newDates) < $needed) {
+                        $newDates[] = $candidate;
+                    }
+                }
+                // avançar um mês
+                $cursorMonth++;
+                if ($cursorMonth > 12) { $cursorMonth = 1; $cursorYear++; }
+            }
+        } elseif (!$isMonthlyFreq && count($newWeekdays) > 0) {
+            // Frequência semanal/diária: distribuir nos DIAS DA SEMANA fixos.
             $currentDate = clone $startDate;
-            $needed = count($pendingSessions);
-            
             sort($newWeekdays);
             while (count($newDates) < $needed) {
                 $dayOfWeek = (int)$currentDate->format('N');
@@ -92,8 +124,10 @@ try {
                 $currentDate->modify('+1 day');
                 if ($currentDate->diff($startDate)->days > 365) break;
             }
+        }
 
-            // Atualizar datas das sessões pendentes
+        // Atualizar datas das sessões pendentes (se calculamos alguma)
+        if (count($newDates) > 0) {
             $updDate = $db->prepare('UPDATE billing_document_requirements SET session_date = :sd WHERE id = :id');
             foreach ($pendingSessions as $idx => $sess) {
                 $newDate = isset($newDates[$idx]) ? $newDates[$idx] : null;

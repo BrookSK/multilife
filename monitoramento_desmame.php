@@ -9,6 +9,9 @@ rbac_require_permission('demands.manage');
 
 $assignmentId = (int)($_GET['assignment_id'] ?? 0);
 
+// Garantir coluna month_days (fallback caso a migration não tenha rodado)
+try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN month_days VARCHAR(120) NULL"); } catch (Throwable $e) {}
+
 $stmt = db()->prepare(
     "SELECT pa.*, p.full_name as patient_name, p.id as patient_id, u.name as professional_name, d.specialty
      FROM patient_assignments pa
@@ -103,22 +106,58 @@ if (function_exists('frequency_get_options')) {
 echo '</select></label></div>';
 echo '<div class="col6"><label>Nova qtd. de sessões (opcional)<input type="number" name="new_session_quantity" min="1" value="' . (int)($assignment['session_quantity'] ?? '') . '"></label></div>';
 
-// Seleção de novos dias da semana
+// Seleção de dias — comportamento dinâmico por frequência:
+//  - 1x a 6x/semana e diário: dias FIXOS automáticos (só exibe, não deixa escolher)
+//  - quinzenal e mensal: seletor de DIA DO MÊS (calendário)
+//  - avaliação e pontual: nada (sessão única)
 $currentWeekdays = [];
 if (!empty($assignment['weekdays'])) {
     $currentWeekdays = json_decode((string)$assignment['weekdays'], true) ?: [];
 }
-echo '<div class="col12"><label style="font-weight:700">Novos dias da semana</label>';
-echo '<div id="weekdaysError" style="display:none;margin-top:4px;margin-bottom:4px;color:hsl(var(--destructive));font-size:13px;font-weight:700"></div>';
-echo '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">';
+$currentMonthDays = [];
+if (!empty($assignment['month_days'])) {
+    $currentMonthDays = json_decode((string)$assignment['month_days'], true) ?: [];
+}
 $diasSemana = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 7 => 'Dom'];
-foreach ($diasSemana as $num => $nome) {
-    $checked = in_array($num, $currentWeekdays, true) ? ' checked' : '';
-    echo '<label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
-    echo '<input type="checkbox" name="weekdays[]" value="' . $num . '"' . $checked . ' class="wd-check"> ' . $nome;
+
+echo '<div class="col12">';
+echo '<div id="weekdaysError" style="display:none;margin-top:4px;margin-bottom:8px;color:hsl(var(--destructive));font-size:13px;font-weight:700"></div>';
+
+// (A) Bloco informativo dos dias FIXOS (semanais/diário) — preenchido via JS, somente leitura
+echo '<div id="fixedDaysBlock" style="display:none;margin-top:6px">';
+echo '<label style="font-weight:700;display:block;margin-bottom:6px">Dias de atendimento (definidos pela frequência)</label>';
+echo '<div id="fixedDaysChips" style="display:flex;gap:8px;flex-wrap:wrap"></div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:6px">Estes dias se repetem toda semana. São definidos automaticamente pela frequência escolhida.</div>';
+// hidden inputs com os weekdays fixos (preenchidos via JS)
+echo '<div id="fixedDaysInputs"></div>';
+echo '</div>';
+
+// (B) Bloco de DIA DO MÊS (quinzenal/mensal) — calendário de 1 a 31
+echo '<div id="monthDaysBlock" style="display:none;margin-top:6px">';
+echo '<label style="font-weight:700;display:block;margin-bottom:6px" id="monthDaysLabel">Dias do mês</label>';
+echo '<div id="monthDaysHint" style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:8px"></div>';
+echo '<div style="display:grid;grid-template-columns:repeat(7,minmax(38px,1fr));gap:6px;max-width:340px">';
+for ($d = 1; $d <= 31; $d++) {
+    $checked = in_array($d, $currentMonthDays, true) ? ' checked' : '';
+    echo '<label style="display:flex;align-items:center;justify-content:center;padding:8px 0;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">';
+    echo '<input type="checkbox" name="month_days[]" value="' . $d . '"' . $checked . ' class="md-check" style="display:none"><span>' . $d . '</span>';
     echo '</label>';
 }
-echo '</div></div>';
+echo '</div>';
+echo '</div>';
+
+// (C) Aviso de sessão única (avaliação/pontual)
+echo '<div id="singleSessionBlock" style="display:none;margin-top:6px;padding:12px;background:hsla(var(--warning)/.1);border-radius:8px;font-size:13px;color:hsl(var(--foreground))">';
+echo 'Esta modalidade cria uma <strong>sessão única</strong> na data de início. Não requer dias da semana nem dia do mês.';
+echo '</div>';
+
+echo '</div>';
+
+// CSS para destacar o dia do mês selecionado
+echo '<style>';
+echo '.md-check:checked + span{background:hsl(var(--primary));color:#fff;border-radius:6px;padding:2px 6px}';
+echo '#monthDaysBlock label:has(.md-check:checked){border-color:hsl(var(--primary));background:hsla(var(--primary)/.08)}';
+echo '</style>';
 echo '<div class="col12"><label>Motivo da alteração<textarea name="reason" rows="3" required placeholder="Ex: Paciente apresentou melhora significativa, reduzindo necessidade de atendimento..."></textarea></label></div>';
 echo '</div>';
 
@@ -145,49 +184,77 @@ echo '<button class="btn btnPrimary" type="submit" style="background:#f59e0b">Co
 echo '</div>';
 echo '</form>';
 
-// Validação e auto-seleção de dias
+// Comportamento dinâmico por frequência
 echo '<script>';
+echo 'var DIAS = {1:"Seg",2:"Ter",3:"Qua",4:"Qui",5:"Sex",6:"Sáb",7:"Dom"};';
+echo 'var FREQ_SINGLE = ["avaliacao","pontual"];';        // sessão única
+echo 'var FREQ_MONTHLY = ["quinzenal","biweekly","mensal","monthly"];'; // dia do mês
 echo 'document.addEventListener("DOMContentLoaded", function() {';
 echo '  var freqSelect = document.getElementById("freqSelect");';
-echo '  var checks = document.querySelectorAll(".wd-check");';
-echo '  ';
-echo '  // Auto-selecionar dias quando mudar a frequência';
-echo '  if (freqSelect) {';
-echo '    freqSelect.addEventListener("change", function() {';
-echo '      var opt = this.options[this.selectedIndex];';
-echo '      var weekdays = opt.getAttribute("data-weekdays");';
-echo '      if (weekdays) {';
-echo '        var days = JSON.parse(weekdays);';
-echo '        checks.forEach(function(cb) {';
-echo '          cb.checked = days.indexOf(parseInt(cb.value)) !== -1;';
-echo '        });';
+echo '  var fixedBlock = document.getElementById("fixedDaysBlock");';
+echo '  var fixedChips = document.getElementById("fixedDaysChips");';
+echo '  var fixedInputs = document.getElementById("fixedDaysInputs");';
+echo '  var monthBlock = document.getElementById("monthDaysBlock");';
+echo '  var monthHint = document.getElementById("monthDaysHint");';
+echo '  var monthLabel = document.getElementById("monthDaysLabel");';
+echo '  var singleBlock = document.getElementById("singleSessionBlock");';
+echo '  if (!freqSelect) return;';
+echo '  function render() {';
+echo '    var freq = freqSelect.value;';
+echo '    var opt = freqSelect.options[freqSelect.selectedIndex];';
+echo '    var weekdays = opt ? (opt.getAttribute("data-weekdays") || "[]") : "[]";';
+echo '    var days = [];';
+echo '    try { days = JSON.parse(weekdays); } catch(e) { days = []; }';
+echo '    // reset';
+echo '    fixedBlock.style.display = "none";';
+echo '    monthBlock.style.display = "none";';
+echo '    singleBlock.style.display = "none";';
+echo '    fixedInputs.innerHTML = "";';
+echo '    if (FREQ_SINGLE.indexOf(freq) !== -1) {';
+echo '      singleBlock.style.display = "block";';
+echo '    } else if (FREQ_MONTHLY.indexOf(freq) !== -1) {';
+echo '      monthBlock.style.display = "block";';
+echo '      if (freq === "quinzenal" || freq === "biweekly") {';
+echo '        monthLabel.textContent = "Dias do mês (quinzenal — 2 atendimentos/mês)";';
+echo '        monthHint.textContent = "Selecione 2 dias do mês (ex.: dia 5 e dia 20), um em cada quinzena.";';
+echo '      } else {';
+echo '        monthLabel.textContent = "Dia do mês (mensal — 1 atendimento/mês)";';
+echo '        monthHint.textContent = "Selecione 1 dia do mês (ex.: dia 10).";';
 echo '      }';
-echo '    });';
-echo '    // Disparar ao carregar se já tem valor selecionado';
-echo '    if (freqSelect.value) freqSelect.dispatchEvent(new Event("change"));';
+echo '    } else if (days.length > 0) {';
+echo '      // 1x a 6x/semana ou diário: dias fixos automáticos';
+echo '      fixedBlock.style.display = "block";';
+echo '      fixedChips.innerHTML = "";';
+echo '      days.forEach(function(d){';
+echo '        var chip = document.createElement("span");';
+echo '        chip.textContent = DIAS[d] || d;';
+echo '        chip.style.cssText = "padding:8px 14px;background:hsl(var(--primary));color:#fff;border-radius:8px;font-size:13px;font-weight:700";';
+echo '        fixedChips.appendChild(chip);';
+echo '        var inp = document.createElement("input");';
+echo '        inp.type = "hidden"; inp.name = "weekdays[]"; inp.value = d;';
+echo '        fixedInputs.appendChild(inp);';
+echo '      });';
+echo '    }';
 echo '  }';
+echo '  freqSelect.addEventListener("change", render);';
+echo '  render();';
 echo '});';
+// Validação no submit
 echo 'document.querySelector("form[action=\'/monitoramento_desmame_post.php\']").addEventListener("submit", function(e) {';
 echo '  var freqSelect = document.getElementById("freqSelect");';
 echo '  var freq = freqSelect ? freqSelect.value : "";';
-echo '  var opt = freqSelect.options[freqSelect.selectedIndex];';
-echo '  var weekdays = opt ? opt.getAttribute("data-weekdays") : "[]";';
-echo '  var required = weekdays ? JSON.parse(weekdays).length : 0;';
-echo '  var checked = document.querySelectorAll(".wd-check:checked").length;';
 echo '  var errDiv = document.getElementById("weekdaysError");';
-echo '  if (required > 0 && checked !== required) {';
-echo '    e.preventDefault();';
-echo '    errDiv.style.display = "block";';
-echo '    errDiv.textContent = "Selecione exatamente " + required + " dia(s) para a frequência \'" + freq + "\'. Você selecionou " + checked + ".";';
-echo '    return false;';
-echo '  }';
-echo '  if (checked === 0) {';
-echo '    e.preventDefault();';
-echo '    errDiv.style.display = "block";';
-echo '    errDiv.textContent = "Selecione pelo menos 1 dia da semana.";';
-echo '    return false;';
-echo '  }';
 echo '  errDiv.style.display = "none";';
+echo '  if (!freq) { e.preventDefault(); errDiv.style.display="block"; errDiv.textContent="Selecione a nova frequência."; return false; }';
+echo '  if (FREQ_SINGLE.indexOf(freq) !== -1) { return true; }'; // sessão única: ok
+echo '  if (FREQ_MONTHLY.indexOf(freq) !== -1) {';
+echo '    var md = document.querySelectorAll(".md-check:checked").length;';
+echo '    var need = (freq === "mensal" || freq === "monthly") ? 1 : 2;';
+echo '    if (md < 1) { e.preventDefault(); errDiv.style.display="block"; errDiv.textContent="Selecione o(s) dia(s) do mês no calendário (esperado: " + need + ")."; return false; }';
+echo '    return true;';
+echo '  }';
+echo '  // semanais/diário: os dias são fixos (hidden inputs), não precisa validar seleção manual';
+echo '  return true;';
 echo '});';
 echo '</script>';
 
