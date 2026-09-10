@@ -51,9 +51,11 @@ $db = db();
 $profId = isset($_GET['prof_id']) ? (int)$_GET['prof_id'] : 0;
 if ($profId === 0 && isset($_POST['prof_id'])) { $profId = (int)$_POST['prof_id']; }
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
-// ITEM 9: alternância de visão (profissional | especialidade)
-$viewMode = isset($_GET['view']) && $_GET['view'] === 'specialty' ? 'specialty' : 'professional';
+// ITEM 9: alternância de visão (profissional | especialidade | operadora)
+$allowedViews = ['professional', 'specialty', 'operator'];
+$viewMode = isset($_GET['view']) && in_array($_GET['view'], $allowedViews, true) ? (string)$_GET['view'] : 'professional';
 $selSpecialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
+$selOperator = isset($_GET['operator_id']) && ctype_digit((string)$_GET['operator_id']) ? (int)$_GET['operator_id'] : 0;
 
 // Paginação das listagens (por profissional / por especialidade)
 $page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
@@ -445,8 +447,10 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;gap:8px;border-bottom:2px solid hsl(var(--border));margin-bottom:16px">';
 $tabProfCls = $viewMode === 'professional' ? 'border-bottom:3px solid hsl(var(--primary));color:hsl(var(--primary));font-weight:700' : 'color:hsl(var(--muted-foreground))';
 $tabSpecCls = $viewMode === 'specialty' ? 'border-bottom:3px solid hsl(var(--primary));color:hsl(var(--primary));font-weight:700' : 'color:hsl(var(--muted-foreground))';
+$tabOperCls = $viewMode === 'operator' ? 'border-bottom:3px solid hsl(var(--primary));color:hsl(var(--primary));font-weight:700' : 'color:hsl(var(--muted-foreground))';
 echo '<a href="/admin_professional_sessions.php?view=professional" style="padding:10px 18px;text-decoration:none;' . $tabProfCls . '">👨‍⚕️ Por Profissional</a>';
 echo '<a href="/admin_professional_sessions.php?view=specialty" style="padding:10px 18px;text-decoration:none;' . $tabSpecCls . '">🩺 Por Especialidade</a>';
+echo '<a href="/admin_professional_sessions.php?view=operator" style="padding:10px 18px;text-decoration:none;' . $tabOperCls . '">🏥 Por Operadora / Cliente</a>';
 echo '</div>';
 
 if ($viewMode === 'professional') {
@@ -484,7 +488,7 @@ if ($viewMode === 'professional') {
             return '/admin_professional_sessions.php?' . http_build_query($qs);
         });
     }
-} else {
+} elseif ($viewMode === 'specialty') {
     // ===== VISÃO POR ESPECIALIDADE (item 9) =====
     echo '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Selecionar Especialidade</div>';
     $specListStmt = $db->query("SELECT name FROM specialties WHERE status = 'active' ORDER BY name ASC");
@@ -572,6 +576,99 @@ if ($viewMode === 'professional') {
             // Controles de paginação (preserva a especialidade selecionada)
             session_render_pagination($pageSpec, $totalPagesSpec, function (int $pp) use ($selSpecialty) {
                 $qs = array_filter(['view' => 'specialty', 'specialty' => $selSpecialty, 'page' => $pp], fn($v) => $v !== '' && $v !== null);
+                return '/admin_professional_sessions.php?' . http_build_query($qs);
+            });
+        }
+    }
+} elseif ($viewMode === 'operator') {
+    // ===== VISÃO POR OPERADORA / CLIENTE =====
+    echo '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Selecionar Operadora / Cliente</div>';
+    $operListStmt = $db->query("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
+    $operList = $operListStmt->fetchAll(PDO::FETCH_ASSOC);
+    echo '<form method="get" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">';
+    echo '<input type="hidden" name="view" value="operator">';
+    echo '<select name="operator_id" style="flex:1;min-width:220px">';
+    echo '<option value="0">Selecione a operadora / cliente...</option>';
+    foreach ($operList as $op) {
+        $sel = ($selOperator === (int)$op['id']) ? ' selected' : '';
+        echo '<option value="' . (int)$op['id'] . '"' . $sel . '>' . htmlspecialchars((string)$op['name']) . '</option>';
+    }
+    echo '</select>';
+    echo '<button class="btn btnPrimary" type="submit">Ver</button>';
+    echo '</form>';
+
+    if ($selOperator > 0) {
+        // Profissionais, pacientes e sessões vinculados à operadora
+        $operStmt = $db->prepare("
+            SELECT pa.id AS assignment_id, pa.session_quantity, pa.session_frequency, pa.status AS assignment_status, pa.specialty,
+                   COALESCE(pa.agreed_value, pa.payment_value) AS value_per_session,
+                   u.id AS professional_id, u.name AS professional_name,
+                   p.id AS patient_id, p.full_name AS patient_name,
+                   (SELECT COUNT(*) FROM billing_document_requirements bdr WHERE bdr.assignment_id = pa.id) AS total_sessions,
+                   (SELECT COUNT(*) FROM billing_document_requirements bdr WHERE bdr.assignment_id = pa.id AND bdr.status IN ('approved','paid')) AS approved_sessions,
+                   (SELECT COUNT(*) FROM billing_document_requirements bdr WHERE bdr.assignment_id = pa.id AND bdr.status = 'pending') AS pending_sessions
+            FROM patient_assignments pa
+            INNER JOIN users u ON u.id = pa.professional_user_id
+            INNER JOIN patients p ON p.id = pa.patient_id
+            WHERE pa.health_insurer_id = :oid AND p.deleted_at IS NULL
+            ORDER BY u.name ASC, p.full_name ASC
+        ");
+        $operStmt->execute(['oid' => $selOperator]);
+        $operRows = $operStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($operRows)) {
+            echo '<div style="margin-top:16px;padding:14px;background:hsla(var(--muted)/.2);border-radius:8px;color:hsl(var(--muted-foreground))">Nenhum atendimento encontrado para esta operadora / cliente.</div>';
+        } else {
+            // Agrupar por profissional
+            $byProfOp = [];
+            foreach ($operRows as $sr) {
+                $byProfOp[$sr['professional_id']]['name'] = $sr['professional_name'];
+                $byProfOp[$sr['professional_id']]['rows'][] = $sr;
+            }
+
+            // Resumo da operadora (totais gerais)
+            $totalAtendOp = count($operRows);
+            $totalProfsOp = count($byProfOp);
+            $totalPacientesOp = count(array_unique(array_column($operRows, 'patient_id')));
+            echo '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">';
+            echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Profissionais</div><div style="font-size:24px;font-weight:800">' . $totalProfsOp . '</div></div>';
+            echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Pacientes</div><div style="font-size:24px;font-weight:800">' . $totalPacientesOp . '</div></div>';
+            echo '<div style="flex:1;min-width:140px;padding:14px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:12px;color:hsl(var(--muted-foreground))">Atendimentos</div><div style="font-size:24px;font-weight:800">' . $totalAtendOp . '</div></div>';
+            echo '</div>';
+
+            // Paginação por profissional dentro da operadora
+            $totalPagesOp = max(1, (int)ceil($totalProfsOp / $perPage));
+            $pageOp = min($page, $totalPagesOp);
+            $byProfOpPage = array_slice($byProfOp, ($pageOp - 1) * $perPage, $perPage, true);
+
+            echo '<div style="color:hsl(var(--muted-foreground));font-size:13px;margin-bottom:4px">Mostrando profissionais ' . ((($pageOp - 1) * $perPage) + 1) . '–' . min($pageOp * $perPage, $totalProfsOp) . ' de ' . $totalProfsOp . '.</div>';
+
+            foreach ($byProfOpPage as $profIdKey => $profGroup) {
+                echo '<div style="margin-top:16px;border:1px solid hsl(var(--border));border-radius:10px;overflow:hidden">';
+                echo '<div style="padding:10px 14px;background:hsla(var(--primary)/.06);font-weight:700;display:flex;justify-content:space-between;align-items:center">';
+                echo '<span>👨‍⚕️ ' . htmlspecialchars($profGroup['name']) . '</span>';
+                echo '<a class="btn" href="/admin_professional_sessions.php?prof_id=' . (int)$profIdKey . '" style="font-size:11px;padding:4px 10px">Abrir profissional</a>';
+                echo '</div>';
+                echo '<div style="overflow:auto"><table><thead><tr><th>Paciente</th><th>Especialidade</th><th>Frequência</th><th>Sessões</th><th>Aprovadas</th><th>Pendentes</th><th>Valor/sessão</th><th>Status</th></tr></thead><tbody>';
+                foreach ($profGroup['rows'] as $sr) {
+                    echo '<tr>';
+                    echo '<td style="font-weight:600">' . htmlspecialchars($sr['patient_name']) . '</td>';
+                    echo '<td style="font-size:12px">' . htmlspecialchars((string)($sr['specialty'] ?? '-')) . '</td>';
+                    echo '<td style="font-size:12px">' . htmlspecialchars((string)($sr['session_frequency'] ?? '-')) . '</td>';
+                    echo '<td>' . (int)$sr['total_sessions'] . '</td>';
+                    echo '<td style="color:#059669;font-weight:600">' . (int)$sr['approved_sessions'] . '</td>';
+                    echo '<td style="color:#d97706;font-weight:600">' . (int)$sr['pending_sessions'] . '</td>';
+                    echo '<td>R$ ' . number_format((float)$sr['value_per_session'], 2, ',', '.') . '</td>';
+                    echo '<td><span style="font-size:11px">' . htmlspecialchars((string)$sr['assignment_status']) . '</span></td>';
+                    echo '</tr>';
+                }
+                echo '</tbody></table></div>';
+                echo '</div>';
+            }
+
+            // Controles de paginação (preserva a operadora selecionada)
+            session_render_pagination($pageOp, $totalPagesOp, function (int $pp) use ($selOperator) {
+                $qs = array_filter(['view' => 'operator', 'operator_id' => $selOperator, 'page' => $pp], fn($v) => $v !== '' && $v !== null);
                 return '/admin_professional_sessions.php?' . http_build_query($qs);
             });
         }
