@@ -84,7 +84,7 @@ echo '<form method="post" action="/monitoramento_desmame_post.php" style="displa
 echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
 
 echo '<div class="grid">';
-echo '<div class="col6"><label>Nova frequência<select name="new_frequency" id="freqSelect" required onchange="desmameRender()">';
+echo '<div class="col6"><label>Nova frequência<select name="new_frequency" id="freqSelect" required>';
 // Usar tabela padronizada
 if (function_exists('frequency_get_options')) {
     $freqOpts = frequency_get_options();
@@ -225,108 +225,106 @@ echo '<button class="btn btnPrimary" type="submit" style="background:#f59e0b">Co
 echo '</div>';
 echo '</form>';
 
-// Comportamento dinâmico por frequência (heredoc para evitar problemas de escape)
-?>
+// Comportamento dinâmico por frequência. Emitido via echo (mesma forma do resto da página).
+echo <<<'JS'
 <script>
-// Funcoes GLOBAIS (chamadas via onchange inline no select e nos radios).
-var DESMAME_SINGLE = ["avaliacao","pontual"];
-var DESMAME_MONTHLY = ["quinzenal","biweekly","mensal","monthly"];
-var DESMAME_DIAS = {1:"Seg",2:"Ter",3:"Qua",4:"Qui",5:"Sex",6:"Sab",7:"Dom"};
-
-function desmameRenderMonthMode(){
-  var mode = document.querySelector(".mm-mode:checked");
-  var m = mode ? mode.value : "fixed_day";
-  var fx = document.getElementById("mmFixedDay");
-  var wp = document.getElementById("mmWeekdayPos");
-  if(fx) fx.style.display = (m === "fixed_day") ? "block" : "none";
-  if(wp) wp.style.display = (m === "weekday_position") ? "block" : "none";
-}
-
-function desmameRender(){
-  var freqSelect = document.getElementById("freqSelect");
-  if(!freqSelect) return;
-  var freq = freqSelect.value;
-  var opt = freqSelect.options[freqSelect.selectedIndex];
-  var weekdays = opt ? (opt.getAttribute("data-weekdays") || "[]") : "[]";
-  var days = [];
-  try { days = JSON.parse(weekdays); } catch(e) { days = []; }
-
-  var fixedBlock = document.getElementById("fixedDaysBlock");
-  var monthBlock = document.getElementById("monthDaysBlock");
-  var singleBlock = document.getElementById("singleSessionBlock");
-  var fixedChips = document.getElementById("fixedDaysChips");
-  var fixedInputs = document.getElementById("fixedDaysInputs");
-  var monthHint = document.getElementById("monthDaysHint");
-  var monthLabel = document.getElementById("monthDaysLabel");
-
-  if(fixedBlock) fixedBlock.style.display = "none";
-  if(monthBlock) monthBlock.style.display = "none";
-  if(singleBlock) singleBlock.style.display = "none";
-  if(fixedInputs) fixedInputs.innerHTML = "";
-
-  if(DESMAME_SINGLE.indexOf(freq) !== -1){
-    if(singleBlock) singleBlock.style.display = "block";
-  } else if(DESMAME_MONTHLY.indexOf(freq) !== -1){
-    if(monthBlock) monthBlock.style.display = "block";
-    var isQuinzenal = (freq === "quinzenal" || freq === "biweekly");
-    var pos2 = document.getElementById("mmWeekdayPos2");
-    if(isQuinzenal){
-      if(monthLabel) monthLabel.textContent = "Quando ocorre (quinzenal - 2x por mes)?";
-      if(monthHint) monthHint.textContent = "Escolha por dia fixo do mes (2 dias) ou por dia da semana (2 ocorrencias).";
-      if(pos2) pos2.style.display = "flex";
-    } else {
-      if(monthLabel) monthLabel.textContent = "Quando ocorre (mensal - 1x por mes)?";
-      if(monthHint) monthHint.textContent = "Escolha por dia fixo do mes (ex.: dia 25) ou por dia da semana (ex.: 1a quinta-feira).";
-      if(pos2) pos2.style.display = "none";
-    }
-    desmameRenderMonthMode();
-  } else if(days.length > 0){
-    if(fixedBlock) fixedBlock.style.display = "block";
-    if(fixedChips) fixedChips.innerHTML = "";
-    days.forEach(function(d){
-      var chip = document.createElement("span");
-      chip.textContent = DESMAME_DIAS[d] || d;
-      chip.style.cssText = "padding:8px 14px;background:hsl(var(--primary));color:#fff;border-radius:8px;font-size:13px;font-weight:700";
-      if(fixedChips) fixedChips.appendChild(chip);
-      var inp = document.createElement("input");
-      inp.type = "hidden"; inp.name = "weekdays[]"; inp.value = d;
-      if(fixedInputs) fixedInputs.appendChild(inp);
-    });
+(function(){
+  var SINGLE = ["avaliacao","pontual"];
+  var MONTHLY = ["quinzenal","biweekly","mensal","monthly"];
+  var DIAS = {1:"Seg",2:"Ter",3:"Qua",4:"Qui",5:"Sex",6:"Sab",7:"Dom"};
+  function g(id){ return document.getElementById(id); }
+  function renderMonthMode(){
+    var mode = document.querySelector(".mm-mode:checked");
+    var m = mode ? mode.value : "fixed_day";
+    var fx = g("mmFixedDay");
+    var wp = g("mmWeekdayPos");
+    if(fx) fx.style.display = (m === "fixed_day") ? "block" : "none";
+    if(wp) wp.style.display = (m === "weekday_position") ? "block" : "none";
   }
-}
-
-// Executa imediatamente (o script fica DEPOIS do HTML dos blocos, entao eles ja existem).
-try { desmameRender(); } catch(e) {}
-// E tambem no DOMContentLoaded, por seguranca.
-document.addEventListener("DOMContentLoaded", function(){
-  try { desmameRender(); } catch(e) {}
-  var mm = document.querySelectorAll(".mm-mode");
-  for(var i=0;i<mm.length;i++){ mm[i].setAttribute("onchange","desmameRenderMonthMode()"); }
-  var form = document.querySelector("form[action='/monitoramento_desmame_post.php']");
-  if(form){
-    form.addEventListener("submit", function(e){
-      var fs = document.getElementById("freqSelect");
-      var freq = fs ? fs.value : "";
-      var errDiv = document.getElementById("weekdaysError");
-      if(errDiv) errDiv.style.display = "none";
-      if(!freq){ e.preventDefault(); if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione a nova frequencia."; } return false; }
-      if(DESMAME_SINGLE.indexOf(freq) !== -1) return true;
-      if(DESMAME_MONTHLY.indexOf(freq) !== -1){
-        var mode = document.querySelector(".mm-mode:checked");
-        var m = mode ? mode.value : "fixed_day";
-        if(m === "fixed_day"){
-          var md = document.querySelectorAll(".md-check:checked").length;
-          var need = (freq === "mensal" || freq === "monthly") ? 1 : 2;
-          if(md < 1){ e.preventDefault(); if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione o(s) dia(s) do mes no calendario (esperado: " + need + ")."; } return false; }
+  function render(){
+    var fs = g("freqSelect");
+    if(!fs) return;
+    var freq = fs.value;
+    var opt = fs.options[fs.selectedIndex];
+    var wd = opt ? (opt.getAttribute("data-weekdays") || "[]") : "[]";
+    var days = [];
+    try { days = JSON.parse(wd); } catch(e) { days = []; }
+    var fixedBlock = g("fixedDaysBlock");
+    var monthBlock = g("monthDaysBlock");
+    var singleBlock = g("singleSessionBlock");
+    var fixedChips = g("fixedDaysChips");
+    var fixedInputs = g("fixedDaysInputs");
+    var monthHint = g("monthDaysHint");
+    var monthLabel = g("monthDaysLabel");
+    if(fixedBlock) fixedBlock.style.display = "none";
+    if(monthBlock) monthBlock.style.display = "none";
+    if(singleBlock) singleBlock.style.display = "none";
+    if(fixedInputs) fixedInputs.innerHTML = "";
+    if(SINGLE.indexOf(freq) !== -1){
+      if(singleBlock) singleBlock.style.display = "block";
+    } else if(MONTHLY.indexOf(freq) !== -1){
+      if(monthBlock) monthBlock.style.display = "block";
+      var isQ = (freq === "quinzenal" || freq === "biweekly");
+      var pos2 = g("mmWeekdayPos2");
+      if(isQ){
+        if(monthLabel) monthLabel.textContent = "Quando ocorre (quinzenal - 2x por mes)?";
+        if(monthHint) monthHint.textContent = "Escolha por dia fixo do mes (2 dias) ou por dia da semana (2 ocorrencias).";
+        if(pos2) pos2.style.display = "flex";
+      } else {
+        if(monthLabel) monthLabel.textContent = "Quando ocorre (mensal - 1x por mes)?";
+        if(monthHint) monthHint.textContent = "Escolha por dia fixo do mes (ex.: dia 25) ou por dia da semana (ex.: 1a quinta-feira).";
+        if(pos2) pos2.style.display = "none";
+      }
+      renderMonthMode();
+    } else if(days.length > 0){
+      if(fixedBlock) fixedBlock.style.display = "block";
+      if(fixedChips) fixedChips.innerHTML = "";
+      days.forEach(function(d){
+        var chip = document.createElement("span");
+        chip.textContent = DIAS[d] || d;
+        chip.style.cssText = "padding:8px 14px;background:hsl(var(--primary));color:#fff;border-radius:8px;font-size:13px;font-weight:700";
+        if(fixedChips) fixedChips.appendChild(chip);
+        var inp = document.createElement("input");
+        inp.type = "hidden"; inp.name = "weekdays[]"; inp.value = d;
+        if(fixedInputs) fixedInputs.appendChild(inp);
+      });
+    }
+  }
+  function init(){
+    var fs = g("freqSelect");
+    if(fs) fs.addEventListener("change", render);
+    var mm = document.querySelectorAll(".mm-mode");
+    for(var i=0;i<mm.length;i++){ mm[i].addEventListener("change", renderMonthMode); }
+    render();
+    var form = document.querySelector("form[action='/monitoramento_desmame_post.php']");
+    if(form){
+      form.addEventListener("submit", function(e){
+        var s = g("freqSelect");
+        var freq = s ? s.value : "";
+        var errDiv = g("weekdaysError");
+        if(errDiv) errDiv.style.display = "none";
+        if(!freq){ e.preventDefault(); if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione a nova frequencia."; } return false; }
+        if(SINGLE.indexOf(freq) !== -1) return true;
+        if(MONTHLY.indexOf(freq) !== -1){
+          var mode = document.querySelector(".mm-mode:checked");
+          var m = mode ? mode.value : "fixed_day";
+          if(m === "fixed_day"){
+            var md = document.querySelectorAll(".md-check:checked").length;
+            if(md < 1){ e.preventDefault(); if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione o(s) dia(s) do mes no calendario."; } return false; }
+          }
         }
         return true;
-      }
-      return true;
-    });
+      });
+    }
   }
-});
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
 </script>
-<?php
+JS;
 
 echo '</section>';
 
