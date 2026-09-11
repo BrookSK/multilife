@@ -133,65 +133,51 @@ view_header('Desmame - Alterar Frequência');
         <div id="fixedDaysInputs"></div>
       </div>
 
-      <!-- (B) Mensal / Quinzenal -->
-      <div id="monthBlock" style="display:none;margin-bottom:16px;border:1px solid hsl(var(--border));border-radius:10px;padding:16px">
-        <label style="font-weight:700;display:block;margin-bottom:6px" id="monthTitle">Quando ocorre no mês?</label>
+      <!-- (B) Mensal / Quinzenal — calendário visual (Opção B) -->
+      <div id="monthBlock" style="display:none;margin-bottom:16px;border:1px solid hsl(var(--border));border-radius:12px;padding:18px;max-width:420px">
+        <label style="font-weight:700;display:block;margin-bottom:4px" id="monthTitle">Escolha a data de início</label>
         <div id="monthHint" style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:14px"></div>
 
-        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
-            <input type="radio" name="month_mode" value="fixed_day" class="mm-mode" checked style="width:auto"> Dia fixo do mês
+        <!-- Cabeçalho do calendário -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button type="button" id="calPrev" style="background:hsla(var(--primary)/.1);color:hsl(var(--primary));border:none;border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:16px;font-weight:700">‹</button>
+          <div id="calMonthLabel" style="font-weight:800;font-size:15px;text-transform:capitalize"></div>
+          <button type="button" id="calNext" style="background:hsla(var(--primary)/.1);color:hsl(var(--primary));border:none;border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:16px;font-weight:700">›</button>
+        </div>
+
+        <!-- Cabeçalho dos dias da semana -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">D</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">S</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">T</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">Q</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">Q</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">S</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:hsl(var(--muted-foreground))">S</div>
+        </div>
+
+        <!-- Grade dos dias (preenchida via JS) -->
+        <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px"></div>
+
+        <!-- Data(s) escolhida(s) -->
+        <div id="calSelected" style="margin-top:12px;font-size:13px;font-weight:600;color:hsl(var(--primary))"></div>
+
+        <!-- Padrão de repetição (aparece após escolher a data) -->
+        <div id="calPattern" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid hsl(var(--border))">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px">Como deve repetir?</div>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:8px">
+            <input type="radio" name="repeat_pattern" value="fixed_day" class="rp-mode" checked style="width:auto;margin-top:3px">
+            <span id="rpFixedLabel">Repetir todo dia X de cada mês</span>
           </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
-            <input type="radio" name="month_mode" value="weekday_position" class="mm-mode" style="width:auto"> Dia da semana (ex.: 1ª quinta-feira)
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+            <input type="radio" name="repeat_pattern" value="weekday_position" class="rp-mode" style="width:auto;margin-top:3px">
+            <span id="rpPosLabel">Repetir na Nª [dia] de cada mês</span>
           </label>
         </div>
 
-        <!-- Modo 1: dia fixo do mês -->
-        <div id="mmFixedDay">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px">Selecione o(s) dia(s) do mês:</div>
-          <div style="display:grid;grid-template-columns:repeat(7,minmax(40px,1fr));gap:6px;max-width:360px">
-            <?php for ($d = 1; $d <= 31; $d++): ?>
-              <label class="mday" style="display:flex;align-items:center;justify-content:center;padding:10px 0;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">
-                <input type="checkbox" name="month_days[]" value="<?= $d ?>" class="md-check" style="display:none"><?= $d ?>
-              </label>
-            <?php endfor; ?>
-          </div>
-        </div>
-
-        <!-- Modo 2: posição + dia da semana -->
-        <div id="mmWeekdayPos" style="display:none">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px">Selecione a semana e o dia:</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-            <select name="week_position[]" style="padding:9px;border:1px solid hsl(var(--border));border-radius:8px;min-width:150px">
-              <option value="1">1ª semana</option>
-              <option value="2">2ª semana</option>
-              <option value="3">3ª semana</option>
-              <option value="4">4ª semana</option>
-              <option value="last">Última semana</option>
-            </select>
-            <select name="week_weekday[]" style="padding:9px;border:1px solid hsl(var(--border));border-radius:8px;min-width:170px">
-              <?php foreach ($diasNome as $wn => $wl): ?>
-                <option value="<?= $wn ?>" <?= ($wn === 4 ? 'selected' : '') ?>><?= h($wl) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div id="mmPos2" style="display:none;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-            <select name="week_position[]" style="padding:9px;border:1px solid hsl(var(--border));border-radius:8px;min-width:150px">
-              <option value="1">1ª semana</option>
-              <option value="2">2ª semana</option>
-              <option value="3" selected>3ª semana</option>
-              <option value="4">4ª semana</option>
-              <option value="last">Última semana</option>
-            </select>
-            <select name="week_weekday[]" style="padding:9px;border:1px solid hsl(var(--border));border-radius:8px;min-width:170px">
-              <?php foreach ($diasNome as $wn => $wl): ?>
-                <option value="<?= $wn ?>" <?= ($wn === 4 ? 'selected' : '') ?>><?= h($wl) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div style="font-size:12px;color:hsl(var(--muted-foreground))">Ex.: "1ª quinta-feira do mês" agenda sempre na primeira quinta-feira de cada mês.</div>
-        </div>
+        <!-- Campos ocultos preenchidos via JS -->
+        <input type="hidden" name="month_mode" id="monthModeInput" value="fixed_day">
+        <div id="monthHiddenInputs"></div>
       </div>
 
       <!-- (C) Sessão única -->
@@ -241,27 +227,155 @@ view_header('Desmame - Alterar Frequência');
   <?php endif; ?>
 </div>
 
-<style>
-.md-check:checked + .mday-num { color:#fff; }
-.mday input.md-check:checked ~ span { }
-label.mday:has(.md-check:checked){ border-color:hsl(var(--primary)) !important; background:hsl(var(--primary)); color:#fff; }
-</style>
-
 <script>
 (function(){
   var SINGLE = ["avaliacao","pontual"];
   var MONTHLY = ["quinzenal","mensal"];
   var DIAS = {1:"Seg",2:"Ter",3:"Qua",4:"Qui",5:"Sex",6:"Sab",7:"Dom"};
+  var MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  var DIASEXT = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
+  var ORDINAL = ["","1ª","2ª","3ª","4ª","5ª"];
 
   function g(id){ return document.getElementById(id); }
 
-  function renderMonthMode(){
-    var checked = document.querySelector('input[name="month_mode"]:checked');
-    var mode = checked ? checked.value : "fixed_day";
-    var fx = g("mmFixedDay");
-    var wp = g("mmWeekdayPos");
-    if(fx) fx.style.display = (mode === "fixed_day") ? "block" : "none";
-    if(wp) wp.style.display = (mode === "weekday_position") ? "block" : "none";
+  // Estado do calendário
+  var calYear, calMonth;                 // mês exibido
+  var selectedDates = [];                // array de "YYYY-MM-DD" (1 no mensal, 2 no quinzenal)
+  var maxDates = 1;                      // 1 para mensal, 2 para quinzenal
+
+  function pad(n){ return (n<10?"0":"")+n; }
+  function ymd(y,m,d){ return y+"-"+pad(m+1)+"-"+pad(d); }
+
+  // Qual ocorrência do dia da semana no mês (1ª, 2ª...) e se é a última
+  function weekdayPosition(dateStr){
+    var parts = dateStr.split("-");
+    var y = +parts[0], m = +parts[1]-1, d = +parts[2];
+    var dt = new Date(y, m, d);
+    var wd = dt.getDay(); // 0=dom..6=sab
+    var nth = Math.floor((d-1)/7) + 1;
+    // última ocorrência?
+    var isLast = (d + 7) > new Date(y, m+1, 0).getDate();
+    return { nth: nth, isLast: isLast, weekday: wd };
+  }
+
+  function renderCalendar(){
+    var grid = g("calGrid");
+    var lbl = g("calMonthLabel");
+    if(!grid || !lbl) return;
+    lbl.textContent = MESES[calMonth] + " de " + calYear;
+    grid.innerHTML = "";
+    var firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=dom
+    var daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    var todayStr = (function(){ var t=new Date(); return ymd(t.getFullYear(), t.getMonth(), t.getDate()); })();
+    // espaços vazios antes do dia 1
+    for(var i=0;i<firstDay;i++){
+      var empty = document.createElement("div");
+      grid.appendChild(empty);
+    }
+    for(var d=1; d<=daysInMonth; d++){
+      var cell = document.createElement("button");
+      cell.type = "button";
+      cell.textContent = d;
+      var ds = ymd(calYear, calMonth, d);
+      var isSel = selectedDates.indexOf(ds) !== -1;
+      var isPast = ds < todayStr;
+      cell.style.cssText = "padding:9px 0;border-radius:8px;border:1px solid transparent;cursor:pointer;font-size:14px;font-weight:600;background:"
+        + (isSel ? "hsl(var(--primary));color:#fff" : (isPast ? "transparent;color:hsl(var(--muted-foreground));opacity:.45" : "hsla(var(--primary)/.06);color:hsl(var(--foreground))"));
+      (function(dstr, past){
+        cell.addEventListener("click", function(){
+          if(past) return; // não deixa escolher passado
+          toggleDate(dstr);
+        });
+      })(ds, isPast);
+      grid.appendChild(cell);
+    }
+  }
+
+  function toggleDate(ds){
+    var idx = selectedDates.indexOf(ds);
+    if(idx !== -1){
+      selectedDates.splice(idx,1);
+    } else {
+      if(selectedDates.length >= maxDates){
+        selectedDates.shift(); // remove a mais antiga se passou do limite
+      }
+      selectedDates.push(ds);
+      selectedDates.sort();
+    }
+    renderCalendar();
+    renderSelectedInfo();
+    buildHiddenInputs();
+  }
+
+  function fmtBR(ds){
+    var p = ds.split("-");
+    return p[2]+"/"+p[1]+"/"+p[0];
+  }
+
+  function renderSelectedInfo(){
+    var sel = g("calSelected");
+    var pat = g("calPattern");
+    if(!sel) return;
+    if(selectedDates.length === 0){
+      sel.textContent = "";
+      if(pat) pat.style.display = "none";
+      return;
+    }
+    var txt = selectedDates.map(fmtBR).join("  •  ");
+    sel.textContent = "Selecionado: " + txt;
+
+    // Padrão de repetição (baseado na 1ª data escolhida)
+    if(pat){
+      pat.style.display = "block";
+      var first = selectedDates[0];
+      var dayNum = +first.split("-")[2];
+      var pos = weekdayPosition(first);
+      var posTxt = pos.isLast ? "última" : (ORDINAL[pos.nth] || (pos.nth+"ª"));
+      var fixedLbl = g("rpFixedLabel");
+      var posLbl = g("rpPosLabel");
+      if(fixedLbl) fixedLbl.textContent = "Repetir todo dia " + dayNum + " de cada mês";
+      if(posLbl) posLbl.textContent = "Repetir na " + posTxt + " " + DIASEXT[pos.weekday] + " de cada mês";
+    }
+    buildHiddenInputs();
+  }
+
+  function buildHiddenInputs(){
+    var box = g("monthHiddenInputs");
+    var modeInput = g("monthModeInput");
+    if(!box) return;
+    box.innerHTML = "";
+    var pattern = document.querySelector('input[name="repeat_pattern"]:checked');
+    var mode = pattern ? pattern.value : "fixed_day";
+    if(modeInput) modeInput.value = mode;
+
+    if(mode === "fixed_day"){
+      // envia os dias do mês (1 ou 2)
+      selectedDates.forEach(function(ds){
+        var day = +ds.split("-")[2];
+        var inp = document.createElement("input");
+        inp.type="hidden"; inp.name="month_days[]"; inp.value=day;
+        box.appendChild(inp);
+      });
+    } else {
+      // envia posição + dia da semana para cada data escolhida
+      selectedDates.forEach(function(ds){
+        var pos = weekdayPosition(ds);
+        var posVal = pos.isLast ? "last" : String(pos.nth);
+        var wdVal = pos.weekday === 0 ? 7 : pos.weekday; // converte dom=0 -> 7
+        var ip = document.createElement("input");
+        ip.type="hidden"; ip.name="week_position[]"; ip.value=posVal;
+        box.appendChild(ip);
+        var iw = document.createElement("input");
+        iw.type="hidden"; iw.name="week_weekday[]"; iw.value=wdVal;
+        box.appendChild(iw);
+      });
+    }
+    // também guardar a primeira data como referência
+    if(selectedDates.length > 0){
+      var ref = document.createElement("input");
+      ref.type="hidden"; ref.name="start_date_ref"; ref.value=selectedDates[0];
+      box.appendChild(ref);
+    }
   }
 
   function render(){
@@ -289,19 +403,19 @@ label.mday:has(.md-check:checked){ border-color:hsl(var(--primary)) !important; 
     } else if(MONTHLY.indexOf(freq) !== -1){
       if(monthBlock) monthBlock.style.display = "block";
       var isQ = (freq === "quinzenal");
-      var pos2 = g("mmPos2");
+      maxDates = isQ ? 2 : 1;
+      selectedDates = []; // reseta ao trocar
       var title = g("monthTitle");
       var hint = g("monthHint");
       if(isQ){
-        if(title) title.textContent = "Quando ocorre (Quinzenal - 2x por mes)?";
-        if(hint) hint.textContent = "Escolha por dia fixo do mes (2 dias) ou por dia da semana (2 ocorrencias, ex.: 1a e 3a quinta-feira).";
-        if(pos2) pos2.style.display = "flex";
+        if(title) title.textContent = "Quinzenal — escolha 2 datas no mês";
+        if(hint) hint.textContent = "Clique em 2 dias no calendário (ex.: dia 5 e dia 20). O padrão se repete todo mês.";
       } else {
-        if(title) title.textContent = "Quando ocorre (Mensal - 1x por mes)?";
-        if(hint) hint.textContent = "Escolha por dia fixo do mes (ex.: dia 25) ou por dia da semana (ex.: 1a quinta-feira).";
-        if(pos2) pos2.style.display = "none";
+        if(title) title.textContent = "Mensal — escolha a data";
+        if(hint) hint.textContent = "Clique no dia do calendário. Depois escolha se repete pelo dia do mês ou pela posição (ex.: 1ª quinta-feira).";
       }
-      renderMonthMode();
+      renderCalendar();
+      renderSelectedInfo();
     } else if(days.length > 0){
       if(fixedBlock) fixedBlock.style.display = "block";
       if(fixedChips) fixedChips.innerHTML = "";
@@ -318,10 +432,21 @@ label.mday:has(.md-check:checked){ border-color:hsl(var(--primary)) !important; 
   }
 
   function init(){
+    var now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth();
+
     var fs = g("freqSelect");
     if(fs) fs.addEventListener("change", render);
-    var modes = document.querySelectorAll('input[name="month_mode"]');
-    for(var i=0;i<modes.length;i++){ modes[i].addEventListener("change", renderMonthMode); }
+
+    var prev = g("calPrev");
+    var next = g("calNext");
+    if(prev) prev.addEventListener("click", function(){ calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderCalendar(); });
+    if(next) next.addEventListener("click", function(){ calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderCalendar(); });
+
+    var rps = document.querySelectorAll('input[name="repeat_pattern"]');
+    for(var i=0;i<rps.length;i++){ rps[i].addEventListener("change", buildHiddenInputs); }
+
     render();
 
     var form = document.querySelector('form[action="/monitoramento_desmame_post.php"]');
@@ -334,12 +459,13 @@ label.mday:has(.md-check:checked){ border-color:hsl(var(--primary)) !important; 
         if(!freq){ e.preventDefault(); if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione a nova frequencia."; } return false; }
         if(SINGLE.indexOf(freq) !== -1) return true;
         if(MONTHLY.indexOf(freq) !== -1){
-          var checked = document.querySelector('input[name="month_mode"]:checked');
-          var mode = checked ? checked.value : "fixed_day";
-          if(mode === "fixed_day"){
-            var md = document.querySelectorAll(".md-check:checked").length;
-            if(md < 1){ e.preventDefault(); if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione o(s) dia(s) do mes no calendario."; } return false; }
+          var need = (freq === "quinzenal") ? 2 : 1;
+          if(selectedDates.length < need){
+            e.preventDefault();
+            if(errDiv){ errDiv.style.display="block"; errDiv.textContent="Selecione " + need + " data(s) no calendário."; }
+            return false;
           }
+          buildHiddenInputs();
         }
         return true;
       });
