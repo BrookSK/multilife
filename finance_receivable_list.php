@@ -15,6 +15,10 @@ if (!in_array($tab, $allowedTabs, true)) {
     $tab = 'pendentes';
 }
 
+// ITEM 12: Filtro por período (intervalo de datas sobre entry_date)
+$dateFrom = isset($_GET['date_from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET['date_from']) ? (string)$_GET['date_from'] : '';
+$dateTo = isset($_GET['date_to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET['date_to']) ? (string)$_GET['date_to'] : '';
+
 // Definir status baseado na aba
 $status = ($tab === 'pendentes') ? 'pendente' : 'recebido';
 
@@ -49,44 +53,106 @@ $sql = 'SELECT fe.id, fe.amount,
 
 $params = [];
 
+// Cláusula WHERE compartilhada (aba + busca + período), aplicada na listagem.
+$whereExtra = '';
 if ($status === 'recebido') {
-    $sql .= ' AND fe.status = "paid"';
+    $whereExtra .= ' AND fe.status = "paid"';
 } elseif ($status === 'pendente') {
-    $sql .= ' AND fe.status = "pending"';
+    $whereExtra .= ' AND fe.status = "pending"';
 }
 
 if ($q !== '') {
-    $sql .= ' AND (p.full_name LIKE :q1 OR u.name LIKE :q2 OR fe.description LIKE :q3)';
+    $whereExtra .= ' AND (p.full_name LIKE :q1 OR u.name LIKE :q2 OR fe.description LIKE :q3)';
     $qLike = '%' . $q . '%';
     $params['q1'] = $qLike;
     $params['q2'] = $qLike;
     $params['q3'] = $qLike;
 }
 
-// ITEM 16: Calcular resumo financeiro com AGREGAÇÃO (todos os registros, não só a página)
-$sumSql = preg_replace(
-    '/^SELECT .*? FROM financial_entries/is',
-    "SELECT
-        SUM(CASE WHEN fe.status = 'pendente' THEN fe.amount ELSE 0 END) AS total_pendente,
-        SUM(CASE WHEN fe.status = 'recebido' THEN fe.amount ELSE 0 END) AS total_recebido,
-        SUM(CASE WHEN fe.status = 'pendente' THEN 1 ELSE 0 END) AS qtd_pendente,
-        SUM(CASE WHEN fe.status = 'recebido' THEN 1 ELSE 0 END) AS qtd_recebido,
-        COUNT(*) AS total_count
-     FROM financial_entries",
-    $sql,
-    1
+if ($dateFrom !== '') {
+    $whereExtra .= ' AND fe.entry_date >= :date_from';
+    $params['date_from'] = $dateFrom;
+}
+if ($dateTo !== '') {
+    $whereExtra .= ' AND fe.entry_date <= :date_to';
+    $params['date_to'] = $dateTo;
+}
+
+$sql .= $whereExtra;
+
+// Resumo financeiro: calculado sobre TODOS os registros filtrados por busca/período
+// (independe da aba, mostra sempre pendente + recebido do universo filtrado).
+// CORREÇÃO ITEM 12: usa fe.status = 'pending'/'paid' (valores reais da coluna, em inglês).
+$summaryWhere = '';
+$summaryParams = [];
+if ($q !== '') {
+    $summaryWhere .= ' AND (p.full_name LIKE :q1 OR u.name LIKE :q2 OR fe.description LIKE :q3)';
+    $summaryParams['q1'] = '%' . $q . '%';
+    $summaryParams['q2'] = '%' . $q . '%';
+    $summaryParams['q3'] = '%' . $q . '%';
+}
+if ($dateFrom !== '') {
+    $summaryWhere .= ' AND fe.entry_date >= :date_from';
+    $summaryParams['date_from'] = $dateFrom;
+}
+if ($dateTo !== '') {
+    $summaryWhere .= ' AND fe.entry_date <= :date_to';
+    $summaryParams['date_to'] = $dateTo;
+}
+$sumStmt = db()->prepare(
+    'SELECT
+        COALESCE(SUM(CASE WHEN fe.status = "pending" THEN fe.amount ELSE 0 END), 0) AS total_pendente,
+        COALESCE(SUM(CASE WHEN fe.status = "paid" THEN fe.amount ELSE 0 END), 0) AS total_recebido,
+        SUM(CASE WHEN fe.status = "pending" THEN 1 ELSE 0 END) AS qtd_pendente,
+        SUM(CASE WHEN fe.status = "paid" THEN 1 ELSE 0 END) AS qtd_recebido
+     FROM financial_entries fe
+     LEFT JOIN patients p ON p.id = fe.patient_id
+     LEFT JOIN users u ON u.id = fe.professional_user_id
+     WHERE fe.entry_type = "income" AND fe.is_active = 1' . $summaryWhere
 );
-$sumStmt = db()->prepare($sumSql);
-$sumStmt->execute($params);
+$sumStmt->execute($summaryParams);
 $sumRow = $sumStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 $totalPendente = (float)($sumRow['total_pendente'] ?? 0);
 $totalRecebido = (float)($sumRow['total_recebido'] ?? 0);
 $qtdPendente = (int)($sumRow['qtd_pendente'] ?? 0);
 $qtdRecebido = (int)($sumRow['qtd_recebido'] ?? 0);
-$totalRows = (int)($sumRow['total_count'] ?? 0);
 
 $totalGeral = $totalPendente + $totalRecebido;
 $qtdGeral = $qtdPendente + $qtdRecebido;
+
+// Contagem total para paginação (respeita aba + busca + período)
+$countSql = 'SELECT COUNT(*)
+    FROM financial_entries fe
+    LEFT JOIN patients p ON p.id = fe.patient_id
+    LEFT JOIN users u ON u.id = fe.professional_user_id
+    LEFT JOIN patient_assignments pa ON pa.id = fe.assignment_id
+    LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+    WHERE fe.entry_type = "income" AND fe.is_active = 1' . $whereExtra;
+$countStmt = db()->prepare($countSql);
+$countStmt->execute($params);
+$totalRows = (int)$countStmt->fetchColumn();
+
+// ITEM 12: Série mensal (últimos 12 meses) de receitas recebidas x a receber
+$chartLabels = [];
+$chartRecebido = [];
+$chartPendente = [];
+try {
+    $serieStmt = db()->query("
+        SELECT DATE_FORMAT(fe.entry_date, '%Y-%m') AS mes,
+               COALESCE(SUM(CASE WHEN fe.status = 'paid' THEN fe.amount ELSE 0 END), 0) AS recebido,
+               COALESCE(SUM(CASE WHEN fe.status = 'pending' THEN fe.amount ELSE 0 END), 0) AS pendente
+        FROM financial_entries fe
+        WHERE fe.entry_type = 'income' AND fe.is_active = 1
+          AND fe.entry_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+        GROUP BY DATE_FORMAT(fe.entry_date, '%Y-%m')
+        ORDER BY mes ASC
+    ");
+    foreach ($serieStmt->fetchAll(PDO::FETCH_ASSOC) as $srow) {
+        $chartLabels[] = date('m/Y', strtotime($srow['mes'] . '-01'));
+        $chartRecebido[] = round((float)$srow['recebido'], 2);
+        $chartPendente[] = round((float)$srow['pendente'], 2);
+    }
+} catch (Throwable $e) {}
 
 // Paginação
 $page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
@@ -153,12 +219,14 @@ foreach ($tabs as $tabKey => $tabLabel) {
 echo '</div>';
 echo '</div>';
 
-// Formulário de busca
-echo '<form method="get" action="/finance_receivable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+// Formulário de busca + filtro por período (item 12)
+echo '<form method="get" action="/finance_receivable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
 echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (paciente/descrição/categoria)" style="flex:1;min-width:240px">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (paciente/descrição/categoria)" style="flex:1;min-width:220px">';
+echo '<input type="date" name="date_from" value="' . h($dateFrom) . '" title="Data inicial (De)">';
+echo '<input type="date" name="date_to" value="' . h($dateTo) . '" title="Data final (Até)">';
 echo '<button class="btn" type="submit">Buscar</button>';
-if ($q !== '') {
+if ($q !== '' || $dateFrom !== '' || $dateTo !== '') {
     echo '<a class="btn" href="/finance_receivable_list.php?tab=' . h($tab) . '">Limpar</a>';
 }
 echo '</form>';
@@ -208,6 +276,17 @@ echo '</div>';
 echo '</div>';
 
 echo '</div>';
+echo '</section>';
+
+// ITEM 12: Gráficos de Contas a Receber
+echo '<section class="card col8" style="padding:24px">';
+echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Receitas por Mês (últimos 12 meses)</div>';
+echo '<div style="position:relative;height:300px"><canvas id="receivableChart"></canvas></div>';
+echo '</section>';
+
+echo '<section class="card col4" style="padding:24px">';
+echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Recebido x A Receber</div>';
+echo '<div style="position:relative;height:300px"><canvas id="receivableDonut"></canvas></div>';
 echo '</section>';
 
 echo '<section class="card col12">';
@@ -315,5 +394,45 @@ if ($totalPages > 1) {
 echo '</section>';
 
 echo '</div>';
+
+// ITEM 12: Gráficos com Chart.js (hospedado localmente)
+echo '<script src="/vendor_chart.min.js"></script>';
+echo '<script>';
+echo 'var _rcLabels = ' . json_encode($chartLabels) . ';';
+echo 'var _rcRecebido = ' . json_encode($chartRecebido) . ';';
+echo 'var _rcPendente = ' . json_encode($chartPendente) . ';';
+echo 'var _rcDonut = ' . json_encode([round($totalRecebido, 2), round($totalPendente, 2)]) . ';';
+echo 'function _brl(v){ return "R$ " + Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2}); }';
+echo 'document.addEventListener("DOMContentLoaded", function(){';
+echo '  if(typeof Chart === "undefined") return;';
+echo '  var el = document.getElementById("receivableChart");';
+echo '  if(el){';
+echo '    new Chart(el, {';
+echo '      type: "bar",';
+echo '      data: { labels: _rcLabels, datasets: [';
+echo '        { label: "Recebido", data: _rcRecebido, backgroundColor: "rgba(16,185,129,0.8)", borderRadius: 4 },';
+echo '        { label: "A Receber", data: _rcPendente, backgroundColor: "rgba(59,130,246,0.8)", borderRadius: 4 }';
+echo '      ]},';
+echo '      options: { responsive: true, maintainAspectRatio: false,';
+echo '        plugins: { legend: { position: "top" }, tooltip: { callbacks: { label: function(c){ return c.dataset.label + ": " + _brl(c.parsed.y); } } } },';
+echo '        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: function(v){ return "R$ " + v.toLocaleString("pt-BR"); } } } }';
+echo '      }';
+echo '    });';
+echo '  }';
+echo '  var dn = document.getElementById("receivableDonut");';
+echo '  if(dn){';
+echo '    var _t = _rcDonut.reduce(function(a,b){return a+b;},0);';
+echo '    new Chart(dn, {';
+echo '      type: "doughnut",';
+echo '      data: { labels: ["Recebido","A Receber"], datasets: [';
+echo '        { data: _rcDonut, backgroundColor: ["rgba(16,185,129,0.85)","rgba(59,130,246,0.85)"], borderWidth: 0 }';
+echo '      ]},';
+echo '      options: { responsive: true, maintainAspectRatio: false, cutout: "60%",';
+echo '        plugins: { legend: { position: "bottom" }, tooltip: { callbacks: { label: function(c){ var p = _t>0 ? (c.parsed/_t*100).toFixed(1) : "0"; return c.label + ": " + _brl(c.parsed) + " (" + p + "%)"; } } } }';
+echo '      }';
+echo '    });';
+echo '  }';
+echo '});';
+echo '</script>';
 
 view_footer();

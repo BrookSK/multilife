@@ -15,6 +15,10 @@ if (!in_array($tab, $allowedTabs, true)) {
     $tab = 'pendentes';
 }
 
+// ITEM 12: Filtro por período (intervalo de datas sobre entry_date)
+$dateFrom = isset($_GET['date_from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET['date_from']) ? (string)$_GET['date_from'] : '';
+$dateTo = isset($_GET['date_to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET['date_to']) ? (string)$_GET['date_to'] : '';
+
 // Definir status baseado na aba
 $status = ($tab === 'pendentes') ? 'pendente' : 'pago';
 
@@ -64,6 +68,15 @@ if ($q !== '') {
     $params['q3'] = $qLike;
 }
 
+if ($dateFrom !== '') {
+    $whereExtra .= ' AND fe.entry_date >= :date_from';
+    $params['date_from'] = $dateFrom;
+}
+if ($dateTo !== '') {
+    $whereExtra .= ' AND fe.entry_date <= :date_to';
+    $params['date_to'] = $dateTo;
+}
+
 $sql .= $whereExtra;
 
 // ITEM 16: Paginação no backend
@@ -95,10 +108,18 @@ $rows = $stmt->fetchAll();
 $summaryWhere = '';
 $summaryParams = [];
 if ($q !== '') {
-    $summaryWhere = ' AND (u.name LIKE :q1 OR fe.description LIKE :q2 OR p.full_name LIKE :q3)';
+    $summaryWhere .= ' AND (u.name LIKE :q1 OR fe.description LIKE :q2 OR p.full_name LIKE :q3)';
     $summaryParams['q1'] = '%' . $q . '%';
     $summaryParams['q2'] = '%' . $q . '%';
     $summaryParams['q3'] = '%' . $q . '%';
+}
+if ($dateFrom !== '') {
+    $summaryWhere .= ' AND fe.entry_date >= :date_from';
+    $summaryParams['date_from'] = $dateFrom;
+}
+if ($dateTo !== '') {
+    $summaryWhere .= ' AND fe.entry_date <= :date_to';
+    $summaryParams['date_to'] = $dateTo;
 }
 $sumStmt = db()->prepare(
     'SELECT
@@ -121,9 +142,31 @@ $qtdPago = (int)($sumRow['qtd_pago'] ?? 0);
 $totalGeral = $totalPendente + $totalPago;
 $qtdGeral = $qtdPendente + $qtdPago;
 
-// Helper para preservar filtros (aba + busca) nos links de paginação
-$buildPageUrl = function (int $p) use ($tab, $q): string {
-    $qs = array_filter(['tab' => $tab, 'q' => $q, 'page' => $p], fn($v) => $v !== '' && $v !== null);
+// ITEM 12: Série mensal (últimos 12 meses) de despesas pagas x a pagar
+$chartLabels = [];
+$chartPago = [];
+$chartPendente = [];
+try {
+    $serieStmt = db()->query("
+        SELECT DATE_FORMAT(fe.entry_date, '%Y-%m') AS mes,
+               COALESCE(SUM(CASE WHEN fe.status = 'paid' THEN fe.amount ELSE 0 END), 0) AS pago,
+               COALESCE(SUM(CASE WHEN fe.status = 'pending' THEN fe.amount ELSE 0 END), 0) AS pendente
+        FROM financial_entries fe
+        WHERE fe.entry_type = 'expense' AND fe.is_active = 1
+          AND fe.entry_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+        GROUP BY DATE_FORMAT(fe.entry_date, '%Y-%m')
+        ORDER BY mes ASC
+    ");
+    foreach ($serieStmt->fetchAll(PDO::FETCH_ASSOC) as $srow) {
+        $chartLabels[] = date('m/Y', strtotime($srow['mes'] . '-01'));
+        $chartPago[] = round((float)$srow['pago'], 2);
+        $chartPendente[] = round((float)$srow['pendente'], 2);
+    }
+} catch (Throwable $e) {}
+
+// Helper para preservar filtros (aba + busca + período) nos links de paginação
+$buildPageUrl = function (int $p) use ($tab, $q, $dateFrom, $dateTo): string {
+    $qs = array_filter(['tab' => $tab, 'q' => $q, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'page' => $p], fn($v) => $v !== '' && $v !== null);
     return '/finance_payable_list.php?' . http_build_query($qs);
 };
 
@@ -174,12 +217,14 @@ foreach ($tabs as $tabKey => $tabLabel) {
 echo '</div>';
 echo '</div>';
 
-// Formulário de busca
-echo '<form method="get" action="/finance_payable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">';
+// Formulário de busca + filtro por período (item 12)
+echo '<form method="get" action="/finance_payable_list.php" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">';
 echo '<input type="hidden" name="tab" value="' . h($tab) . '">';
-echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (fornecedor/descrição/categoria)" style="flex:1;min-width:240px">';
+echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (fornecedor/descrição/categoria)" style="flex:1;min-width:220px">';
+echo '<input type="date" name="date_from" value="' . h($dateFrom) . '" title="Data inicial (De)">';
+echo '<input type="date" name="date_to" value="' . h($dateTo) . '" title="Data final (Até)">';
 echo '<button class="btn" type="submit">Buscar</button>';
-if ($q !== '') {
+if ($q !== '' || $dateFrom !== '' || $dateTo !== '') {
     echo '<a class="btn" href="/finance_payable_list.php?tab=' . h($tab) . '">Limpar</a>';
 }
 echo '</form>';
@@ -229,6 +274,17 @@ echo '</div>';
 echo '</div>';
 
 echo '</div>';
+echo '</section>';
+
+// ITEM 12: Gráficos de Contas a Pagar
+echo '<section class="card col8" style="padding:24px">';
+echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Despesas por Mês (últimos 12 meses)</div>';
+echo '<div style="position:relative;height:300px"><canvas id="payableChart"></canvas></div>';
+echo '</section>';
+
+echo '<section class="card col4" style="padding:24px">';
+echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Pago x A Pagar</div>';
+echo '<div style="position:relative;height:300px"><canvas id="payableDonut"></canvas></div>';
 echo '</section>';
 
 echo '<section class="card col12">';
@@ -333,5 +389,45 @@ if ($totalPages > 1) {
 echo '</section>';
 
 echo '</div>';
+
+// ITEM 12: Gráficos com Chart.js (hospedado localmente)
+echo '<script src="/vendor_chart.min.js"></script>';
+echo '<script>';
+echo 'var _pcLabels = ' . json_encode($chartLabels) . ';';
+echo 'var _pcPago = ' . json_encode($chartPago) . ';';
+echo 'var _pcPendente = ' . json_encode($chartPendente) . ';';
+echo 'var _pcDonut = ' . json_encode([round($totalPago, 2), round($totalPendente, 2)]) . ';';
+echo 'function _brl(v){ return "R$ " + Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2}); }';
+echo 'document.addEventListener("DOMContentLoaded", function(){';
+echo '  if(typeof Chart === "undefined") return;';
+echo '  var el = document.getElementById("payableChart");';
+echo '  if(el){';
+echo '    new Chart(el, {';
+echo '      type: "bar",';
+echo '      data: { labels: _pcLabels, datasets: [';
+echo '        { label: "Pago", data: _pcPago, backgroundColor: "rgba(16,185,129,0.8)", borderRadius: 4 },';
+echo '        { label: "A Pagar", data: _pcPendente, backgroundColor: "rgba(220,38,38,0.8)", borderRadius: 4 }';
+echo '      ]},';
+echo '      options: { responsive: true, maintainAspectRatio: false,';
+echo '        plugins: { legend: { position: "top" }, tooltip: { callbacks: { label: function(c){ return c.dataset.label + ": " + _brl(c.parsed.y); } } } },';
+echo '        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: function(v){ return "R$ " + v.toLocaleString("pt-BR"); } } } }';
+echo '      }';
+echo '    });';
+echo '  }';
+echo '  var dn = document.getElementById("payableDonut");';
+echo '  if(dn){';
+echo '    var _t = _pcDonut.reduce(function(a,b){return a+b;},0);';
+echo '    new Chart(dn, {';
+echo '      type: "doughnut",';
+echo '      data: { labels: ["Pago","A Pagar"], datasets: [';
+echo '        { data: _pcDonut, backgroundColor: ["rgba(16,185,129,0.85)","rgba(220,38,38,0.85)"], borderWidth: 0 }';
+echo '      ]},';
+echo '      options: { responsive: true, maintainAspectRatio: false, cutout: "60%",';
+echo '        plugins: { legend: { position: "bottom" }, tooltip: { callbacks: { label: function(c){ var p = _t>0 ? (c.parsed/_t*100).toFixed(1) : "0"; return c.label + ": " + _brl(c.parsed) + " (" + p + "%)"; } } } }';
+echo '      }';
+echo '    });';
+echo '  }';
+echo '});';
+echo '</script>';
 
 view_footer();
