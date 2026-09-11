@@ -655,3 +655,140 @@ function view_footer(): void
     echo '</body>';
     echo '</html>';
 }
+
+// ============================================================================
+// ITEM 12: Helpers de gráficos em SVG renderizados no servidor.
+// Independem de JavaScript/CDN — sempre aparecem, com os dados fornecidos.
+// ============================================================================
+if (!function_exists('svg_money_fmt')) {
+    function svg_money_fmt(float $v): string {
+        return 'R$ ' . number_format($v, 2, ',', '.');
+    }
+}
+
+/**
+ * Gráfico de barras agrupadas (uma ou mais séries) em SVG.
+ * @param array $labels rótulos do eixo X
+ * @param array $series [ ['name'=>string,'color'=>string,'data'=>float[]], ... ]
+ */
+if (!function_exists('svg_bar_chart')) {
+    function svg_bar_chart(array $labels, array $series, int $height = 300): string {
+        $n = count($labels);
+        if ($n === 0) {
+            return '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Sem dados no período</div>';
+        }
+        $max = 0.0;
+        foreach ($series as $s) {
+            foreach ($s['data'] as $v) { if ((float)$v > $max) { $max = (float)$v; } }
+        }
+        if ($max <= 0) { $max = 1.0; }
+
+        $padL = 70; $padR = 16; $padT = 16; $padB = 46;
+        $w = max(560, $n * 70);
+        $plotW = $w - $padL - $padR;
+        $plotH = $height - $padT - $padB;
+        $groupW = $plotW / $n;
+        $nSeries = count($series);
+        $barW = ($groupW * 0.62) / max(1, $nSeries);
+
+        $svg = '<svg viewBox="0 0 ' . $w . ' ' . $height . '" width="100%" height="' . $height . '" preserveAspectRatio="xMinYMin meet" font-family="inherit">';
+
+        for ($i = 0; $i <= 4; $i++) {
+            $yv = $max * $i / 4;
+            $y = $padT + $plotH - ($plotH * $i / 4);
+            $svg .= '<line x1="' . $padL . '" y1="' . round($y, 1) . '" x2="' . ($w - $padR) . '" y2="' . round($y, 1) . '" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>';
+            $svg .= '<text x="' . ($padL - 8) . '" y="' . round($y + 4, 1) . '" text-anchor="end" font-size="10" fill="#6b7280">R$ ' . number_format($yv, 0, ',', '.') . '</text>';
+        }
+
+        for ($i = 0; $i < $n; $i++) {
+            $groupX = $padL + $groupW * $i;
+            $si = 0;
+            foreach ($series as $s) {
+                $val = (float)($s['data'][$i] ?? 0);
+                $bh = ($val / $max) * $plotH;
+                $bx = $groupX + ($groupW * 0.19) + $si * $barW;
+                $by = $padT + $plotH - $bh;
+                $svg .= '<rect x="' . round($bx, 1) . '" y="' . round($by, 1) . '" width="' . round($barW - 2, 1) . '" height="' . round($bh, 1) . '" fill="' . $s['color'] . '" rx="2">';
+                $svg .= '<title>' . htmlspecialchars($s['name'] . ': ' . svg_money_fmt($val), ENT_QUOTES) . '</title>';
+                $svg .= '</rect>';
+                $si++;
+            }
+            $lx = $groupX + $groupW / 2;
+            $svg .= '<text x="' . round($lx, 1) . '" y="' . ($height - 24) . '" text-anchor="middle" font-size="10" fill="#6b7280">' . htmlspecialchars((string)$labels[$i], ENT_QUOTES) . '</text>';
+        }
+
+        $svg .= '</svg>';
+
+        $leg = '<div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:8px">';
+        foreach ($series as $s) {
+            $leg .= '<div style="display:flex;align-items:center;gap:6px;font-size:12px">';
+            $leg .= '<span style="width:12px;height:12px;border-radius:3px;background:' . $s['color'] . ';display:inline-block"></span>';
+            $leg .= htmlspecialchars($s['name'], ENT_QUOTES);
+            $leg .= '</div>';
+        }
+        $leg .= '</div>';
+
+        return '<div style="overflow-x:auto">' . $svg . '</div>' . $leg;
+    }
+}
+
+/**
+ * Gráfico de rosca (doughnut) em SVG.
+ * @param array $items [ ['label'=>string,'value'=>float,'color'=>string], ... ]
+ */
+if (!function_exists('svg_donut_chart')) {
+    function svg_donut_chart(array $items, int $size = 240): string {
+        $total = 0.0;
+        foreach ($items as $it) { $total += (float)$it['value']; }
+
+        $cx = $size / 2; $cy = $size / 2;
+        $r = $size / 2 - 8; $inner = $r * 0.6;
+        $svg = '<svg viewBox="0 0 ' . $size . ' ' . $size . '" width="' . $size . '" height="' . $size . '" font-family="inherit">';
+
+        if ($total <= 0) {
+            $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . round(($r + $inner) / 2, 1) . '" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="' . round($r - $inner, 1) . '"/>';
+            $svg .= '<text x="' . $cx . '" y="' . ($cy + 4) . '" text-anchor="middle" font-size="12" fill="#6b7280">Sem dados</text>';
+            $svg .= '</svg>';
+            return '<div style="display:flex;justify-content:center">' . $svg . '</div>';
+        }
+
+        $angle = -M_PI / 2;
+        foreach ($items as $it) {
+            $val = (float)$it['value'];
+            if ($val <= 0) { continue; }
+            $frac = $val / $total;
+            $a2 = $angle + $frac * 2 * M_PI;
+            $x1 = $cx + $r * cos($angle); $y1 = $cy + $r * sin($angle);
+            $x2 = $cx + $r * cos($a2);    $y2 = $cy + $r * sin($a2);
+            $ix2 = $cx + $inner * cos($a2); $iy2 = $cy + $inner * sin($a2);
+            $ix1 = $cx + $inner * cos($angle); $iy1 = $cy + $inner * sin($angle);
+            $large = ($frac > 0.5) ? 1 : 0;
+            $d = 'M ' . round($x1, 2) . ' ' . round($y1, 2)
+               . ' A ' . round($r, 2) . ' ' . round($r, 2) . ' 0 ' . $large . ' 1 ' . round($x2, 2) . ' ' . round($y2, 2)
+               . ' L ' . round($ix2, 2) . ' ' . round($iy2, 2)
+               . ' A ' . round($inner, 2) . ' ' . round($inner, 2) . ' 0 ' . $large . ' 0 ' . round($ix1, 2) . ' ' . round($iy1, 2)
+               . ' Z';
+            $pct = number_format($frac * 100, 1) . '%';
+            $svg .= '<path d="' . $d . '" fill="' . $it['color'] . '">';
+            $svg .= '<title>' . htmlspecialchars($it['label'] . ': ' . svg_money_fmt($val) . ' (' . $pct . ')', ENT_QUOTES) . '</title>';
+            $svg .= '</path>';
+            $angle = $a2;
+        }
+        $svg .= '<text x="' . $cx . '" y="' . ($cy - 2) . '" text-anchor="middle" font-size="11" fill="#6b7280">Total</text>';
+        $svg .= '<text x="' . $cx . '" y="' . ($cy + 14) . '" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">' . htmlspecialchars(svg_money_fmt($total), ENT_QUOTES) . '</text>';
+        $svg .= '</svg>';
+
+        $leg = '<div style="display:grid;gap:6px;margin-top:12px">';
+        foreach ($items as $it) {
+            $val = (float)$it['value'];
+            $pct = $total > 0 ? number_format($val / $total * 100, 1) . '%' : '0%';
+            $leg .= '<div style="display:flex;align-items:center;justify-content:space-between;font-size:12px">';
+            $leg .= '<span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:' . $it['color'] . ';display:inline-block"></span>' . htmlspecialchars($it['label'], ENT_QUOTES) . '</span>';
+            $leg .= '<span style="font-weight:600">' . htmlspecialchars(svg_money_fmt($val), ENT_QUOTES) . ' <span style="color:#6b7280;font-weight:400">(' . $pct . ')</span></span>';
+            $leg .= '</div>';
+        }
+        $leg .= '</div>';
+
+        return '<div style="display:flex;justify-content:center">' . $svg . '</div>' . $leg;
+    }
+}

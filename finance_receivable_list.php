@@ -278,15 +278,25 @@ echo '</div>';
 echo '</div>';
 echo '</section>';
 
-// ITEM 12: Gráficos de Contas a Receber
+// ITEM 12: Gráficos de Contas a Receber (SVG no servidor)
 echo '<section class="card col8" style="padding:24px">';
 echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Receitas por Mês (últimos 12 meses)</div>';
-echo '<div style="position:relative;height:300px"><canvas id="receivableChart"></canvas></div>';
+echo svg_bar_chart(
+    $chartLabels,
+    [
+        ['name' => 'Recebido', 'color' => '#10b981', 'data' => $chartRecebido],
+        ['name' => 'A Receber', 'color' => '#3b82f6', 'data' => $chartPendente],
+    ],
+    300
+);
 echo '</section>';
 
 echo '<section class="card col4" style="padding:24px">';
 echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Recebido x A Receber</div>';
-echo '<div style="position:relative;height:300px"><canvas id="receivableDonut"></canvas></div>';
+echo svg_donut_chart([
+    ['label' => 'Recebido', 'value' => $totalRecebido, 'color' => '#10b981'],
+    ['label' => 'A Receber', 'value' => $totalPendente, 'color' => '#3b82f6'],
+], 220);
 echo '</section>';
 
 echo '<section class="card col12">';
@@ -394,45 +404,5 @@ if ($totalPages > 1) {
 echo '</section>';
 
 echo '</div>';
-
-// ITEM 12: Gráficos com Chart.js (hospedado localmente)
-echo '<script src="/vendor_chart.min.js"></script>';
-echo '<script>';
-echo 'var _rcLabels = ' . json_encode($chartLabels) . ';';
-echo 'var _rcRecebido = ' . json_encode($chartRecebido) . ';';
-echo 'var _rcPendente = ' . json_encode($chartPendente) . ';';
-echo 'var _rcDonut = ' . json_encode([round($totalRecebido, 2), round($totalPendente, 2)]) . ';';
-echo 'function _brl(v){ return "R$ " + Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2}); }';
-echo 'document.addEventListener("DOMContentLoaded", function(){';
-echo '  if(typeof Chart === "undefined") return;';
-echo '  var el = document.getElementById("receivableChart");';
-echo '  if(el){';
-echo '    new Chart(el, {';
-echo '      type: "bar",';
-echo '      data: { labels: _rcLabels, datasets: [';
-echo '        { label: "Recebido", data: _rcRecebido, backgroundColor: "rgba(16,185,129,0.8)", borderRadius: 4 },';
-echo '        { label: "A Receber", data: _rcPendente, backgroundColor: "rgba(59,130,246,0.8)", borderRadius: 4 }';
-echo '      ]},';
-echo '      options: { responsive: true, maintainAspectRatio: false,';
-echo '        plugins: { legend: { position: "top" }, tooltip: { callbacks: { label: function(c){ return c.dataset.label + ": " + _brl(c.parsed.y); } } } },';
-echo '        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: function(v){ return "R$ " + v.toLocaleString("pt-BR"); } } } }';
-echo '      }';
-echo '    });';
-echo '  }';
-echo '  var dn = document.getElementById("receivableDonut");';
-echo '  if(dn){';
-echo '    var _t = _rcDonut.reduce(function(a,b){return a+b;},0);';
-echo '    new Chart(dn, {';
-echo '      type: "doughnut",';
-echo '      data: { labels: ["Recebido","A Receber"], datasets: [';
-echo '        { data: _rcDonut, backgroundColor: ["rgba(16,185,129,0.85)","rgba(59,130,246,0.85)"], borderWidth: 0 }';
-echo '      ]},';
-echo '      options: { responsive: true, maintainAspectRatio: false, cutout: "60%",';
-echo '        plugins: { legend: { position: "bottom" }, tooltip: { callbacks: { label: function(c){ var p = _t>0 ? (c.parsed/_t*100).toFixed(1) : "0"; return c.label + ": " + _brl(c.parsed) + " (" + p + "%)"; } } } }';
-echo '      }';
-echo '    });';
-echo '  }';
-echo '});';
-echo '</script>';
 
 view_footer();

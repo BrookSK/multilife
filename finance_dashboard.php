@@ -426,16 +426,28 @@ echo '</form>';
 
 echo '</section>';
 
-// ITEM 12: Gráfico de evolução (Receitas x Despesas - últimos 12 meses)
+// ITEM 12: Gráfico de evolução (Receitas x Despesas - últimos 12 meses) - SVG no servidor
 echo '<section class="card col8" style="padding:24px">';
 echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Evolução Financeira (últimos 12 meses)</div>';
-echo '<div style="position:relative;height:320px"><canvas id="financeChart"></canvas></div>';
+echo svg_bar_chart(
+    $chartData['labels'],
+    [
+        ['name' => 'Receitas', 'color' => '#10b981', 'data' => $chartData['income']],
+        ['name' => 'Despesas', 'color' => '#dc2626', 'data' => $chartData['expense']],
+    ],
+    300
+);
 echo '</section>';
 
-// ITEM 12: Gráfico de composição financeira (rosca) - respeita filtros do período
+// ITEM 12: Gráfico de composição financeira (rosca) - respeita filtros do período - SVG no servidor
 echo '<section class="card col4" style="padding:24px">';
 echo '<div style="font-size:16px;font-weight:800;margin-bottom:16px">Composição no Período</div>';
-echo '<div style="position:relative;height:320px"><canvas id="financeDonut"></canvas></div>';
+echo svg_donut_chart([
+    ['label' => 'Recebido', 'value' => $statusChart['recebido'], 'color' => '#10b981'],
+    ['label' => 'Pago', 'value' => $statusChart['pago'], 'color' => '#dc2626'],
+    ['label' => 'A Receber', 'value' => $statusChart['a_receber'], 'color' => '#3b82f6'],
+    ['label' => 'A Pagar', 'value' => $statusChart['a_pagar'], 'color' => '#f59e0b'],
+], 220);
 echo '</section>';
 
 // Cards principais - Linha 1
@@ -712,46 +724,5 @@ if (empty($centrosComDados)) {
 echo '</section>';
 
 echo '</div>';
-
-// ITEM 12: Gráfico com Chart.js (hospedado localmente para não depender de CDN externo)
-echo '<script src="/vendor_chart.min.js"></script>';
-echo '<script>';
-echo 'var _fcLabels = ' . json_encode($chartData['labels']) . ';';
-echo 'var _fcIncome = ' . json_encode($chartData['income']) . ';';
-echo 'var _fcExpense = ' . json_encode($chartData['expense']) . ';';
-echo 'var _fdDonut = ' . json_encode(array_values($statusChart)) . ';';
-echo 'function _brl(v){ return "R$ " + Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2}); }';
-echo 'document.addEventListener("DOMContentLoaded", function(){';
-echo '  if(typeof Chart === "undefined") return;';
-echo '  var el = document.getElementById("financeChart");';
-echo '  if(el){';
-echo '    new Chart(el, {';
-echo '      type: "bar",';
-echo '      data: { labels: _fcLabels, datasets: [';
-echo '        { label: "Receitas", data: _fcIncome, backgroundColor: "rgba(16,185,129,0.7)", borderRadius: 4 },';
-echo '        { label: "Despesas", data: _fcExpense, backgroundColor: "rgba(220,38,38,0.7)", borderRadius: 4 }';
-echo '      ]},';
-echo '      options: { responsive: true, maintainAspectRatio: false,';
-echo '        plugins: { legend: { position: "top" }, tooltip: { callbacks: { label: function(c){ return c.dataset.label + ": " + _brl(c.parsed.y); } } } },';
-echo '        scales: { y: { beginAtZero: true, ticks: { callback: function(v){ return "R$ " + v.toLocaleString("pt-BR"); } } } }';
-echo '      }';
-echo '    });';
-echo '  }';
-echo '  var dn = document.getElementById("financeDonut");';
-echo '  if(dn){';
-echo '    var _dnTotal = _fdDonut.reduce(function(a,b){return a+b;},0);';
-echo '    new Chart(dn, {';
-echo '      type: "doughnut",';
-echo '      data: { labels: ["Recebido","Pago","A Receber","A Pagar"], datasets: [';
-echo '        { data: _fdDonut, backgroundColor: ["rgba(16,185,129,0.85)","rgba(220,38,38,0.85)","rgba(59,130,246,0.85)","rgba(245,158,11,0.85)"], borderWidth: 0 }';
-echo '      ]},';
-echo '      options: { responsive: true, maintainAspectRatio: false, cutout: "60%",';
-echo '        plugins: { legend: { position: "bottom" },';
-echo '          tooltip: { callbacks: { label: function(c){ var p = _dnTotal>0 ? (c.parsed/_dnTotal*100).toFixed(1) : "0"; return c.label + ": " + _brl(c.parsed) + " (" + p + "%)"; } } } }';
-echo '      }';
-echo '    });';
-echo '  }';
-echo '});';
-echo '</script>';
 
 view_footer();
