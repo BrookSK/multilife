@@ -45,6 +45,11 @@ switch ($period) {
         break;
 }
 
+// Fallback de segurança: nunca deixar o filtro vazio (evita SQL inválido)
+if ($dateFilter === '') {
+    $dateFilter = '1=1';
+}
+
 $baseWhere = [$dateFilter];
 $params = [];
 
@@ -90,6 +95,11 @@ switch ($period) {
     case 'custom':
         $dateFilterFinancial = "DATE(fe.entry_date) BETWEEN " . db()->quote($dateFrom) . " AND " . db()->quote($dateTo);
         break;
+}
+
+// Fallback de segurança: nunca deixar o filtro vazio (evita SQL inválido)
+if ($dateFilterFinancial === '') {
+    $dateFilterFinancial = '1=1';
 }
 
 // Receitas (income): tudo que foi aprovado no faturamento
@@ -219,6 +229,18 @@ switch ($period) {
     case 'year':
         $previousDateFilter = 'YEAR(pa.created_at) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 YEAR))';
         break;
+    case 'custom':
+        // Período anterior = mesmo número de dias imediatamente antes de $dateFrom
+        $diasIntervalo = (int)((strtotime($dateTo) - strtotime($dateFrom)) / 86400) + 1;
+        $prevTo = date('Y-m-d', strtotime($dateFrom . ' -1 day'));
+        $prevFrom = date('Y-m-d', strtotime($prevTo . ' -' . ($diasIntervalo - 1) . ' day'));
+        $previousDateFilter = "DATE(pa.created_at) BETWEEN " . db()->quote($prevFrom) . " AND " . db()->quote($prevTo);
+        break;
+}
+
+// Fallback de segurança: nunca deixar o filtro de período anterior vazio
+if ($previousDateFilter === '') {
+    $previousDateFilter = '1=1';
 }
 
 $previousWhere = array_merge([$previousDateFilter], array_slice($baseWhere, 1));
