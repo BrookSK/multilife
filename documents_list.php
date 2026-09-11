@@ -355,7 +355,32 @@ if ($tab === 'patients') {
         $stmt->execute();
     }
     $entities = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} elseif ($tab === 'professionals') {
+    // Lista TODOS os profissionais (role 'profissional'), mesmo os que ainda não têm documentos.
+    // A contagem de documentos vem por subconsulta (0 quando não houver), permitindo localizar
+    // o profissional para então fazer o primeiro upload.
+    $sql = "
+        SELECT u.id, u.name,
+               (SELECT COUNT(*) FROM documents d WHERE d.entity_type = 'professional' AND d.entity_id = u.id AND d.status = 'active') as document_count
+        FROM users u
+        INNER JOIN user_roles ur ON ur.user_id = u.id
+        INNER JOIN roles r ON r.id = ur.role_id
+        WHERE r.slug = 'profissional' AND u.status = 'active'
+    ";
+
+    $params = [];
+    if ($searchQuery !== '') {
+        $sql .= " AND u.name LIKE ?";
+        $params[] = '%' . $searchQuery . '%';
+    }
+
+    $sql .= " GROUP BY u.id, u.name ORDER BY u.name ASC";
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $entities = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } else {
+    // Funcionários (company) e demais: mantém a lista consolidada por quem já tem documentos.
     $sql = "
         SELECT DISTINCT u.id, u.name,
                (SELECT COUNT(*) FROM documents d WHERE d.entity_type = ? AND d.entity_id = u.id AND d.status = 'active') as document_count
