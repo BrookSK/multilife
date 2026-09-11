@@ -159,6 +159,54 @@ try {
             'ended_at2' => $endedAt,
             'pid' => $patientId,
         ]);
+
+        // Concluir as demandas/cards vinculados ao paciente (via patient_assignments.demand_id).
+        // O card deve migrar para "Concluídos" e o status real da demanda passar a ser 'concluido'
+        // (antes ficava 'admitido', causando divergência entre a coluna do kanban e o badge do card).
+        $demandRows = [];
+        try {
+            $q = $db->prepare("
+                SELECT DISTINCT d.id, d.status
+                FROM demands d
+                INNER JOIN patient_assignments pa ON pa.demand_id = d.id
+                WHERE pa.patient_id = :pid
+            ");
+            $q->execute(['pid' => $patientId]);
+            $demandRows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            $demandRows = [];
+        }
+
+        if (!empty($demandRows)) {
+            $updDemand = $db->prepare("UPDATE demands SET status = 'concluido' WHERE id = :id");
+            $logDemand = null;
+            try {
+                $logDemand = $db->prepare("
+                    INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)
+                    VALUES (:did, :os, 'concluido', :uid, :note)
+                ");
+            } catch (Throwable $e) {
+                $logDemand = null;
+            }
+            $logNote = 'Concluído automaticamente por óbito do paciente (evento clínico: ' . $eventType . ')';
+            foreach ($demandRows as $dr) {
+                $oldStatus = (string)($dr['status'] ?? '');
+                if ($oldStatus === 'concluido' || $oldStatus === 'cancelado') {
+                    continue; // não sobrescreve cards já concluídos/cancelados
+                }
+                $updDemand->execute(['id' => (int)$dr['id']]);
+                if ($logDemand !== null) {
+                    try {
+                        $logDemand->execute([
+                            'did' => (int)$dr['id'],
+                            'os' => $oldStatus !== '' ? $oldStatus : null,
+                            'uid' => auth_user_id(),
+                            'note' => $logNote,
+                        ]);
+                    } catch (Throwable $e) {}
+                }
+            }
+        }
     }
 
     $db->commit();

@@ -11,7 +11,7 @@ $id = (int)($_POST['id'] ?? 0);
 $newStatus = (string)($_POST['status'] ?? '');
 $note = trim((string)($_POST['note'] ?? ''));
 
-$allowed = ['aguardando_captacao','tratamento_manual','em_captacao','admitido','cancelado'];
+$allowed = ['aguardando_captacao','tratamento_manual','em_captacao','admitido','concluido','cancelado'];
 if (!in_array($newStatus, $allowed, true)) {
     flash_set('error', 'Status inválido.');
     header('Location: /demands_view.php?id=' . $id);

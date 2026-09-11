@@ -57,6 +57,31 @@ $stmt = db()->prepare(
 $stmt->execute(['pid' => $id]);
 $entries = $stmt->fetchAll();
 
+// Eventos clínicos do paciente (óbito, alta, internação, etc.) - item óbito no prontuário
+$clinicalEvents = [];
+try {
+    $ceStmt = db()->prepare(
+        'SELECT ev.event_type, ev.event_date, ev.event_time, ev.notes, ev.created_at, u.name AS created_by_name
+         FROM patient_clinical_events ev
+         LEFT JOIN users u ON u.id = ev.created_by_user_id
+         WHERE ev.patient_id = :pid
+         ORDER BY ev.event_date DESC, ev.event_time DESC, ev.id DESC'
+    );
+    $ceStmt->execute(['pid' => $id]);
+    $clinicalEvents = $ceStmt->fetchAll();
+} catch (Throwable $e) {
+    $clinicalEvents = [];
+}
+
+// Rótulos amigáveis dos tipos de evento (para exibição do motivo)
+$clinicalEventLabels = ['internacao' => 'Internação', 'obito' => 'Óbito', 'alta' => 'Alta', 'retorno' => 'Retorno', 'transferencia' => 'Transferência', 'outro' => 'Outro'];
+try {
+    $lblRows = db()->query("SELECT slug, name FROM clinical_event_types")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($lblRows as $lr) {
+        $clinicalEventLabels[(string)$lr['slug']] = (string)$lr['name'];
+    }
+} catch (Throwable $e) {}
+
 $stmt = db()->prepare(
     'SELECT u.id, u.name, u.email, pp.specialty, pp.is_active
      FROM patient_professionals pp
@@ -456,6 +481,36 @@ if ($canManage) {
 }
 echo '</div>';
 echo '</div>';
+
+// Destaque de ÓBITO no prontuário (data, horário, motivo e observação registrados no evento clínico)
+$obitoEvent = null;
+foreach ($clinicalEvents as $ev) {
+    if ((string)$ev['event_type'] === 'obito') { $obitoEvent = $ev; break; }
+}
+if ($obitoEvent !== null) {
+    $obDataFmt = $obitoEvent['event_date'] ? date('d/m/Y', strtotime((string)$obitoEvent['event_date'])) : '-';
+    $obHoraFmt = !empty($obitoEvent['event_time']) ? substr((string)$obitoEvent['event_time'], 0, 5) : '-';
+    $obNotes = trim((string)($obitoEvent['notes'] ?? ''));
+    $obMotivo = $clinicalEventLabels['obito'] ?? 'Óbito';
+
+    echo '<div style="margin:10px 0 16px;padding:16px 18px;background:hsla(var(--destructive)/.07);border:1px solid hsla(var(--destructive)/.30);border-radius:12px">';
+    echo '<div style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;color:hsl(var(--destructive));margin-bottom:10px">⚰️ Óbito registrado</div>';
+    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 24px;font-size:14px">';
+    echo '<div><span style="color:hsl(var(--muted-foreground))">Data do óbito:</span><br><strong>' . h($obDataFmt) . '</strong></div>';
+    echo '<div><span style="color:hsl(var(--muted-foreground))">Horário do óbito:</span><br><strong>' . h($obHoraFmt) . '</strong></div>';
+    echo '<div><span style="color:hsl(var(--muted-foreground))">Motivo:</span><br><strong>' . h($obMotivo) . '</strong></div>';
+    if (!empty($obitoEvent['created_by_name'])) {
+        echo '<div><span style="color:hsl(var(--muted-foreground))">Registrado por:</span><br><strong>' . h((string)$obitoEvent['created_by_name']) . '</strong></div>';
+    }
+    echo '</div>';
+    if ($obNotes !== '') {
+        echo '<div style="margin-top:12px;padding-top:12px;border-top:1px solid hsla(var(--destructive)/.20)">';
+        echo '<div style="color:hsl(var(--muted-foreground));font-size:13px;margin-bottom:4px">Observação:</div>';
+        echo '<div style="white-space:pre-wrap;line-height:1.6;font-size:14px">' . h($obNotes) . '</div>';
+        echo '</div>';
+    }
+    echo '</div>';
+}
 echo '<style>';
 echo '.prontuario-notes{max-width:400px;white-space:pre-wrap;word-wrap:break-word;line-height:1.5}';
 echo '.prontuario-notes-preview{cursor:pointer;color:#00a884;text-decoration:underline}';
