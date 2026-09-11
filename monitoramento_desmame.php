@@ -199,9 +199,9 @@ view_header('Desmame - Alterar Frequência');
       </div>
       <?php endif; ?>
 
-      <div style="display:flex;gap:10px;justify-content:flex-end">
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid hsl(var(--border))">
         <a class="btn" href="/monitoramento.php">Cancelar</a>
-        <button class="btn btnPrimary" type="submit" style="background:#f59e0b">Confirmar Desmame</button>
+        <button class="btn btnPrimary" type="submit">✓ Confirmar alteração</button>
       </div>
     </form>
   </section>
@@ -324,17 +324,29 @@ view_header('Desmame - Alterar Frequência');
     var txt = selectedDates.map(fmtBR).join("  •  ");
     sel.textContent = "Selecionado: " + txt;
 
-    // Padrão de repetição (baseado na 1ª data escolhida)
+    // Padrão de repetição (considera TODAS as datas escolhidas — 1 no mensal, 2 no quinzenal)
     if(pat){
-      pat.style.display = "block";
-      var first = selectedDates[0];
-      var dayNum = +first.split("-")[2];
-      var pos = weekdayPosition(first);
-      var posTxt = pos.isLast ? "última" : (ORDINAL[pos.nth] || (pos.nth+"ª"));
-      var fixedLbl = g("rpFixedLabel");
-      var posLbl = g("rpPosLabel");
-      if(fixedLbl) fixedLbl.textContent = "Repetir todo dia " + dayNum + " de cada mês";
-      if(posLbl) posLbl.textContent = "Repetir na " + posTxt + " " + DIASEXT[pos.weekday] + " de cada mês";
+      // Só mostra as opções de padrão quando já escolheu a quantidade certa de datas
+      if(selectedDates.length < maxDates){
+        pat.style.display = "none";
+      } else {
+        pat.style.display = "block";
+        var fixedLbl = g("rpFixedLabel");
+        var posLbl = g("rpPosLabel");
+
+        // Texto do "dia fixo do mês": lista os dias (ex.: "dia 11 e dia 25")
+        var dayNums = selectedDates.map(function(ds){ return +ds.split("-")[2]; });
+        var fixedTxt = dayNums.map(function(n){ return "dia " + n; }).join(" e ");
+        if(fixedLbl) fixedLbl.textContent = "Repetir todo " + fixedTxt + " de cada mês";
+
+        // Texto da "posição + dia da semana": lista cada ocorrência (ex.: "2ª sexta-feira e 4ª sexta-feira")
+        var posParts = selectedDates.map(function(ds){
+          var pos = weekdayPosition(ds);
+          var posTxt = pos.isLast ? "última" : (ORDINAL[pos.nth] || (pos.nth+"ª"));
+          return posTxt + " " + DIASEXT[pos.weekday];
+        });
+        if(posLbl) posLbl.textContent = "Repetir na " + posParts.join(" e na ") + " de cada mês";
+      }
     }
     buildHiddenInputs();
   }
