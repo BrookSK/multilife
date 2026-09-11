@@ -15,8 +15,10 @@ $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 // Garantir coluna is_test_professional (fallback)
 try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+// Garantir coluna professional_type (antigo/novo) - fallback
+try { db()->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
 
-$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status, is_test_professional FROM users WHERE id = :id');
+$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status, is_test_professional, professional_type FROM users WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $user = $stmt->fetch();
 
@@ -66,12 +68,22 @@ echo '<option value="active"' . ($st === 'active' ? ' selected' : '') . '>active
 echo '<option value="inactive"' . ($st === 'inactive' ? ' selected' : '') . '>inactive</option>';
 echo '</select></label>';
 
+// Tipo de profissional (antigo/novo) - usado para gerenciar envio de documentos
+$profType = (string)($user['professional_type'] ?? 'new');
+echo '<label>Tipo de profissional<select name="professional_type">';
+echo '<option value="new"' . ($profType === 'new' ? ' selected' : '') . '>Profissional novo</option>';
+echo '<option value="legacy"' . ($profType === 'legacy' ? ' selected' : '') . '>Profissional antigo</option>';
+echo '</select><span class="helpText">Define se o profissional é novo ou antigo. Usado no envio de documentos específicos para cada grupo.</span></label>';
+
 // Marcar como profissional de teste (usado no modo de teste da captação)
 $isTest = (int)($user['is_test_professional'] ?? 0) === 1;
-echo '<label style="display:flex;align-items:center;gap:8px;padding:12px;background:hsla(var(--warning)/.08);border-radius:8px;cursor:pointer">';
-echo '<input type="checkbox" name="is_test_professional" value="1"' . ($isTest ? ' checked' : '') . ' style="width:auto">';
-echo '<span><strong>Profissional de teste</strong><br><span style="font-size:12px;color:hsl(var(--muted-foreground))">Quando o modo de teste da captação estiver ativo, apenas profissionais marcados aqui serão adicionados aos grupos.</span></span>';
+echo '<div style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;background:hsla(var(--warning)/.08);border:1px solid hsla(var(--warning)/.25);border-radius:10px">';
+echo '<input type="checkbox" id="is_test_professional" name="is_test_professional" value="1"' . ($isTest ? ' checked' : '') . '>';
+echo '<label for="is_test_professional" style="display:block;cursor:pointer;font-weight:400;gap:0">';
+echo '<span style="font-weight:700;font-size:14px">Profissional de teste</span><br>';
+echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.5">Quando o modo de teste da captação estiver ativo, apenas profissionais marcados aqui serão adicionados aos grupos.</span>';
 echo '</label>';
+echo '</div>';
 
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
 echo '<a class="btn" href="' . $_backUrl . '">Cancelar</a>';

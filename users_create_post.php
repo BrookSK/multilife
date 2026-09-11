@@ -13,6 +13,13 @@ $phoneRaw = trim((string)($_POST['phone'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
+$professionalType = (string)($_POST['professional_type'] ?? 'new');
+if (!in_array($professionalType, ['new', 'legacy'], true)) {
+    $professionalType = 'new';
+}
+
+// Garantir coluna professional_type (fallback)
+try { db()->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
 
 $phone = null;
 if ($phoneRaw !== '') {
@@ -62,7 +69,7 @@ if ($stmt->fetch()) {
 }
 
 $hash = password_hash($password, PASSWORD_BCRYPT);
-$stmt = db()->prepare('INSERT INTO users (name, email, phone, specialty, password_hash, status) VALUES (:name, :email, :phone, :specialty, :hash, :status)');
+$stmt = db()->prepare('INSERT INTO users (name, email, phone, specialty, password_hash, status, professional_type) VALUES (:name, :email, :phone, :specialty, :hash, :status, :prof_type)');
 $stmt->execute([
     'name' => $name,
     'email' => $email,
@@ -70,10 +77,11 @@ $stmt->execute([
     'specialty' => $specialty !== '' ? $specialty : null,
     'hash' => $hash,
     'status' => $status,
+    'prof_type' => $professionalType,
 ]);
 
 $id = (string)db()->lastInsertId();
-audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status]);
+audit_log('create', 'users', $id, null, ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status, 'professional_type' => $professionalType]);
 
 // Atribuir role selecionada no formulário
 $selectedRoles = [];

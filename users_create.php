@@ -50,6 +50,10 @@ echo '<label>Status<select name="status">';
 echo '<option value="active">active</option>';
 echo '<option value="inactive">inactive</option>';
 echo '</select></label>';
+echo '<label>Tipo de profissional<select name="professional_type">';
+echo '<option value="new">Profissional novo</option>';
+echo '<option value="legacy">Profissional antigo</option>';
+echo '</select><span class="helpText">Define se o profissional é novo ou antigo. Usado no envio de documentos específicos para cada grupo.</span></label>';
 
 // Seção de Perfis/Roles
 echo '<div style="margin-top:8px;padding:16px;border:1px solid hsl(var(--border));border-radius:8px;background:hsla(var(--primary)/.03)">';

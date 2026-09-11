@@ -15,9 +15,14 @@ $specialty = trim((string)($_POST['specialty'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $status = (string)($_POST['status'] ?? 'active');
 $isTestProfessional = isset($_POST['is_test_professional']) && (string)$_POST['is_test_professional'] === '1' ? 1 : 0;
+$professionalType = (string)($_POST['professional_type'] ?? 'new');
+if (!in_array($professionalType, ['new', 'legacy'], true)) {
+    $professionalType = 'new';
+}
 
 // Garantir coluna (fallback)
 try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+try { db()->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
 
 $phone = null;
 if ($phoneRaw !== '') {
@@ -80,14 +85,14 @@ db()->beginTransaction();
 try {
     if ($password !== '') {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test, password_hash = :hash WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'hash' => $hash, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test, professional_type = :prof_type, password_hash = :hash WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'prof_type' => $professionalType, 'hash' => $hash, 'id' => $id]);
     } else {
-        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test WHERE id = :id');
-        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'id' => $id]);
+        $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test, professional_type = :prof_type WHERE id = :id');
+        $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'prof_type' => $professionalType, 'id' => $id]);
     }
 
-    $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status];
+    $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status, 'professional_type' => $professionalType];
 
     audit_log('update', 'users', (string)$id, $old, $new);
 
