@@ -24,6 +24,42 @@ if (!$d) {
     exit;
 }
 
+// Status EFETIVO do card: se existe atendimento vinculado já concluído (ex.: por óbito),
+// o card é considerado "Concluído", igual à lógica da coluna do kanban (demands_list.php).
+// Isso alinha o badge de detalhe com a coluna e corrige também cards antigos.
+try {
+    $paDoneStmt = db()->prepare(
+        "SELECT COUNT(*) FROM patient_assignments pa WHERE pa.demand_id = :id AND pa.status = 'completed'"
+    );
+    $paDoneStmt->execute(['id' => $id]);
+    $hasCompletedAssignment = ((int)$paDoneStmt->fetchColumn() > 0);
+} catch (Throwable $e) {
+    $hasCompletedAssignment = false;
+}
+if ($hasCompletedAssignment && (string)$d['status'] !== 'cancelado') {
+    // Autocorreção: se o status real ficou defasado (ex.: 'admitido'), grava 'concluido'
+    // para que o histórico e futuras leituras fiquem consistentes.
+    if ((string)$d['status'] !== 'concluido') {
+        try {
+            $fixStmt = db()->prepare("UPDATE demands SET status = 'concluido' WHERE id = :id");
+            $fixStmt->execute(['id' => $id]);
+            try {
+                $fixLog = db()->prepare(
+                    "INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note)
+                     VALUES (:did, :os, 'concluido', :uid, :note)"
+                );
+                $fixLog->execute([
+                    'did' => $id,
+                    'os' => (string)$d['status'],
+                    'uid' => auth_user_id(),
+                    'note' => 'Ajuste automático: atendimento vinculado já concluído (óbito/encerramento).',
+                ]);
+            } catch (Throwable $e) {}
+        } catch (Throwable $e) {}
+        $d['status'] = 'concluido';
+    }
+}
+
 $stmt = db()->prepare(
     'SELECT l.id, l.old_status, l.new_status, l.note, l.created_at, u.name AS user_name
      FROM demand_status_logs l
@@ -103,7 +139,7 @@ echo '<div style="font-size:22px;font-weight:900">#' . (int)$d['id'] . ' — ' .
 
 $st = (string)$d['status'];
 $badgeCls = 'badgeInfo';
-if ($st === 'admitido') {
+if ($st === 'admitido' || $st === 'concluido') {
     $badgeCls = 'badgeSuccess';
 } elseif ($st === 'em_captacao' || $st === 'tratamento_manual') {
     $badgeCls = 'badgeWarn';
