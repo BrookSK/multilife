@@ -163,16 +163,20 @@ view_header('Desmame - Alterar Frequência');
         <div id="calSelected" style="margin-top:12px;font-size:13px;font-weight:600;color:hsl(var(--primary))"></div>
 
         <!-- Padrão de repetição (aparece após escolher a data) -->
-        <div id="calPattern" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid hsl(var(--border))">
-          <div style="font-size:13px;font-weight:700;margin-bottom:8px">Como deve repetir?</div>
-          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:8px">
-            <input type="radio" name="repeat_pattern" value="fixed_day" class="rp-mode" checked style="width:auto;margin-top:3px">
-            <span id="rpFixedLabel">Repetir todo dia X de cada mês</span>
-          </label>
-          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
-            <input type="radio" name="repeat_pattern" value="weekday_position" class="rp-mode" style="width:auto;margin-top:3px">
-            <span id="rpPosLabel">Repetir na Nª [dia] de cada mês</span>
-          </label>
+        <div id="calPattern" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid hsl(var(--border))">
+          <div style="font-size:13px;font-weight:700;margin-bottom:10px">Como deve repetir?</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <label class="rp-card" data-selected="1">
+              <input type="radio" name="repeat_pattern" value="fixed_day" class="rp-mode" checked>
+              <span class="rp-dot"></span>
+              <span class="rp-text" id="rpFixedLabel">Repetir todo dia X de cada mês</span>
+            </label>
+            <label class="rp-card" data-selected="0">
+              <input type="radio" name="repeat_pattern" value="weekday_position" class="rp-mode">
+              <span class="rp-dot"></span>
+              <span class="rp-text" id="rpPosLabel">Repetir na Nª [dia] de cada mês</span>
+            </label>
+          </div>
         </div>
 
         <!-- Campos ocultos preenchidos via JS -->
@@ -226,6 +230,30 @@ view_header('Desmame - Alterar Frequência');
   </section>
   <?php endif; ?>
 </div>
+
+<style>
+.rp-card{
+  display:flex;align-items:center;gap:12px;cursor:pointer;
+  padding:14px 16px;border:1.5px solid hsl(var(--border));border-radius:10px;
+  background:hsl(var(--card,0 0% 100%));transition:border-color .15s, background .15s, box-shadow .15s;
+}
+.rp-card:hover{ border-color:hsl(var(--primary)/.5); background:hsla(var(--primary)/.04); }
+.rp-card input.rp-mode{ position:absolute;opacity:0;width:0;height:0; }
+.rp-card .rp-dot{
+  flex:0 0 auto;width:20px;height:20px;border-radius:50%;
+  border:2px solid hsl(var(--border));position:relative;transition:border-color .15s;
+}
+.rp-card .rp-text{ font-size:14px;font-weight:600;color:hsl(var(--foreground)); }
+.rp-card[data-selected="1"]{
+  border-color:hsl(var(--primary));background:hsla(var(--primary)/.08);
+  box-shadow:0 0 0 3px hsla(var(--primary)/.12);
+}
+.rp-card[data-selected="1"] .rp-dot{ border-color:hsl(var(--primary)); }
+.rp-card[data-selected="1"] .rp-dot::after{
+  content:"";position:absolute;inset:3px;border-radius:50%;background:hsl(var(--primary));
+}
+.rp-card[data-selected="1"] .rp-text{ color:hsl(var(--primary)); }
+</style>
 
 <script>
 (function(){
@@ -331,6 +359,7 @@ view_header('Desmame - Alterar Frequência');
         pat.style.display = "none";
       } else {
         pat.style.display = "block";
+        updateRpCards();
         var fixedLbl = g("rpFixedLabel");
         var posLbl = g("rpPosLabel");
 
@@ -349,6 +378,14 @@ view_header('Desmame - Alterar Frequência');
       }
     }
     buildHiddenInputs();
+  }
+
+  function updateRpCards(){
+    var cards = document.querySelectorAll(".rp-card");
+    for(var i=0;i<cards.length;i++){
+      var radio = cards[i].querySelector('input.rp-mode');
+      cards[i].setAttribute("data-selected", (radio && radio.checked) ? "1" : "0");
+    }
   }
 
   function buildHiddenInputs(){
@@ -457,7 +494,9 @@ view_header('Desmame - Alterar Frequência');
     if(next) next.addEventListener("click", function(){ calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderCalendar(); });
 
     var rps = document.querySelectorAll('input[name="repeat_pattern"]');
-    for(var i=0;i<rps.length;i++){ rps[i].addEventListener("change", buildHiddenInputs); }
+    for(var i=0;i<rps.length;i++){
+      rps[i].addEventListener("change", function(){ updateRpCards(); buildHiddenInputs(); });
+    }
 
     render();
 
