@@ -105,6 +105,39 @@ try {
     $stmtPending->execute(['aid' => $assignmentId]);
     $pendingSessions = $stmtPending->fetchAll();
 
+    // Quantidade ALVO de sessões futuras. Se o usuário informou uma nova quantidade maior,
+    // criamos as sessões faltantes; se não informou, mantemos as pendentes existentes.
+    $targetQty = $newSessionQty > 0 ? $newSessionQty : count($pendingSessions);
+
+    // Descobrir o maior session_number já existente (para numerar as novas sem colidir)
+    $maxNumStmt = $db->prepare("SELECT COALESCE(MAX(session_number), 0) FROM billing_document_requirements WHERE assignment_id = :aid");
+    $maxNumStmt->execute(['aid' => $assignmentId]);
+    $maxSessionNumber = (int)$maxNumStmt->fetchColumn();
+
+    // Se faltam sessões para atingir o alvo, criar os registros que faltam.
+    $faltam = $targetQty - count($pendingSessions);
+    if ($faltam > 0) {
+        $insSession = $db->prepare(
+            "INSERT INTO billing_document_requirements (assignment_id, patient_id, professional_user_id, session_number, session_date, status)
+             VALUES (:aid, :pid, :puid, :num, NULL, 'pending')"
+        );
+        $profUserId = (int)($assignment['professional_user_id'] ?? 0);
+        for ($k = 1; $k <= $faltam; $k++) {
+            $maxSessionNumber++;
+            try {
+                $insSession->execute([
+                    'aid' => $assignmentId,
+                    'pid' => $patientId,
+                    'puid' => $profUserId,
+                    'num' => $maxSessionNumber,
+                ]);
+            } catch (Throwable $e) { /* ignora duplicidade */ }
+        }
+        // Recarregar a lista de pendentes já com as novas
+        $stmtPending->execute(['aid' => $assignmentId]);
+        $pendingSessions = $stmtPending->fetchAll();
+    }
+
     if (count($pendingSessions) > 0) {
         $startDate = new DateTime();
         $newDates = [];
