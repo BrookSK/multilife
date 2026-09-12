@@ -677,24 +677,42 @@ if (!function_exists('svg_bar_chart')) {
         if ($n === 0) {
             return '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Sem dados no período</div>';
         }
+        // Máximo global entre todas as séries (para escala do eixo Y)
         $max = 0.0;
+        $grandTotal = 0.0;
         foreach ($series as $s) {
-            foreach ($s['data'] as $v) { if ((float)$v > $max) { $max = (float)$v; } }
+            foreach ($s['data'] as $v) {
+                $fv = (float)$v;
+                if ($fv > $max) { $max = $fv; }
+                $grandTotal += $fv;
+            }
+        }
+        // Sem nenhum valor em nenhuma série: mostra mensagem amigável em vez de barras vazias.
+        if ($grandTotal <= 0) {
+            return '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">Sem movimentações no período</div>';
         }
         if ($max <= 0) { $max = 1.0; }
+        // Folga de 12% no topo para caber o rótulo de valor acima da barra mais alta.
+        $scaleMax = $max * 1.12;
 
-        $padL = 70; $padR = 16; $padT = 16; $padB = 46;
-        $w = max(560, $n * 70);
+        $padL = 76; $padR = 20; $padT = 18; $padB = 46;
+        // Largura mínima por grupo confortável (evita barras finas quando há poucos meses).
+        $minGroupW = 110;
+        $w = max(560, $padL + $padR + $minGroupW * $n);
         $plotW = $w - $padL - $padR;
         $plotH = $height - $padT - $padB;
-        $groupW = $plotW / $n;
-        $nSeries = count($series);
-        $barW = ($groupW * 0.62) / max(1, $nSeries);
+        $groupW = $plotW / $n; // preenche toda a área do gráfico
+        $nSeries = max(1, count($series));
+        // Barras ocupam 70% da largura do grupo, divididas entre as séries.
+        $barsAreaW = $groupW * 0.70;
+        $barW = $barsAreaW / $nSeries;
+        $groupPad = ($groupW - $barsAreaW) / 2;
 
         $svg = '<svg viewBox="0 0 ' . $w . ' ' . $height . '" width="100%" height="' . $height . '" preserveAspectRatio="xMinYMin meet" font-family="inherit">';
 
+        // Grade horizontal + rótulos do eixo Y
         for ($i = 0; $i <= 4; $i++) {
-            $yv = $max * $i / 4;
+            $yv = $scaleMax * $i / 4;
             $y = $padT + $plotH - ($plotH * $i / 4);
             $svg .= '<line x1="' . $padL . '" y1="' . round($y, 1) . '" x2="' . ($w - $padR) . '" y2="' . round($y, 1) . '" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>';
             $svg .= '<text x="' . ($padL - 8) . '" y="' . round($y + 4, 1) . '" text-anchor="end" font-size="10" fill="#6b7280">R$ ' . number_format($yv, 0, ',', '.') . '</text>';
@@ -705,12 +723,19 @@ if (!function_exists('svg_bar_chart')) {
             $si = 0;
             foreach ($series as $s) {
                 $val = (float)($s['data'][$i] ?? 0);
-                $bh = ($val / $max) * $plotH;
-                $bx = $groupX + ($groupW * 0.19) + $si * $barW;
+                $bh = ($val / $scaleMax) * $plotH;
+                $bx = $groupX + $groupPad + $si * $barW;
                 $by = $padT + $plotH - $bh;
-                $svg .= '<rect x="' . round($bx, 1) . '" y="' . round($by, 1) . '" width="' . round($barW - 2, 1) . '" height="' . round($bh, 1) . '" fill="' . $s['color'] . '" rx="2">';
-                $svg .= '<title>' . htmlspecialchars($s['name'] . ': ' . svg_money_fmt($val), ENT_QUOTES) . '</title>';
-                $svg .= '</rect>';
+                $rectW = max(6, $barW - 4);
+                // Só desenha a barra se houver valor (>0); zero não polui o gráfico.
+                if ($val > 0) {
+                    $svg .= '<rect x="' . round($bx, 1) . '" y="' . round($by, 1) . '" width="' . round($rectW, 1) . '" height="' . round($bh, 1) . '" fill="' . $s['color'] . '" rx="3">';
+                    $svg .= '<title>' . htmlspecialchars($s['name'] . ': ' . svg_money_fmt($val), ENT_QUOTES) . '</title>';
+                    $svg .= '</rect>';
+                    // Rótulo de valor acima da barra (formato abreviado)
+                    $lblVal = $val >= 1000 ? ('R$ ' . number_format($val / 1000, 1, ',', '.') . 'k') : ('R$ ' . number_format($val, 0, ',', '.'));
+                    $svg .= '<text x="' . round($bx + $rectW / 2, 1) . '" y="' . round($by - 5, 1) . '" text-anchor="middle" font-size="9" font-weight="600" fill="#374151">' . htmlspecialchars($lblVal, ENT_QUOTES) . '</text>';
+                }
                 $si++;
             }
             $lx = $groupX + $groupW / 2;

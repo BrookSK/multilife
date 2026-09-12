@@ -156,9 +156,10 @@ try {
 
 // Paginação
 $page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-$perPage = 30;
+$perPage = 10;
 $offset = ($page - 1) * $perPage;
 $totalPages = max(1, (int)ceil($totalRows / $perPage));
+if ($page > $totalPages) { $page = $totalPages; $offset = ($page - 1) * $perPage; }
 
 $sql .= ' ORDER BY fe.id DESC LIMIT ' . (int)$perPage . ' OFFSET ' . (int)$offset;
 
