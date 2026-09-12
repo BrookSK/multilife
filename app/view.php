@@ -777,27 +777,43 @@ if (!function_exists('svg_donut_chart')) {
             return '<div style="display:flex;justify-content:center">' . $svg . '</div>';
         }
 
-        $angle = -M_PI / 2;
+        // Caso especial: uma única fatia representa (praticamente) 100% do total.
+        // Um arco SVG de 360° é degenerado (pontos inicial/final coincidem) e não desenha nada,
+        // então usamos um anel completo via <circle> com stroke.
+        $fullSlice = null;
         foreach ($items as $it) {
             $val = (float)$it['value'];
-            if ($val <= 0) { continue; }
-            $frac = $val / $total;
-            $a2 = $angle + $frac * 2 * M_PI;
-            $x1 = $cx + $r * cos($angle); $y1 = $cy + $r * sin($angle);
-            $x2 = $cx + $r * cos($a2);    $y2 = $cy + $r * sin($a2);
-            $ix2 = $cx + $inner * cos($a2); $iy2 = $cy + $inner * sin($a2);
-            $ix1 = $cx + $inner * cos($angle); $iy1 = $cy + $inner * sin($angle);
-            $large = ($frac > 0.5) ? 1 : 0;
-            $d = 'M ' . round($x1, 2) . ' ' . round($y1, 2)
-               . ' A ' . round($r, 2) . ' ' . round($r, 2) . ' 0 ' . $large . ' 1 ' . round($x2, 2) . ' ' . round($y2, 2)
-               . ' L ' . round($ix2, 2) . ' ' . round($iy2, 2)
-               . ' A ' . round($inner, 2) . ' ' . round($inner, 2) . ' 0 ' . $large . ' 0 ' . round($ix1, 2) . ' ' . round($iy1, 2)
-               . ' Z';
-            $pct = number_format($frac * 100, 1) . '%';
-            $svg .= '<path d="' . $d . '" fill="' . $it['color'] . '">';
-            $svg .= '<title>' . htmlspecialchars($it['label'] . ': ' . svg_money_fmt($val) . ' (' . $pct . ')', ENT_QUOTES) . '</title>';
-            $svg .= '</path>';
-            $angle = $a2;
+            if ($val > 0 && ($val / $total) >= 0.9999) { $fullSlice = $it; break; }
+        }
+        if ($fullSlice !== null) {
+            $midR = ($r + $inner) / 2;
+            $strokeW = $r - $inner;
+            $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . round($midR, 2) . '" fill="none" stroke="' . $fullSlice['color'] . '" stroke-width="' . round($strokeW, 2) . '">';
+            $svg .= '<title>' . htmlspecialchars($fullSlice['label'] . ': ' . svg_money_fmt((float)$fullSlice['value']) . ' (100%)', ENT_QUOTES) . '</title>';
+            $svg .= '</circle>';
+        } else {
+            $angle = -M_PI / 2;
+            foreach ($items as $it) {
+                $val = (float)$it['value'];
+                if ($val <= 0) { continue; }
+                $frac = $val / $total;
+                $a2 = $angle + $frac * 2 * M_PI;
+                $x1 = $cx + $r * cos($angle); $y1 = $cy + $r * sin($angle);
+                $x2 = $cx + $r * cos($a2);    $y2 = $cy + $r * sin($a2);
+                $ix2 = $cx + $inner * cos($a2); $iy2 = $cy + $inner * sin($a2);
+                $ix1 = $cx + $inner * cos($angle); $iy1 = $cy + $inner * sin($angle);
+                $large = ($frac > 0.5) ? 1 : 0;
+                $d = 'M ' . round($x1, 2) . ' ' . round($y1, 2)
+                   . ' A ' . round($r, 2) . ' ' . round($r, 2) . ' 0 ' . $large . ' 1 ' . round($x2, 2) . ' ' . round($y2, 2)
+                   . ' L ' . round($ix2, 2) . ' ' . round($iy2, 2)
+                   . ' A ' . round($inner, 2) . ' ' . round($inner, 2) . ' 0 ' . $large . ' 0 ' . round($ix1, 2) . ' ' . round($iy1, 2)
+                   . ' Z';
+                $pct = number_format($frac * 100, 1) . '%';
+                $svg .= '<path d="' . $d . '" fill="' . $it['color'] . '">';
+                $svg .= '<title>' . htmlspecialchars($it['label'] . ': ' . svg_money_fmt($val) . ' (' . $pct . ')', ENT_QUOTES) . '</title>';
+                $svg .= '</path>';
+                $angle = $a2;
+            }
         }
         $svg .= '<text x="' . $cx . '" y="' . ($cy - 2) . '" text-anchor="middle" font-size="11" fill="#6b7280">Total</text>';
         $svg .= '<text x="' . $cx . '" y="' . ($cy + 14) . '" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">' . htmlspecialchars(svg_money_fmt($total), ENT_QUOTES) . '</text>';
