@@ -11,6 +11,8 @@ $assignmentId = (int)($_GET['assignment_id'] ?? 0);
 
 // Garantir coluna month_days (fallback caso a migration não tenha rodado)
 try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN month_days VARCHAR(120) NULL"); } catch (Throwable $e) {}
+// Garantir coluna is_indefinite (tempo indeterminado - igual à pré-admissão)
+try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN is_indefinite TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 
 $stmt = db()->prepare(
     "SELECT pa.*, p.full_name as patient_name, p.id as patient_id, u.name as professional_name, d.specialty
@@ -119,7 +121,21 @@ view_header('Desmame - Alterar Frequência');
         </div>
         <div style="flex:1;min-width:200px">
           <label style="font-weight:700;display:block;margin-bottom:4px">Nova qtd. de sessões (opcional)</label>
-          <input type="number" name="new_session_quantity" min="1" value="<?= (int)($assignment['session_quantity'] ?? '') ?>" style="width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">
+          <input type="number" name="new_session_quantity" id="sessionQtyInput" min="1" value="<?= (int)($assignment['session_quantity'] ?? '') ?>" style="width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:8px">
+          <div id="sessionQtyHint" style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:6px">Informe a quantidade de sessões (tempo determinado) ou marque "Tempo indeterminado" ao lado.</div>
+        </div>
+      </div>
+
+      <!-- Tempo indeterminado (igual à pré-admissão): frequência segue sem prazo/total definido -->
+      <?php $isIndefinite = (int)($assignment['is_indefinite'] ?? 0) === 1; ?>
+      <div style="margin-bottom:16px;padding:14px 16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:10px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700">
+          <input type="checkbox" name="is_indefinite" id="indefiniteChk" value="1" <?= $isIndefinite ? 'checked' : '' ?>>
+          <span>Tempo indeterminado</span>
+        </label>
+        <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:6px;line-height:1.5">
+          Marque quando o atendimento nesta nova frequência não tem um número fixo de sessões.
+          As sessões seguem sendo geradas até o profissional decidir que é suficiente — sem prazo final.
         </div>
       </div>
 
@@ -499,6 +515,27 @@ view_header('Desmame - Alterar Frequência');
     }
 
     render();
+
+    // Tempo indeterminado: desabilita a qtd de sessões quando marcado
+    var indefChk = g("indefiniteChk");
+    var qtyInput = g("sessionQtyInput");
+    var qtyHint = g("sessionQtyHint");
+    function syncIndefinite(){
+      if(!indefChk || !qtyInput) return;
+      if(indefChk.checked){
+        qtyInput.value = "";
+        qtyInput.disabled = true;
+        qtyInput.style.background = "hsl(var(--muted))";
+        qtyInput.style.cursor = "not-allowed";
+        if(qtyHint) qtyHint.textContent = "Tempo indeterminado ativo: sem número fixo de sessões. O atendimento segue até o profissional decidir encerrar.";
+      } else {
+        qtyInput.disabled = false;
+        qtyInput.style.background = "";
+        qtyInput.style.cursor = "";
+        if(qtyHint) qtyHint.textContent = "Informe a quantidade de sessões (tempo determinado) ou marque \"Tempo indeterminado\" ao lado.";
+      }
+    }
+    if(indefChk){ indefChk.addEventListener("change", syncIndefinite); syncIndefinite(); }
 
     var form = document.querySelector('form[action="/monitoramento_desmame_post.php"]');
     if(form){

@@ -9,7 +9,9 @@ rbac_require_permission('demands.manage');
 
 $assignmentId = (int)($_POST['assignment_id'] ?? 0);
 $newFrequency = trim((string)($_POST['new_frequency'] ?? ''));
-$newSessionQty = (int)($_POST['new_session_quantity'] ?? 0);
+$isIndefinite = isset($_POST['is_indefinite']) && (string)$_POST['is_indefinite'] === '1' ? 1 : 0;
+// Em tempo indeterminado não há total de sessões definido; ignora o campo de quantidade.
+$newSessionQty = $isIndefinite ? 0 : (int)($_POST['new_session_quantity'] ?? 0);
 $reason = trim((string)($_POST['reason'] ?? ''));
 $applyToAll = isset($_POST['apply_to_all']) && $_POST['apply_to_all'] === '1';
 $newWeekdays = isset($_POST['weekdays']) && is_array($_POST['weekdays']) ? array_map('intval', $_POST['weekdays']) : [];
@@ -36,6 +38,8 @@ if (count($newWeekdays) === 0 && $newFrequency !== '' && function_exists('freque
 
 // Garantir coluna month_days (fallback)
 try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN month_days VARCHAR(120) NULL"); } catch (Throwable $e) {}
+// Garantir coluna is_indefinite (tempo indeterminado)
+try { db()->exec("ALTER TABLE patient_assignments ADD COLUMN is_indefinite TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 
 // Frequências mensais (usam dia do mês em vez de dia da semana)
 $isMonthlyFreq = in_array($newFrequency, ['quinzenal', 'biweekly', 'mensal', 'monthly'], true);
@@ -87,12 +91,15 @@ try {
             $monthDaysJson = json_encode(['mode' => 'fixed_day', 'days' => array_values($newMonthDays)]);
         }
     }
-    $upd = $db->prepare('UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty, weekdays = :wd, month_days = :md WHERE id = :id');
+    // Em tempo indeterminado, não fixa a quantidade de sessões (mantém a existente como referência).
+    $qtyToSave = $isIndefinite ? $oldSessionQty : ($newSessionQty > 0 ? $newSessionQty : $oldSessionQty);
+    $upd = $db->prepare('UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty, weekdays = :wd, month_days = :md, is_indefinite = :indef WHERE id = :id');
     $upd->execute([
         'freq' => $newFrequency,
-        'qty' => $newSessionQty > 0 ? $newSessionQty : $oldSessionQty,
+        'qty' => $qtyToSave,
         'wd' => $weekdaysJson,
         'md' => $monthDaysJson,
+        'indef' => $isIndefinite,
         'id' => $assignmentId,
     ]);
 
@@ -105,9 +112,16 @@ try {
     $stmtPending->execute(['aid' => $assignmentId]);
     $pendingSessions = $stmtPending->fetchAll();
 
-    // Quantidade ALVO de sessões futuras. Se o usuário informou uma nova quantidade maior,
-    // criamos as sessões faltantes; se não informou, mantemos as pendentes existentes.
-    $targetQty = $newSessionQty > 0 ? $newSessionQty : count($pendingSessions);
+    // Quantidade ALVO de sessões futuras.
+    // - Tempo determinado: usa a nova quantidade informada (ou mantém as pendentes).
+    // - Tempo indeterminado: não há total fixo. Mantém as pendentes existentes; se não houver
+    //   nenhuma, cria um lote inicial (12) para o paciente ter agenda. Novas sessões podem ser
+    //   geradas depois, já que o atendimento não tem prazo final.
+    if ($isIndefinite) {
+        $targetQty = count($pendingSessions) > 0 ? count($pendingSessions) : 12;
+    } else {
+        $targetQty = $newSessionQty > 0 ? $newSessionQty : count($pendingSessions);
+    }
 
     // Descobrir o maior session_number já existente (para numerar as novas sem colidir)
     $maxNumStmt = $db->prepare("SELECT COALESCE(MAX(session_number), 0) FROM billing_document_requirements WHERE assignment_id = :aid");
@@ -254,13 +268,14 @@ try {
     // Se aplicar a todos, atualizar outros atendimentos do paciente
     if ($applyToAll) {
         $updAll = $db->prepare(
-            "UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty
+            "UPDATE patient_assignments SET session_frequency = :freq, session_quantity = :qty, is_indefinite = :indef
              WHERE patient_id = :pid AND id != :aid
              AND status IN ('admitted','awaiting_documents','awaiting_financial_approval','confirmed','approved')"
         );
         $updAll->execute([
             'freq' => $newFrequency,
-            'qty' => $newSessionQty > 0 ? $newSessionQty : $oldSessionQty,
+            'qty' => $isIndefinite ? $oldSessionQty : ($newSessionQty > 0 ? $newSessionQty : $oldSessionQty),
+            'indef' => $isIndefinite,
             'pid' => $patientId,
             'aid' => $assignmentId,
         ]);
