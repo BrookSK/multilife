@@ -1473,6 +1473,14 @@ WAJS;
         echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
         echo '};';
         echo '';
+        echo 'window.waInstDisconnect = function(instanceName){';
+        echo '  if(!confirm("Desconectar a instância \'" + instanceName + "\'?\\n\\nO WhatsApp será deslogado, mas o vínculo com o(s) usuário(s) será mantido. Você poderá reconectar escaneando o QR Code.")) return;';
+        echo '  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
+        echo '  .then(function(r){ return r.json().catch(function(){ return {success:true}; }); })';
+        echo '  .then(function(){ location.reload(); })';
+        echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
+        echo '};';
+        echo '';
         echo 'window.waInstReconnect = function(instanceName){';
         echo '  waInstCurrentName = instanceName;';
         echo '  var qrArea = document.getElementById("waInstQrArea");';
@@ -1590,6 +1598,11 @@ WAJS;
                 
                 // Botão Reconectar (para qualquer instância, inclusive a padrão)
                 echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="waInstReconnect(\'' . h($liName) . '\')">🔄 Reconectar</button>';
+
+                // Botão Desconectar (logout sem remover o vínculo) — só quando conectada
+                if ($liConnStatus === 'connected') {
+                    echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:#f59e0b;color:white;border:none" onclick="waInstDisconnect(\'' . h($liName) . '\')">⏸ Desconectar</button>';
+                }
 
                 if (!$liIsDefault) {
                     $liLinkedIds = whatsapp_instance_user_ids($liId);
