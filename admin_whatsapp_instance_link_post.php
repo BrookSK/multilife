@@ -11,6 +11,15 @@ $instanceId = (int)($_POST['instance_id'] ?? 0);
 $instanceName = trim((string)($_POST['instance_name'] ?? ''));
 $userId = (int)($_POST['user_id'] ?? 0);
 
+// Suporte a múltiplos usuários por conexão (N:N). Campo user_ids[] do multi-select.
+$userIds = [];
+if (isset($_POST['user_ids']) && is_array($_POST['user_ids'])) {
+    $userIds = array_values(array_unique(array_filter(
+        array_map('intval', $_POST['user_ids']),
+        static fn($v) => $v > 0
+    )));
+}
+
 // Se veio instance_name (criação via JS), buscar ou criar o registro
 if ($instanceId <= 0 && $instanceName !== '') {
     $stmt = db()->prepare("SELECT id FROM whatsapp_instances WHERE instance_name = :name LIMIT 1");
@@ -32,29 +41,44 @@ if ($instanceId <= 0) {
     exit;
 }
 
-if ($userId === 0) {
-    // Desvincular
-    $result = whatsapp_unlink_instance($instanceId);
+// Fluxo novo (multi-perfil): o form envia user_ids[] (pode vir vazio = desvincular todos).
+if (isset($_POST['user_ids'])) {
+    $result = whatsapp_set_instance_users($instanceId, $userIds);
     if ($result) {
-        flash_set('success', 'Instância desvinculada do usuário.');
+        audit_log('update', 'whatsapp_instance_link', (string)$instanceId, null, [
+            'user_ids' => $userIds,
+        ]);
+        if (empty($userIds)) {
+            flash_set('success', 'Todos os vínculos da conexão foram removidos.');
+        } else {
+            flash_set('success', 'Conexão vinculada a ' . count($userIds) . ' usuário(s).');
+        }
     } else {
-        flash_set('error', 'Não foi possível desvincular (instância padrão não pode ser desvinculada).');
+        flash_set('error', 'Não foi possível salvar os vínculos.');
     }
+} elseif ($userId === 0) {
+    // Desvincular (compat: fluxo antigo com user_id único)
+    whatsapp_set_instance_users($instanceId, []);
+    flash_set('success', 'Instância desvinculada.');
 } else {
-    // Vincular ao usuário
-    $result = whatsapp_link_instance_to_user($instanceId, $userId);
+    // Vincular UM usuário (compat: usado na criação via JS). Adiciona ao conjunto N:N.
+    $current = whatsapp_instance_user_ids($instanceId);
+    if (!in_array($userId, $current, true)) {
+        $current[] = $userId;
+    }
+    $result = whatsapp_set_instance_users($instanceId, $current);
     if ($result) {
         $userStmt = db()->prepare('SELECT name FROM users WHERE id = ?');
         $userStmt->execute([$userId]);
         $userName = (string)($userStmt->fetchColumn() ?: 'ID ' . $userId);
-        
+
         audit_log('update', 'whatsapp_instance_link', (string)$instanceId, null, [
             'user_id' => $userId,
             'user_name' => $userName,
         ]);
         flash_set('success', 'Instância vinculada ao usuário: ' . $userName);
     } else {
-        flash_set('error', 'Não foi possível vincular (instância não encontrada ou inativa).');
+        flash_set('error', 'Não foi possível vincular.');
     }
 }
 
