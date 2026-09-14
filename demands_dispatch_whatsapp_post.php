@@ -653,9 +653,9 @@ $tpl = trim((string)admin_setting_get(
     ''
 ));
 
-// Se template vazio ou não configurado, usar padrão com bairro e cidade
+// Se template vazio ou não configurado, usar padrão com rua + bairro + cidade
 if ($tpl === '') {
-    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{ai_summary_block}👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{street_neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{ai_summary_block}👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
 }
 
 // Montar endereço completo (rua, número, bairro)
@@ -694,13 +694,28 @@ if ($freqRaw !== '' && function_exists('frequency_get_label')) {
 $titleForMsg = (string)$d['title'];
 $patientName = trim((string)($d['patient_name'] ?? ''));
 
-// Abordagem robusta: detectar padrão "para [qualquer nome]" no título e substituir
-// Padrões comuns: "Atendimento multidisciplinar para Roberto Teste", "Prospecção Fisio - Nome Paciente"
+// Inicial do paciente (privacidade): "Roberto" -> "R.", "Roberto Teste" -> "R.".
+// Usada para substituir o nome do paciente por uma referência anônima.
+$patientInitial = '';
 if ($patientName !== '') {
-    $titleForMsg = str_ireplace($patientName, '', $titleForMsg);
+    $firstNameToken = trim(preg_split('/\s+/', trim($patientName))[0] ?? '');
+    if ($firstNameToken !== '') {
+        $patientInitial = mb_strtoupper(mb_substr($firstNameToken, 0, 1)) . '.';
+    }
 }
-// Remover qualquer texto após "para " (que seria o nome do paciente)
-$titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', '', $titleForMsg);
+
+// Abordagem robusta: substituir o nome do paciente pela inicial no título.
+// Ex.: "Atendimento multidisciplinar para Roberto Teste" -> "... para R."
+if ($patientName !== '') {
+    $titleForMsg = str_ireplace($patientName, $patientInitial, $titleForMsg);
+}
+// Substituir "para <Nome...>" no fim do título pela inicial (cobre nome não salvo em patient_name)
+if ($patientInitial !== '') {
+    $titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', ' para ' . $patientInitial, $titleForMsg);
+} else {
+    // Sem nome conhecido: remover o trecho "para ..." por segurança
+    $titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', '', $titleForMsg);
+}
 // Remover qualquer texto após " - " que pareça nome (2+ palavras capitalizadas) — fallback
 $titleForMsg = preg_replace('/\s*[-–]\s+[A-ZÀ-ÚÇ][a-zà-úç]+(\s+[A-ZÀ-ÚÇa-zà-úç]+)+\s*$/u', '', $titleForMsg);
 // Limpar espaços e pontuação residual
@@ -722,9 +737,9 @@ $aiSummaryRaw = trim((string)($d['ai_summary'] ?? ''));
 $aiSummarySanitized = $aiSummaryRaw;
 
 if ($aiSummarySanitized !== '') {
-    // 2a. Remover nome do paciente e reformatar o início como "Paciente D, [idade]"
+    // 2a. Substituir nome do paciente pela inicial (privacidade). Ex.: "Roberto" -> "R."
     if ($patientName !== '') {
-        $aiSummarySanitized = str_ireplace($patientName, '', $aiSummarySanitized);
+        $aiSummarySanitized = str_ireplace($patientName, $patientInitial, $aiSummarySanitized);
     }
     // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
     $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
@@ -819,6 +834,13 @@ $repl = [
     '{street}' => $street !== '' ? $street : '-',
     '{neighborhood}' => $neighborhood !== '' ? $neighborhood : '-',
     '{neighborhood_city}' => trim(($neighborhood !== '' ? $neighborhood . ' - ' : '') . ($city !== '' ? $city : '') . ($state !== '' ? '/' . $state : '')),
+    // Rua + bairro + cidade/UF (sem número, por privacidade). Usado no bloco de Local.
+    '{street_neighborhood_city}' => trim(
+        ($street !== '' ? $street . ' - ' : '')
+        . ($neighborhood !== '' ? $neighborhood . ' - ' : '')
+        . ($city !== '' ? $city : '')
+        . ($state !== '' ? '/' . $state : '')
+    ),
     '{specialty}' => $specialty !== '' ? $specialty : '-',
     '{frequency}' => $freqDisplay !== '' ? $freqDisplay : '-',
     '{description}' => mb_strimwidth(

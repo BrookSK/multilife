@@ -1877,9 +1877,36 @@ if (empty($selectedChat)) {
     $chatName = $selectedChatData['name'] ?? $selectedChat;
     $isGroup = strpos($selectedChat, '@g.us') !== false;
     $profilePic = $selectedChatData['profilePictureUrl'] ?? '';
-    
+
+    // Para GRUPOS: resolver o nome pela tabela chat_groups (grupo não tem telefone,
+    // então a busca por contato/usuário abaixo não funciona).
+    if ($isGroup && ($chatName === $selectedChat || preg_match('/^\d+@/', $chatName) || $chatName === '')) {
+        try {
+            $stmtGrpName = db()->prepare("SELECT group_name, group_picture_url FROM chat_groups WHERE group_jid = ? LIMIT 1");
+            $stmtGrpName->execute([$selectedChat]);
+            $grpNameRow = $stmtGrpName->fetch(PDO::FETCH_ASSOC);
+            if ($grpNameRow && !empty($grpNameRow['group_name'])) {
+                $chatName = (string)$grpNameRow['group_name'];
+                if (empty($profilePic) && !empty($grpNameRow['group_picture_url'])) {
+                    $profilePic = (string)$grpNameRow['group_picture_url'];
+                }
+            }
+        } catch (Exception $e) {}
+        // Fallback: nome do grupo salvo em whatsapp_groups (criado na captação)
+        if ($chatName === $selectedChat || $chatName === '') {
+            try {
+                $stmtWg = db()->prepare("SELECT name FROM whatsapp_groups WHERE evolution_group_jid = ? LIMIT 1");
+                $stmtWg->execute([$selectedChat]);
+                $wgRow = $stmtWg->fetch(PDO::FETCH_ASSOC);
+                if ($wgRow && !empty($wgRow['name'])) {
+                    $chatName = (string)$wgRow['name'];
+                }
+            } catch (Exception $e) {}
+        }
+    }
+
     // Se chatName ainda é o JID bruto (número@s.whatsapp.net), tentar buscar nome real
-    if ($chatName === $selectedChat || preg_match('/^\d+@/', $chatName)) {
+    if (!$isGroup && ($chatName === $selectedChat || preg_match('/^\d+@/', $chatName))) {
         // Buscar na tabela de contatos
         try {
             $stmtName = db()->prepare("SELECT contact_name, profile_picture_url FROM chat_contacts WHERE remote_jid = ?");
@@ -2324,6 +2351,11 @@ if (!empty($selectedChat)) {
             $profilePic = $chat['profilePictureUrl'] ?? '';
             break;
         }
+    }
+    // Fallback: se não achou na lista (ex.: grupo aberto por JID direto), usar o
+    // nome já resolvido no header ($chatName resolve nome de grupo via chat_groups).
+    if (($contactName === '' || preg_match('/^\d+@/', $contactName)) && isset($chatName) && $chatName !== '' && $chatName !== $selectedChat) {
+        $contactName = $chatName;
     }
     
     echo '<div class="whatsapp-info-section" style="text-align:center">';
