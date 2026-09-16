@@ -1380,6 +1380,115 @@ echo '</div>';
 echo '</div>';
 echo '</div>';
 
+// ============================================================
+// Modal: Cadastro RÁPIDO de Profissional (pré-cadastro) — item Chat ao Vivo
+// Campos: Nome, Telefone, E-mail (opcional), Especialidade, Cidade.
+// ============================================================
+$quickSpecialties = [];
+try {
+    $quickSpecialties = db()->query("SELECT name FROM specialties WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) { $quickSpecialties = []; }
+?>
+<div id="quickProfModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;overflow-y:auto">
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:480px;max-height:90vh;overflow:auto;margin:20px 0">
+    <div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0;font-size:19px;color:#111b21">Cadastrar Profissional</h2>
+      <button type="button" onclick="closeQuickProfModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>
+    </div>
+    <div style="padding:20px">
+      <div style="background:#e7f8f4;padding:12px 14px;border-radius:8px;margin-bottom:16px;font-size:13px;color:#00695c">
+        Pré-cadastro rápido. Preencha o essencial agora; os demais dados podem ser completados depois em Usuários.
+      </div>
+      <div id="quickProfError" style="display:none;background:#f8d7da;color:#721c24;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px"></div>
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Nome *</label>
+      <input type="text" id="quickProfName" placeholder="Nome completo" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Telefone *</label>
+      <input type="text" id="quickProfPhone" placeholder="Ex: 5511999999999" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">E-mail <span style="color:#8696a0;font-weight:400">(opcional)</span></label>
+      <input type="email" id="quickProfEmail" placeholder="email@exemplo.com" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Especialidade</label>
+      <select id="quickProfSpecialty" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
+        <option value="">Selecione...</option>
+        <?php foreach ($quickSpecialties as $qsp): ?>
+          <option value="<?= h((string)$qsp) ?>"><?= h((string)$qsp) ?></option>
+        <?php endforeach; ?>
+      </select>
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Cidade</label>
+      <input type="text" id="quickProfCity" placeholder="Ex: São Paulo" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:20px">
+
+      <div style="display:flex;gap:12px">
+        <button type="button" onclick="closeQuickProfModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>
+        <button type="button" id="quickProfSubmitBtn" onclick="submitQuickProf()" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Salvar pré-cadastro</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function openQuickProfModal() {
+  var modal = document.getElementById('quickProfModal');
+  if (!modal) return;
+  var chatId = window.chatId || '';
+  var chatName = window.chatName || '';
+  var phone = chatId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@g.us', '');
+  var elName = document.getElementById('quickProfName');
+  var elPhone = document.getElementById('quickProfPhone');
+  var elErr = document.getElementById('quickProfError');
+  if (elName) elName.value = chatName || '';
+  if (elPhone) elPhone.value = /^[0-9]+$/.test(phone) ? phone : '';
+  if (elErr) { elErr.style.display = 'none'; elErr.textContent = ''; }
+  modal.style.display = 'flex';
+}
+function closeQuickProfModal() {
+  var modal = document.getElementById('quickProfModal');
+  if (modal) modal.style.display = 'none';
+}
+function submitQuickProf() {
+  var name = (document.getElementById('quickProfName') || {}).value || '';
+  var phone = (document.getElementById('quickProfPhone') || {}).value || '';
+  var email = (document.getElementById('quickProfEmail') || {}).value || '';
+  var specialty = (document.getElementById('quickProfSpecialty') || {}).value || '';
+  var city = (document.getElementById('quickProfCity') || {}).value || '';
+  var err = document.getElementById('quickProfError');
+  function showErr(msg) { if (err) { err.textContent = msg; err.style.display = 'block'; } }
+
+  if (!name.trim()) { showErr('Informe o nome do profissional.'); return; }
+  if (phone.replace(/[^0-9]/g, '').length < 10) { showErr('Informe um telefone válido (com DDD).'); return; }
+
+  var btn = document.getElementById('quickProfSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
+  var fd = new FormData();
+  fd.append('name', name);
+  fd.append('phone', phone);
+  fd.append('email', email);
+  fd.append('specialty', specialty);
+  fd.append('city', city);
+
+  fetch('/professional_quick_create_post.php', { method: 'POST', body: fd })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Salvar pré-cadastro'; }
+      if (data && data.ok) {
+        closeQuickProfModal();
+        alert('Profissional pré-cadastrado com sucesso: ' + (data.name || name));
+        location.reload();
+      } else {
+        showErr((data && data.message) ? data.message : 'Erro ao pré-cadastrar.');
+      }
+    })
+    .catch(function () {
+      if (btn) { btn.disabled = false; btn.textContent = 'Salvar pré-cadastro'; }
+      showErr('Erro de conexão. Tente novamente.');
+    });
+}
+</script>
+<?php
+
 // Exibir mensagens de sucesso/erro
 if (!empty($success)) {
     echo '<div style="position:fixed;top:20px;right:20px;background:#d4edda;color:#155724;padding:16px 20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:10001" id="successMessage">';
@@ -2964,22 +3073,21 @@ function saveCaptureInfo() {
     });
 }
 
-// Função para cadastrar profissional
+// Função para cadastrar profissional (abre o pré-cadastro rápido, sem sair do chat)
 function cadastrarProfissional() {
     const chatId = window.chatId || "";
-    const chatName = window.chatName || "";
-    
     if (!chatId) {
         alert("Erro: Chat não identificado");
         return;
     }
-    
-    // Extrair telefone do chat ID (remover @s.whatsapp.net)
-    const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "").replace("@g.us", "");
-    
-    // Redirecionar para página de criação de usuário com role=profissional pré-marcada
-    const url = "/users_create.php?role=profissional&phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
-    window.open(url, "_blank");
+    if (typeof openQuickProfModal === "function") {
+        openQuickProfModal();
+    } else {
+        // Fallback: se o modal não estiver disponível, usa o cadastro completo em nova aba.
+        const chatName = window.chatName || "";
+        const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "").replace("@g.us", "");
+        window.open("/users_create.php?role=profissional&phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName), "_blank");
+    }
 }
 
 // Função para cadastrar paciente
