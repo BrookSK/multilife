@@ -267,13 +267,13 @@ echo '<input type="text" id="filtroTelefone" oninput="filtrarParticipantes()" pl
 echo '<select id="filtroEspecialidade" onchange="filtrarParticipantes()" style="padding:9px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
 echo '<option value="">Todas as especialidades</option>';
 foreach ($specialtyOptions as $sp) {
-    echo '<option value="' . h(mb_strtolower($sp)) . '">' . h($sp) . '</option>';
+    echo '<option value="' . h(mb_strtolower((string)$sp)) . '">' . h((string)$sp) . '</option>';
 }
 echo '</select>';
 echo '<select id="filtroCidade" onchange="filtrarParticipantes()" style="padding:9px 12px;border:1px solid hsl(var(--border));border-radius:8px;grid-column:span 2">';
 echo '<option value="">Todas as cidades</option>';
 foreach ($cityOptions as $ct) {
-    echo '<option value="' . h(mb_strtolower($ct)) . '">' . h($ct) . '</option>';
+    echo '<option value="' . h(mb_strtolower((string)$ct)) . '">' . h((string)$ct) . '</option>';
 }
 echo '</select>';
 echo '</div>';
@@ -324,58 +324,9 @@ echo '<button type="submit" class="btn btnPrimary">Adicionar Selecionados</butto
 echo '</form>';
 echo '</section>';
 
-// JavaScript: funções GLOBAIS chamadas pelos atributos inline (oninput/onchange/onclick).
-// Não depende de addEventListener nem de ordem de carregamento — sempre funciona.
-echo '<script>';
-echo 'function _mgNormalizar(s){ s = (s == null ? "" : String(s)).toLowerCase(); try { s = s.normalize("NFD").replace(/[\\u0300-\\u036f]/g, ""); } catch(e){} return s; }';
-echo 'function _mgSoDigitos(s){ return (s == null ? "" : String(s)).replace(/[^0-9]/g, ""); }';
-echo 'function filtrarParticipantes(){';
-echo '  var lista = document.getElementById("listaParticipantes"); if(!lista) return;';
-echo '  var fNome = document.getElementById("filtroNome");';
-echo '  var fTel = document.getElementById("filtroTelefone");';
-echo '  var fEsp = document.getElementById("filtroEspecialidade");';
-echo '  var fCidade = document.getElementById("filtroCidade");';
-echo '  var qNome = _mgNormalizar(fNome ? fNome.value : "");';
-echo '  var qTel = _mgSoDigitos(fTel ? fTel.value : "");';
-echo '  var qEsp = fEsp ? fEsp.value : "";';
-echo '  var qCidade = _mgNormalizar(fCidade ? fCidade.value : "");';
-echo '  var itens = lista.getElementsByClassName("participante-item");';
-echo '  var visiveis = 0;';
-echo '  for(var i=0;i<itens.length;i++){';
-echo '    var item = itens[i];';
-echo '    var nome = _mgNormalizar(item.getAttribute("data-nome"));';
-echo '    var tel = _mgSoDigitos(item.getAttribute("data-telefone"));';
-echo '    var esp = item.getAttribute("data-especialidade") || "";';
-echo '    var cidade = _mgNormalizar(item.getAttribute("data-cidade"));';
-echo '    var ok = true;';
-echo '    if(qNome && nome.indexOf(qNome) === -1) ok = false;';
-echo '    if(qTel && tel.indexOf(qTel) === -1) ok = false;';
-echo '    if(qEsp && esp !== qEsp) ok = false;';
-echo '    if(qCidade && cidade.indexOf(qCidade) === -1) ok = false;';
-echo '    item.style.display = ok ? "flex" : "none";';
-echo '    if(ok) visiveis++;';
-echo '  }';
-echo '  var contador = document.getElementById("contadorResultados"); if(contador) contador.textContent = visiveis;';
-echo '  var semResultados = document.getElementById("semResultados"); if(semResultados) semResultados.style.display = (visiveis === 0) ? "block" : "none";';
-echo '}';
-echo 'function contarSelecionadosParticipantes(){';
-echo '  var lista = document.getElementById("listaParticipantes"); if(!lista) return;';
-echo '  var n = lista.querySelectorAll(".participante-check:checked").length;';
-echo '  var el = document.getElementById("contadorSelecionados"); if(el) el.textContent = n;';
-echo '}';
-echo 'function selecionarVisiveis(){';
-echo '  var lista = document.getElementById("listaParticipantes"); if(!lista) return;';
-echo '  var itens = lista.getElementsByClassName("participante-item");';
-echo '  for(var i=0;i<itens.length;i++){ if(itens[i].style.display !== "none"){ var cb = itens[i].querySelector(".participante-check"); if(cb) cb.checked = true; } }';
-echo '  contarSelecionadosParticipantes();';
-echo '}';
-echo 'function limparSelecaoParticipantes(){';
-echo '  var lista = document.getElementById("listaParticipantes"); if(!lista) return;';
-echo '  var cbs = lista.querySelectorAll(".participante-check");';
-echo '  for(var i=0;i<cbs.length;i++){ cbs[i].checked = false; }';
-echo '  contarSelecionadosParticipantes();';
-echo '}';
-echo '</script>';
+// JavaScript dos filtros: carregado de arquivo estático externo (não é afetado por
+// qualquer saída/notice do PHP). As funções são globais e chamadas pelos atributos inline.
+echo '<script src="/chat_manage_group_filter.js?v=2"></script>';
 
 echo '</div>';
 
