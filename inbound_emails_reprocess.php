@@ -34,26 +34,57 @@ if (!$hasBody) {
     exit;
 }
 
-// Resetar status
+// Resetar status — inclui também e-mails presos em 'processing' (travados por
+// falha/timeout em execução anterior; o filtro normal do cron só pega received/error).
 db()->prepare("UPDATE inbound_emails SET status = 'received', error_message = NULL, processed_at = NULL WHERE id = :id")
     ->execute(['id' => $id]);
 
-// Tentar disparar processamento em background via exec (Linux)
 $cronToken = trim((string)admin_setting_get('cron.token', ''));
-$scriptPath = realpath(__DIR__ . '/cron/openai_extract_email_to_demand.php');
 
-if ($scriptPath && $cronToken !== '') {
-    $phpBin = PHP_BINARY ?: '/usr/bin/php';
-    // Escapar o token para shell
-    $escapedToken = escapeshellarg("token=$cronToken");
-    $cmd = "$phpBin $scriptPath $escapedToken " . escapeshellarg("id=$id") . " " . escapeshellarg("force=1") . " " . escapeshellarg("retry_errors=1") . " > /dev/null 2>&1 &";
-    
-    error_log("[REPROCESS] Disparando em background: $cmd");
-    @exec($cmd);
-    
-    flash_set('success', 'E-mail #' . $id . ' sendo processado em background. Aguarde ~60 segundos e recarregue.');
+if ($cronToken === '') {
+    flash_set('error', 'Token do CRON não configurado (Configurações → Ajuda/CRON). E-mail #' . $id . ' foi marcado como "received" e será processado no próximo ciclo do cron.');
+    header('Location: /inbound_emails_list.php');
+    exit;
+}
+
+// Disparar o processamento via HTTP loopback (funciona sob PHP-FPM, ao contrário
+// de exec() com PHP_BINARY, que sob fpm-fcgi aponta para o binário do FPM).
+// O cron fecha a conexão com fastcgi_finish_request() e continua em background,
+// então usamos um timeout curto apenas para disparar.
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+$url = $scheme . '://' . $host . '/cron/openai_extract_email_to_demand.php?'
+    . http_build_query([
+        'token' => $cronToken,
+        'id' => $id,
+        'force' => '1',
+        'retry_errors' => '1',
+    ]);
+
+$dispatched = false;
+if (function_exists('curl_init')) {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    $resp = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($httpCode === 200) {
+        $dispatched = true;
+    } else {
+        error_log("[REPROCESS] Loopback falhou (HTTP $httpCode): $curlErr | URL base: $scheme://$host");
+    }
+}
+
+if ($dispatched) {
+    flash_set('success', 'E-mail #' . $id . ' enviado para processamento. Aguarde alguns segundos e recarregue a página.');
 } else {
-    flash_set('success', 'E-mail #' . $id . ' marcado para reprocessamento. Será processado no próximo ciclo do cron.');
+    flash_set('error', 'Não consegui disparar o processamento automático de #' . $id . '. Ele ficou marcado como "received" e será processado no próximo ciclo do cron. (Verifique se o CRON de extração está agendado.)');
 }
 
 header('Location: /inbound_emails_list.php');

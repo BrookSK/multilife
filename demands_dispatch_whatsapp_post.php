@@ -10,8 +10,16 @@ rbac_require_permission('demands.manage');
 // MODO DE TESTE DA CAPTAÇÃO: quando ativo, só adiciona profissionais marcados como teste.
 // Garante a coluna (fallback) e define o filtro SQL adicional aplicado às queries de profissionais.
 try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+// Fallback: garante a coluna que vincula o grupo à instância que o criou.
+try { db()->exec("ALTER TABLE whatsapp_groups ADD COLUMN instance_name VARCHAR(100) NULL"); } catch (Throwable $e) {}
 $captacaoTestMode = ((string)admin_setting_get('feature.captacao_test_mode', '0') === '1');
 $testModeSqlFilter = $captacaoTestMode ? ' AND u.is_test_professional = 1' : '';
+
+// Instância do captador (usuário que está realizando a captação). O grupo deve
+// existir no WhatsApp de quem prospecta, então priorizamos a instância dele.
+require_once __DIR__ . '/app/whatsapp_instances.php';
+$captadorInstance = whatsapp_get_user_instance(auth_user_id());
+$captadorInstanceName = $captadorInstance['instance_name'] ?? '';
 
 $id = (int)($_POST['id'] ?? 0);
 $subRequestId = (int)($_POST['sub_request_id'] ?? 0);
@@ -53,6 +61,16 @@ $specialty = (string)($subRequest ? ($subRequest['specialty'] ?? '') : ($d['spec
 $groups = [];
 $jidFilter = ' AND evolution_group_jid LIKE \'%@g.us\'';
 
+// Só reusar grupos que pertencem à instância do captador (ou grupos legados sem
+// instância registrada). Grupos de OUTRA instância não devem ser reusados, senão
+// o captador (ex.: Grace) enviaria para um grupo que não existe no WhatsApp dele.
+$instanceGroupFilter = '';
+$instanceGroupParams = [];
+if ($captadorInstanceName !== '') {
+    $instanceGroupFilter = ' AND (instance_name = :inst OR instance_name IS NULL OR instance_name = \'\')';
+    $instanceGroupParams['inst'] = $captadorInstanceName;
+}
+
 // Tentativa 1: Match exato por especialidade + estado + cidade (case-insensitive)
 if (trim($specialty) !== '' && count($groups) === 0) {
     $sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter;
@@ -72,25 +90,25 @@ if (trim($specialty) !== '' && count($groups) === 0) {
         $params['city'] = $city;
     }
     
-    $sql .= ' AND ' . implode(' AND ', $conditions) . ' ORDER BY id DESC LIMIT 1';
+    $sql .= ' AND ' . implode(' AND ', $conditions) . $instanceGroupFilter . ' ORDER BY id DESC LIMIT 1';
     $stmt = db()->prepare($sql);
-    $stmt->execute($params);
+    $stmt->execute($params + $instanceGroupParams);
     $groups = $stmt->fetchAll();
 }
 
 // Tentativa 2: Só por especialidade (ignorar localização, case-insensitive)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND LOWER(specialty) = LOWER(:sp) ORDER BY id DESC LIMIT 1';
+    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND LOWER(specialty) = LOWER(:sp)' . $instanceGroupFilter . ' ORDER BY id DESC LIMIT 1';
     $stmt2 = db()->prepare($sql2);
-    $stmt2->execute(['sp' => $specialty]);
+    $stmt2->execute(['sp' => $specialty] + $instanceGroupParams);
     $groups = $stmt2->fetchAll();
 }
 
 // Tentativa 3: Especialidade com LIKE (caso tenha diferença de acentuação)
 if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND (specialty LIKE :sp_like OR name LIKE :name_like) ORDER BY id DESC LIMIT 1';
+    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND (specialty LIKE :sp_like OR name LIKE :name_like)' . $instanceGroupFilter . ' ORDER BY id DESC LIMIT 1';
     $stmt3 = db()->prepare($sql3);
-    $stmt3->execute(['sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%']);
+    $stmt3->execute(['sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%'] + $instanceGroupParams);
     $groups = $stmt3->fetchAll();
 }
 
@@ -104,16 +122,19 @@ if (count($groups) === 0) {
         $apiKey = (string)admin_setting_get('evolution.api_key', '');
         $instanceName = '';
         
-        // Buscar todas as instâncias ativas, priorizando as que já estão marcadas como conectadas no banco
+        // Buscar todas as instâncias ativas, priorizando as conectadas.
+        // A instância do CAPTADOR (quem prospecta) vem primeiro, para que o grupo
+        // seja criado no WhatsApp dele.
         $allInstForGroup = db()->prepare("
             SELECT instance_name, connection_status FROM whatsapp_instances 
             WHERE status = 'active' 
             ORDER BY 
+                CASE WHEN instance_name = :captador THEN 0 ELSE 1 END ASC,
                 CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC,
                 is_default DESC, 
                 id ASC
         ");
-        $allInstForGroup->execute();
+        $allInstForGroup->execute(['captador' => $captadorInstanceName]);
         $instRows = $allInstForGroup->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($instRows as $instRow) {
@@ -331,16 +352,24 @@ if (count($groups) === 0) {
         
         error_log("[DISPATCH] Participantes para grupo: " . implode(', ', $participants));
         
-        // Buscar credenciais base
+        // Buscar credenciais base (NÃO sobrescrever $instanceName: manter a
+        // instância conectada já escolhida acima, que prioriza a do captador).
         $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
         $apiKey = (string)admin_setting_get('evolution.api_key', '');
-        $instanceName = (string)admin_setting_get('evolution.instance', '');
-        
-        // MULTI-INSTÂNCIA: Tentar criar grupo com qualquer instância conectada
-        // A instância padrão pode estar desconectada (Connection Closed)
-        $instancesToTry = [$instanceName]; // Começar pela padrão
-        $stmtAllInst = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND instance_name != ? ORDER BY is_default DESC, id ASC");
-        $stmtAllInst->execute([$instanceName]);
+        if ($instanceName === '') {
+            $instanceName = (string)admin_setting_get('evolution.instance', '');
+        }
+
+        // MULTI-INSTÂNCIA: ordem de tentativa — instância do captador primeiro,
+        // depois a já escolhida, depois as demais ativas.
+        $instancesToTry = [];
+        foreach ([$captadorInstanceName, $instanceName] as $prefInst) {
+            if ($prefInst !== '' && !in_array($prefInst, $instancesToTry, true)) {
+                $instancesToTry[] = $prefInst;
+            }
+        }
+        $stmtAllInst = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC");
+        $stmtAllInst->execute();
         foreach ($stmtAllInst->fetchAll(PDO::FETCH_COLUMN) as $otherInst) {
             if ($otherInst !== '' && !in_array($otherInst, $instancesToTry, true)) {
                 $instancesToTry[] = $otherInst;
@@ -497,11 +526,12 @@ if (count($groups) === 0) {
             if (!empty($newGroupJid)) {
                 // Salvar grupo no banco
                 $stmtNewGroup = db()->prepare(
-                    'INSERT INTO whatsapp_groups (name, evolution_group_jid, contacts_count, specialty, city, state, status) VALUES (:n, :jid, :cnt, :sp, :city, :st, \'active\') ON DUPLICATE KEY UPDATE name = VALUES(name)'
+                    'INSERT INTO whatsapp_groups (name, evolution_group_jid, instance_name, contacts_count, specialty, city, state, status) VALUES (:n, :jid, :inst, :cnt, :sp, :city, :st, \'active\') ON DUPLICATE KEY UPDATE name = VALUES(name), instance_name = VALUES(instance_name)'
                 );
                 $stmtNewGroup->execute([
                     'n' => $groupName,
                     'jid' => $newGroupJid,
+                    'inst' => $usedInstanceName ?: $captadorInstanceName,
                     'cnt' => count($participants),
                     'sp' => $specialty,
                     'city' => $city,
@@ -623,9 +653,9 @@ $tpl = trim((string)admin_setting_get(
     ''
 ));
 
-// Se template vazio ou não configurado, usar padrão com bairro e cidade
+// Se template vazio ou não configurado, usar padrão com rua + bairro + cidade
 if ($tpl === '') {
-    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{ai_summary_block}👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
+    $tpl = "[CAPTAÇÃO #{id}]\n{title}\n\n📍 *Local:*\n{street_neighborhood_city}\n\n🏥 *Especialidade:* {specialty}\n📅 *Frequência:* {frequency}\n\n{ai_summary_block}👆 *Tem interesse e disponibilidade?*\nReaja a esta mensagem com qualquer emoji para demonstrar interesse. Entraremos em contato no privado para alinhar os detalhes.";
 }
 
 // Montar endereço completo (rua, número, bairro)
@@ -664,13 +694,28 @@ if ($freqRaw !== '' && function_exists('frequency_get_label')) {
 $titleForMsg = (string)$d['title'];
 $patientName = trim((string)($d['patient_name'] ?? ''));
 
-// Abordagem robusta: detectar padrão "para [qualquer nome]" no título e substituir
-// Padrões comuns: "Atendimento multidisciplinar para Roberto Teste", "Prospecção Fisio - Nome Paciente"
+// Inicial do paciente (privacidade): "Roberto" -> "R.", "Roberto Teste" -> "R.".
+// Usada para substituir o nome do paciente por uma referência anônima.
+$patientInitial = '';
 if ($patientName !== '') {
-    $titleForMsg = str_ireplace($patientName, '', $titleForMsg);
+    $firstNameToken = trim(preg_split('/\s+/', trim($patientName))[0] ?? '');
+    if ($firstNameToken !== '') {
+        $patientInitial = mb_strtoupper(mb_substr($firstNameToken, 0, 1)) . '.';
+    }
 }
-// Remover qualquer texto após "para " (que seria o nome do paciente)
-$titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', '', $titleForMsg);
+
+// Abordagem robusta: substituir o nome do paciente pela inicial no título.
+// Ex.: "Atendimento multidisciplinar para Roberto Teste" -> "... para R."
+if ($patientName !== '') {
+    $titleForMsg = str_ireplace($patientName, $patientInitial, $titleForMsg);
+}
+// Substituir "para <Nome...>" no fim do título pela inicial (cobre nome não salvo em patient_name)
+if ($patientInitial !== '') {
+    $titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', ' para ' . $patientInitial, $titleForMsg);
+} else {
+    // Sem nome conhecido: remover o trecho "para ..." por segurança
+    $titleForMsg = preg_replace('/\s+para\s+\S.*$/iu', '', $titleForMsg);
+}
 // Remover qualquer texto após " - " que pareça nome (2+ palavras capitalizadas) — fallback
 $titleForMsg = preg_replace('/\s*[-–]\s+[A-ZÀ-ÚÇ][a-zà-úç]+(\s+[A-ZÀ-ÚÇa-zà-úç]+)+\s*$/u', '', $titleForMsg);
 // Limpar espaços e pontuação residual
@@ -692,9 +737,9 @@ $aiSummaryRaw = trim((string)($d['ai_summary'] ?? ''));
 $aiSummarySanitized = $aiSummaryRaw;
 
 if ($aiSummarySanitized !== '') {
-    // 2a. Remover nome do paciente e reformatar o início como "Paciente D, [idade]"
+    // 2a. Substituir nome do paciente pela inicial (privacidade). Ex.: "Roberto" -> "R."
     if ($patientName !== '') {
-        $aiSummarySanitized = str_ireplace($patientName, '', $aiSummarySanitized);
+        $aiSummarySanitized = str_ireplace($patientName, $patientInitial, $aiSummarySanitized);
     }
     // Limpar padrões residuais como "O paciente, , 72 anos" → "O paciente, 72 anos"
     $aiSummarySanitized = preg_replace('/,\s*,/', ',', $aiSummarySanitized);
@@ -789,6 +834,13 @@ $repl = [
     '{street}' => $street !== '' ? $street : '-',
     '{neighborhood}' => $neighborhood !== '' ? $neighborhood : '-',
     '{neighborhood_city}' => trim(($neighborhood !== '' ? $neighborhood . ' - ' : '') . ($city !== '' ? $city : '') . ($state !== '' ? '/' . $state : '')),
+    // Rua + bairro + cidade/UF (sem número, por privacidade). Usado no bloco de Local.
+    '{street_neighborhood_city}' => trim(
+        ($street !== '' ? $street . ' - ' : '')
+        . ($neighborhood !== '' ? $neighborhood . ' - ' : '')
+        . ($city !== '' ? $city : '')
+        . ($state !== '' ? '/' . $state : '')
+    ),
     '{specialty}' => $specialty !== '' ? $specialty : '-',
     '{frequency}' => $freqDisplay !== '' ? $freqDisplay : '-',
     '{description}' => mb_strimwidth(
@@ -1076,17 +1128,19 @@ try {
 $api = null;
 $apiInstanceName = null;
 try {
-    // Buscar todas as instâncias ativas
+    // Buscar todas as instâncias ativas. Prioriza a instância do captador para
+    // que a mensagem saia do WhatsApp de quem prospecta.
     $allInstances = db()->prepare("
         SELECT instance_name, token, is_default, connection_status 
         FROM whatsapp_instances 
         WHERE status = 'active' 
         ORDER BY 
+            CASE WHEN instance_name = :captador THEN 0 ELSE 1 END ASC,
             CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC,
             is_default DESC, 
             id ASC
     ");
-    $allInstances->execute();
+    $allInstances->execute(['captador' => $captadorInstanceName]);
     $instances = $allInstances->fetchAll();
     
     $baseUrl = (string)admin_setting_get('evolution.base_url', '');
@@ -1241,6 +1295,73 @@ $selLogs = db()->prepare(
 );
 $selLogs->execute(['did' => $id]);
 $toSend = $selLogs->fetchAll();
+
+// ============================================================================
+// GARANTIA DE MEMBROS EM GRUPO JÁ EXISTENTE
+// ----------------------------------------------------------------------------
+// A criação de grupo (mais acima) só roda quando NÃO existe grupo. Quando o
+// grupo já existe (reenvio para a mesma especialidade/local), o fluxo antigo
+// apenas enviava a mensagem e NUNCA adicionava os profissionais — por isso, no
+// modo de teste, o profissional de teste nunca entrava no grupo existente.
+// Aqui garantimos a adição dos profissionais da especialidade (respeitando o
+// modo de teste) em TODOS os grupos deste disparo, antes de enviar a mensagem.
+// ============================================================================
+if ($api !== null) {
+    try {
+        $firstWordGuard = explode(' ', trim($specialty))[0];
+        $profsGuardStmt = db()->prepare("
+            SELECT DISTINCT u.phone FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            INNER JOIN roles r ON r.id = ur.role_id
+            WHERE u.status = 'active' AND r.slug = 'profissional'
+            AND (
+                u.specialty = ?
+                OR u.specialty LIKE ?
+                OR ? LIKE CONCAT('%', u.specialty, '%')
+                OR u.specialty LIKE ?
+                OR LOWER(u.specialty) LIKE LOWER(?)
+            )
+            AND u.phone IS NOT NULL AND u.phone != ''" . $testModeSqlFilter . "
+        ");
+        $profsGuardStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWordGuard . '%', '%' . $firstWordGuard . '%']);
+        $guardPhones = $profsGuardStmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $guardParticipants = [];
+        foreach ($guardPhones as $gp) {
+            $clean = preg_replace('/\D+/', '', (string)$gp);
+            if (strlen($clean) === 10 || strlen($clean) === 11) {
+                $clean = '55' . $clean;
+            }
+            if (strlen($clean) >= 12) {
+                $guardParticipants[] = $clean . '@s.whatsapp.net';
+            }
+        }
+        $guardParticipants = array_values(array_unique($guardParticipants));
+
+        if (!empty($guardParticipants)) {
+            $guardJids = [];
+            foreach ($toSend as $tsRow) {
+                $gj = (string)($tsRow['evolution_group_jid'] ?? '');
+                if ($gj !== '' && !in_array($gj, $guardJids, true)) {
+                    $guardJids[] = $gj;
+                }
+            }
+            foreach ($guardJids as $gj) {
+                try {
+                    $addRes = $api->updateGroupMembers($gj, 'add', $guardParticipants);
+                    $addCode = (int)($addRes['status'] ?? 0);
+                    error_log("[DISPATCH] Garantia de membros no grupo existente '$gj': HTTP $addCode (" . count($guardParticipants) . " números, testMode=" . ($captacaoTestMode ? '1' : '0') . ")");
+                } catch (Throwable $gErr) {
+                    error_log("[DISPATCH] Falha ao garantir membros em '$gj': " . $gErr->getMessage());
+                }
+            }
+        } elseif ($captacaoTestMode) {
+            error_log("[DISPATCH] Modo de teste ligado e nenhum profissional de teste encontrado para '$specialty' — nenhum membro adicionado ao grupo existente.");
+        }
+    } catch (Throwable $guardErr) {
+        error_log("[DISPATCH] Erro no bloco de garantia de membros: " . $guardErr->getMessage());
+    }
+}
 
 $updOne = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = :st, error_message = :err WHERE id = :id');
 

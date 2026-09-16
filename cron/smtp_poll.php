@@ -21,6 +21,20 @@ if (function_exists('imap_timeout')) {
     @imap_timeout(IMAP_CLOSETIMEOUT, 5);
 }
 
+// Debug do poll: por padrão DESLIGADO para não poluir o log do Apache.
+// Para ligar temporariamente, acesse o cron com &debug=1 na URL.
+if (!defined('SMTP_POLL_DEBUG')) {
+    define('SMTP_POLL_DEBUG', isset($_GET['debug']) && $_GET['debug'] === '1');
+}
+if (!function_exists('smtp_poll_debug')) {
+    function smtp_poll_debug(string $msg): void
+    {
+        if (SMTP_POLL_DEBUG) {
+            error_log($msg);
+        }
+    }
+}
+
 // Usar configurações SMTP de saída como fallback para IMAP quando não configuradas
 $host = trim((string)admin_setting_get('smtp.in.host', ''));
 if ($host === '') {
@@ -156,7 +170,7 @@ try {
     // Unseen emails (ou UID forçado para re-processamento)
     if ($forceUid > 0) {
         $ids = [$forceUid];
-        error_log("[SMTP_POLL] Forçando re-processamento do UID $forceUid");
+        smtp_poll_debug("[SMTP_POLL] Forçando re-processamento do UID $forceUid");
     } else {
         $ids = imap_search($imap, 'UNSEEN', SE_UID);
     }
@@ -210,7 +224,7 @@ try {
             }
         }
         
-        error_log("[SMTP_POLL] E-mail UID $uid - Message-ID: $messageId, In-Reply-To: $inReplyTo");
+        smtp_poll_debug("[SMTP_POLL] E-mail UID $uid - Message-ID: $messageId, In-Reply-To: $inReplyTo");
 
         $fromEmail = '';
         $fromName = '';
@@ -305,7 +319,7 @@ try {
             // Processar estrutura MIME (com recursão para multipart aninhado)
             $structType = isset($structure->type) ? (int)$structure->type : -1;
             $structSubtype = isset($structure->subtype) ? strtoupper((string)$structure->subtype) : '';
-            error_log("[SMTP_POLL] UID $uid - Estrutura MIME: type=$structType subtype=$structSubtype partes=" . (isset($structure->parts) ? count($structure->parts) : 0));
+            smtp_poll_debug("[SMTP_POLL] UID $uid - Estrutura MIME: type=$structType subtype=$structSubtype partes=" . (isset($structure->parts) ? count($structure->parts) : 0));
             
             // Função recursiva para extrair texto de partes
             $extractParts = function($parts, $prefix, $imap, $uidInt, $decodeBody) use (&$extractParts, &$bodyText, &$bodyHtml, $uid) {
@@ -314,7 +328,7 @@ try {
                     $type = isset($part->type) ? (int)$part->type : 0;
                     $subtype = isset($part->subtype) ? strtolower((string)$part->subtype) : '';
                     
-                    error_log("[SMTP_POLL] UID $uid - Parte $partIndex: type=$type subtype=$subtype" . (isset($part->parts) ? " (tem " . count($part->parts) . " sub-partes)" : ""));
+                    smtp_poll_debug("[SMTP_POLL] UID $uid - Parte $partIndex: type=$type subtype=$subtype" . (isset($part->parts) ? " (tem " . count($part->parts) . " sub-partes)" : ""));
                     
                     // Se é multipart (type=1), descer recursivamente nas sub-partes
                     if ($type === 1 && isset($part->parts) && is_array($part->parts)) {
@@ -388,7 +402,7 @@ try {
             $bodyHtml = mb_convert_encoding($bodyHtml, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
         }
         
-        error_log("[SMTP_POLL] UID $uid - Resultado extração: bodyText=" . strlen($bodyText) . " chars, bodyHtml=" . strlen($bodyHtml) . " chars");
+        smtp_poll_debug("[SMTP_POLL] UID $uid - Resultado extração: bodyText=" . strlen($bodyText) . " chars, bodyHtml=" . strlen($bodyHtml) . " chars");
 
         $db->beginTransaction();
         try {

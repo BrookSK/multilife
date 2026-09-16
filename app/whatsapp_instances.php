@@ -78,18 +78,21 @@ function whatsapp_get_all_connected_numbers(): array
  */
 function whatsapp_get_user_instance(?int $userId = null): ?array
 {
-    // Se passou userId, tentar buscar instância do usuário
+    // Se passou userId, tentar buscar instância do usuário.
+    // Considera tanto o vínculo N:N (whatsapp_instance_users) quanto a coluna
+    // legada whatsapp_instances.user_id, para compatibilidade.
     if ($userId !== null && $userId > 0) {
         $stmt = db()->prepare("
-            SELECT instance_name, token, owner_number, owner_phone_formatted, is_default, connection_status
-            FROM whatsapp_instances 
-            WHERE user_id = :uid 
-            AND status = 'active' 
-            AND (connection_status = 'connected' OR connection_status IS NULL)
-            ORDER BY id DESC 
+            SELECT wi.instance_name, wi.token, wi.owner_number, wi.owner_phone_formatted, wi.is_default, wi.connection_status
+            FROM whatsapp_instances wi
+            LEFT JOIN whatsapp_instance_users wiu ON wiu.instance_id = wi.id AND wiu.user_id = :uid
+            WHERE (wiu.user_id = :uid2 OR wi.user_id = :uid3)
+            AND wi.status = 'active'
+            AND (wi.connection_status = 'connected' OR wi.connection_status IS NULL)
+            ORDER BY (wi.connection_status = 'connected') DESC, wi.id DESC
             LIMIT 1
         ");
-        $stmt->execute(['uid' => $userId]);
+        $stmt->execute(['uid' => $userId, 'uid2' => $userId, 'uid3' => $userId]);
         $row = $stmt->fetch();
 
         if ($row) {
@@ -173,7 +176,14 @@ function whatsapp_get_api_for_user(?int $userId = null): EvolutionApiV1
 function whatsapp_list_all_instances(): array
 {
     $stmt = db()->prepare("
-        SELECT wi.*, u.name AS user_name, u.email AS user_email
+        SELECT wi.*,
+               u.name AS user_name, u.email AS user_email,
+               (
+                   SELECT GROUP_CONCAT(us.name ORDER BY us.name SEPARATOR ', ')
+                   FROM whatsapp_instance_users wiu
+                   INNER JOIN users us ON us.id = wiu.user_id
+                   WHERE wiu.instance_id = wi.id
+               ) AS linked_user_names
         FROM whatsapp_instances wi
         LEFT JOIN users u ON u.id = wi.user_id
         WHERE wi.status = 'active'
@@ -181,6 +191,61 @@ function whatsapp_list_all_instances(): array
     ");
     $stmt->execute();
     return $stmt->fetchAll();
+}
+
+/**
+ * Retorna os IDs de usuários vinculados a uma instância (relação N:N).
+ *
+ * @param int $instanceId
+ * @return array<int>
+ */
+function whatsapp_instance_user_ids(int $instanceId): array
+{
+    $stmt = db()->prepare("SELECT user_id FROM whatsapp_instance_users WHERE instance_id = :id");
+    $stmt->execute(['id' => $instanceId]);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * Define (substitui) o conjunto completo de usuários vinculados a uma instância.
+ * Mantém a coluna legada whatsapp_instances.user_id apontando para o primeiro
+ * usuário da lista (dono principal), para compatibilidade.
+ *
+ * @param int $instanceId
+ * @param array<int> $userIds
+ * @return bool
+ */
+function whatsapp_set_instance_users(int $instanceId, array $userIds): bool
+{
+    $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds), static fn($v) => $v > 0)));
+
+    $db = db();
+    $db->beginTransaction();
+    try {
+        $db->prepare("DELETE FROM whatsapp_instance_users WHERE instance_id = :id")
+            ->execute(['id' => $instanceId]);
+
+        if (!empty($userIds)) {
+            $ins = $db->prepare(
+                "INSERT IGNORE INTO whatsapp_instance_users (instance_id, user_id) VALUES (:iid, :uid)"
+            );
+            foreach ($userIds as $uid) {
+                $ins->execute(['iid' => $instanceId, 'uid' => $uid]);
+            }
+        }
+
+        // Compatibilidade: user_id legado = primeiro da lista (ou NULL)
+        $primary = $userIds[0] ?? null;
+        $db->prepare("UPDATE whatsapp_instances SET user_id = :uid WHERE id = :id AND is_default = 0")
+            ->execute(['uid' => $primary, 'id' => $instanceId]);
+
+        $db->commit();
+        return true;
+    } catch (Throwable $e) {
+        $db->rollBack();
+        error_log('[WA] whatsapp_set_instance_users erro: ' . $e->getMessage());
+        return false;
+    }
 }
 
 /**

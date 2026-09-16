@@ -1472,6 +1472,49 @@ WAJS;
         echo '  .then(function(){ location.reload(); })';
         echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
         echo '};';
+        echo '';
+        echo 'window.waInstDisconnect = function(instanceName){';
+        echo '  if(!confirm("Desconectar a instância \'" + instanceName + "\'?\\n\\nO WhatsApp será deslogado, mas o vínculo com o(s) usuário(s) será mantido. Você poderá reconectar escaneando o QR Code.")) return;';
+        echo '  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
+        echo '  .then(function(r){ return r.json().catch(function(){ return {success:true}; }); })';
+        echo '  .then(function(){ location.reload(); })';
+        echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
+        echo '};';
+        echo '';
+        echo 'window.waInstReconnect = function(instanceName){';
+        echo '  waInstCurrentName = instanceName;';
+        echo '  var qrArea = document.getElementById("waInstQrArea");';
+        echo '  var qrContainer = document.getElementById("waInstQrContainer");';
+        echo '  var qrMsg = document.getElementById("waInstQrMsg");';
+        echo '  if(qrArea){ qrArea.style.display = "block"; qrArea.scrollIntoView({behavior:"smooth", block:"center"}); }';
+        echo '  qrContainer.innerHTML = \'<div style="color:#666;padding:20px">Reconectando \' + instanceName + \'...</div>\';';
+        echo '  qrMsg.textContent = "";';
+        echo '  fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))';
+        echo '  .then(function(r){ return r.json(); })';
+        echo '  .then(function(connData){';
+        echo '    if(connData.instance && (connData.instance.state === "open" || connData.instance.state === "connected")){ qrContainer.innerHTML = \'<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">Já conectado!</div>\'; setTimeout(function(){ location.reload(); }, 1500); return; }';
+        echo '    var base64 = connData.base64 || (connData.qrcode && connData.qrcode.base64) || "";';
+        echo '    if(base64){ qrContainer.innerHTML = \'<img src="\' + base64 + \'" style="max-width:260px;border-radius:8px">\'; qrMsg.innerHTML = \'<span style="color:#0ea5e9;font-weight:600">Escaneie o QR Code com o WhatsApp para reconectar</span>\'; waInstPoll(instanceName); }';
+        echo '    else { qrContainer.innerHTML = \'<div style="color:#ef4444;padding:20px">QR Code não disponível. Tente novamente.</div>\'; }';
+        echo '  })';
+        echo '  .catch(function(e){ qrContainer.innerHTML = \'<div style="color:#ef4444;padding:20px">Erro: \' + e.message + \'</div>\'; });';
+        echo '};';
+        echo '';
+        echo 'window.waInstSaveUsers = function(instanceId){';
+        echo '  var sel = document.getElementById("waUsers_" + instanceId);';
+        echo '  if(!sel){ return; }';
+        echo '  var formData = new FormData();';
+        echo '  formData.append("instance_id", instanceId);';
+        echo '  var any = false;';
+        echo '  for(var i=0; i<sel.options.length; i++){';
+        echo '    if(sel.options[i].selected){ formData.append("user_ids[]", sel.options[i].value); any = true; }';
+        echo '  }';
+        echo '  if(!any){ formData.append("user_ids[]", ""); }'; // garante que o backend receba user_ids (vazio = desvincular todos)
+        echo '  fetch("/admin_whatsapp_instance_link_post.php", {method:"POST", body: formData, headers:{"X-Requested-With":"XMLHttpRequest"}})';
+        echo '  .then(function(r){ return r.json().catch(function(){ return {success:true}; }); })';
+        echo '  .then(function(){ location.reload(); })';
+        echo '  .catch(function(e){ alert("Erro ao salvar: " + e.message); });';
+        echo '};';
         echo '})();';
         echo '</script>';
         
@@ -1540,8 +1583,11 @@ WAJS;
                 echo '<td style="font-weight:600">' . h($liName) . '</td>';
                 echo '<td>' . h($liPhone) . '</td>';
                 echo '<td>';
-                if ($li['user_name']) {
-                    echo h($li['user_name']);
+                $liUserNames = trim((string)($li['linked_user_names'] ?? ''));
+                if ($liUserNames !== '') {
+                    echo h($liUserNames);
+                } elseif (!empty($li['user_name'])) {
+                    echo h((string)$li['user_name']);
                 } else {
                     echo '<span style="color:hsl(var(--muted-foreground));font-style:italic">Sem vínculo</span>';
                 }
@@ -1550,18 +1596,28 @@ WAJS;
                 echo '<td style="text-align:center">' . ($liIsDefault ? '⭐' : '-') . '</td>';
                 echo '<td style="text-align:right">';
                 
+                // Botão Reconectar (para qualquer instância, inclusive a padrão)
+                echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="waInstReconnect(\'' . h($liName) . '\')">🔄 Reconectar</button>';
+
+                // Botão Desconectar (logout sem remover o vínculo) — só quando conectada
+                if ($liConnStatus === 'connected') {
+                    echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:#f59e0b;color:white;border:none" onclick="waInstDisconnect(\'' . h($liName) . '\')">⏸ Desconectar</button>';
+                }
+
                 if (!$liIsDefault) {
-                    echo '<form method="post" action="/admin_whatsapp_instance_link_post.php" style="display:inline-flex;align-items:center;gap:6px">';
-                    echo '<input type="hidden" name="instance_id" value="' . $liId . '">';
-                    echo '<select name="user_id" style="width:150px;font-size:12px;padding:4px 8px">';
-                    echo '<option value="0">Sem vínculo</option>';
+                    $liLinkedIds = whatsapp_instance_user_ids($liId);
+                    // IMPORTANTE: não usar <form> aqui — esta tabela está dentro do
+                    // #mainSettingsForm e forms aninhados são inválidos (o navegador
+                    // ignora o interno e submete o principal). Usamos fetch via JS.
+                    echo '<span style="display:inline-flex;align-items:center;gap:6px;vertical-align:middle">';
+                    echo '<select id="waUsers_' . $liId . '" multiple size="1" style="min-width:170px;font-size:12px;padding:4px 8px" title="Segure Ctrl (ou Cmd) para selecionar vários">';
                     foreach ($availableUsers as $au) {
-                        $sel = ((int)($li['user_id'] ?? 0) === (int)$au['id']) ? ' selected' : '';
+                        $sel = in_array((int)$au['id'], $liLinkedIds, true) ? ' selected' : '';
                         echo '<option value="' . (int)$au['id'] . '"' . $sel . '>' . h($au['name']) . '</option>';
                     }
                     echo '</select>';
-                    echo '<button class="btn" type="submit" style="font-size:11px;padding:4px 10px">Salvar</button>';
-                    echo '</form>';
+                    echo '<button class="btn" type="button" style="font-size:11px;padding:4px 10px" onclick="waInstSaveUsers(' . $liId . ')">Salvar</button>';
+                    echo '</span>';
                     echo ' <button type="button" class="btn" style="font-size:11px;padding:4px 10px;background:#ef4444;color:white;border:none" onclick="waInstRemove(\'' . h($liName) . '\',' . $liId . ')">Remover</button>';
                 } else {
                     echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Instância padrão</span>';
