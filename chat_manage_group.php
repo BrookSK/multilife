@@ -147,15 +147,56 @@ function resolveParticipant(array $participant, array $lidToPhone, array $phoneT
     ];
 }
 
-// Buscar profissionais disponíveis para adicionar
-$professionals = db()->query(
-    "SELECT u.id, u.name, u.phone
-    FROM users u
-    LEFT JOIN user_roles ur ON ur.user_id = u.id
-    LEFT JOIN roles r ON r.id = ur.role_id
-    WHERE u.status = 'active' AND r.slug = 'profissional' AND u.phone IS NOT NULL
-    ORDER BY u.name ASC"
-)->fetchAll();
+// Buscar profissionais disponíveis para adicionar (com especialidade e cidade para filtro).
+// A cidade vem do formulário de CANDIDATURA (professional_applications), vinculada ao usuário
+// criado na aprovação via created_user_id. Usa cidade de atuação quando houver, senão a cidade do endereço.
+$professionals = [];
+try {
+    $professionals = db()->query(
+        "SELECT u.id, u.name, u.phone, u.specialty,
+                COALESCE(NULLIF(TRIM(pa.cities_of_operation), ''), NULLIF(TRIM(pa.address_city), '')) AS city,
+                pa.address_state AS uf
+         FROM users u
+         INNER JOIN user_roles ur ON ur.user_id = u.id
+         INNER JOIN roles r ON r.id = ur.role_id
+         LEFT JOIN professional_applications pa ON pa.created_user_id = u.id
+         WHERE u.status = 'active' AND r.slug = 'profissional' AND u.phone IS NOT NULL
+         GROUP BY u.id, u.name, u.phone, u.specialty, city, uf
+         ORDER BY u.name ASC"
+    )->fetchAll();
+} catch (Throwable $e) {
+    // Fallback: se a tabela/colunas de candidatura não existirem, mantém a lista sem cidade.
+    $professionals = db()->query(
+        "SELECT u.id, u.name, u.phone, u.specialty, NULL AS city, NULL AS uf
+         FROM users u
+         LEFT JOIN user_roles ur ON ur.user_id = u.id
+         LEFT JOIN roles r ON r.id = ur.role_id
+         WHERE u.status = 'active' AND r.slug = 'profissional' AND u.phone IS NOT NULL
+         ORDER BY u.name ASC"
+    )->fetchAll();
+}
+
+// Listas distintas para os selects de filtro
+$specialtyOptions = [];
+$cityOptions = [];
+foreach ($professionals as $__p) {
+    $sp = trim((string)($__p['specialty'] ?? ''));
+    if ($sp !== '' && !in_array($sp, $specialtyOptions, true)) {
+        $specialtyOptions[] = $sp;
+    }
+    // cities_of_operation pode conter várias cidades separadas por vírgula
+    $cityRaw = trim((string)($__p['city'] ?? ''));
+    if ($cityRaw !== '') {
+        foreach (explode(',', $cityRaw) as $cpart) {
+            $cpart = trim($cpart);
+            if ($cpart !== '' && !in_array($cpart, $cityOptions, true)) {
+                $cityOptions[] = $cpart;
+            }
+        }
+    }
+}
+sort($specialtyOptions);
+sort($cityOptions);
 
 view_header('Gerenciar Grupo');
 
@@ -217,25 +258,130 @@ echo '</section>';
 
 echo '<section class="card col6">';
 echo '<h3>Adicionar Participantes</h3>';
+
+// Barra de filtros (filtragem client-side, sem recarregar a página)
+echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">';
+echo '<input type="text" id="filtroNome" placeholder="Buscar por nome..." style="padding:9px 12px;border:1px solid hsl(var(--border));border-radius:8px;grid-column:span 2">';
+echo '<input type="text" id="filtroTelefone" placeholder="Buscar por telefone..." style="padding:9px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
+echo '<select id="filtroEspecialidade" style="padding:9px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
+echo '<option value="">Todas as especialidades</option>';
+foreach ($specialtyOptions as $sp) {
+    echo '<option value="' . h(mb_strtolower($sp)) . '">' . h($sp) . '</option>';
+}
+echo '</select>';
+echo '<select id="filtroCidade" style="padding:9px 12px;border:1px solid hsl(var(--border));border-radius:8px;grid-column:span 2">';
+echo '<option value="">Todas as cidades</option>';
+foreach ($cityOptions as $ct) {
+    echo '<option value="' . h(mb_strtolower($ct)) . '">' . h($ct) . '</option>';
+}
+echo '</select>';
+echo '</div>';
+
+// Ações rápidas de seleção + contador de resultados
+echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+echo '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+echo '<button type="button" class="btn" id="btnSelecionarVisiveis" style="font-size:12px;padding:6px 12px">Selecionar visíveis</button>';
+echo '<button type="button" class="btn" id="btnLimparSelecao" style="font-size:12px;padding:6px 12px">Limpar seleção</button>';
+echo '</div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground))"><span id="contadorResultados">' . count($professionals) . '</span> profissional(is) • <span id="contadorSelecionados">0</span> selecionado(s)</div>';
+echo '</div>';
+
 echo '<form method="post" action="/chat_group_add_members.php">';
 echo '<input type="hidden" name="group_id" value="' . h($groupId) . '">';
-echo '<div style="max-height:400px;overflow-y:auto;border:1px solid hsl(var(--border));border-radius:8px;padding:12px;margin-bottom:12px">';
+echo '<div id="listaParticipantes" style="max-height:400px;overflow-y:auto;border:1px solid hsl(var(--border));border-radius:8px;padding:12px;margin-bottom:12px">';
+$totalRenderizados = 0;
 foreach ($professionals as $prof) {
     $phone = preg_replace('/\D/', '', $prof['phone'] ?? '');
     if (empty($phone)) continue;
-    
-    echo '<label style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid hsl(var(--border))">';
-    echo '<input type="checkbox" name="participants[]" value="' . h($phone) . '">';
-    echo '<div>';
+    $totalRenderizados++;
+
+    $nomeAttr = mb_strtolower(trim((string)$prof['name']));
+    $telAttr = $phone; // só dígitos, facilita a busca por telefone
+    $espAttr = mb_strtolower(trim((string)($prof['specialty'] ?? '')));
+    $espLabel = trim((string)($prof['specialty'] ?? ''));
+    $cityLabel = trim((string)($prof['city'] ?? ''));
+    $cityAttr = mb_strtolower($cityLabel); // pode conter várias cidades separadas por vírgula
+
+    echo '<label class="participante-item" data-nome="' . h($nomeAttr) . '" data-telefone="' . h($telAttr) . '" data-especialidade="' . h($espAttr) . '" data-cidade="' . h($cityAttr) . '" style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid hsl(var(--border))">';
+    echo '<input type="checkbox" class="participante-check" name="participants[]" value="' . h($phone) . '">';
+    echo '<div style="min-width:0">';
     echo '<div style="font-weight:600">' . h($prof['name']) . '</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">' . h($prof['phone']) . '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">' . h($prof['phone']);
+    if ($espLabel !== '') {
+        echo ' • <span style="color:hsl(var(--primary))">' . h($espLabel) . '</span>';
+    }
+    if ($cityLabel !== '') {
+        echo ' • <span style="color:hsl(var(--muted-foreground))">📍 ' . h($cityLabel) . '</span>';
+    }
+    echo '</div>';
     echo '</div>';
     echo '</label>';
 }
+echo '<div id="semResultados" style="display:none;padding:20px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum profissional encontrado com os filtros aplicados.</div>';
 echo '</div>';
 echo '<button type="submit" class="btn btnPrimary">Adicionar Selecionados</button>';
 echo '</form>';
 echo '</section>';
+
+// JavaScript: filtragem client-side por nome, telefone e especialidade + seleção em massa
+echo '<script>';
+echo '(function(){';
+echo '  var fNome = document.getElementById("filtroNome");';
+echo '  var fTel = document.getElementById("filtroTelefone");';
+echo '  var fEsp = document.getElementById("filtroEspecialidade");';
+echo '  var fCidade = document.getElementById("filtroCidade");';
+echo '  var lista = document.getElementById("listaParticipantes");';
+echo '  if(!lista) return;';
+echo '  var itens = lista.querySelectorAll(".participante-item");';
+echo '  var contador = document.getElementById("contadorResultados");';
+echo '  var contadorSel = document.getElementById("contadorSelecionados");';
+echo '  var semResultados = document.getElementById("semResultados");';
+echo '  function normalizar(s){ return (s||"").toString().toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,""); }';
+echo '  function soDigitos(s){ return (s||"").toString().replace(/\\D/g,""); }';
+echo '  function aplicarFiltro(){';
+echo '    var qNome = normalizar(fNome ? fNome.value : "");';
+echo '    var qTel = soDigitos(fTel ? fTel.value : "");';
+echo '    var qEsp = fEsp ? fEsp.value : "";';
+echo '    var qCidade = normalizar(fCidade ? fCidade.value : "");';
+echo '    var visiveis = 0;';
+echo '    itens.forEach(function(item){';
+echo '      var nome = normalizar(item.getAttribute("data-nome"));';
+echo '      var tel = soDigitos(item.getAttribute("data-telefone"));';
+echo '      var esp = item.getAttribute("data-especialidade") || "";';
+echo '      var cidade = normalizar(item.getAttribute("data-cidade"));';
+echo '      var ok = true;';
+echo '      if(qNome && nome.indexOf(qNome) === -1) ok = false;';
+echo '      if(qTel && tel.indexOf(qTel) === -1) ok = false;';
+echo '      if(qEsp && esp !== qEsp) ok = false;';
+echo '      if(qCidade && cidade.indexOf(qCidade) === -1) ok = false;';
+echo '      item.style.display = ok ? "flex" : "none";';
+echo '      if(ok) visiveis++;';
+echo '    });';
+echo '    if(contador) contador.textContent = visiveis;';
+echo '    if(semResultados) semResultados.style.display = (visiveis === 0) ? "block" : "none";';
+echo '  }';
+echo '  function atualizarSelecionados(){';
+echo '    var n = lista.querySelectorAll(".participante-check:checked").length;';
+echo '    if(contadorSel) contadorSel.textContent = n;';
+echo '  }';
+echo '  if(fNome) fNome.addEventListener("input", aplicarFiltro);';
+echo '  if(fTel) fTel.addEventListener("input", aplicarFiltro);';
+echo '  if(fEsp) fEsp.addEventListener("change", aplicarFiltro);';
+echo '  if(fCidade) fCidade.addEventListener("change", aplicarFiltro);';
+echo '  lista.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("participante-check")) atualizarSelecionados(); });';
+echo '  var btnVis = document.getElementById("btnSelecionarVisiveis");';
+echo '  if(btnVis) btnVis.addEventListener("click", function(){';
+echo '    itens.forEach(function(item){ if(item.style.display !== "none"){ var cb = item.querySelector(".participante-check"); if(cb) cb.checked = true; } });';
+echo '    atualizarSelecionados();';
+echo '  });';
+echo '  var btnLimpar = document.getElementById("btnLimparSelecao");';
+echo '  if(btnLimpar) btnLimpar.addEventListener("click", function(){';
+echo '    lista.querySelectorAll(".participante-check").forEach(function(cb){ cb.checked = false; });';
+echo '    atualizarSelecionados();';
+echo '  });';
+echo '  aplicarFiltro();';
+echo '})();';
+echo '</script>';
 
 echo '</div>';
 
