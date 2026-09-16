@@ -310,8 +310,15 @@ window.filtrarParticipantes = function () {
     if (qTel && tel.indexOf(qTel) === -1) ok = false;
     if (qEsp && esp !== qEsp) ok = false;
     if (qCidade && cidade.indexOf(qCidade) === -1) ok = false;
-    item.style.display = ok ? 'flex' : 'none';
-    if (ok) visiveis++;
+    // IMPORTANTE: usar setProperty com "important" porque o layout global tem
+    // uma regra "label[style]{display:grid !important}" que sobrescreveria um
+    // item.style.display normal, impedindo os itens de sumir.
+    if (ok) {
+      item.style.setProperty('display', 'flex', 'important');
+      visiveis++;
+    } else {
+      item.style.setProperty('display', 'none', 'important');
+    }
   }
   var contador = document.getElementById('contadorResultados');
   if (contador) contador.textContent = visiveis;
