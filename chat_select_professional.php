@@ -190,14 +190,15 @@ echo '<div class="formSection">';
 echo '<div class="formSectionTitle">💰 Valores</div>';
 echo '<div class="grid">';
 
-echo '<div class="col6">';
+echo '<div class="col12">';
 echo '<label>Valor Acordado (profissional)<input type="number" step="0.01" min="0" name="agreed_value" id="agreedValue" required value="0.00" placeholder="150.00"></label>';
 echo '<div class="helpText">Valor que o profissional receberá por sessão</div>';
 echo '</div>';
 
-echo '<div class="col6">';
-echo '<label>Valor de Proposta (operadora / cliente)<input type="number" step="0.01" min="0" name="proposal_value" id="proposalValue" required value="0.00" placeholder="200.00"></label>';
-echo '<div class="helpText">Valor que será oferecido à operadora / cliente por sessão</div>';
+// O valor da operadora NÃO é definido aqui: será informado na etapa de Autorização.
+echo '<input type="hidden" name="proposal_value" id="proposalValue" value="0">';
+echo '<div class="col12">';
+echo '<div style="padding:10px 12px;background:hsla(var(--warning)/.1);border:1px solid hsla(var(--warning)/.3);border-radius:8px;font-size:12px">O valor autorizado pela operadora / cliente será informado na etapa de <strong>Autorização</strong>, quando a demanda for aprovada.</div>';
 echo '</div>';
 
 echo '<div class="col12">';

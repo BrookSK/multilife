@@ -68,8 +68,13 @@ echo '<a href="/authorization_list.php" class="btn">← Voltar</a>';
 // ITEM 6: Ação manual "Marcar como respondida" quando envio automático está desabilitado.
 $autoSendAuthView = (string)admin_setting_get('feature.auto_send_authorization', '1');
 if ($autoSendAuthView !== '1' && (string)$auth['status'] === 'aguardando_autorizacao') {
-    echo '<form method="post" action="/authorization_mark_responded_post.php" style="display:inline" onsubmit="return confirm(\'Confirmar que a autorização foi respondida/aprovada? O fluxo seguirá para a Pré-Admissão.\')">';
+    // Ao aprovar manualmente, o valor autorizado pela operadora/cliente é OBRIGATÓRIO.
+    // Total de sessões para calcular o valor por sessão a partir do total autorizado.
+    $mrTotalSessions = (int)($auth['total_sessions'] ?? 0);
+    echo '<form method="post" action="/authorization_mark_responded_post.php" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap" onsubmit="return confirm(\'Confirmar que a autorização foi aprovada com o valor informado? O fluxo seguirá para a Pré-Admissão.\')">';
     echo '<input type="hidden" name="auth_id" value="' . $authId . '">';
+    echo '<input type="hidden" name="total_sessions" value="' . $mrTotalSessions . '">';
+    echo '<input type="number" name="authorized_value" required min="0.01" step="0.01" placeholder="Valor autorizado (total) R$ *" title="Valor total autorizado pela operadora / cliente" style="height:40px;min-width:220px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
     echo '<button type="submit" class="btn btnPrimary">✅ Marcar como aprovada</button>';
     echo '</form>';
 }

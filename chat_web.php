@@ -1340,16 +1340,13 @@ echo '</div>';
 
 echo '<h3 style="margin:24px 0 16px;font-size:16px;color:#111b21;border-bottom:2px solid #e0e0e0;padding-bottom:8px">💰 Valores</h3>';
 
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
-echo '<div>';
+echo '<div style="margin-bottom:16px">';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Acordado (profissional) *</label>';
 echo '<input type="number" name="agreed_value" id="selectProfAgreedValue" oninput="calculateTotals()" onchange="calculateTotals()" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 150.00">';
 echo '</div>';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Valor Proposta (operadora / cliente) *</label>';
-echo '<input type="number" name="proposal_value" id="selectProfProposalValue" oninput="calculateTotals()" onchange="calculateTotals()" required min="0" step="0.01" style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px" placeholder="Ex: 180.00">';
-echo '</div>';
-echo '</div>';
+// O valor da operadora NÃO é definido aqui: ele só é conhecido/registrado na etapa de Autorização.
+echo '<input type="hidden" name="proposal_value" id="selectProfProposalValue" value="0">';
+echo '<div style="padding:10px 12px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;margin-bottom:16px;font-size:12px;color:#8a6d00">O valor autorizado pela operadora / cliente será informado na etapa de <strong>Autorização</strong>, quando a demanda for aprovada.</div>';
 
 // Bloco de custos oculto (comentado a pedido do cliente)
 // echo '<div style="background:#f0f2f5;padding:16px;border-radius:8px;margin-top:16px">';

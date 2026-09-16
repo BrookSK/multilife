@@ -94,10 +94,11 @@ if ($totalSessions <= 0 || $durationWeeks <= 0) {
     if ($durationWeeks <= 0) $durationWeeks = 1;
 }
 
-if ($proposalValue <= 0) {
-    flash_set('error', 'Valor de proposta deve ser maior que zero.');
-    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
-    exit;
+// OBS: O valor da proposta/autorizado NÃO é mais exigido nesta etapa.
+// Ele será informado na etapa de Autorização (valor autorizado pela operadora).
+// Mantemos proposal_value como 0 aqui; a validação obrigatória ocorre na autorização manual.
+if ($proposalValue < 0) {
+    $proposalValue = 0;
 }
 
 $allowedFreq = ['single', 'daily', 'weekly', 'biweekly', 'monthly', 'custom',

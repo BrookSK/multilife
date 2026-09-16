@@ -46,11 +46,21 @@ try {
     $demandId = (int)$request['demand_id'];
     $patientId = (int)$request['patient_id'];
     $professionalUserId = (int)$request['professional_user_id'];
-    $proposalValue = (float)$request['proposal_value'];
     $agreedValue = (float)$request['agreed_value'];
     $totalSessions = (int)$request['total_sessions'];
     $frequency = (string)$request['frequency'];
     $startDate = (string)($request['start_date'] ?: date('Y-m-d'));
+
+    // VALOR AUTORIZADO (obrigatório): informado agora, na aprovação manual da autorização.
+    // É o valor TOTAL autorizado pela operadora / cliente para o atendimento.
+    $authorizedValueTotal = (float)str_replace(',', '.', (string)($_POST['authorized_value'] ?? '0'));
+    if ($authorizedValueTotal <= 0) {
+        flash_set('error', 'Informe o valor autorizado pela operadora / cliente para aprovar a autorização.');
+        header('Location: /authorization_view.php?id=' . $authId);
+        exit;
+    }
+    // proposalValue passa a ser o valor autorizado informado agora (substitui o valor antigo/zero).
+    $proposalValue = $authorizedValueTotal;
 
     // Validar paciente
     $vp = $db->prepare("SELECT id FROM patients WHERE id = :id AND deleted_at IS NULL");
@@ -91,7 +101,8 @@ try {
     $assignmentId = (int)$db->lastInsertId();
 
     // Lançamentos financeiros
-    $totalReceita = $proposalValue * $totalSessions;
+    // $proposalValue agora é o TOTAL autorizado (informado na aprovação), então NÃO multiplicar por sessões.
+    $totalReceita = $proposalValue;
     $totalDespesa = $agreedValue * $totalSessions;
     try {
         $db->prepare(
@@ -112,24 +123,25 @@ try {
         error_log('[AUTH_MARK_RESPONDED] Erro ao lançar financeiro: ' . $e->getMessage());
     }
 
-    // Atualizar autorização
+    // Atualizar autorização (grava também o valor autorizado informado nesta etapa)
     $db->prepare(
         "UPDATE authorization_requests
-         SET status = 'autorizacao_aprovada', response_received_at = NOW(), patient_assignment_id = :aid
+         SET status = 'autorizacao_aprovada', response_received_at = NOW(), patient_assignment_id = :aid, proposal_value = :pval
          WHERE id = :id"
-    )->execute(['aid' => $assignmentId, 'id' => $authId]);
+    )->execute(['aid' => $assignmentId, 'pval' => $proposalValue, 'id' => $authId]);
 
     // Atualizar demanda
     $db->prepare("UPDATE demands SET status = 'autorizacao_aprovada' WHERE id = :id")->execute(['id' => $demandId]);
 
-    // Histórico
+    // Histórico (registra o valor autorizado informado)
     try {
         $db->prepare(
-            "INSERT INTO authorization_request_history (authorization_request_id, action, notes, user_id)
-             VALUES (:auth_id, 'approved', :notes, :uid)"
+            "INSERT INTO authorization_request_history (authorization_request_id, action, proposal_value, notes, user_id)
+             VALUES (:auth_id, 'approved', :pval, :notes, :uid)"
         )->execute([
             'auth_id' => $authId,
-            'notes' => 'Marcada como respondida manualmente pelo usuário (envio automático desabilitado).',
+            'pval' => $proposalValue,
+            'notes' => 'Autorização aprovada manualmente. Valor autorizado: R$ ' . number_format($proposalValue, 2, ',', '.') . '.',
             'uid' => $userId,
         ]);
     } catch (Throwable $e) {}
