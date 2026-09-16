@@ -278,6 +278,97 @@ foreach ($cityOptions as $ct) {
 echo '</select>';
 echo '</div>';
 
+// ================================================================
+// SCRIPT DOS FILTROS — inline e autocontido (não depende de arquivo externo).
+// Definido AQUI, logo após os campos, e também em window para os handlers inline.
+// ================================================================
+?>
+<script>
+window.filtrarParticipantes = function () {
+  var lista = document.getElementById('listaParticipantes');
+  if (!lista) return;
+  function norm(s){ s = (s == null ? '' : String(s)).toLowerCase(); try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {} return s; }
+  function dig(s){ return (s == null ? '' : String(s)).replace(/[^0-9]/g, ''); }
+  var fNome = document.getElementById('filtroNome');
+  var fTel = document.getElementById('filtroTelefone');
+  var fEsp = document.getElementById('filtroEspecialidade');
+  var fCidade = document.getElementById('filtroCidade');
+  var qNome = norm(fNome ? fNome.value : '');
+  var qTel = dig(fTel ? fTel.value : '');
+  var qEsp = fEsp ? fEsp.value : '';
+  var qCidade = norm(fCidade ? fCidade.value : '');
+  var itens = lista.getElementsByClassName('participante-item');
+  var visiveis = 0;
+  for (var i = 0; i < itens.length; i++) {
+    var item = itens[i];
+    var nome = norm(item.getAttribute('data-nome'));
+    var tel = dig(item.getAttribute('data-telefone'));
+    var esp = item.getAttribute('data-especialidade') || '';
+    var cidade = norm(item.getAttribute('data-cidade'));
+    var ok = true;
+    if (qNome && nome.indexOf(qNome) === -1) ok = false;
+    if (qTel && tel.indexOf(qTel) === -1) ok = false;
+    if (qEsp && esp !== qEsp) ok = false;
+    if (qCidade && cidade.indexOf(qCidade) === -1) ok = false;
+    item.style.display = ok ? 'flex' : 'none';
+    if (ok) visiveis++;
+  }
+  var contador = document.getElementById('contadorResultados');
+  if (contador) contador.textContent = visiveis;
+  var semResultados = document.getElementById('semResultados');
+  if (semResultados) semResultados.style.display = (visiveis === 0) ? 'block' : 'none';
+};
+window.contarSelecionadosParticipantes = function () {
+  var lista = document.getElementById('listaParticipantes');
+  if (!lista) return;
+  var n = lista.querySelectorAll('.participante-check:checked').length;
+  var el = document.getElementById('contadorSelecionados');
+  if (el) el.textContent = n;
+};
+window.selecionarVisiveis = function () {
+  var lista = document.getElementById('listaParticipantes');
+  if (!lista) return;
+  var itens = lista.getElementsByClassName('participante-item');
+  for (var i = 0; i < itens.length; i++) {
+    if (itens[i].style.display !== 'none') {
+      var cb = itens[i].querySelector('.participante-check');
+      if (cb) cb.checked = true;
+    }
+  }
+  window.contarSelecionadosParticipantes();
+};
+window.limparSelecaoParticipantes = function () {
+  var lista = document.getElementById('listaParticipantes');
+  if (!lista) return;
+  var cbs = lista.querySelectorAll('.participante-check');
+  for (var i = 0; i < cbs.length; i++) { cbs[i].checked = false; }
+  window.contarSelecionadosParticipantes();
+};
+// Bind redundante por eventos (além dos handlers inline), garantindo funcionamento.
+(function () {
+  function bind() {
+    var campos = ['filtroNome', 'filtroTelefone', 'filtroEspecialidade', 'filtroCidade'];
+    for (var i = 0; i < campos.length; i++) {
+      var el = document.getElementById(campos[i]);
+      if (el && !el._mgBound) {
+        el._mgBound = true;
+        el.addEventListener('input', window.filtrarParticipantes);
+        el.addEventListener('keyup', window.filtrarParticipantes);
+        el.addEventListener('change', window.filtrarParticipantes);
+      }
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+  // Reforço: tenta vincular novamente após breve intervalo (caso a lista seja montada depois).
+  setTimeout(bind, 300);
+})();
+</script>
+<?php
+
 // Ações rápidas de seleção + contador de resultados
 echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
 echo '<div style="display:flex;gap:8px;flex-wrap:wrap">';
@@ -323,10 +414,6 @@ echo '</div>';
 echo '<button type="submit" class="btn btnPrimary">Adicionar Selecionados</button>';
 echo '</form>';
 echo '</section>';
-
-// JavaScript dos filtros: carregado de arquivo estático externo (não é afetado por
-// qualquer saída/notice do PHP). As funções são globais e chamadas pelos atributos inline.
-echo '<script src="/chat_manage_group_filter.js?v=2"></script>';
 
 echo '</div>';
 
