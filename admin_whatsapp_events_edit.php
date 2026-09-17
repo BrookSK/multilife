@@ -65,6 +65,7 @@ $availableVariables = [
     '{{horario_consulta}}' => 'Horário da consulta',
     '{{link_atendimento}}' => 'Link para o atendimento',
     '{{link_consulta}}' => 'Link para a consulta',
+    '{{link_cadastro}}' => 'Link para completar cadastro (pós pré-admissão)',
     '{{id_preadmissao}}' => 'ID da pré-admissão',
     '{{data_inicio}}' => 'Data de início',
     '{{data_aprovacao}}' => 'Data de aprovação',

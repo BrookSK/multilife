@@ -333,7 +333,42 @@ try {
         $patStmt->execute(['id' => $assignment['patient_id']]);
         $patData = $patStmt->fetch();
         $patPhone = preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? ''));
-        
+
+        // ============================================================
+        // Link PÚBLICO de atualização cadastral (sem login) para o profissional.
+        // Gera um token no usuário e monta a URL de rota limpa /atualizar-cadastro?token=...
+        // ============================================================
+        $registrationUrl = '';
+        try {
+            $profUserId = (int)$assignment['professional_user_id'];
+            if ($profUserId > 0) {
+                // Garantir colunas de apoio (idempotente)
+                try { db()->exec("ALTER TABLE users ADD COLUMN registration_token VARCHAR(64) NULL"); } catch (Throwable $e) {}
+                try { db()->exec("ALTER TABLE users ADD COLUMN registration_token_created_at DATETIME NULL"); } catch (Throwable $e) {}
+
+                // Reaproveita token existente se houver; senão gera um novo.
+                $tokStmt = db()->prepare('SELECT registration_token FROM users WHERE id = :id');
+                $tokStmt->execute(['id' => $profUserId]);
+                $regToken = (string)($tokStmt->fetchColumn() ?: '');
+                if ($regToken === '' || strlen($regToken) < 32) {
+                    $regToken = bin2hex(random_bytes(32));
+                    db()->prepare('UPDATE users SET registration_token = :t, registration_token_created_at = NOW() WHERE id = :id')
+                        ->execute(['t' => $regToken, 'id' => $profUserId]);
+                }
+
+                $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
+                if ($publicUrl === '') {
+                    $publicUrl = trim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'));
+                }
+                if ($publicUrl === '') {
+                    $publicUrl = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'multilife.onsolutionsbrasil.com.br');
+                }
+                $registrationUrl = rtrim($publicUrl, '/') . '/atualizar-cadastro?token=' . urlencode($regToken);
+            }
+        } catch (Throwable $regErr) {
+            error_log('[PRE_ADMISSAO_APPROVE] Erro ao gerar link de cadastro: ' . $regErr->getMessage());
+        }
+
         $dispatcher = new WhatsAppEventDispatcher();
         $dispatcher->dispatch('preadmission_approved', [
             'professional_id' => (int)$assignment['professional_user_id'],
@@ -350,6 +385,9 @@ try {
             'service_type' => $assignment['service_type'] ?? '',
             'session_quantity' => (string)($assignment['session_quantity'] ?? ''),
             'session_frequency' => $assignment['session_frequency'] ?? '',
+            // Link de atualização cadastral (usável no template via {{link_cadastro}} ou {{link_atendimento}})
+            'registration_link' => $registrationUrl,
+            'attendance_link' => $registrationUrl,
         ]);
     } catch (Throwable $evtErr) {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
