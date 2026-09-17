@@ -3,3 +3,26 @@ php_value upload_max_filesize 50M
 php_value post_max_size 55M
 php_value max_execution_time 120
 php_value max_input_time 120
+
+# ============================================================================
+# Rotas limpas (URLs sem ".php")
+# Ex.: /monitoramento  ->  serve /monitoramento.php
+# Só reescreve quando NÃO existe um arquivo/diretório com o caminho pedido,
+# então arquivos .php diretos, imagens e assets continuam funcionando normalmente.
+# ============================================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Se acessarem /pagina.php diretamente, redireciona para a versão limpa /pagina
+    # (301) para padronizar a URL. Não afeta index.php nem chamadas internas via header().
+    RewriteCond %{THE_REQUEST} \s/+([^?\s]+)\.php[\s?] [NC]
+    RewriteCond %{REQUEST_URI} !^/index\.php$ [NC]
+    RewriteRule ^ /%1 [R=301,L,NE]
+
+    # Se a URL pedida não é um arquivo nem um diretório existente,
+    # e existe um .php com esse nome, serve o .php internamente (sem mudar a URL).
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{DOCUMENT_ROOT}/$1.php -f
+    RewriteRule ^([^.]+)$ /$1.php [L]
+</IfModule>

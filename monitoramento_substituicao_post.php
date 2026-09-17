@@ -283,7 +283,8 @@ try {
 // ("Você foi designado como novo profissional"), então enviamos os dados do NOVO nele.
 try {
     $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
-    $attendanceLink = $baseUrl . '/monitoramento.php';
+    // Rota limpa (sem .php) — o .htaccess reescreve /monitoramento -> /monitoramento.php
+    $attendanceLink = $baseUrl . '/monitoramento';
 
     $dispatcher = new WhatsAppEventDispatcher();
     $eventData = [

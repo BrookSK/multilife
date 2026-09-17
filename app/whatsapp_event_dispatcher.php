@@ -160,10 +160,10 @@ class WhatsAppEventDispatcher
      */
     private function processTemplate(string $template, array $data): string
     {
-        // Gerar link de acesso baseado no attendance_id
+        // Gerar link de acesso baseado no attendance_id (rota limpa, sem .php)
         $baseUrl = 'https://multilife.onsolutionsbrasil.com.br';
         $attendanceId = $data['attendance_id'] ?? '';
-        $attendanceLink = $attendanceId !== '' ? $baseUrl . '/monitoramento.php' : '';
+        $attendanceLink = $attendanceId !== '' ? $baseUrl . '/monitoramento' : '';
         
         $variables = [
             '{{profissional_nome}}' => $data['professional_name'] ?? '',
