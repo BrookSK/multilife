@@ -16,11 +16,41 @@ $notifyPatient = isset($_POST['notify_patient']);
 $notifyOldProf = isset($_POST['notify_old_professional']);
 $notifyNewProf = isset($_POST['notify_new_professional']);
 
+// Novos dados do atendimento com o novo profissional (a frequência é mantida).
+$newStartDate = trim((string)($_POST['start_date'] ?? ''));
+$newStartTime = trim((string)($_POST['start_time'] ?? ''));
+$newEndTime = trim((string)($_POST['end_time'] ?? ''));
+$newAgreedValue = (float)str_replace(',', '.', (string)($_POST['agreed_value'] ?? '0'));
+
 if ($assignmentId <= 0 || $newProfessionalId <= 0 || $reasonType === '') {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
     header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
     exit;
 }
+
+// Validar os novos dados do atendimento (obrigatórios).
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $newStartDate)) {
+    flash_set('error', 'Informe a data de início.');
+    header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
+    exit;
+}
+if (!preg_match('/^\d{2}:\d{2}$/', $newStartTime) || !preg_match('/^\d{2}:\d{2}$/', $newEndTime)) {
+    flash_set('error', 'Informe os horários de início e fim.');
+    header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
+    exit;
+}
+if ($newEndTime <= $newStartTime) {
+    flash_set('error', 'O horário de fim deve ser maior que o de início.');
+    header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
+    exit;
+}
+if ($newAgreedValue <= 0) {
+    flash_set('error', 'Informe o valor acordado com o novo profissional.');
+    header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
+    exit;
+}
+$newStartTimeSql = $newStartTime . ':00';
+$newEndTimeSql = $newEndTime . ':00';
 
 // Buscar atendimento atual
 $stmt = db()->prepare(
@@ -76,13 +106,90 @@ $newProfJid = $newProfPhone !== '' ? $newProfPhone . '@s.whatsapp.net' : '';
 $db = db();
 $db->beginTransaction();
 try {
-    // Atualizar o atendimento
-    $upd = $db->prepare('UPDATE patient_assignments SET professional_user_id = :uid, professional_remote_jid = :jid WHERE id = :id');
+    // Atualizar o atendimento (novo profissional + novo valor acordado; frequência mantida)
+    $upd = $db->prepare('UPDATE patient_assignments SET professional_user_id = :uid, professional_remote_jid = :jid, agreed_value = :av WHERE id = :id');
     $upd->execute([
         'uid' => $newProfessionalId,
         'jid' => $newProfJid,
+        'av' => $newAgreedValue,
         'id' => $assignmentId,
     ]);
+
+    // Frequência atual (mantida) para recalcular as datas das sessões futuras.
+    $currentFrequency = (string)($assignment['session_frequency'] ?? '');
+
+    // Atualizar a proposta/autorização vinculada com os novos dados (data/horário/valor).
+    try {
+        $updAuth = $db->prepare(
+            "UPDATE authorization_requests
+             SET start_date = :sd, start_time = :st, end_time = :et, agreed_value = :av,
+                 professional_user_id = :uid
+             WHERE (patient_assignment_id = :aid)
+                OR (demand_id = :did AND patient_id = :pid)"
+        );
+        $updAuth->execute([
+            'sd' => $newStartDate,
+            'st' => $newStartTimeSql,
+            'et' => $newEndTimeSql,
+            'av' => $newAgreedValue,
+            'uid' => $newProfessionalId,
+            'aid' => $assignmentId,
+            'did' => (int)($assignment['demand_id'] ?? 0),
+            'pid' => $patientId,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[SUBSTITUICAO] Erro ao atualizar authorization_requests: ' . $e->getMessage());
+    }
+
+    // Atualizar o profissional das sessões futuras (pendentes) e recalcular as datas a
+    // partir da nova data de início, MANTENDO a frequência atual.
+    try {
+        $selSessions = $db->prepare(
+            "SELECT id, session_number FROM billing_document_requirements
+             WHERE assignment_id = :aid AND status = 'pending'
+               AND (session_date IS NULL OR session_date >= CURDATE())
+             ORDER BY session_number ASC"
+        );
+        $selSessions->execute(['aid' => $assignmentId]);
+        $pendingSessions = $selSessions->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($pendingSessions) > 0) {
+            // Vincular as sessões futuras ao novo profissional
+            $updSessProf = $db->prepare(
+                "UPDATE billing_document_requirements SET professional_user_id = :uid
+                 WHERE assignment_id = :aid AND status = 'pending'
+                   AND (session_date IS NULL OR session_date >= CURDATE())"
+            );
+            $updSessProf->execute(['uid' => $newProfessionalId, 'aid' => $assignmentId]);
+
+            // Recalcular datas pela frequência mantida, a partir da nova data de início.
+            $newDates = [];
+            if (function_exists('frequency_normalize') && function_exists('frequency_generate_session_dates')) {
+                $freqCode = $currentFrequency;
+                if (!defined('FREQUENCY_WEEKDAYS_MAP') || !isset(FREQUENCY_WEEKDAYS_MAP[$freqCode])) {
+                    $freqCode = frequency_normalize($currentFrequency);
+                }
+                if ($freqCode !== '') {
+                    try {
+                        $gen = frequency_generate_session_dates($freqCode, new DateTime($newStartDate), count($pendingSessions));
+                        foreach ($gen as $dt) { $newDates[] = $dt->format('Y-m-d'); }
+                    } catch (Throwable $e) { $newDates = []; }
+                }
+            }
+
+            if (count($newDates) > 0) {
+                $updDate = $db->prepare('UPDATE billing_document_requirements SET session_date = :sd WHERE id = :id');
+                foreach ($pendingSessions as $idx => $sess) {
+                    $updDate->execute([
+                        'sd' => $newDates[$idx] ?? null,
+                        'id' => (int)$sess['id'],
+                    ]);
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[SUBSTITUICAO] Erro ao recalcular sessões: ' . $e->getMessage());
+    }
 
     // Registrar no log
     $ins = $db->prepare(
@@ -107,17 +214,36 @@ try {
     // Se aplicar a todos, atualizar outros atendimentos do paciente com o mesmo profissional
     if ($applyToAll && $oldProfId > 0) {
         $updAll = $db->prepare(
-            "UPDATE patient_assignments SET professional_user_id = :new_uid, professional_remote_jid = :new_jid
+            "UPDATE patient_assignments SET professional_user_id = :new_uid, professional_remote_jid = :new_jid, agreed_value = :av
              WHERE patient_id = :pid AND professional_user_id = :old_uid AND id != :aid
              AND status IN ('admitted','awaiting_documents','awaiting_financial_approval','confirmed','approved')"
         );
         $updAll->execute([
             'new_uid' => $newProfessionalId,
             'new_jid' => $newProfJid,
+            'av' => $newAgreedValue,
             'pid' => $patientId,
             'old_uid' => $oldProfId,
             'aid' => $assignmentId,
         ]);
+
+        // Vincular sessões futuras dos demais atendimentos ao novo profissional
+        try {
+            $db->prepare(
+                "UPDATE billing_document_requirements bdr
+                 INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
+                 SET bdr.professional_user_id = :new_uid
+                 WHERE pa.patient_id = :pid AND pa.professional_user_id = :new_uid2 AND pa.id != :aid
+                   AND bdr.status = 'pending' AND (bdr.session_date IS NULL OR bdr.session_date >= CURDATE())"
+            )->execute([
+                'new_uid' => $newProfessionalId,
+                'new_uid2' => $newProfessionalId,
+                'pid' => $patientId,
+                'aid' => $assignmentId,
+            ]);
+        } catch (Throwable $e) {
+            error_log('[SUBSTITUICAO] Erro ao atualizar sessões dos demais atendimentos: ' . $e->getMessage());
+        }
     }
 
     $db->commit();

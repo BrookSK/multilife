@@ -27,6 +27,38 @@ if (!$assignment) {
     exit;
 }
 
+// Dados de agendamento/valor atuais (fonte: authorization_requests vinculada à demanda/paciente).
+// Usados apenas para PRÉ-PREENCHER os campos; a equipe deve reinformar para o novo profissional.
+$currentSchedule = ['start_date' => '', 'start_time' => '', 'end_time' => '', 'agreed_value' => ''];
+try {
+    $schedStmt = db()->prepare(
+        "SELECT start_date, start_time, end_time, agreed_value
+         FROM authorization_requests
+         WHERE (patient_assignment_id = :aid)
+            OR (demand_id = :did AND patient_id = :pid)
+         ORDER BY (patient_assignment_id = :aid2) DESC, id DESC
+         LIMIT 1"
+    );
+    $schedStmt->execute([
+        'aid' => $assignmentId,
+        'aid2' => $assignmentId,
+        'did' => (int)($assignment['demand_id'] ?? 0),
+        'pid' => (int)($assignment['patient_id'] ?? 0),
+    ]);
+    if ($row = $schedStmt->fetch(PDO::FETCH_ASSOC)) {
+        $currentSchedule['start_date'] = (string)($row['start_date'] ?? '');
+        $currentSchedule['start_time'] = !empty($row['start_time']) ? substr((string)$row['start_time'], 0, 5) : '';
+        $currentSchedule['end_time'] = !empty($row['end_time']) ? substr((string)$row['end_time'], 0, 5) : '';
+        if ($row['agreed_value'] !== null && (float)$row['agreed_value'] > 0) {
+            $currentSchedule['agreed_value'] = number_format((float)$row['agreed_value'], 2, '.', '');
+        }
+    }
+} catch (Throwable $e) {}
+// Fallback do valor: usa o agreed_value do próprio assignment se a authorization não tiver.
+if ($currentSchedule['agreed_value'] === '' && isset($assignment['agreed_value']) && (float)$assignment['agreed_value'] > 0) {
+    $currentSchedule['agreed_value'] = number_format((float)$assignment['agreed_value'], 2, '.', '');
+}
+
 // Buscar profissionais disponíveis (ativos, com role profissional)
 $stmtProfs = db()->prepare(
     "SELECT u.id, u.name, u.phone, u.email
@@ -154,6 +186,19 @@ echo '<option value="mudanca_regiao">Mudança de região</option>';
 echo '<option value="outro">Outro</option>';
 echo '</select></label></div>';
 echo '<div class="col12"><label>Detalhes/Observações<textarea name="reason_details" rows="3" placeholder="Detalhes adicionais sobre a substituição..."></textarea></label></div>';
+echo '</div>';
+
+// ITEM: substituição gera uma NOVA combinação de profissional/data/horário/valor.
+// A frequência é MANTIDA (não é solicitada aqui).
+echo '<div style="margin-top:6px;padding:14px 16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:10px">';
+echo '<div style="font-weight:700;margin-bottom:4px">Dados do atendimento com o novo profissional</div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Informe novamente os dados abaixo. A <strong>frequência é mantida</strong> (' . h(function_exists('frequency_translate') ? frequency_translate((string)($assignment['session_frequency'] ?? '-')) : (string)($assignment['session_frequency'] ?? '-')) . ').</div>';
+echo '<div class="grid">';
+echo '<div class="col4"><label>Data de início *<input type="date" name="start_date" value="' . h($currentSchedule['start_date']) . '" required></label></div>';
+echo '<div class="col4"><label>Horário de início *<input type="time" name="start_time" value="' . h($currentSchedule['start_time'] ?: '08:00') . '" required></label></div>';
+echo '<div class="col4"><label>Horário de fim *<input type="time" name="end_time" value="' . h($currentSchedule['end_time'] ?: '09:00') . '" required></label></div>';
+echo '<div class="col6"><label>Valor acordado com o novo profissional (R$) *<input type="number" name="agreed_value" step="0.01" min="0" value="' . h($currentSchedule['agreed_value']) . '" placeholder="Ex: 150.00" required></label></div>';
+echo '</div>';
 echo '</div>';
 
 // Notificações
