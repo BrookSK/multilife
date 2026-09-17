@@ -255,17 +255,43 @@ try {
 }
 
 // Notificações via WhatsApp
+// O template do evento "professional_substituted" usa {{id_atendimento}} e {{link_atendimento}}
+// (e afins). O canal "professional" do dispatcher é usado para avisar o NOVO profissional
+// ("Você foi designado como novo profissional"), então enviamos os dados do NOVO nele.
 try {
+    $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
+    $attendanceLink = $baseUrl . '/monitoramento.php';
+
     $dispatcher = new WhatsAppEventDispatcher();
     $eventData = [
+        // Identificação do atendimento (resolve "ID: #" vazio e o link ausente)
+        'attendance_id' => $assignmentId,
+        'attendance_link' => $attendanceLink,
+        'appointment_link' => $attendanceLink,
+        'attendance_date' => date('d/m/Y'),
+
+        // Paciente
         'patient_id' => $patientId,
         'patient_name' => (string)$assignment['patient_name'],
         'patient_phone' => $notifyPatient ? (string)($assignment['patient_phone'] ?? '') : '',
-        'professional_id' => $notifyOldProf ? $oldProfId : 0,
-        'professional_name' => (string)($assignment['old_professional_name'] ?? ''),
-        'professional_phone' => $notifyOldProf ? (string)($assignment['old_professional_phone'] ?? '') : '',
+
+        // Profissional destinatário da notificação = NOVO profissional (o que foi designado)
+        'professional_id' => $notifyNewProf ? $newProfessionalId : 0,
+        'professional_name' => (string)$newProf['name'],
+        'professional_phone' => $notifyNewProf ? (string)($newProf['phone'] ?? '') : '',
+
+        // Dados adicionais úteis para os templates
         'new_professional_name' => (string)$newProf['name'],
-        'new_professional_phone' => $notifyNewProf ? (string)($newProf['phone'] ?? '') : '',
+        'new_professional_phone' => (string)($newProf['phone'] ?? ''),
+        'old_professional_name' => (string)($assignment['old_professional_name'] ?? ''),
+        'old_professional_phone' => (string)($assignment['old_professional_phone'] ?? ''),
+        'specialty' => (string)($assignment['specialty'] ?? $assignment['service_type'] ?? ''),
+        'service_type' => (string)($assignment['service_type'] ?? ''),
+        'session_frequency' => (string)($assignment['session_frequency'] ?? ''),
+        'start_date' => $newStartDate,
+        'appointment_date' => $newStartDate,
+        'appointment_time' => $newStartTime,
+        'agreed_value' => number_format($newAgreedValue, 2, ',', '.'),
         'reason' => $reason,
     ];
     $dispatcher->dispatch('professional_substituted', $eventData);
