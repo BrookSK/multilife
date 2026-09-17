@@ -254,6 +254,29 @@ try {
     exit;
 }
 
+// Garantir que o evento "professional_removed" (aviso ao profissional ANTERIOR) exista e esteja
+// ativo, com um template padrão. Assim o antigo é notificado sem depender de configuração manual.
+// A equipe pode editar o texto depois em Integrações > Eventos WhatsApp.
+try {
+    $chkEvt = db()->prepare("SELECT id FROM whatsapp_events WHERE system_event = 'professional_removed' LIMIT 1");
+    $chkEvt->execute();
+    if (!$chkEvt->fetch()) {
+        $tplRemovido = "Olá, {{profissional_nome}}!\n\n"
+            . "🔄 *Substituição de Profissional*\n\n"
+            . "Informamos que você foi substituído no atendimento abaixo e não é mais o responsável por ele:\n\n"
+            . "• Paciente: {{paciente_nome}}\n"
+            . "• Atendimento: #{{id_atendimento}}\n"
+            . "• Especialidade: {{especialidade}}\n\n"
+            . "Agradecemos o seu trabalho.\n\nEquipe MultiLife Care";
+        db()->prepare(
+            "INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, template_patient)
+             VALUES (?, 'professional_removed', 'active', 1, 0, ?, NULL)"
+        )->execute(['Substituição - Profissional anterior', $tplRemovido]);
+    }
+} catch (Throwable $e) {
+    error_log('[SUBSTITUICAO] Erro ao garantir evento professional_removed: ' . $e->getMessage());
+}
+
 // Notificações via WhatsApp
 // O template do evento "professional_substituted" usa {{id_atendimento}} e {{link_atendimento}}
 // (e afins). O canal "professional" do dispatcher é usado para avisar o NOVO profissional
@@ -295,6 +318,18 @@ try {
         'reason' => $reason,
     ];
     $dispatcher->dispatch('professional_substituted', $eventData);
+
+    // Notificar o profissional ANTERIOR (evento separado, template próprio).
+    // Usa o canal "professional" do dispatcher com os dados do profissional antigo.
+    if ($notifyOldProf && $oldProfId > 0 && !empty($assignment['old_professional_phone'])) {
+        $eventDataOld = $eventData;
+        $eventDataOld['professional_id'] = $oldProfId;
+        $eventDataOld['professional_name'] = (string)($assignment['old_professional_name'] ?? '');
+        $eventDataOld['professional_phone'] = (string)($assignment['old_professional_phone'] ?? '');
+        // Não reenviar ao paciente neste disparo (já foi no evento anterior).
+        $eventDataOld['patient_phone'] = '';
+        $dispatcher->dispatch('professional_removed', $eventDataOld);
+    }
 } catch (Throwable $e) {
     error_log('[SUBSTITUICAO] Erro ao notificar: ' . $e->getMessage());
 }
