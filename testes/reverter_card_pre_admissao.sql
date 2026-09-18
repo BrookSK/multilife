@@ -1,27 +1,24 @@
 -- =====================================================================
--- TESTE: reverter um atendimento para a PRÉ-ADMISSÃO
+-- TESTE: fazer um atendimento aparecer na PRÉ-ADMISSÃO
 -- =====================================================================
--- Objetivo: fazer um card que já foi aprovado (status 'admitted') voltar
--- para a fila de pré-admissão (status 'confirmed', approved_at NULL), para
--- testar o fluxo real de aprovação (que gera o link público de documentos
--- e dispara as notificações ao profissional).
---
 -- A tela /pre_admissao.php lista apenas atendimentos com:
 --     patient_assignments.status = 'confirmed' AND approved_at IS NULL
 --
--- COMO USAR:
---   1) Rode o PASSO 1 para localizar o atendimento de teste e anote o ID.
---   2) Ajuste o @ASSIGNMENT_ID no PASSO 2 e rode os UPDATEs/DELETE.
---   3) Recarregue /pre_admissao.php: o card deve reaparecer para aprovação.
+-- Como sua pré-admissão está VAZIA, não há nenhum atendimento em 'confirmed'.
+-- Este script te ajuda a reverter um atendimento que JÁ FOI aprovado
+-- (ex.: um 'admitted' que aparece no Monitoramento) de volta para
+-- 'confirmed', para você testar o fluxo real de aprovação — que gera o
+-- link público de documentos e dispara as notificações ao profissional.
 --
--- OBS: rode em ambiente de teste. As operações são reversíveis apenas
---      re-aprovando o card pela tela.
+-- Rode em AMBIENTE DE TESTE. Passos: 1) diagnosticar, 2) escolher o ID,
+-- 3) reverter, 4) conferir.
 -- =====================================================================
 
 
 -- ---------------------------------------------------------------------
--- PASSO 1 — Localizar o atendimento de teste (ajuste o filtro pelo nome
--- do paciente/profissional que você usa como teste).
+-- PASSO 1 — DIAGNÓSTICO: ver TODOS os atendimentos e seus status.
+-- Escolha um candidato (de preferência status 'admitted', que é o que a
+-- aprovação da pré-admissão produz). Anote o assignment_id.
 -- ---------------------------------------------------------------------
 SELECT
     pa.id            AS assignment_id,
@@ -32,6 +29,7 @@ SELECT
     pa.health_insurer_id,
     hi.name          AS operadora,
     p.full_name      AS paciente,
+    u.id             AS professional_user_id,
     u.name           AS profissional,
     u.professional_type,
     u.phone          AS prof_phone,
@@ -42,22 +40,21 @@ INNER JOIN patients p ON p.id = pa.patient_id
 LEFT JOIN users u ON u.id = pa.professional_user_id
 LEFT JOIN demands d ON d.id = pa.demand_id
 LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
-WHERE p.full_name LIKE '%Teste%'    -- ajuste conforme seu card de teste
-   OR u.name LIKE '%Teste%'
 ORDER BY pa.id DESC
-LIMIT 20;
+LIMIT 50;
 
 
 -- ---------------------------------------------------------------------
--- PASSO 2 — Reverter o atendimento escolhido para a pré-admissão.
--- Troque o valor de @ASSIGNMENT_ID pelo assignment_id do PASSO 1.
+-- PASSO 2 — Escolha o atendimento e informe o ID abaixo.
 -- ---------------------------------------------------------------------
-SET @ASSIGNMENT_ID := 0;   -- <<< COLOQUE AQUI O ID DO ATENDIMENTO
-
--- Descobrir a demanda vinculada (para reverter o status do card de captação).
+SET @ASSIGNMENT_ID := 0;   -- <<< COLOQUE AQUI O assignment_id do PASSO 1
 SET @DEMAND_ID := (SELECT demand_id FROM patient_assignments WHERE id = @ASSIGNMENT_ID);
 
--- 2.1) Voltar o atendimento para 'confirmed' e limpar as marcas de aprovação.
+
+-- ---------------------------------------------------------------------
+-- PASSO 3 — Reverter para a pré-admissão.
+-- ---------------------------------------------------------------------
+-- 3.1) Atendimento volta para 'confirmed' e limpa marcas de aprovação.
 UPDATE patient_assignments
 SET status = 'confirmed',
     approved_at = NULL,
@@ -65,44 +62,49 @@ SET status = 'confirmed',
     approved_by_user_id = NULL
 WHERE id = @ASSIGNMENT_ID;
 
--- 2.2) Voltar o card de captação (demands) para o estado anterior à admissão.
---      'autorizacao_aprovada' é o estado que precede a pré-admissão.
+-- 3.2) Card de captação (demands) volta ao estado que antecede a admissão.
 UPDATE demands
 SET status = 'autorizacao_aprovada', updated_at = NOW()
 WHERE id = @DEMAND_ID;
 
--- 2.3) Remover as pendências de documentos de faturamento geradas na aprovação
---      (opcional, mas deixa o teste limpo e evita sessões duplicadas ao reaprovar).
+-- 3.3) Remover as pendências de documentos de faturamento geradas na aprovação
+--      (evita sessões duplicadas ao reaprovar; opcional).
 DELETE FROM billing_document_requirements
 WHERE assignment_id = @ASSIGNMENT_ID;
 
 
 -- ---------------------------------------------------------------------
--- PASSO 3 — (Opcional) Garantir que o link será gerável e enviado:
+-- PASSO 4 — PRÉ-REQUISITOS para o teste do link funcionar de ponta a ponta.
 -- ---------------------------------------------------------------------
--- 3.1) O profissional precisa ter telefone e/ou e-mail para receber a notificação.
---      Confira no resultado do PASSO 1 (prof_phone / prof_email).
---
--- 3.2) A operadora do atendimento precisa ter documentos cadastrados
---      (com especialidade/tipo/extra) para aparecerem na página pública.
+-- 4.1) O profissional precisa ter telefone e/ou e-mail (veja no PASSO 1).
+--      Se não tiver, defina um para receber a notificação (troque o ID e valores):
+-- UPDATE users SET phone = '5511999999999', email = 'seu-teste@exemplo.com'
+-- WHERE id = <professional_user_id>;
+
+-- 4.2) O atendimento precisa ter uma OPERADORA vinculada, e a operadora
+--      precisa ter documentos cadastrados. Confira os documentos:
 SELECT id, file_name, specialty, doc_type, is_extra, professional_type
 FROM health_insurer_documents
 WHERE health_insurer_id = (
     SELECT health_insurer_id FROM patient_assignments WHERE id = @ASSIGNMENT_ID
 );
---
--- 3.3) A flag "Enviar link de acesso ao portal nas notificações" precisa estar ligada:
-SELECT setting_value
-FROM admin_settings
+--   Se o atendimento estiver SEM operadora (health_insurer_id NULL), vincule uma
+--   que tenha documentos (troque o 1 pelo id da operadora desejada):
+-- UPDATE patient_assignments SET health_insurer_id = 1 WHERE id = @ASSIGNMENT_ID;
+--   (na tela de aprovação da pré-admissão você também seleciona a operadora)
+
+-- 4.3) A flag "Enviar link de acesso ao portal nas notificações" precisa estar ligada:
+SELECT setting_value FROM admin_settings
 WHERE setting_key = 'feature.enviar_link_portal_notificacoes';
--- Se vier vazio/0, ligue em /admin_feature_flags.php (ou rode o UPDATE abaixo):
--- UPDATE admin_settings SET setting_value = '1'
--- WHERE setting_key = 'feature.enviar_link_portal_notificacoes';
+-- Se vier vazio/0, ligue em /admin_feature_flags.php OU rode:
+-- INSERT INTO admin_settings (setting_key, setting_value)
+-- VALUES ('feature.enviar_link_portal_notificacoes', '1')
+-- ON DUPLICATE KEY UPDATE setting_value = '1';
 
 
 -- ---------------------------------------------------------------------
--- CONFERÊNCIA — o card deve voltar a aparecer nesta consulta (a mesma
--- que a tela /pre_admissao.php usa):
+-- PASSO 5 — CONFERÊNCIA: o card deve aparecer aqui (mesma consulta da
+-- tela /pre_admissao.php). Se aparecer, recarregue a tela e aprove.
 -- ---------------------------------------------------------------------
 SELECT pa.id, pa.status, pa.approved_at, p.full_name AS paciente, u.name AS profissional
 FROM patient_assignments pa
