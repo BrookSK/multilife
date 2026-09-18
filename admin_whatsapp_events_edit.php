@@ -43,6 +43,9 @@ $systemEvents = [
     'professional_form_delayed' => 'Profissional atrasou envio do formulário',
     'professional_form_submitted' => 'Profissional enviou formulário',
     'attendance_completed' => 'Atendimento finalizado',
+    'attendance_hospitalization' => 'Atendimento suspenso por hospitalização',
+    'attendance_authorized_period_ended' => 'Encerramento por término do período autorizado',
+    'attendance_resumed' => 'Retomada dos atendimentos autorizada',
     'professional_substituted' => 'Substituição - notificar NOVO profissional / paciente',
     'professional_removed' => 'Substituição - notificar profissional ANTERIOR',
     'preadmission_started' => 'Pré-admissão iniciada',
@@ -73,6 +76,18 @@ $availableVariables = [
     '{{id_paciente}}' => 'ID do paciente',
     '{{data_cadastro}}' => 'Data de cadastro',
     '{{motivo_cancelamento}}' => 'Motivo do cancelamento',
+    '{{especialidade}}' => 'Especialidade',
+    '{{servico}}' => 'Tipo de serviço',
+    '{{sessoes}}' => 'Quantidade de sessões',
+    '{{frequencia}}' => 'Frequência de atendimento',
+    '{{valor_acordado}}' => 'Valor acordado',
+    '{{valor_autorizado}}' => 'Valor autorizado',
+    '{{paciente_endereco}}' => 'Endereço do paciente',
+    '{{paciente_contatos}}' => 'Contatos do paciente',
+    '{{agendamento}}' => 'Agendamento (frequência/datas)',
+    '{{data_hospitalizacao}}' => 'Data da hospitalização/encerramento',
+    '{{data_retomada}}' => 'Data de retomada dos atendimentos',
+    '{{atendente_nome}}' => 'Nome da atendente (assinatura)',
 ];
 
 view_header($pageTitle);

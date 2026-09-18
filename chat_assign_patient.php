@@ -94,7 +94,9 @@ try {
     }
     
     // Verificar se paciente existe na tabela patients
-    $patientStmt = $db->prepare("SELECT id, full_name, phone_primary, whatsapp FROM patients WHERE id = ? AND deleted_at IS NULL");
+    $patientStmt = $db->prepare("SELECT id, full_name, phone_primary, phone_secondary, whatsapp,
+            address_street, address_number, address_complement, address_neighborhood, address_city, address_state
+        FROM patients WHERE id = ? AND deleted_at IS NULL");
     $patientStmt->execute([$patientId]);
     $patient = $patientStmt->fetch(PDO::FETCH_ASSOC);
     
@@ -104,6 +106,22 @@ try {
     }
     
     $patientName = $patient['full_name'];
+
+    // Endereço e contatos formatados para o template oficial "novo paciente autorizado".
+    $addrParts = array_filter([
+        trim((string)($patient['address_street'] ?? '')),
+        trim((string)($patient['address_number'] ?? '')),
+        trim((string)($patient['address_complement'] ?? '')),
+        trim((string)($patient['address_neighborhood'] ?? '')),
+        trim((string)($patient['address_city'] ?? '')) . (trim((string)($patient['address_state'] ?? '')) !== '' ? '/' . trim((string)$patient['address_state']) : ''),
+    ], fn($p) => $p !== '' && $p !== '/');
+    $patientAddress = implode(', ', $addrParts);
+    $contactParts = array_filter([
+        trim((string)($patient['whatsapp'] ?? '')),
+        trim((string)($patient['phone_primary'] ?? '')),
+        trim((string)($patient['phone_secondary'] ?? '')),
+    ], fn($c) => $c !== '');
+    $patientContacts = implode(' / ', array_unique($contactParts));
     $patientPhone = $patient['whatsapp'] ?: $patient['phone_primary'];
     
     // Buscar professional_user_id se existir
@@ -173,59 +191,18 @@ try {
             'session_quantity' => (string)$sessionQuantity,
             'session_frequency' => $sessionFrequency,
             'agreed_value' => number_format($agreedValue, 2, ',', '.'),
+            'authorized_value' => number_format($authorizedValue, 2, ',', '.'),
+            // Campos do template oficial "novo paciente autorizado"
+            'patient_address' => $patientAddress,
+            'patient_contacts' => $patientContacts,
+            'schedule' => $sessionFrequency, // agendamento: usa a frequência acordada como base
         ]);
     } catch (Throwable $evtErr) {
         error_log('[DISPATCH_EVENT] Erro ao disparar attendance_assigned: ' . $evtErr->getMessage());
     }
-    
-    // Buscar mensagem padrão das configurações
-    $settingStmt = $db->prepare("SELECT setting_value FROM operational_settings WHERE setting_key = 'assignment_message_template'");
-    $settingStmt->execute();
-    $messageTemplate = $settingStmt->fetchColumn();
-    
-    if (!$messageTemplate) {
-        $messageTemplate = "Olá! 👋\n\nTemos uma ótima notícia! Um novo paciente foi atribuído para você.\n\n📋 *Informações do Atendimento:*\n• Paciente: {patient_name}\n• Especialidade: {specialty}\n• Serviço: {service_type}\n• Quantidade de sessões: {session_quantity}\n• Frequência: {session_frequency}\n• Valor acordado: R$ {agreed_value}\n• Valor autorizado: R$ {authorized_value}\n\nPor favor, entre em contato com o paciente o mais breve possível para agendar a primeira sessão.\n\nEm caso de dúvidas, estamos à disposição!\n\nAtenciosamente,\nEquipe MultiLife";
-    }
-    
-    // Substituir variáveis na mensagem
-    $message = str_replace(
-        ['{patient_name}', '{specialty}', '{service_type}', '{session_quantity}', '{session_frequency}', '{agreed_value}', '{authorized_value}'],
-        [$patientName, $specialty, $serviceTypeName, $sessionQuantity, $sessionFrequency, number_format($agreedValue, 2, ',', '.'), number_format($authorizedValue, 2, ',', '.')],
-        $messageTemplate
-    );
-    
-    // Enviar mensagem via Evolution API
-    try {
-        require_once __DIR__ . '/app/evolution_api_v1.php';
-        $api = new EvolutionApiV1();
-        $result = $api->sendText($professionalJid, $message);
-        
-        if (!isset($result['status']) || (int)$result['status'] < 200 || (int)$result['status'] >= 300) {
-            error_log("Erro ao enviar mensagem de atribuição: " . json_encode($result));
-        } else {
-            // Salvar mensagem enviada no banco de dados local
-            try {
-                $timestamp = time();
-                $saveMessageStmt = $db->prepare("
-                    INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, created_at)
-                    VALUES (?, ?, 1, ?, NOW())
-                ");
-                $saveMessageStmt->execute([$professionalJid, $message, $timestamp]);
-                
-                // Atualizar last_message_timestamp do contato
-                $updateContactStmt = $db->prepare("
-                    UPDATE chat_contacts 
-                    SET last_message_timestamp = ?, updated_at = NOW()
-                    WHERE remote_jid = ?
-                ");
-                $updateContactStmt->execute([$timestamp, $professionalJid]);
-            } catch (Exception $e) {
-                error_log("Erro ao salvar mensagem no banco local: " . $e->getMessage());
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Erro ao enviar mensagem via Evolution API: " . $e->getMessage());
-    }
+    // Observação: a mensagem de atribuição ao profissional é enviada exclusivamente pelo
+    // evento 'attendance_assigned' (template oficial editável em admin_whatsapp_events_edit.php).
+    // A antiga mensagem duplicada (operational_settings.assignment_message_template) foi removida.
     
     // Registrar no prontuário do paciente (usando tabela existente)
     $lucro = $authorizedValue - $agreedValue;

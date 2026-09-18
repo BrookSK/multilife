@@ -78,6 +78,52 @@ try {
         'ended_at' => $endedAt,
     ]);
 
+    // Notificar o profissional conforme o MOTIVO de encerramento (templates oficiais).
+    // Mapeia o slug do motivo para o evento WhatsApp correspondente.
+    try {
+        $reasonSlug = '';
+        try {
+            $rStmt = $db->prepare('SELECT slug FROM treatment_end_reasons WHERE id = :id LIMIT 1');
+            $rStmt->execute(['id' => $endReasonId]);
+            $reasonSlug = (string)($rStmt->fetchColumn() ?: '');
+        } catch (Throwable $e) { $reasonSlug = ''; }
+
+        $eventBySlug = [
+            'hospitalizacao' => 'attendance_hospitalization',
+            'termino_periodo_autorizado' => 'attendance_authorized_period_ended',
+        ];
+
+        if (isset($eventBySlug[$reasonSlug])) {
+            // Buscar dados do atendimento para preencher o template.
+            $infoStmt = $db->prepare(
+                "SELECT p.full_name AS patient_name, p.whatsapp AS patient_phone, p.phone_primary,
+                        u.id AS professional_user_id, u.name AS professional_name, u.phone AS professional_phone
+                 FROM patient_assignments pa
+                 INNER JOIN patients p ON p.id = pa.patient_id
+                 LEFT JOIN users u ON u.id = pa.professional_user_id
+                 WHERE pa.id = :id LIMIT 1"
+            );
+            $infoStmt->execute(['id' => $assignmentId]);
+            $info = $infoStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $endedDateBr = date('d/m/Y', strtotime($endedAt));
+
+            $dispatcher = new WhatsAppEventDispatcher();
+            $dispatcher->dispatch($eventBySlug[$reasonSlug], [
+                'patient_id' => 0,
+                'patient_name' => (string)($info['patient_name'] ?? ''),
+                'patient_phone' => '', // mensagem é para o PROFISSIONAL
+                'professional_id' => (int)($info['professional_user_id'] ?? 0),
+                'professional_name' => (string)($info['professional_name'] ?? ''),
+                'professional_phone' => (string)($info['professional_phone'] ?? ''),
+                'attendance_id' => (string)$assignmentId,
+                'hospitalization_date' => $endedDateBr,
+            ]);
+        }
+    } catch (Throwable $notifyErr) {
+        error_log('[ASSIGNMENT_FINALIZE] Erro ao notificar profissional: ' . $notifyErr->getMessage());
+    }
+
     echo json_encode(['success' => true]);
 } catch (Throwable $e) {
     error_log('[ASSIGNMENT_FINALIZE] ' . $e->getMessage());

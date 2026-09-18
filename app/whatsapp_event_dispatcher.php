@@ -194,6 +194,13 @@ class WhatsAppEventDispatcher
             '{{frequencia}}' => $data['session_frequency'] ?? '',
             '{{valor_acordado}}' => $data['agreed_value'] ?? '',
             '{{valor_autorizado}}' => $data['authorized_value'] ?? '',
+            // Campos dos templates oficiais ao profissional
+            '{{paciente_endereco}}' => $data['patient_address'] ?? '',
+            '{{paciente_contatos}}' => $data['patient_contacts'] ?? '',
+            '{{agendamento}}' => $data['schedule'] ?? '',
+            '{{data_hospitalizacao}}' => $data['hospitalization_date'] ?? '',
+            '{{data_retomada}}' => $data['resume_date'] ?? '',
+            '{{atendente_nome}}' => $data['attendant_name'] ?? (string)admin_setting_get('app.attendant_name', 'Maria Jullia'),
         ];
         
         $message = $template;

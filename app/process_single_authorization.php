@@ -253,10 +253,28 @@ function process_single_authorization(int $authId, int $emailId): array
                 $profStmt->execute(['id' => $professionalUserId]);
                 $profData = $profStmt->fetch();
                 
-                $patStmt = $db->prepare('SELECT full_name, whatsapp, phone_primary FROM patients WHERE id = :id');
+                $patStmt = $db->prepare('SELECT full_name, whatsapp, phone_primary, phone_secondary,
+                        address_street, address_number, address_complement, address_neighborhood, address_city, address_state
+                    FROM patients WHERE id = :id');
                 $patStmt->execute(['id' => $patientId]);
-                $patData = $patStmt->fetch();
-                
+                $patData = $patStmt->fetch() ?: [];
+
+                // Endereço e contatos formatados para o template oficial "novo paciente autorizado".
+                $addrParts = array_filter([
+                    trim((string)($patData['address_street'] ?? '')),
+                    trim((string)($patData['address_number'] ?? '')),
+                    trim((string)($patData['address_complement'] ?? '')),
+                    trim((string)($patData['address_neighborhood'] ?? '')),
+                    trim((string)($patData['address_city'] ?? '')) . (trim((string)($patData['address_state'] ?? '')) !== '' ? '/' . trim((string)$patData['address_state']) : ''),
+                ], fn($p) => $p !== '' && $p !== '/');
+                $patientAddress = implode(', ', $addrParts);
+                $contactParts = array_filter([
+                    trim((string)($patData['whatsapp'] ?? '')),
+                    trim((string)($patData['phone_primary'] ?? '')),
+                    trim((string)($patData['phone_secondary'] ?? '')),
+                ], fn($c) => $c !== '');
+                $patientContacts = implode(' / ', array_unique($contactParts));
+
                 $dispatcher = new WhatsAppEventDispatcher();
                 $dispatcher->dispatch('attendance_assigned', [
                     'professional_id' => $professionalUserId,
@@ -274,6 +292,10 @@ function process_single_authorization(int $authId, int $emailId): array
                     'session_quantity' => (string)$totalSessions,
                     'session_frequency' => $frequency,
                     'agreed_value' => number_format($agreedPerSession, 2, ',', '.'),
+                    // Campos do template oficial "novo paciente autorizado"
+                    'patient_address' => $patientAddress,
+                    'patient_contacts' => $patientContacts,
+                    'schedule' => $frequency,
                 ]);
             } catch (Throwable $evtErr) {
                 error_log('[PROCESS_SINGLE_AUTH] Erro ao disparar evento: ' . $evtErr->getMessage());
