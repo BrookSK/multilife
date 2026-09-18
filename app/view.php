@@ -71,6 +71,7 @@ function view_header(string $title): void
             ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php', 'perm' => 'professional_applications.manage'],
             ['title' => 'Pacientes', 'path' => '/patients_list.php', 'perm' => 'patients.manage'],
             ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional', 'perm' => 'users.manage'],
+            ['title' => 'Cadastros Pendentes', 'path' => '/professional_pre_registrations_list.php', 'perm' => 'users.manage'],
             ['title' => 'Documentos', 'path' => '/documents_list.php', 'perm' => 'documents.manage'],
             ['title' => 'Faturamento', 'path' => '/faturamento_list.php', 'perm' => 'faturamento.manage'],
             ['title' => 'Financeiro', 'path' => '/finance_dashboard.php', 'perm' => 'finance.manage'],
