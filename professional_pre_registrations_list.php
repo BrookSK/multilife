@@ -257,11 +257,22 @@ foreach ($rows as $r) {
     echo '<td style="text-align:right;white-space:nowrap">';
 
     if ($isPending) {
-        // Botão para gerar/reenviar (copiar) o link de atualização cadastral.
+        // Enviar o link por e-mail + WhatsApp (gera o token se ainda não existir).
+        $emailReal = ($email !== '' && !$isPlaceholderEmail($email));
+        $canSend = $emailReal || !empty($r['phone']);
+        echo '<form method="post" action="/professional_registration_link_send_post.php" style="display:inline">';
+        echo '<input type="hidden" name="user_id" value="' . $userId . '">';
+        $sendAttrs = $canSend
+            ? ' onclick="return confirm(\'Enviar o link de atualização cadastral por e-mail e WhatsApp para este profissional?\')"'
+            : ' disabled title="Cadastre e-mail ou telefone para enviar" style="opacity:.5;cursor:not-allowed"';
+        echo '<button class="btn btnPrimary" type="submit"' . $sendAttrs . '>Enviar link</button>';
+        echo '</form> ';
+
+        // Botão para gerar/renovar (copiar) o link de atualização cadastral.
         $linkUrl = $hasActiveLink ? ($publicBaseUrl . '/atualizar-cadastro?token=' . urlencode($token)) : '';
         echo '<form method="post" action="/professional_registration_link_post.php" style="display:inline">';
         echo '<input type="hidden" name="user_id" value="' . $userId . '">';
-        echo '<button class="btn btnPrimary" type="submit">' . ($hasActiveLink ? 'Renovar link' : 'Gerar link') . '</button>';
+        echo '<button class="btn" type="submit">' . ($hasActiveLink ? 'Renovar link' : 'Gerar link') . '</button>';
         echo '</form> ';
         if ($linkUrl !== '') {
             echo '<button class="btn js-copy-link" type="button" data-link="' . h($linkUrl) . '">Copiar link</button> ';
