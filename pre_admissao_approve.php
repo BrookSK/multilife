@@ -388,6 +388,10 @@ try {
             // Link de atualização cadastral (usável no template via {{link_cadastro}} ou {{link_atendimento}})
             'registration_link' => $registrationUrl,
             'attendance_link' => $registrationUrl,
+            // Link PÚBLICO dos documentos da operadora (usável via {{link_documentos}}).
+            'documents_link' => notifications_should_include_portal_link()
+                ? professional_documents_link((int)$assignment['professional_user_id'])
+                : '',
         ]);
     } catch (Throwable $evtErr) {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
@@ -664,6 +668,17 @@ try {
                         $docUrl = $baseUrl . $doc['file_path'];
                         $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(doc|docx)$/i', $doc['file_name']) ? '📝' : '📎');
                         $pBody .= '<p style="margin:6px 0;font-size:14px">' . $icon . ' <a href="' . htmlspecialchars($docUrl) . '" target="_blank" style="color:#0284c7;text-decoration:underline">' . htmlspecialchars($doc['file_name']) . '</a></p>';
+                    }
+
+                    // Link ÚNICO (público, sem login) para a página com todos os documentos
+                    // da operadora organizados por especialidade e tipo, incluindo extras.
+                    $docsPageUrl = notifications_should_include_portal_link()
+                        ? professional_documents_link((int)$assignment['professional_user_id'])
+                        : '';
+                    if ($docsPageUrl !== '') {
+                        $pBody .= '<div style="text-align:center;margin-top:14px">';
+                        $pBody .= '<a href="' . htmlspecialchars($docsPageUrl) . '" target="_blank" style="display:inline-block;background:#00a884;color:#fff;padding:11px 22px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">Ver todos os documentos da operadora</a>';
+                        $pBody .= '</div>';
                     }
                     $pBody .= '</div>';
                     

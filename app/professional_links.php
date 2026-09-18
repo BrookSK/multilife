@@ -70,6 +70,47 @@ function professional_registration_link(int $userId): string
 }
 
 /**
+ * Gera (ou reaproveita) o token do profissional e devolve a URL pública
+ * /documentos-atendimento?token=... — página sem login onde o profissional
+ * visualiza os documentos das operadoras dos seus atendimentos.
+ *
+ * Reaproveita o mesmo registration_token do usuário (token persistente de acesso
+ * público do profissional). Retorna string vazia se inválido/erro.
+ *
+ * @param int $userId ID do profissional (tabela users).
+ */
+function professional_documents_link(int $userId): string
+{
+    if ($userId <= 0) {
+        return '';
+    }
+
+    try {
+        $db = db();
+        // Token DEDICADO e PERSISTENTE (diferente do registration_token, que é de uso
+        // único e zerado ao completar o cadastro). O link de documentos precisa
+        // continuar válido durante todo o atendimento.
+        try { $db->exec("ALTER TABLE users ADD COLUMN documents_token VARCHAR(64) NULL"); } catch (Throwable $e) {}
+        try { $db->exec("ALTER TABLE users ADD COLUMN documents_token_created_at DATETIME NULL"); } catch (Throwable $e) {}
+
+        $stmt = $db->prepare('SELECT documents_token FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $userId]);
+        $token = (string)($stmt->fetchColumn() ?: '');
+
+        if ($token === '' || strlen($token) < 32) {
+            $token = bin2hex(random_bytes(32));
+            $db->prepare('UPDATE users SET documents_token = :t, documents_token_created_at = NOW() WHERE id = :id')
+                ->execute(['t' => $token, 'id' => $userId]);
+        }
+
+        return public_base_url() . '/documentos-atendimento?token=' . urlencode($token);
+    } catch (Throwable $e) {
+        error_log('[PROFESSIONAL_LINKS] Erro ao gerar link de documentos (user ' . $userId . '): ' . $e->getMessage());
+        return '';
+    }
+}
+
+/**
  * Indica se o link de acesso ao portal deve ser incluído nas notificações.
  * Controlado pela flag "Enviar link de acesso ao portal nas notificações".
  */

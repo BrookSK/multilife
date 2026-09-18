@@ -5,6 +5,12 @@ rbac_require_permission('admin.settings.manage');
 
 $db = db();
 
+// Especialidades ativas (para classificar os documentos da operadora)
+$specialtiesForDocs = [];
+try {
+    $specialtiesForDocs = $db->query("SELECT name FROM specialties WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) { $specialtiesForDocs = []; }
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -194,6 +200,28 @@ view_header('Configuração de Operadoras / Clientes');
                 <label style="display:block;margin-bottom:8px;font-weight:600">Documentação (Manuais, Formulários, Termos)</label>
                 <div id="documentsListContainer" style="margin-bottom:12px"></div>
                 <div style="border:2px dashed hsl(var(--border));border-radius:8px;padding:16px;text-align:center">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;text-align:left">
+                        <div>
+                            <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Especialidade</label>
+                            <select id="docSpecialty" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
+                                <option value="">Todas / Geral</option>
+                                <?php foreach ($specialtiesForDocs as $sp): ?>
+                                    <option value="<?= h((string)$sp) ?>"><?= h((string)$sp) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Tipo de documento</label>
+                            <input type="text" id="docType" list="docTypeOptions" placeholder="Ex: Manual, Formulário, Termo" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
+                            <datalist id="docTypeOptions">
+                                <option value="Manual"></option>
+                                <option value="Formulário"></option>
+                                <option value="Termo"></option>
+                                <option value="Tabela de valores"></option>
+                                <option value="Instrução"></option>
+                            </datalist>
+                        </div>
+                    </div>
                     <div style="margin-bottom:10px;text-align:left">
                         <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Documentação para:</label>
                         <select id="docProfessionalType" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
@@ -201,6 +229,12 @@ view_header('Configuração de Operadoras / Clientes');
                             <option value="novo">Profissional novo</option>
                             <option value="antigo">Profissional antigo</option>
                         </select>
+                    </div>
+                    <div style="margin-bottom:10px;text-align:left">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer">
+                            <input type="checkbox" id="docIsExtra" style="width:16px;height:16px">
+                            Documento extra / complementar da operadora
+                        </label>
                     </div>
                     <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="uploadDocuments(this.files)">
                     <button type="button" onclick="document.getElementById('docFileInput').click()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">+ Adicionar Documento</button>
@@ -262,11 +296,17 @@ function loadDocuments(insurerId) {
                 'antigo': '<span style="font-size:10px;font-weight:700;background:#fdecc8;color:#b45309;padding:1px 6px;border-radius:8px;margin-left:6px">ANTIGO</span>',
                 'ambos': '<span style="font-size:10px;font-weight:700;background:#e7f0fd;color:#1a56db;padding:1px 6px;border-radius:8px;margin-left:6px">AMBOS</span>'
             };
+            const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             data.documents.forEach(doc => {
                 const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : '🖼️'));
                 const badge = typeBadges[doc.professional_type] || typeBadges['ambos'];
+                // Metadados: especialidade, tipo e extra
+                let meta = '';
+                if (doc.specialty) meta += '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:1px 6px;border-radius:8px;margin-left:6px">' + esc(doc.specialty) + '</span>';
+                if (doc.doc_type) meta += '<span style="font-size:10px;font-weight:700;background:#f0fdf4;color:#166534;padding:1px 6px;border-radius:8px;margin-left:6px">' + esc(doc.doc_type) + '</span>';
+                if (Number(doc.is_extra) === 1) meta += '<span style="font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;margin-left:6px">EXTRA</span>';
                 html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:hsl(var(--secondary));border-radius:6px;margin-bottom:6px">';
-                html += '<a href="' + doc.file_path + '" target="_blank" style="font-size:13px;font-weight:500;color:hsl(var(--primary));text-decoration:none;display:flex;align-items:center;gap:6px">' + icon + ' ' + doc.file_name + badge + '</a>';
+                html += '<a href="' + doc.file_path + '" target="_blank" style="font-size:13px;font-weight:500;color:hsl(var(--primary));text-decoration:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + icon + ' ' + esc(doc.file_name) + badge + meta + '</a>';
                 html += '<button type="button" onclick="deleteDocument(' + doc.id + ',' + insurerId + ')" style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--destructive));border:1px solid hsl(var(--destructive));border-radius:4px;cursor:pointer">×</button>';
                 html += '</div>';
             });
@@ -282,10 +322,16 @@ function uploadDocuments(files) {
     if (!insurerId) { alert('Salve a operadora primeiro.'); return; }
     
     const profType = document.getElementById('docProfessionalType') ? document.getElementById('docProfessionalType').value : 'ambos';
+    const specialtyEl = document.getElementById('docSpecialty');
+    const docTypeEl = document.getElementById('docType');
+    const isExtraEl = document.getElementById('docIsExtra');
     const formData = new FormData();
     formData.append('action', 'upload');
     formData.append('insurer_id', insurerId);
     formData.append('professional_type', profType);
+    formData.append('specialty', specialtyEl ? specialtyEl.value : '');
+    formData.append('doc_type', docTypeEl ? docTypeEl.value : '');
+    formData.append('is_extra', (isExtraEl && isExtraEl.checked) ? '1' : '0');
     for (let i = 0; i < files.length; i++) {
         formData.append('files[]', files[i]);
     }

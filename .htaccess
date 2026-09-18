@@ -16,6 +16,9 @@ php_value max_input_time 120
     # Alias amigável: /atualizar-cadastro -> complete_registration.php (link enviado ao profissional)
     RewriteRule ^atualizar-cadastro/?$ /complete_registration.php [L,QSA]
 
+    # Alias amigável: /documentos-atendimento -> documentos_operadora.php (documentos da operadora, link público por token)
+    RewriteRule ^documentos-atendimento/?$ /documentos_operadora.php [L,QSA]
+
     # Se a URL pedida não é um arquivo nem um diretório existente,
     # e existe um .php com esse nome, serve o .php internamente (sem mudar a URL).
     # Isso permite acessar /monitoramento e o servidor entregar /monitoramento.php,

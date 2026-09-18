@@ -32,6 +32,10 @@ try {
 }
 // Garantir coluna professional_type (item 13)
 try { $db->exec("ALTER TABLE health_insurer_documents ADD COLUMN professional_type ENUM('novo','antigo','ambos') NOT NULL DEFAULT 'ambos'"); } catch (Throwable $e) {}
+// Organização por especialidade e tipo + documentos extras (novo fluxo)
+try { $db->exec("ALTER TABLE health_insurer_documents ADD COLUMN specialty VARCHAR(120) NULL"); } catch (Throwable $e) {}
+try { $db->exec("ALTER TABLE health_insurer_documents ADD COLUMN doc_type VARCHAR(120) NULL"); } catch (Throwable $e) {}
+try { $db->exec("ALTER TABLE health_insurer_documents ADD COLUMN is_extra TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 
 // GET: Listar documentos
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -39,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $insurerId = (int)($_GET['insurer_id'] ?? 0);
     
     if ($action === 'list' && $insurerId > 0) {
-        $stmt = $db->prepare("SELECT id, file_name, file_path, file_size, mime_type, professional_type, created_at FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY professional_type, created_at DESC");
+        $stmt = $db->prepare("SELECT id, file_name, file_path, file_size, mime_type, professional_type, specialty, doc_type, is_extra, created_at FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY is_extra ASC, specialty ASC, doc_type ASC, professional_type, created_at DESC");
         $stmt->execute([$insurerId]);
         $docs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['success' => true, 'documents' => $docs]);
@@ -93,6 +97,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($professionalType, ['novo', 'antigo', 'ambos'], true)) {
         $professionalType = 'ambos';
     }
+    // Classificação (novo fluxo): especialidade, tipo de documento e "extra".
+    $docSpecialty = trim((string)($_POST['specialty'] ?? ''));
+    $docSpecialty = $docSpecialty !== '' ? mb_substr($docSpecialty, 0, 120) : null;
+    $docType = trim((string)($_POST['doc_type'] ?? ''));
+    $docType = $docType !== '' ? mb_substr($docType, 0, 120) : null;
+    $isExtra = (int)(!empty($_POST['is_extra']) && (string)$_POST['is_extra'] !== '0');
     
     if ($action === 'upload' && $insurerId > 0) {
         $allowedTypes = [
@@ -152,10 +162,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $relativePath = '/uploads/insurer_docs/' . $insurerId . '/' . $uniqueName;
                 
                 $stmt = $db->prepare("
-                    INSERT INTO health_insurer_documents (health_insurer_id, file_name, file_path, file_size, mime_type, uploaded_by_user_id, professional_type)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO health_insurer_documents (health_insurer_id, file_name, file_path, file_size, mime_type, uploaded_by_user_id, professional_type, specialty, doc_type, is_extra)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$insurerId, $fileName, $relativePath, $fileSize, $fileType, auth_user_id(), $professionalType]);
+                $stmt->execute([$insurerId, $fileName, $relativePath, $fileSize, $fileType, auth_user_id(), $professionalType, $docSpecialty, $docType, $isExtra]);
                 $uploaded++;
             } else {
                 $errors[] = "$fileName: falha ao salvar";

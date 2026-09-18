@@ -179,6 +179,7 @@ class WhatsAppEventDispatcher
             '{{link_atendimento}}' => $data['attendance_link'] ?? $attendanceLink,
             '{{link_consulta}}' => $data['appointment_link'] ?? $attendanceLink,
             '{{link_cadastro}}' => $data['registration_link'] ?? '',
+            '{{link_documentos}}' => $data['documents_link'] ?? '',
             '{{id_preadmissao}}' => $data['preadmission_id'] ?? $data['id_preadmissao'] ?? $data['attendance_id'] ?? '',
             '{{data_inicio}}' => $data['start_date'] ?? $data['attendance_date'] ?? '',
             '{{data_aprovacao}}' => $data['approval_date'] ?? $data['data_aprovacao'] ?? date('d/m/Y H:i'),
