@@ -23,7 +23,7 @@ $sql = "SELECT bdr.id,
         ) as first_at,
         bdr.session_number, bdr.status as session_status,
         pa.id as assignment_id, pa.status as assignment_status,
-        COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.created_at,
+        COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.authorized_value, pa.created_at,
         p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
         p.birth_date, p.cpf, 
         CONCAT_WS(', ', p.address_street, p.address_number, p.address_complement, p.address_neighborhood) as patient_address,
@@ -88,6 +88,7 @@ foreach ($appointments as $apt) {
             'professional_email' => $apt['professional_email'] ?? '',
             'status' => $apt['assignment_status'] ?? '',
             'value_per_session' => (float)($apt['value_per_session'] ?? 0),
+            'authorized_value' => (float)($apt['authorized_value'] ?? 0),
             'session_quantity' => (int)($apt['session_quantity'] ?? 0),
             'payment_value' => (float)($apt['payment_value'] ?? 0),
             'specialty' => $apt['specialty'] ?? '',
@@ -222,6 +223,7 @@ body{margin:0;padding:0;overflow:hidden}
             <h3 class="sectionTitle">💰 VALORES E SESSÕES</h3>
             <div class="info">
                 <div class="row"><span class="label">Valor por Sessão:</span><span class="value" id="aptValueSession">-</span></div>
+                <div class="row"><span class="label">Valor acordado com a operadora:</span><span class="value" id="aptAuthorizedValue">-</span></div>
                 <div class="row"><span class="label">Quantidade de Sessões:</span><span class="value" id="aptSessionQty">-</span></div>
                 <div class="row"><span class="label">Valor Total:</span><span class="value" id="aptValueTotal">-</span></div>
                 <div class="row"><span class="label">Data de Início:</span><span class="value" id="aptStartDate">-</span></div>
@@ -315,6 +317,9 @@ document.addEventListener('DOMContentLoaded', function() {
             // Valores
             document.getElementById('aptValueSession').textContent = p.value_per_session 
                 ? 'R$ ' + p.value_per_session.toFixed(2).replace('.', ',')
+                : 'Não informado';
+            document.getElementById('aptAuthorizedValue').textContent = p.authorized_value 
+                ? 'R$ ' + p.authorized_value.toFixed(2).replace('.', ',')
                 : 'Não informado';
             document.getElementById('aptSessionQty').textContent = p.session_quantity || 'Não informado';
             const totalValue = p.value_per_session && p.session_quantity 
