@@ -197,7 +197,7 @@ view_header('Configuração de Operadoras / Clientes');
             
             <!-- Documentação vinculada -->
             <div id="documentsSection" style="margin-bottom:20px;display:none">
-                <label style="display:block;margin-bottom:8px;font-weight:600">Documentação (Manuais, Formulários, Termos)</label>
+                <label style="display:block;margin-bottom:8px;font-weight:600">Documentação por especialidade (Avaliação, Relatório gerencial)</label>
                 <div id="documentsListContainer" style="margin-bottom:12px"></div>
                 <div style="border:2px dashed hsl(var(--border));border-radius:8px;padding:16px;text-align:center">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;text-align:left">
@@ -212,14 +212,20 @@ view_header('Configuração de Operadoras / Clientes');
                         </div>
                         <div>
                             <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Tipo de documento</label>
-                            <input type="text" id="docType" list="docTypeOptions" placeholder="Ex: Manual, Formulário, Termo" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
-                            <datalist id="docTypeOptions">
-                                <option value="Manual"></option>
-                                <option value="Formulário"></option>
-                                <option value="Termo"></option>
-                                <option value="Tabela de valores"></option>
-                                <option value="Instrução"></option>
-                            </datalist>
+                            <?php $docTypeOptions = insurer_doc_type_options(); ?>
+                            <select id="docType" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
+                                <option value="">Selecione o tipo…</option>
+                                <optgroup label="Principais">
+                                    <?php foreach ($docTypeOptions['primary'] as $dt): ?>
+                                        <option value="<?= h((string)$dt) ?>"><?= h((string)$dt) ?></option>
+                                    <?php endforeach; ?>
+                                </optgroup>
+                                <optgroup label="Complementares">
+                                    <?php foreach ($docTypeOptions['legacy'] as $dt): ?>
+                                        <option value="<?= h((string)$dt) ?>"><?= h((string)$dt) ?></option>
+                                    <?php endforeach; ?>
+                                </optgroup>
+                            </select>
                         </div>
                     </div>
                     <div style="margin-bottom:10px;text-align:left">

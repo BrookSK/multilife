@@ -97,11 +97,29 @@ foreach ($rows as $r) {
     if ((int)($r['is_extra'] ?? 0) === 1) {
         $byInsurer[$insurer]['extra'][] = $r;
     } else {
-        $spec = trim((string)($r['specialty'] ?? '')) !== '' ? (string)$r['specialty'] : 'Geral';
-        $type = trim((string)($r['doc_type'] ?? '')) !== '' ? (string)$r['doc_type'] : 'Documentos';
+        $spec = trim((string)($r['specialty'] ?? '')) !== '' ? (string)$r['specialty'] : INSURER_DOC_SPECIALTY_FALLBACK_LABEL;
+        $type = trim((string)($r['doc_type'] ?? '')) !== '' ? (string)$r['doc_type'] : INSURER_DOC_TYPE_FALLBACK_LABEL;
         $byInsurer[$insurer]['main'][$spec][$type][] = $r;
     }
 }
+
+// Ordenar, dentro de cada especialidade, os tipos pela taxonomia canônica
+// (Avaliação → Relatório gerencial → complementares → sem tipo). A especialidade
+// já vem ordenada alfabeticamente pela query.
+foreach ($byInsurer as &$groupsRef) {
+    foreach ($groupsRef['main'] as &$typesRef) {
+        uksort($typesRef, static function (string $a, string $b): int {
+            $wa = insurer_doc_type_sort_weight($a === INSURER_DOC_TYPE_FALLBACK_LABEL ? '' : $a);
+            $wb = insurer_doc_type_sort_weight($b === INSURER_DOC_TYPE_FALLBACK_LABEL ? '' : $b);
+            if ($wa !== $wb) {
+                return $wa <=> $wb;
+            }
+            return strcmp($a, $b);
+        });
+    }
+    unset($typesRef);
+}
+unset($groupsRef);
 
 $logoUrl = (string)admin_setting_get('app.logo_url', '');
 $profName = (string)($user['name'] ?? 'profissional');
@@ -172,7 +190,7 @@ $totalDocs = count($rows);
 
     <div class="card">
         <h1>Documentos da Operadora</h1>
-        <p class="intro">Olá, <strong><?= docs_e($profName) ?></strong>! Aqui estão os documentos (manuais, formulários, termos e materiais complementares) das operadoras dos seus atendimentos.</p>
+        <p class="intro">Olá, <strong><?= docs_e($profName) ?></strong>! Aqui estão os documentos das operadoras dos seus atendimentos, organizados por especialidade (avaliação, relatório gerencial e materiais complementares).</p>
     </div>
 
     <?php if ($totalDocs === 0): ?>

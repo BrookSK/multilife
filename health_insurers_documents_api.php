@@ -43,9 +43,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $insurerId = (int)($_GET['insurer_id'] ?? 0);
     
     if ($action === 'list' && $insurerId > 0) {
-        $stmt = $db->prepare("SELECT id, file_name, file_path, file_size, mime_type, professional_type, specialty, doc_type, is_extra, created_at FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY is_extra ASC, specialty ASC, doc_type ASC, professional_type, created_at DESC");
+        $stmt = $db->prepare("SELECT id, file_name, file_path, file_size, mime_type, professional_type, specialty, doc_type, is_extra, created_at FROM health_insurer_documents WHERE health_insurer_id = ? ORDER BY is_extra ASC, specialty ASC, professional_type, created_at DESC");
         $stmt->execute([$insurerId]);
         $docs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Ordenar por especialidade e, dentro dela, pela taxonomia de tipos
+        // (Avaliação → Relatório gerencial → legados → sem tipo), mantendo
+        // os extras sempre por último (is_extra).
+        usort($docs, static function (array $a, array $b): int {
+            $ea = (int)($a['is_extra'] ?? 0);
+            $eb = (int)($b['is_extra'] ?? 0);
+            if ($ea !== $eb) {
+                return $ea <=> $eb;
+            }
+            $sa = mb_strtolower(trim((string)($a['specialty'] ?? '')));
+            $sb = mb_strtolower(trim((string)($b['specialty'] ?? '')));
+            if ($sa !== $sb) {
+                return $sa <=> $sb;
+            }
+            $wa = insurer_doc_type_sort_weight($a['doc_type'] ?? null);
+            $wb = insurer_doc_type_sort_weight($b['doc_type'] ?? null);
+            if ($wa !== $wb) {
+                return $wa <=> $wb;
+            }
+            return strcmp((string)($a['file_name'] ?? ''), (string)($b['file_name'] ?? ''));
+        });
+
         echo json_encode(['success' => true, 'documents' => $docs]);
         exit;
     }
@@ -100,8 +123,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Classificação (novo fluxo): especialidade, tipo de documento e "extra".
     $docSpecialty = trim((string)($_POST['specialty'] ?? ''));
     $docSpecialty = $docSpecialty !== '' ? mb_substr($docSpecialty, 0, 120) : null;
-    $docType = trim((string)($_POST['doc_type'] ?? ''));
-    $docType = $docType !== '' ? mb_substr($docType, 0, 120) : null;
+    // Tipo de documento: normalizado contra a taxonomia canônica
+    // (Avaliação / Relatório gerencial), preservando tipos legados/livres.
+    $docType = insurer_doc_type_normalize($_POST['doc_type'] ?? null);
     $isExtra = (int)(!empty($_POST['is_extra']) && (string)$_POST['is_extra'] !== '0');
     
     if ($action === 'upload' && $insurerId > 0) {
