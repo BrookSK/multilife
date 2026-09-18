@@ -160,10 +160,12 @@ class WhatsAppEventDispatcher
      */
     private function processTemplate(string $template, array $data): string
     {
-        // Gerar link de acesso baseado no attendance_id (rota limpa, sem .php)
-        $baseUrl = 'https://multilife.onsolutionsbrasil.com.br';
-        $attendanceId = $data['attendance_id'] ?? '';
-        $attendanceLink = $attendanceId !== '' ? $baseUrl . '/monitoramento' : '';
+        // Links enviados ao profissional devem ser PÚBLICOS (sem login).
+        // Nunca usar o painel interno (/monitoramento, /profissional_registros.php)
+        // como fallback. Se o chamador não informar um link público explícito
+        // (attendance_link / appointment_link / registration_link), o placeholder
+        // fica vazio e é removido ao final do processamento do template.
+        $attendanceLink = '';
         
         $variables = [
             '{{profissional_nome}}' => $data['professional_name'] ?? '',

@@ -165,7 +165,8 @@ try {
             'patient_phone' => '',
             'attendance_id' => (string)$assignmentId,
             'attendance_date' => date('d/m/Y'),
-            'attendance_link' => 'https://multilife.onsolutionsbrasil.com.br/profissional_registros.php',
+            // Link PÚBLICO por token (sem login). Só inclui se a flag de notificação permitir.
+            'attendance_link' => notifications_should_include_portal_link() ? professional_registration_link((int)$professionalUserId) : '',
             'specialty' => $specialty,
             'service_type' => $serviceTypeName ?? '',
             'session_quantity' => (string)$sessionQuantity,

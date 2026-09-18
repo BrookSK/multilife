@@ -267,7 +267,8 @@ function process_single_authorization(int $authId, int $emailId): array
                     'patient_phone' => preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? '')),
                     'attendance_id' => (string)$assignmentId,
                     'attendance_date' => date('d/m/Y'),
-                    'attendance_link' => 'https://multilife.onsolutionsbrasil.com.br/profissional_registros.php',
+                    // Link PÚBLICO por token (sem login). Só inclui se a flag de notificação permitir.
+                    'attendance_link' => notifications_should_include_portal_link() ? professional_registration_link((int)$professionalUserId) : '',
                     'specialty' => (string)($demand['specialty'] ?? ''),
                     'service_type' => (string)($demand['title'] ?? ''),
                     'session_quantity' => (string)$totalSessions,

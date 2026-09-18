@@ -282,9 +282,10 @@ try {
 // (e afins). O canal "professional" do dispatcher é usado para avisar o NOVO profissional
 // ("Você foi designado como novo profissional"), então enviamos os dados do NOVO nele.
 try {
-    $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
-    // Rota limpa (sem .php) — o .htaccess reescreve /monitoramento -> /monitoramento.php
-    $attendanceLink = $baseUrl . '/monitoramento';
+    // Link PÚBLICO por token (sem login) do NOVO profissional. Nunca apontar para o
+    // painel interno (/monitoramento). Só inclui se a flag de notificação permitir.
+    $includePortalLink = notifications_should_include_portal_link();
+    $attendanceLink = ($includePortalLink && $notifyNewProf) ? professional_registration_link((int)$newProfessionalId) : '';
 
     $dispatcher = new WhatsAppEventDispatcher();
     $eventData = [
@@ -327,6 +328,10 @@ try {
         $eventDataOld['professional_id'] = $oldProfId;
         $eventDataOld['professional_name'] = (string)($assignment['old_professional_name'] ?? '');
         $eventDataOld['professional_phone'] = (string)($assignment['old_professional_phone'] ?? '');
+        // Link público do PROFISSIONAL ANTIGO (não reaproveitar o link do novo).
+        $oldProfLink = $includePortalLink ? professional_registration_link((int)$oldProfId) : '';
+        $eventDataOld['attendance_link'] = $oldProfLink;
+        $eventDataOld['appointment_link'] = $oldProfLink;
         // Não reenviar ao paciente neste disparo (já foi no evento anterior).
         $eventDataOld['patient_phone'] = '';
         $dispatcher->dispatch('professional_removed', $eventDataOld);
