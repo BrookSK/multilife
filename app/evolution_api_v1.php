@@ -217,7 +217,20 @@ final class EvolutionApiV1
             'number' => $number,
             'text' => $text,
         ];
-        // Só incluir options se não estiver vazio (evitar enviar options:{} que pode causar 400 em grupos)
+
+        // Na Evolution API v2, campos como delay/linkPreview/quoted vão na RAIZ do body
+        // (não dentro de "options", formato antigo). Promovemos esses campos conhecidos
+        // para a raiz para que sejam efetivamente aplicados; o restante é mantido em
+        // "options" por compatibilidade com chamadas legadas.
+        $rootKeys = ['linkPreview', 'delay', 'quoted', 'mentionsEveryOne', 'mentioned'];
+        foreach ($rootKeys as $k) {
+            if (array_key_exists($k, $options)) {
+                $body[$k] = $options[$k];
+                unset($options[$k]);
+            }
+        }
+
+        // Só incluir options se ainda restar algo (evitar enviar options:{} que pode causar 400 em grupos)
         if (!empty($options)) {
             $body['options'] = (object)$options;
         }
