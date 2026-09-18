@@ -81,6 +81,7 @@ try {
     // Notificar o profissional conforme o MOTIVO de encerramento (templates oficiais).
     // Mapeia o slug do motivo para o evento WhatsApp correspondente.
     try {
+        error_log('[ASSIGNMENT_FINALIZE] Bloco de notificação iniciado. assignment=' . $assignmentId . ' end_reason_id=' . $endReasonId);
         $reasonSlug = '';
         try {
             $rStmt = $db->prepare('SELECT slug FROM treatment_end_reasons WHERE id = :id LIMIT 1');
@@ -92,6 +93,8 @@ try {
             'hospitalizacao' => 'attendance_hospitalization',
             'termino_periodo_autorizado' => 'attendance_authorized_period_ended',
         ];
+
+        error_log('[ASSIGNMENT_FINALIZE] slug=' . $reasonSlug . ' evento=' . ($eventBySlug[$reasonSlug] ?? 'NENHUM'));
 
         if (isset($eventBySlug[$reasonSlug])) {
             // Buscar dados do atendimento para preencher o template.
@@ -108,8 +111,10 @@ try {
 
             $endedDateBr = date('d/m/Y', strtotime($endedAt));
 
+            error_log('[ASSIGNMENT_FINALIZE] Enviando para profissional phone=' . (string)($info['professional_phone'] ?? '') . ' id=' . (int)($info['professional_user_id'] ?? 0));
+
             $dispatcher = new WhatsAppEventDispatcher();
-            $dispatcher->dispatch($eventBySlug[$reasonSlug], [
+            $dispatchResult = $dispatcher->dispatch($eventBySlug[$reasonSlug], [
                 'patient_id' => 0,
                 'patient_name' => (string)($info['patient_name'] ?? ''),
                 'patient_phone' => '', // mensagem é para o PROFISSIONAL
@@ -119,6 +124,7 @@ try {
                 'attendance_id' => (string)$assignmentId,
                 'hospitalization_date' => $endedDateBr,
             ]);
+            error_log('[ASSIGNMENT_FINALIZE] Resultado dispatch: ' . json_encode($dispatchResult, JSON_UNESCAPED_UNICODE));
         }
     } catch (Throwable $notifyErr) {
         error_log('[ASSIGNMENT_FINALIZE] Erro ao notificar profissional: ' . $notifyErr->getMessage());
