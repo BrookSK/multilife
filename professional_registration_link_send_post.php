@@ -163,7 +163,7 @@ if ($emailIsReal) {
         $safeName = htmlspecialchars($name !== '' ? $name : 'profissional', ENT_QUOTES);
         $safeUrl = htmlspecialchars($updateUrl, ENT_QUOTES);
 
-        $body = '<p style="font-size:15px;color:#374151">Olá, <strong>' . $safeName . '</strong>! 👋</p>';
+        $body = '<p style="font-size:15px;color:#374151">Olá, <strong>' . $safeName . '</strong>!</p>';
         $body .= '<p style="font-size:14px;color:#4b5563;line-height:1.7">Para mantermos sua ficha sempre atualizada na <strong>MultiLife Care</strong>, precisamos que você complete/atualize os seus dados cadastrais. É rápido e seguro, e ajuda a agilizar seus atendimentos e recebimentos.</p>';
         $body .= '<div style="text-align:center;margin:28px 0">';
         $body .= '<a href="' . $safeUrl . '" style="display:inline-block;background:#00a884;color:#ffffff;padding:14px 30px;border-radius:8px;font-weight:700;text-decoration:none;font-size:15px">Atualizar minha ficha cadastral</a>';
@@ -199,12 +199,16 @@ if ($rawPhone !== '') {
             throw new RuntimeException('Telefone inválido após normalização.');
         }
 
-        $waMsg = "Olá, {$firstName}! 👋\n\n";
-        $waMsg .= "Aqui é a equipe *MultiLife Care*. 💚\n\n";
+        // IMPORTANTE: para o WhatsApp transformar a URL em link clicável, ela precisa
+        // ficar sozinha em uma linha, sem nenhum caractere colado (emoji, pontuação,
+        // espaços). Por isso a URL vai isolada por quebras de linha e sem emoji antes.
+        $waMsg = "Olá, {$firstName}!\n\n";
+        $waMsg .= "Aqui é a equipe *MultiLife Care*.\n\n";
         $waMsg .= "Precisamos que você atualize a sua *ficha cadastral*. É rápido, seguro e ajuda a agilizar seus atendimentos e recebimentos.\n\n";
-        $waMsg .= "👉 Acesse o link abaixo para atualizar seus dados:\n{$updateUrl}\n\n";
+        $waMsg .= "Acesse o link abaixo para atualizar seus dados:\n\n";
+        $waMsg .= "{$updateUrl}\n\n";
         $waMsg .= "Este link é pessoal e intransferível.\n\n";
-        $waMsg .= "Obrigado! 🙏\nEquipe MultiLife Care";
+        $waMsg .= "Obrigado!\nEquipe MultiLife Care";
 
         // Seleciona uma instância Evolution CONECTADA (mesma lógica do WhatsAppEventDispatcher).
         // Usar a instância padrão cegamente falha silenciosamente quando ela está desconectada.
@@ -212,7 +216,8 @@ if ($rawPhone !== '') {
         if ($wa === null) {
             throw new RuntimeException('Nenhuma instância de WhatsApp conectada disponível.');
         }
-        $res = $wa->sendText($phone, $waMsg);
+        // linkPreview=true incentiva o WhatsApp a gerar a prévia e tornar a URL clicável.
+        $res = $wa->sendText($phone, $waMsg, ['linkPreview' => true]);
         $status = (int)($res['status'] ?? 0);
         $waOk = $status >= 200 && $status < 300;
         if (!$waOk) {

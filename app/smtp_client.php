@@ -189,14 +189,35 @@ final class SmtpClient
             
             // Detectar se o corpo é HTML
             $isHtml = stripos($bodyText, '<html') !== false || stripos($bodyText, '<!DOCTYPE') !== false || stripos($bodyText, '<div') !== false;
+
             if ($isHtml) {
-                $headers[] = 'Content-Type: text/html; charset=UTF-8';
+                // Enviar como multipart/alternative (texto puro + HTML).
+                // Alguns webmails desabilitam os links de e-mails HTML de parte única;
+                // fornecer também a parte texto torna a mensagem "bem formada" e preserva
+                // os links clicáveis, além de melhorar a entregabilidade.
+                $boundary = 'ml_' . bin2hex(random_bytes(12));
+                $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
+
+                $plainText = $this->htmlToPlainText($bodyText);
+
+                $parts = "--" . $boundary . "\r\n"
+                    . "Content-Type: text/plain; charset=UTF-8\r\n"
+                    . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+                    . $plainText . "\r\n\r\n"
+                    . "--" . $boundary . "\r\n"
+                    . "Content-Type: text/html; charset=UTF-8\r\n"
+                    . "Content-Transfer-Encoding: 8bit\r\n\r\n"
+                    . $bodyText . "\r\n\r\n"
+                    . "--" . $boundary . "--";
+
+                $data = implode("\r\n", $headers) . "\r\n\r\n" . $parts;
             } else {
                 $headers[] = 'Content-Type: text/plain; charset=UTF-8';
+                $headers[] = 'Content-Transfer-Encoding: 8bit';
+                $data = implode("\r\n", $headers) . "\r\n\r\n" . $bodyText;
             }
-            $headers[] = 'Content-Transfer-Encoding: 8bit';
 
-            $data = implode("\r\n", $headers) . "\r\n\r\n" . $bodyText;
+            // Dot-stuffing (linhas iniciadas por "." precisam ser escapadas no SMTP DATA)
             $data = str_replace("\r\n.", "\r\n..", $data);
 
             error_log("[SMTP] Enviando corpo do e-mail (" . strlen($data) . " bytes)...");
@@ -225,5 +246,50 @@ final class SmtpClient
             return $value;
         }
         return '=?UTF-8?B?' . base64_encode($value) . '?=';
+    }
+
+    /**
+     * Converte um corpo HTML em uma versão texto puro legível para a parte
+     * text/plain do multipart. Preserva as URLs dos links (href) para que
+     * continuem acessíveis mesmo quando o cliente exibe apenas o texto.
+     */
+    private function htmlToPlainText(string $html): string
+    {
+        $text = $html;
+
+        // Extrair apenas o conteúdo do <body>, se houver.
+        if (preg_match('/<body[^>]*>(.*)<\/body>/is', $text, $m)) {
+            $text = $m[1];
+        }
+
+        // Remover blocos que não geram texto útil.
+        $text = preg_replace('/<(script|style|head|title)[^>]*>.*?<\/\1>/is', '', $text);
+
+        // Preservar a URL dos links: "texto (https://url)".
+        $text = preg_replace_callback('/<a\b[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/is', function ($mm) {
+            $href = trim(html_entity_decode($mm[1], ENT_QUOTES, 'UTF-8'));
+            $label = trim(html_entity_decode(strip_tags($mm[2]), ENT_QUOTES, 'UTF-8'));
+            if ($href === '') {
+                return $label;
+            }
+            if ($label === '' || $label === $href) {
+                return $href;
+            }
+            return $label . ' (' . $href . ')';
+        }, $text);
+
+        // Quebras de linha para blocos comuns.
+        $text = preg_replace('/<(br|\/p|\/div|\/h[1-6]|\/tr)\s*>/i', "\n", $text);
+
+        // Remover as demais tags.
+        $text = strip_tags($text);
+
+        // Decodificar entidades e normalizar espaços/linhas em branco.
+        $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+        $text = preg_replace('/[ \t]+/', ' ', $text);
+        $text = preg_replace('/\n{3,}/', "\n\n", $text);
+        $text = preg_replace('/^[ \t]+/m', '', $text);
+
+        return trim($text);
     }
 }
