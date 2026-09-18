@@ -660,27 +660,19 @@ try {
                 }
                 
                 if (!empty($insurerDocs)) {
-                    $baseUrl = rtrim((string)admin_setting_get('app.base_url', 'https://multilife.onsolutionsbrasil.com.br'), '/');
-                    $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
-                    $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Documentos da Operadora</h3>';
-                    $pBody .= '<p style="font-size:13px;color:#6b7280;margin:0 0 12px">Acesse os documentos obrigatórios (manuais, formulários, termos):</p>';
-                    foreach ($insurerDocs as $doc) {
-                        $docUrl = $baseUrl . $doc['file_path'];
-                        $icon = preg_match('/\.pdf$/i', $doc['file_name']) ? '📄' : (preg_match('/\.(doc|docx)$/i', $doc['file_name']) ? '📝' : '📎');
-                        $pBody .= '<p style="margin:6px 0;font-size:14px">' . $icon . ' <a href="' . htmlspecialchars($docUrl) . '" target="_blank" style="color:#0284c7;text-decoration:underline">' . htmlspecialchars($doc['file_name']) . '</a></p>';
-                    }
-
-                    // Link ÚNICO (público, sem login) para a página com todos os documentos
-                    // da operadora organizados por especialidade e tipo, incluindo extras.
+                    // O e-mail NÃO lista os documentos: mostra apenas o botão que leva à
+                    // página pública (sem login), onde o profissional visualiza/baixa
+                    // todos os documentos organizados por especialidade e tipo.
                     $docsPageUrl = notifications_should_include_portal_link()
                         ? professional_documents_link((int)$assignment['professional_user_id'])
                         : '';
                     if ($docsPageUrl !== '') {
-                        $pBody .= '<div style="text-align:center;margin-top:14px">';
+                        $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px;text-align:center">';
+                        $pBody .= '<h3 style="margin:0 0 6px;font-size:15px;font-weight:700;color:#374151">Documentos da Operadora</h3>';
+                        $pBody .= '<p style="font-size:13px;color:#6b7280;margin:0 0 14px">Acesse os documentos obrigatórios (manuais, formulários, termos) e materiais complementares.</p>';
                         $pBody .= '<a href="' . htmlspecialchars($docsPageUrl) . '" target="_blank" style="display:inline-block;background:#00a884;color:#fff;padding:11px 22px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">Ver todos os documentos da operadora</a>';
                         $pBody .= '</div>';
                     }
-                    $pBody .= '</div>';
                     
                     // Registrar envio automático de documentos
                     try {

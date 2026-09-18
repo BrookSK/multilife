@@ -116,16 +116,19 @@ function docs_icon(string $fileName): string
     return '📎';
 }
 
-function docs_render_link(array $doc): string
+function docs_render_link(array $doc, string $token): string
 {
     $href = docs_e((string)($doc['file_path'] ?? ''));
     $name = docs_e((string)($doc['file_name'] ?? 'Documento'));
     $icon = docs_icon((string)($doc['file_name'] ?? ''));
-    return '<a class="doc" href="' . $href . '" target="_blank" rel="noopener">'
+    $downloadUrl = docs_e('/documento_download.php?token=' . urlencode($token) . '&doc=' . (int)($doc['id'] ?? 0));
+
+    return '<div class="doc">'
         . '<span class="doc-icon">' . $icon . '</span>'
         . '<span class="doc-name">' . $name . '</span>'
-        . '<span class="doc-open">abrir ↗</span>'
-        . '</a>';
+        . '<a class="doc-btn doc-open" href="' . $href . '" target="_blank" rel="noopener">abrir ↗</a>'
+        . '<a class="doc-btn doc-download" href="' . $downloadUrl . '">baixar ↓</a>'
+        . '</div>';
 }
 
 $totalDocs = count($rows);
@@ -149,11 +152,14 @@ $totalDocs = count($rows);
         .section-title { font-size: 15px; font-weight: 700; margin: 18px 0 8px; color: #1a1a2e; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
         .type-title { font-size: 13px; font-weight: 700; color: #4338ca; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .3px; }
         .extra-title { font-size: 15px; font-weight: 700; margin: 18px 0 8px; color: #92400e; border-bottom: 2px solid #fde68a; padding-bottom: 6px; }
-        .doc { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; text-decoration: none; color: #1a1a2e; transition: background .15s, border-color .15s; }
-        .doc:hover { background: #eef6f3; border-color: #00a884; }
+        .doc { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; color: #1a1a2e; flex-wrap: wrap; }
         .doc-icon { font-size: 20px; flex: 0 0 auto; }
-        .doc-name { font-size: 14px; font-weight: 600; flex: 1 1 auto; word-break: break-word; }
-        .doc-open { font-size: 12px; font-weight: 700; color: #00a884; flex: 0 0 auto; }
+        .doc-name { font-size: 14px; font-weight: 600; flex: 1 1 auto; word-break: break-word; min-width: 140px; }
+        .doc-btn { font-size: 12px; font-weight: 700; flex: 0 0 auto; text-decoration: none; padding: 6px 12px; border-radius: 6px; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+        .doc-open { color: #00a884; border-color: #00a884; }
+        .doc-open:hover { background: #eef6f3; }
+        .doc-download { color: #fff; background: #00a884; }
+        .doc-download:hover { background: #06976f; }
         .empty { text-align: center; padding: 40px 16px; color: #64748b; }
         .footer { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 24px; }
     </style>
@@ -186,7 +192,7 @@ $totalDocs = count($rows);
                         <?php foreach ($types as $type => $docs): ?>
                             <div class="type-title"><?= docs_e($type) ?></div>
                             <?php foreach ($docs as $doc): ?>
-                                <?= docs_render_link($doc) ?>
+                                <?= docs_render_link($doc, $token) ?>
                             <?php endforeach; ?>
                         <?php endforeach; ?>
                     <?php endforeach; ?>
@@ -195,7 +201,7 @@ $totalDocs = count($rows);
                 <?php if (!empty($groups['extra'])): ?>
                     <div class="extra-title">Documentos extras / complementares</div>
                     <?php foreach ($groups['extra'] as $doc): ?>
-                        <?= docs_render_link($doc) ?>
+                        <?= docs_render_link($doc, $token) ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
