@@ -19,6 +19,74 @@ require_once __DIR__ . '/app/email_base_template.php';
 auth_require_login();
 rbac_require_permission('users.manage');
 
+/**
+ * Retorna uma instância EvolutionApiV1 CONECTADA (ou null se nenhuma).
+ * Replica a seleção de instância do WhatsAppEventDispatcher: tenta a instância
+ * padrão e, se não estiver conectada, procura outra ativa/conectada em
+ * whatsapp_instances. Isso evita falha silenciosa quando a padrão está offline.
+ */
+function reg_link_pick_connected_instance(): ?EvolutionApiV1
+{
+    $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+    $apiKey = (string)admin_setting_get('evolution.api_key', '');
+    $defaultInstance = (string)admin_setting_get('evolution.instance', '');
+
+    if ($baseUrl === '' || $apiKey === '') {
+        return null;
+    }
+
+    $isConnected = function (EvolutionApiV1 $api): bool {
+        try {
+            $res = $api->connectionState();
+            $state = strtolower(trim((string)($res['json']['instance']['state'] ?? ($res['json']['state'] ?? ''))));
+            return in_array($state, ['open', 'connected'], true);
+        } catch (Throwable $e) {
+            return false;
+        }
+    };
+
+    // 1) Instância padrão.
+    if ($defaultInstance !== '') {
+        try {
+            $api = new EvolutionApiV1($baseUrl, $apiKey, $defaultInstance);
+            if ($isConnected($api)) {
+                return $api;
+            }
+        } catch (Throwable $e) { /* tenta as demais */ }
+    }
+
+    // 2) Demais instâncias conectadas cadastradas.
+    try {
+        $stmt = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC, id ASC LIMIT 5");
+        $stmt->execute();
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $instName) {
+            $instName = (string)$instName;
+            if ($instName === '' || $instName === $defaultInstance) {
+                continue;
+            }
+            try {
+                $api = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+                if ($isConnected($api)) {
+                    return $api;
+                }
+            } catch (Throwable $e) {
+                continue;
+            }
+        }
+    } catch (Throwable $e) { /* tabela pode não existir em alguns ambientes */ }
+
+    // 3) Último recurso: instância padrão sem checagem (pode falhar no envio).
+    if ($defaultInstance !== '') {
+        try {
+            return new EvolutionApiV1($baseUrl, $apiKey, $defaultInstance);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    return null;
+}
+
 $backUrl = '/professional_pre_registrations_list.php';
 
 $userId = (int)($_POST['user_id'] ?? 0);
@@ -138,12 +206,18 @@ if ($rawPhone !== '') {
         $waMsg .= "Este link é pessoal e intransferível.\n\n";
         $waMsg .= "Obrigado! 🙏\nEquipe MultiLife Care";
 
-        $wa = new EvolutionApiV1();
+        // Seleciona uma instância Evolution CONECTADA (mesma lógica do WhatsAppEventDispatcher).
+        // Usar a instância padrão cegamente falha silenciosamente quando ela está desconectada.
+        $wa = reg_link_pick_connected_instance();
+        if ($wa === null) {
+            throw new RuntimeException('Nenhuma instância de WhatsApp conectada disponível.');
+        }
         $res = $wa->sendText($phone, $waMsg);
         $status = (int)($res['status'] ?? 0);
         $waOk = $status >= 200 && $status < 300;
         if (!$waOk) {
-            error_log('[REG_LINK_SEND] WhatsApp HTTP ' . $status . ' para user ' . $userId);
+            error_log('[REG_LINK_SEND] WhatsApp HTTP ' . $status . ' (instância ' . $wa->getInstance() . ') para user ' . $userId
+                . ' resp=' . json_encode($res['json'] ?? $res['body_raw'] ?? '', JSON_UNESCAPED_UNICODE));
         }
     } catch (Throwable $e) {
         error_log('[REG_LINK_SEND] Erro ao enviar WhatsApp (user ' . $userId . '): ' . $e->getMessage());
