@@ -87,6 +87,8 @@ $availableVariables = [
     '{{agendamento}}' => 'Agendamento (frequência/datas)',
     '{{data_hospitalizacao}}' => 'Data da hospitalização/encerramento',
     '{{data_retomada}}' => 'Data de retomada dos atendimentos',
+    '{{login_externo}}' => 'Login do profissional (sistema externo)',
+    '{{senha_externa}}' => 'Senha do profissional (sistema externo)',
     '{{atendente_nome}}' => 'Nome da atendente (assinatura)',
 ];
 

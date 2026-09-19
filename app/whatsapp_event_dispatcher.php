@@ -200,6 +200,9 @@ class WhatsAppEventDispatcher
             '{{agendamento}}' => $data['schedule'] ?? '',
             '{{data_hospitalizacao}}' => $data['hospitalization_date'] ?? '',
             '{{data_retomada}}' => $data['resume_date'] ?? '',
+            // Credenciais de sistema externo do profissional (repassadas na pré-admissão).
+            '{{login_externo}}' => $data['external_login'] ?? '',
+            '{{senha_externa}}' => $data['external_password'] ?? '',
             '{{atendente_nome}}' => $data['attendant_name'] ?? (string)admin_setting_get('app.attendant_name', 'Maria Jullia'),
         ];
         

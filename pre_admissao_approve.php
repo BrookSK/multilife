@@ -23,6 +23,11 @@ $formDurationWeeks = isset($_POST['duration_weeks']) ? (int)$_POST['duration_wee
 $formTotalSessions = isset($_POST['total_sessions']) ? (int)$_POST['total_sessions'] : 0;
 $formIsIndefinite = isset($_POST['is_indefinite']) && (string)$_POST['is_indefinite'] === '1' ? 1 : 0;
 
+// Credenciais de SISTEMA EXTERNO do profissional (NÃO é o login do MultiLife).
+// Texto livre digitado pelo operador; repassado ao profissional na comunicação.
+$externalLogin = trim((string)($_POST['external_login'] ?? ''));
+$externalPassword = trim((string)($_POST['external_password'] ?? ''));
+
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
     header('Location: /pre_admissao.php');
@@ -30,6 +35,11 @@ if ($assignmentId <= 0 || $demandId <= 0) {
 }
 
 $db = db();
+
+// Garantir colunas de credenciais externas (DDL fora da transação: no MySQL, DDL
+// causa commit implícito e encerraria a transação).
+try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN external_login VARCHAR(190) NULL"); } catch (Throwable $e) {}
+try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN external_password VARCHAR(190) NULL"); } catch (Throwable $e) {}
 
 try {
     $db->beginTransaction();
@@ -56,7 +66,8 @@ try {
     // Atualizar status da atribuição para 'admitted' (aguardando documentos)
     $updateAssignmentStmt = $db->prepare("
         UPDATE patient_assignments 
-        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW(), weekdays = ?, health_insurer_id = ?
+        SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW(), weekdays = ?, health_insurer_id = ?,
+            external_login = ?, external_password = ?
         WHERE id = ?
     ");
     $weekdaysJson = null;
@@ -67,7 +78,14 @@ try {
             $weekdaysJson = json_encode(array_values($weekdaysArr));
         }
     }
-    $updateAssignmentStmt->execute([auth_user_id(), $weekdaysJson, $healthInsurerId, $assignmentId]);
+    $updateAssignmentStmt->execute([
+        auth_user_id(),
+        $weekdaysJson,
+        $healthInsurerId,
+        $externalLogin !== '' ? $externalLogin : null,
+        $externalPassword !== '' ? $externalPassword : null,
+        $assignmentId,
+    ]);
     
     // Atualizar status do card de captação para 'admitido'
     $updateDemandStmt = $db->prepare("
@@ -392,6 +410,9 @@ try {
             'documents_link' => notifications_should_include_portal_link()
                 ? professional_documents_link((int)$assignment['professional_user_id'])
                 : '',
+            // Credenciais de sistema externo (usáveis via {{login_externo}} / {{senha_externa}}).
+            'external_login' => $externalLogin,
+            'external_password' => $externalPassword,
         ]);
     } catch (Throwable $evtErr) {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
@@ -642,6 +663,19 @@ try {
                 $pBody .= email_data_row('Sessões', $sessQty . 'x — ' . $sessFreq);
                 $pBody .= email_data_row('Valor por Sessão', 'R$ ' . number_format($payVal, 2, ',', '.'));
                 $pBody .= '</div>';
+                
+                // Credenciais de sistema externo (login/senha) — só quando preenchidas.
+                if ($externalLogin !== '' || $externalPassword !== '') {
+                    $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
+                    $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Credenciais de Acesso (Sistema Externo)</h3>';
+                    if ($externalLogin !== '') {
+                        $pBody .= email_data_row('Login', $externalLogin);
+                    }
+                    if ($externalPassword !== '') {
+                        $pBody .= email_data_row('Senha', $externalPassword);
+                    }
+                    $pBody .= '</div>';
+                }
                 
                 $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
                 $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Contato do Paciente</h3>';

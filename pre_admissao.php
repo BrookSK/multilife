@@ -556,6 +556,14 @@ if ($selected) {
     echo '<label>Especialidade<input value="' . h($specialty) . '" readonly></label>';
     echo '<label>Telefone<input value="' . h($professionalPhone) . '" readonly></label>';
     echo '<label>COREN/CRM<input placeholder="Registro profissional"></label>';
+    // Credenciais de SISTEMAS EXTERNOS usados pelo profissional (NÃO é o login do MultiLife).
+    // Preenchidas pelo operador e repassadas ao profissional por WhatsApp/e-mail na aprovação.
+    echo '<div style="margin-top:6px;padding:12px 14px;background:hsla(var(--info)/.08);border:1px solid hsla(var(--info)/.25);border-radius:8px;display:grid;gap:12px">';
+    echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">Credenciais de sistema externo</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.5;margin-top:-6px">Login e senha que o profissional usará em sistemas externos. Serão enviados a ele na comunicação de aprovação. Não é o acesso ao MultiLife.</div>';
+    echo '<label>Login (sistema externo)<input type="text" name="external_login" form="approveForm" autocomplete="off" placeholder="Login de acesso do profissional"></label>';
+    echo '<label>Senha (sistema externo)<input type="text" name="external_password" form="approveForm" autocomplete="off" placeholder="Senha de acesso do profissional"></label>';
+    echo '</div>';
     echo '</div>';
     echo '</div>';
 
