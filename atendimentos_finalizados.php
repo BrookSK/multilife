@@ -36,9 +36,15 @@ foreach ([
     "ALTER TABLE patient_assignments ADD COLUMN end_reason_id INT UNSIGNED NULL",
     "ALTER TABLE patient_assignments ADD COLUMN end_notes TEXT NULL",
     "ALTER TABLE patient_assignments ADD COLUMN ended_by_user_id INT UNSIGNED NULL",
+    "ALTER TABLE patient_assignments ADD COLUMN resumed_at DATETIME NULL",
+    "ALTER TABLE patient_assignments ADD COLUMN resumed_by_user_id INT UNSIGNED NULL",
+    "ALTER TABLE patient_assignments ADD COLUMN resumed_to_demand_id INT UNSIGNED NULL",
 ] as $alter) {
     try { $db->exec($alter); } catch (Throwable $e) { /* já existe */ }
 }
+
+// Só quem gerencia (Admin/Captador/Admissão) pode retomar atendimentos.
+$canResume = rbac_user_can($uid, 'demands.manage');
 
 // Filtro de busca (paciente/profissional)
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
@@ -87,9 +93,12 @@ $sql = "
         pa.ended_at,
         pa.end_notes,
         pa.completed_at,
+        pa.resumed_at,
+        pa.resumed_to_demand_id,
         p.full_name AS patient_name,
         u.name AS professional_name,
         ter.name AS end_reason_name,
+        ter.slug AS end_reason_slug,
         closer.name AS ended_by_name
 " . $fromSql . $whereSql
     . " ORDER BY pa.ended_at DESC LIMIT " . (int)$perPage . " OFFSET " . (int)$offset;
@@ -144,10 +153,14 @@ echo '<th>Motivo do Encerramento</th>';
 echo '<th>Data do Encerramento</th>';
 echo '<th>Encerrado por</th>';
 echo '<th>Observações</th>';
+if ($canResume) {
+    echo '<th>Retorno do atendimento</th>';
+}
 echo '</tr></thead><tbody>';
 
+$colCount = $canResume ? 9 : 8;
 if (count($rows) === 0) {
-    echo '<tr><td colspan="8" style="text-align:center;padding:32px;color:hsl(var(--muted-foreground))">Nenhum atendimento finalizado' . ($q !== '' ? ' para essa busca' : '') . '.</td></tr>';
+    echo '<tr><td colspan="' . $colCount . '" style="text-align:center;padding:32px;color:hsl(var(--muted-foreground))">Nenhum atendimento finalizado' . ($q !== '' ? ' para essa busca' : '') . '.</td></tr>';
 } else {
     foreach ($rows as $r) {
         $endedAt = (string)($r['ended_at'] ?? '');
@@ -162,6 +175,32 @@ if (count($rows) === 0) {
         echo '<td>' . h($endedFmt) . '</td>';
         echo '<td>' . h((string)($r['ended_by_name'] ?? '-')) . '</td>';
         echo '<td style="max-width:280px">' . ($r['end_notes'] ? h((string)$r['end_notes']) : '<span style="color:hsl(var(--muted-foreground))">-</span>') . '</td>';
+        if ($canResume) {
+            $assignmentId = (int)($r['assignment_id'] ?? 0);
+            if (!empty($r['resumed_at'])) {
+                // Já retomado: mostra para onde foi.
+                $resumedFmt = date('d/m/Y', strtotime((string)$r['resumed_at']));
+                if (!empty($r['resumed_to_demand_id'])) {
+                    echo '<td><span class="badge">Retomado (Captação) em ' . h($resumedFmt) . '</span></td>';
+                } else {
+                    echo '<td><span class="badge">Retomado em ' . h($resumedFmt) . '</span></td>';
+                }
+            } else {
+                // Decide o destino previsto para orientar o operador antes de clicar.
+                $decision = resume_decide_destination((string)($r['end_reason_slug'] ?? ''), (string)($r['ended_at'] ?? ''));
+                $destLabel = $decision['destination'] === RESUME_DEST_CAPTATION
+                    ? 'Novo card na Captação'
+                    : 'Volta ao Monitoramento';
+                $hint = $decision['is_hospitalization']
+                    ? ($decision['days'] . ' dia(s) hospitalizado → ' . $destLabel)
+                    : ($destLabel);
+                echo '<td>';
+                echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:6px">' . h($hint) . '</div>';
+                echo '<button type="button" class="btn btnPrimary" style="font-size:12px;padding:6px 12px"'
+                    . ' onclick="resumeAttendance(' . $assignmentId . ', this)">↩️ Retomar</button>';
+                echo '</td>';
+            }
+        }
         echo '</tr>';
     }
 }
@@ -193,5 +232,40 @@ if ($totalPages > 1) {
 }
 
 echo '</section></div>';
+
+if ($canResume):
+?>
+<script>
+function resumeAttendance(assignmentId, btn) {
+    if (!assignmentId) return;
+    if (!confirm('Confirmar a retomada deste atendimento? O sistema decide automaticamente entre Monitoramento e Captação conforme o motivo e o tempo de suspensão.')) {
+        return;
+    }
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Retomando...';
+    var fd = new FormData();
+    fd.append('assignment_id', assignmentId);
+    fetch('/assignment_resume_post.php', { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data && data.success) {
+                alert('✅ ' + (data.message || 'Atendimento retomado.'));
+                window.location.reload();
+            } else {
+                alert('❌ ' + ((data && data.error) || 'Erro ao retomar atendimento.'));
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        })
+        .catch(function () {
+            alert('❌ Erro de conexão ao retomar atendimento.');
+            btn.disabled = false;
+            btn.innerHTML = original;
+        });
+}
+</script>
+<?php
+endif;
 
 view_footer();
