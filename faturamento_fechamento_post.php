@@ -163,8 +163,8 @@ try {
     // Contas a RECEBER: 1 income por paciente.
     $insIncome = $db->prepare(
         "INSERT INTO financial_entries
-            (entry_type, category, assignment_id, patient_id, amount, description, entry_date, status, cost_center, monthly_closure_id, is_active, created_by_user_id, created_at)
-         VALUES ('income', 'Faturamento Mensal', :assignment_id, :patient_id, :amount, :description, :entry_date, 'pending', 'Fechamento Mensal', :closure_id, 1, :uid, NOW())"
+            (entry_type, category, assignment_id, patient_id, amount, description, entry_date, status, cost_center, supplier_name, monthly_closure_id, is_active, created_by_user_id, created_at)
+         VALUES ('income', 'Faturamento Mensal', :assignment_id, :patient_id, :amount, :description, :entry_date, 'pending', 'Fechamento Mensal', :supplier_name, :closure_id, 1, :uid, NOW())"
     );
     foreach ($byPatient as $p) {
         // assignment_id de referência: o da primeira linha do paciente (para join com operadora nas telas).
@@ -181,6 +181,7 @@ try {
             'amount' => round((float)$p['total_receivable'], 2),
             'description' => $desc,
             'entry_date' => $lastDay,
+            'supplier_name' => (string)$p['patient_name'],
             'closure_id' => $closureId,
             'uid' => $userId,
         ]);
@@ -189,8 +190,8 @@ try {
     // Contas a PAGAR: 1 expense por profissional.
     $insExpense = $db->prepare(
         "INSERT INTO financial_entries
-            (entry_type, category, professional_user_id, amount, description, entry_date, status, cost_center, monthly_closure_id, is_active, created_by_user_id, created_at)
-         VALUES ('expense', 'Repasse Profissional', :professional_user_id, :amount, :description, :entry_date, 'pending', 'Fechamento Mensal', :closure_id, 1, :uid, NOW())"
+            (entry_type, category, professional_user_id, amount, description, entry_date, status, cost_center, supplier_name, monthly_closure_id, is_active, created_by_user_id, created_at)
+         VALUES ('expense', 'Repasse Profissional', :professional_user_id, :amount, :description, :entry_date, 'pending', 'Fechamento Mensal', :supplier_name, :closure_id, 1, :uid, NOW())"
     );
     foreach ($byProfessional as $prof) {
         $desc = 'Repasse ' . $monthLabel . ' - ' . $prof['professional_name']
@@ -198,6 +199,7 @@ try {
         $insExpense->execute([
             'professional_user_id' => $prof['professional_user_id'] > 0 ? $prof['professional_user_id'] : null,
             'amount' => round((float)$prof['payable'], 2),
+            'supplier_name' => (string)$prof['professional_name'],
             'description' => $desc,
             'entry_date' => $lastDay,
             'closure_id' => $closureId,
