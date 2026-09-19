@@ -22,13 +22,29 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp.manage');
 
+// A tela de Instâncias (admin_settings.php) chama este endpoint via fetch (AJAX)
+// e espera JSON. O acesso direto por formulário usa flash + redirect.
+$isAjax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
+
 $instance = trim((string)($_POST['instance'] ?? ''));
 $backToView = '/admin_whatsapp_instance_view.php?instance=' . urlencode($instance);
 
-if ($instance === '') {
-    flash_set('error', 'Instância inválida.');
-    header('Location: /admin_whatsapp_instances.php');
+/**
+ * Encerra a requisição respondendo em JSON (AJAX) ou via flash + redirect.
+ */
+$respond = static function (bool $ok, string $message, string $redirect) use ($isAjax): void {
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => $ok, ($ok ? 'message' : 'error') => $message]);
+        exit;
+    }
+    flash_set($ok ? 'success' : 'error', $message);
+    header('Location: ' . $redirect);
     exit;
+};
+
+if ($instance === '') {
+    $respond(false, 'Instância inválida.', '/admin_whatsapp_instances.php');
 }
 
 $db = db();
@@ -57,11 +73,9 @@ try {
 if ($known) {
     $isDisconnected = ($connStatus === 'disconnected') || ($recStatus === 'inactive');
     if (!$isDisconnected) {
-        flash_set('error', 'A instância "' . $instance . '" não está desconectada (status: '
+        $respond(false, 'A instância "' . $instance . '" não está desconectada (status: '
             . ($connStatus !== '' ? $connStatus : 'desconhecido')
-            . '). A limpeza só é permitida para instâncias desconectadas.');
-        header('Location: ' . $backToView);
-        exit;
+            . '). A limpeza só é permitida para instâncias desconectadas.', $backToView);
     }
 }
 
@@ -107,16 +121,12 @@ try {
 
     $db->commit();
 
-    flash_set('success', 'Conversas da instância "' . $instance . '" limpas com escopo isolado ('
-        . $delMessages . ' mensagem(ns) e ' . $delContacts . ' conversa(s) removidas). As demais instâncias não foram afetadas.');
-    header('Location: ' . $backToView);
-    exit;
+    $respond(true, 'Conversas da instância "' . $instance . '" limpas com escopo isolado ('
+        . $delMessages . ' mensagem(ns) e ' . $delContacts . ' conversa(s) removidas). As demais instâncias não foram afetadas.', $backToView);
 } catch (Throwable $e) {
     if ($db->inTransaction()) {
         $db->rollBack();
     }
     error_log('[WHATSAPP_CLEAR_CONVERSATIONS] ' . $e->getMessage());
-    flash_set('error', 'Falha ao limpar conversas: ' . $e->getMessage());
-    header('Location: ' . $backToView);
-    exit;
+    $respond(false, 'Falha ao limpar conversas: ' . $e->getMessage(), $backToView);
 }

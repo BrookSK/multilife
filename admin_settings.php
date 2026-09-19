@@ -1515,6 +1515,17 @@ WAJS;
         echo '  .then(function(){ location.reload(); })';
         echo '  .catch(function(e){ alert("Erro ao salvar: " + e.message); });';
         echo '};';
+        echo '';
+        // Limpar conversas SOMENTE desta instância (escopo isolado). Só habilitado para desconectadas.
+        echo 'window.waInstClearConversations = function(instanceName){';
+        echo '  if(!confirm("Apagar TODAS as conversas e mensagens da instância \'" + instanceName + "\'?\\n\\nSomente esta instância será afetada. As demais permanecem intactas.\\nEsta ação é irreversível."))return;';
+        echo '  var formData = new FormData();';
+        echo '  formData.append("instance", instanceName);';
+        echo '  fetch("/admin_whatsapp_instance_clear_conversations_post.php", {method:"POST", body: formData, headers:{"X-Requested-With":"XMLHttpRequest"}})';
+        echo '  .then(function(r){ return r.json().catch(function(){ return {success:true}; }); })';
+        echo '  .then(function(data){ if(data && data.success===false){ alert("Erro: " + (data.error||"falha ao limpar")); } else { alert(data && data.message ? data.message : "Conversas limpas."); } location.reload(); })';
+        echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
+        echo '};';
         echo '})();';
         echo '</script>';
         
@@ -1602,6 +1613,11 @@ WAJS;
                 // Botão Desconectar (logout sem remover o vínculo) — só quando conectada
                 if ($liConnStatus === 'connected') {
                     echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:#f59e0b;color:white;border:none" onclick="waInstDisconnect(\'' . h($liName) . '\')">⏸ Desconectar</button>';
+                }
+
+                // Botão Limpar conversas — SÓ para instâncias DESCONECTADAS (escopo isolado por instância).
+                if ($liConnStatus !== 'connected') {
+                    echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:#ef4444;color:white;border:none" onclick="waInstClearConversations(\'' . h($liName) . '\')" title="Apaga as conversas somente desta instância">🧹 Limpar conversas</button>';
                 }
 
                 if (!$liIsDefault) {
