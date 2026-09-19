@@ -40,6 +40,7 @@ require_once __DIR__ . '/professional_links.php';
 require_once __DIR__ . '/frequency_helper.php';
 require_once __DIR__ . '/insurer_document_types.php';
 require_once __DIR__ . '/attendance_resume_helper.php';
+require_once __DIR__ . '/billing_closure_helper.php';
 require_once __DIR__ . '/demand_dispatch_batch.php';
 require_once __DIR__ . '/whatsapp_event_dispatcher.php';
 require_once __DIR__ . '/whatsapp_instances.php';
