@@ -19,7 +19,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('finance.manage');
+rbac_require_permission('billing.closure.manage');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: /faturamento_fechamento.php');

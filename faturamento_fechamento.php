@@ -17,7 +17,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('finance.manage');
+// Permissão dedicada: a equipe de ADMISSÃO pode fechar o mês sem ter acesso
+// financeiro (Contas a Pagar/Receber/Lançamentos continuam sob finance.manage).
+rbac_require_permission('billing.closure.manage');
 
 $db = db();
 
@@ -78,7 +80,9 @@ echo '<label style="font-size:13px;font-weight:600">Competência</label>';
 echo '<input type="month" name="month" value="' . h($month) . '" style="padding:8px;border:1px solid hsl(var(--border));border-radius:6px">';
 echo '<button class="btn btnPrimary" type="submit">Ver</button>';
 echo '</form>';
-echo '<a class="btn" href="/faturamento_list.php">Faturamento</a>';
+if (rbac_user_can((int)auth_user_id(), 'faturamento.manage')) {
+    echo '<a class="btn" href="/faturamento_list.php">Faturamento</a>';
+}
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
@@ -103,10 +107,13 @@ if ($isClosed) {
     echo '<button class="btn" type="submit" style="background:hsl(var(--destructive));color:#fff">↩️ Estornar fechamento</button>';
     echo '</form>';
     echo '</div>';
-    echo '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">';
-    echo '<a class="btn" href="/finance_receivable_list.php">Ver Contas a Receber</a>';
-    echo '<a class="btn" href="/finance_payable_list.php">Ver Contas a Pagar</a>';
-    echo '</div>';
+    // Links financeiros só para quem tem acesso financeiro (a admissão não deve ver).
+    if (rbac_user_can((int)auth_user_id(), 'finance.manage')) {
+        echo '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">';
+        echo '<a class="btn" href="/finance_receivable_list.php">Ver Contas a Receber</a>';
+        echo '<a class="btn" href="/finance_payable_list.php">Ver Contas a Pagar</a>';
+        echo '</div>';
+    }
     echo '</section>';
 }
 

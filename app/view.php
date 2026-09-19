@@ -74,7 +74,7 @@ function view_header(string $title): void
             ['title' => 'Cadastros Pendentes', 'path' => '/professional_pre_registrations_list.php', 'perm' => 'users.manage'],
             ['title' => 'Documentos', 'path' => '/documents_list.php', 'perm' => 'documents.manage'],
             ['title' => 'Faturamento', 'path' => '/faturamento_list.php', 'perm' => 'faturamento.manage'],
-            ['title' => 'Fechamento Mensal', 'path' => '/faturamento_fechamento.php', 'perm' => 'finance.manage'],
+            ['title' => 'Fechamento Mensal', 'path' => '/faturamento_fechamento.php', 'perm' => 'billing.closure.manage'],
             ['title' => 'Financeiro', 'path' => '/finance_dashboard.php', 'perm' => 'finance.manage'],
             ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php', 'perm' => 'finance.manage'],
             ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php', 'perm' => 'finance.manage'],
