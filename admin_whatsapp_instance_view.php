@@ -85,6 +85,22 @@ echo '</form>';
 echo '</div>';
 echo '</section>';
 
+// Limpeza de conversas COM ESCOPO ISOLADO (somente esta instância).
+echo '<section class="card col12">';
+echo '<div style="font-weight:900;margin-bottom:8px">Limpar conversas da instância</div>';
+echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:12px">'
+    . 'Remove as conversas e mensagens vinculadas <strong>somente a esta instância</strong> ('
+    . h($instance) . '). As demais instâncias e suas conversas <strong>não são afetadas</strong>. '
+    . 'Recomendado apenas para instâncias desconectadas. Ação irreversível.'
+    . '</div>';
+echo '<form method="post" action="/admin_whatsapp_instance_clear_conversations_post.php" style="display:inline">';
+echo '<input type="hidden" name="instance" value="' . h($instance) . '">';
+echo '<button class="btn" type="submit" style="background:hsl(var(--destructive));color:#fff" '
+    . 'onclick="return confirm(\'Apagar TODAS as conversas e mensagens da instância &quot;' . h($instance) . '&quot;? Somente esta instância será afetada. Esta ação é irreversível.\')">'
+    . 'Limpar conversas da instância desconectada</button>';
+echo '</form>';
+echo '</section>';
+
 // Teste envio
 
 echo '<section class="card col12">';
