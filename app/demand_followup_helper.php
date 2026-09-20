@@ -85,19 +85,52 @@ function demand_followup_candidates(PDO $db, int $demandId): array
         $specialty = trim((string)($s->fetchColumn() ?: ''));
     } catch (Throwable $e) {}
 
-    // Profissionais compatíveis com a especialidade (mesmo critério do dispatch).
+    // Profissionais compatíveis com a especialidade.
+    // Usa o MESMO match progressivo e flexível do disparo (demands_dispatch_whatsapp_post.php):
+    //  1) match exato;
+    //  2) specialty do profissional contém o termo da demanda;
+    //  3) match INVERSO: o termo da demanda contém a specialty do profissional
+    //     (ex.: demanda "Fisioterapia Domiciliar" casa com profissional "Fisioterapia");
+    //  4) primeira palavra (ex.: "Fisioterapia%" casa com "Fisioterapia Esportiva");
+    //  5) case-insensitive pela primeira palavra.
     $rows = [];
     try {
-        $q = $db->prepare("
-            SELECT u.id AS user_id, u.name, u.phone
-            FROM users u
-            INNER JOIN user_roles ur ON ur.user_id = u.id
-            INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
-            WHERE (:spec = '' OR u.specialty LIKE :specLike)
-              AND u.phone IS NOT NULL AND u.phone <> ''
-            ORDER BY u.name ASC
-        ");
-        $q->execute(['spec' => $specialty, 'specLike' => '%' . $specialty . '%']);
+        if ($specialty === '') {
+            // Sem especialidade na demanda: lista todos os profissionais com telefone.
+            $q = $db->prepare("
+                SELECT DISTINCT u.id AS user_id, u.name, u.phone
+                FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
+                WHERE u.phone IS NOT NULL AND u.phone <> ''
+                ORDER BY u.name ASC
+            ");
+            $q->execute();
+        } else {
+            $firstWord = explode(' ', trim($specialty))[0];
+            $q = $db->prepare("
+                SELECT DISTINCT u.id AS user_id, u.name, u.phone
+                FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
+                WHERE (
+                    u.specialty = :exact
+                    OR u.specialty LIKE :contains
+                    OR :inverse LIKE CONCAT('%', u.specialty, '%')
+                    OR u.specialty LIKE :firstWord
+                    OR LOWER(u.specialty) LIKE LOWER(:firstWordCi)
+                )
+                AND u.phone IS NOT NULL AND u.phone <> ''
+                ORDER BY u.name ASC
+            ");
+            $q->execute([
+                'exact' => $specialty,
+                'contains' => '%' . $specialty . '%',
+                'inverse' => $specialty,
+                'firstWord' => $firstWord . '%',
+                'firstWordCi' => '%' . $firstWord . '%',
+            ]);
+        }
         $rows = $q->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         $rows = [];
