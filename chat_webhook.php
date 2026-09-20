@@ -897,6 +897,31 @@ if ($event === 'messages.upsert') {
             ];
             $messageText = '[Sticker]';
         }
+        // Contato compartilhado (usado nas INDICAÇÕES de outro profissional).
+        // Precisa aparecer no chat como texto legível (nome + telefone do vCard).
+        elseif (isset($msgPayload['contactMessage']) || isset($msgPayload['contactsArrayMessage'])) {
+            $messageType = 'contact';
+            $contacts = [];
+            if (isset($msgPayload['contactMessage'])) {
+                $contacts[] = $msgPayload['contactMessage'];
+            } elseif (isset($msgPayload['contactsArrayMessage']['contacts']) && is_array($msgPayload['contactsArrayMessage']['contacts'])) {
+                $contacts = $msgPayload['contactsArrayMessage']['contacts'];
+            }
+            $parts = [];
+            foreach ($contacts as $ct) {
+                $displayName = trim((string)($ct['displayName'] ?? ''));
+                $vcard = (string)($ct['vcard'] ?? '');
+                $phone = '';
+                if ($vcard !== '' && preg_match('/waid=(\d+)/i', $vcard, $m)) {
+                    $phone = $m[1];
+                } elseif ($vcard !== '' && preg_match('/TEL[^:]*:([+\d\s\-()]+)/i', $vcard, $m2)) {
+                    $phone = preg_replace('/\D+/', '', $m2[1]);
+                }
+                $label = $displayName !== '' ? $displayName : 'Contato';
+                $parts[] = '👤 ' . $label . ($phone !== '' ? ' — ' . $phone : '');
+            }
+            $messageText = '[Contato indicado] ' . (count($parts) > 0 ? implode(' | ', $parts) : '');
+        }
 
         error_log("[WEBHOOK] Tipo de mensagem detectado: '$messageType' | URL extraída: " . ($mediaData['url'] ?? 'N/A'));
 

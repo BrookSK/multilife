@@ -436,6 +436,146 @@ echo '</tbody></table>';
 echo '</div>';
 echo '</section>';
 
+// ====================================================================
+// COBRANÇA MANUAL (follow-up) — só faz sentido se a demanda já foi captada em grupo.
+// Seleção de profissionais + geração de mensagem por IA + envio espaçado (anti-bloqueio).
+// ====================================================================
+$followupCandidates = [];
+$demandWasDispatched = false;
+try {
+    $demandWasDispatched = function_exists('demand_followup_demand_was_dispatched')
+        ? demand_followup_demand_was_dispatched(db(), (int)$d['id'])
+        : false;
+    if ($demandWasDispatched && function_exists('demand_followup_candidates')) {
+        $followupCandidates = demand_followup_candidates(db(), (int)$d['id']);
+    }
+} catch (Throwable $e) {
+    $followupCandidates = [];
+}
+
+if ($demandWasDispatched) {
+    echo '<section class="card col12">';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+    echo '<div>';
+    echo '<div style="font-weight:900;margin-bottom:4px">Cobrança de profissionais (privado)</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5">Selecione profissionais para cobrar no privado uma resposta sobre esta demanda. As mensagens são geradas por IA (uma por profissional) e enviadas em lotes espaçados para reduzir risco de bloqueio.</div>';
+    echo '</div>';
+    echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+    echo '<button type="button" class="btn btnPrimary" onclick="openFollowupModal()">📣 Fazer cobrança manual</button>';
+    echo '<button type="button" class="btn" onclick="openReferralModal()">➕ Registrar indicação</button>';
+    echo '</div>';
+    echo '</div>';
+    echo '</section>';
+
+    // Modal de registro de indicação (profissional indicado por outro).
+    echo '<div id="modalReferral" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:20px">';
+    echo '<div style="background:hsl(var(--card));border-radius:12px;padding:24px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+    echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    echo '<div style="font-size:18px;font-weight:900">Registrar indicação — Demanda #' . (int)$d['id'] . '</div>';
+    echo '<button type="button" onclick="closeReferralModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:hsl(var(--muted-foreground))">×</button>';
+    echo '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:14px">Lance o contato do profissional indicado por quem foi cobrado, para dar continuidade no fluxo.</div>';
+    echo '<div style="display:grid;gap:10px">';
+    echo '<label style="font-size:13px;font-weight:600">Nome do indicado<input type="text" id="refName" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px"></label>';
+    echo '<label style="font-size:13px;font-weight:600">Telefone do indicado<input type="text" id="refPhone" placeholder="Ex: 5511999999999" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px"></label>';
+    echo '<label style="font-size:13px;font-weight:600">Especialidade<input type="text" id="refSpecialty" value="' . h((string)($d['specialty'] ?? '')) . '" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px"></label>';
+    echo '<label style="font-size:13px;font-weight:600">Quem indicou (telefone, opcional)<input type="text" id="refReferrer" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px"></label>';
+    echo '<label style="font-size:13px;font-weight:600">Observação<textarea id="refNote" rows="2" style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px"></textarea></label>';
+    echo '</div>';
+    echo '<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">';
+    echo '<button type="button" class="btn" onclick="closeReferralModal()">Cancelar</button>';
+    echo '<button type="button" class="btn btnPrimary" id="refSubmitBtn" onclick="submitReferral(' . (int)$d['id'] . ')">Salvar indicação</button>';
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+
+    echo '<script>';
+    echo 'function openReferralModal(){document.getElementById("modalReferral").style.display="flex";}';
+    echo 'function closeReferralModal(){document.getElementById("modalReferral").style.display="none";}';
+    echo 'function submitReferral(demandId){';
+    echo '  var name=document.getElementById("refName").value.trim();var phone=document.getElementById("refPhone").value.trim();';
+    echo '  if(name===""&&phone===""){alert("Informe ao menos o nome ou o telefone do indicado.");return;}';
+    echo '  var btn=document.getElementById("refSubmitBtn");btn.disabled=true;btn.textContent="Salvando...";';
+    echo '  var fd=new FormData();fd.append("demand_id",demandId);fd.append("referred_name",name);fd.append("referred_phone",phone);';
+    echo '  fd.append("referred_specialty",document.getElementById("refSpecialty").value.trim());';
+    echo '  fd.append("referrer_phone",document.getElementById("refReferrer").value.trim());';
+    echo '  fd.append("note",document.getElementById("refNote").value.trim());';
+    echo '  fetch("/demand_referral_create_post.php",{method:"POST",body:fd,headers:{"X-Requested-With":"XMLHttpRequest"}})';
+    echo '  .then(function(r){return r.json();})';
+    echo '  .then(function(data){ if(data&&data.success){ alert("✅ "+(data.message||"Indicação registrada.")); closeReferralModal(); } else { alert("❌ "+((data&&data.error)||"Falha.")); btn.disabled=false;btn.textContent="Salvar indicação"; } })';
+    echo '  .catch(function(){ alert("❌ Erro de conexão."); btn.disabled=false;btn.textContent="Salvar indicação"; });';
+    echo '}';
+    echo '</script>';
+
+    // Modal de cobrança
+    echo '<div id="modalFollowup" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:20px">';
+    echo '<div style="background:hsl(var(--card));border-radius:12px;padding:24px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+    echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    echo '<div style="font-size:18px;font-weight:900">Cobrar profissionais — Demanda #' . (int)$d['id'] . '</div>';
+    echo '<button type="button" onclick="closeFollowupModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:hsl(var(--muted-foreground))">×</button>';
+    echo '</div>';
+
+    echo '<div style="padding:12px;border-radius:8px;background:hsla(var(--destructive)/.08);border:1px solid hsl(var(--destructive));margin-bottom:14px">';
+    echo '<div style="font-size:13px;color:hsl(var(--destructive));font-weight:700">⚠ Aviso de risco</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.5;margin-top:4px">O envio de cobrança no privado é feito por sua conta e risco. Mesmo com envio espaçado, há risco de o número de WhatsApp ser bloqueado pelo excesso de mensagens. Selecione apenas quem realmente precisa.</div>';
+    echo '</div>';
+
+    $selectable = array_values(array_filter($followupCandidates, fn($c) => !$c['already_charged']));
+    if (count($selectable) === 0) {
+        echo '<div style="padding:24px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum profissional disponível para cobrança (todos já foram cobrados ou sem número válido).</div>';
+    } else {
+        echo '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Profissionais (' . count($selectable) . ')</div>';
+        echo '<div style="display:flex;gap:8px;margin-bottom:8px">';
+        echo '<button type="button" class="btn" style="font-size:12px;padding:4px 10px" onclick="followupToggleAll(true)">Selecionar todos</button>';
+        echo '<button type="button" class="btn" style="font-size:12px;padding:4px 10px" onclick="followupToggleAll(false)">Limpar</button>';
+        echo '</div>';
+        echo '<div style="max-height:280px;overflow:auto;border:1px solid hsl(var(--border));border-radius:8px">';
+        foreach ($selectable as $c) {
+            $reactedBadge = $c['reacted'] ? '<span class="badge badgeSuccess" style="font-size:10px;margin-left:6px">já reagiu</span>' : '';
+            echo '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid hsl(var(--border));cursor:pointer">';
+            echo '<input type="checkbox" class="followupChk" value="' . h($c['phone']) . '" ' . ($c['reacted'] ? '' : 'checked') . '>';
+            echo '<span style="flex:1"><span style="font-weight:600">' . h($c['name'] !== '' ? $c['name'] : $c['phone']) . '</span> '
+                . '<span style="font-size:12px;color:hsl(var(--muted-foreground))">' . h($c['phone']) . '</span>' . $reactedBadge . '</span>';
+            echo '</label>';
+        }
+        echo '</div>';
+
+        echo '<label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;cursor:pointer">';
+        echo '<input type="checkbox" id="followupAck" style="margin-top:2px">';
+        echo '<span>Confirmo que li o aviso e assumo o risco de bloqueio do número ao enviar estas cobranças.</span>';
+        echo '</label>';
+
+        echo '<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">';
+        echo '<button type="button" class="btn" onclick="closeFollowupModal()">Cancelar</button>';
+        echo '<button type="button" class="btn btnPrimary" id="followupSubmitBtn" onclick="submitFollowup(' . (int)$d['id'] . ')">🤖 Gerar com IA e cobrar</button>';
+        echo '</div>';
+    }
+    echo '</div>';
+    echo '</div>';
+
+    echo '<script>';
+    echo 'function openFollowupModal(){document.getElementById("modalFollowup").style.display="flex";}';
+    echo 'function closeFollowupModal(){document.getElementById("modalFollowup").style.display="none";}';
+    echo 'function followupToggleAll(v){document.querySelectorAll(".followupChk").forEach(function(c){c.checked=v;});}';
+    echo 'function submitFollowup(demandId){';
+    echo '  var phones=[];document.querySelectorAll(".followupChk:checked").forEach(function(c){phones.push(c.value);});';
+    echo '  if(phones.length===0){alert("Selecione ao menos um profissional.");return;}';
+    echo '  if(!document.getElementById("followupAck").checked){alert("Confirme o aviso de risco para continuar.");return;}';
+    // Confirmação tripla (pedido explícito da reunião).
+    echo '  if(!confirm("Confirmar cobrança de "+phones.length+" profissional(is) desta demanda?"))return;';
+    echo '  if(!confirm("Tem certeza? As mensagens serão enviadas no PRIVADO de cada profissional."))return;';
+    echo '  if(!confirm("Última confirmação: isto pode causar BLOQUEIO do número de WhatsApp. Deseja mesmo prosseguir?"))return;';
+    echo '  var btn=document.getElementById("followupSubmitBtn");btn.disabled=true;btn.textContent="Enfileirando...";';
+    echo '  var fd=new FormData();fd.append("demand_id",demandId);fd.append("acknowledge_risk","1");';
+    echo '  phones.forEach(function(p){fd.append("phones[]",p);});';
+    echo '  fetch("/demand_followup_enqueue_post.php",{method:"POST",body:fd,headers:{"X-Requested-With":"XMLHttpRequest"}})';
+    echo '  .then(function(r){return r.json();})';
+    echo '  .then(function(data){ if(data&&data.success){ alert("✅ "+(data.message||"Cobrança enfileirada.")); closeFollowupModal(); } else { alert("❌ "+((data&&data.error)||"Falha ao enfileirar.")); btn.disabled=false; btn.textContent="🤖 Gerar com IA e cobrar"; } })';
+    echo '  .catch(function(){ alert("❌ Erro de conexão."); btn.disabled=false; btn.textContent="🤖 Gerar com IA e cobrar"; });';
+    echo '}';
+    echo '</script>';
+}
+
 echo '</div>';
 
 // Modal de seleção de sub-solicitação (quando e-mail tem múltiplas)
