@@ -43,6 +43,9 @@ $fields = [
     'demands.auto_archive_enabled' => 'Auto-arquivar demandas sem retorno (1=sim, 0=não)',
     'demands.auto_archive_days' => 'Dias sem interação para arquivar automaticamente',
     'chat.unanswered_timeout_minutes' => 'Chat - Tempo sem resposta (min) para gerar pendência',
+    'demand_followup.batch_size' => 'Cobrança de captação - Mensagens por lote (ex: 2)',
+    'demand_followup.interval_minutes' => 'Cobrança de captação - Intervalo entre lotes (minutos)',
+    'demand_followup.per_message_delay_ms' => 'Cobrança de captação - Atraso por mensagem (milissegundos)',
     'demands.whatsapp_template' => 'Captação - Template WhatsApp (placeholders: {id},{title},{city},{state},{address},{street},{neighborhood},{specialty},{frequency},{description},{ai_summary},{ai_summary_block},{captation_note},{captation_note_block},{origin})',
     'appointments.patient_whatsapp_template' => 'Agendamento - Template WhatsApp para paciente (placeholders: {appointment_id},{patient_name},{professional_name},{first_at})',
     'appointments.email_subject_template' => 'Agendamento - Template assunto e-mail (placeholders: {appointment_id},{patient_name},{professional_name},{first_at})',
@@ -136,7 +139,7 @@ $sections = [
     ],
     'Operacional' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
-        'keys' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'demands.auto_archive_enabled', 'demands.auto_archive_days', 'chat.unanswered_timeout_minutes', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url']
+        'keys' => ['docs.reminder_days_before_due', 'finance.repasse_cycle_days', 'demands.assume_timeout_hours', 'demands.auto_archive_enabled', 'demands.auto_archive_days', 'chat.unanswered_timeout_minutes', 'demand_followup.batch_size', 'demand_followup.interval_minutes', 'demand_followup.per_message_delay_ms', 'professional.docs_expiry_notice_days', 'professional.required_doc_categories', 'professional.docs_reminder_days_before_due', 'app.session_lifetime_seconds', 'cron.token', 'app.public_base_url']
     ],
     'E-mail Recebimento (IMAP)' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
