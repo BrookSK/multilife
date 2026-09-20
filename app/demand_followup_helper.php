@@ -230,3 +230,115 @@ function demand_followup_generate_message(array $demand, string $professionalNam
     $idx = abs(crc32($greetingName . $title)) % count($variants);
     return $variants[$idx];
 }
+
+/**
+ * Processa UM lote (até batch_size itens pendentes) de um batch de cobrança:
+ * gera a mensagem por IA para cada item e envia no privado, marcando sent/failed.
+ *
+ * Usado tanto pelo cron (lotes seguintes, espaçados) quanto pelo endpoint de
+ * enfileiramento (PRIMEIRO lote, enviado imediatamente ao clicar).
+ *
+ * @param PDO $db
+ * @param int $batchId
+ * @return array{sent:int,failed:int,processed:int}
+ */
+function demand_followup_process_one_batch(PDO $db, int $batchId): array
+{
+    $result = ['sent' => 0, 'failed' => 0, 'processed' => 0];
+
+    // Carregar o batch.
+    $b = $db->prepare('SELECT * FROM demand_followup_batches WHERE id = :id LIMIT 1');
+    $b->execute(['id' => $batchId]);
+    $batch = $b->fetch(PDO::FETCH_ASSOC);
+    if (!$batch) {
+        return $result;
+    }
+    $demandId = (int)$batch['demand_id'];
+
+    // Dados da demanda (para a IA).
+    $demand = [];
+    try {
+        $d = $db->prepare('SELECT id, title, specialty, location_city FROM demands WHERE id = :d LIMIT 1');
+        $d->execute(['d' => $demandId]);
+        $demand = $d->fetch(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {}
+
+    $batchSize = demand_followup_batch_size();
+    $perMsgDelay = demand_followup_per_message_delay_ms();
+
+    // Próximos itens pendentes.
+    $it = $db->prepare("SELECT * FROM demand_followup_items WHERE batch_id = :b AND status = 'pending' ORDER BY id ASC LIMIT :lim");
+    $it->bindValue('b', $batchId, PDO::PARAM_INT);
+    $it->bindValue('lim', $batchSize, PDO::PARAM_INT);
+    $it->execute();
+    $items = $it->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($items)) {
+        $db->prepare("UPDATE demand_followup_batches SET status = 'done' WHERE id = :id")->execute(['id' => $batchId]);
+        return $result;
+    }
+
+    $db->prepare("UPDATE demand_followup_batches SET status = 'processing' WHERE id = :id")->execute(['id' => $batchId]);
+
+    // API do WhatsApp da instância de quem criou (fallback: padrão).
+    $api = null;
+    try {
+        $api = whatsapp_get_api_for_user((int)($batch['created_by_user_id'] ?? 0) ?: null);
+    } catch (Throwable $e) {
+        $api = null;
+    }
+
+    foreach ($items as $item) {
+        $itemId = (int)$item['id'];
+        $jid = (string)$item['phone_jid'];
+        $name = (string)($item['push_name'] ?? '');
+        $result['processed']++;
+
+        if ($api === null) {
+            $db->prepare("UPDATE demand_followup_items SET status='failed', attempts=attempts+1, error_message='WhatsApp indisponível' WHERE id=:id")
+                ->execute(['id' => $itemId]);
+            $db->prepare("UPDATE demand_followup_batches SET failed_items = failed_items + 1 WHERE id=:id")->execute(['id' => $batchId]);
+            $result['failed']++;
+            continue;
+        }
+
+        $message = demand_followup_generate_message($demand, $name);
+
+        try {
+            $res = $api->sendText($jid, $message, ['delay' => $perMsgDelay]);
+            $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
+            if ($ok) {
+                $db->prepare("UPDATE demand_followup_items SET status='sent', generated_message=:m, attempts=attempts+1, sent_at=NOW(), error_message=NULL WHERE id=:id")
+                    ->execute(['m' => $message, 'id' => $itemId]);
+                $db->prepare("UPDATE demand_followup_batches SET sent_items = sent_items + 1 WHERE id=:id")->execute(['id' => $batchId]);
+                $result['sent']++;
+                try {
+                    $db->prepare('INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp) VALUES (?, ?, ?, 1, ?)')
+                        ->execute([$jid, $batch['instance_name'] ?? null, $message, time()]);
+                } catch (Throwable $e) {}
+            } else {
+                $err = 'HTTP ' . (string)($res['status'] ?? '');
+                $db->prepare("UPDATE demand_followup_items SET status='failed', generated_message=:m, attempts=attempts+1, error_message=:e WHERE id=:id")
+                    ->execute(['m' => $message, 'e' => $err, 'id' => $itemId]);
+                $db->prepare("UPDATE demand_followup_batches SET failed_items = failed_items + 1 WHERE id=:id")->execute(['id' => $batchId]);
+                $result['failed']++;
+            }
+        } catch (Throwable $e) {
+            $db->prepare("UPDATE demand_followup_items SET status='failed', attempts=attempts+1, error_message=:e WHERE id=:id")
+                ->execute(['e' => mb_strimwidth($e->getMessage(), 0, 240, ''), 'id' => $itemId]);
+            $db->prepare("UPDATE demand_followup_batches SET failed_items = failed_items + 1 WHERE id=:id")->execute(['id' => $batchId]);
+            $result['failed']++;
+        }
+
+        usleep(1500000); // 1.5s entre as mensagens do mesmo lote
+    }
+
+    // Marca o horário deste lote (base do intervalo dos próximos) e conclui se acabou.
+    $db->prepare("UPDATE demand_followup_batches SET last_batch_sent_at = NOW() WHERE id = :id")->execute(['id' => $batchId]);
+    $remaining = (int)$db->query("SELECT COUNT(*) FROM demand_followup_items WHERE batch_id = " . (int)$batchId . " AND status = 'pending'")->fetchColumn();
+    if ($remaining === 0) {
+        $db->prepare("UPDATE demand_followup_batches SET status = 'done' WHERE id = :id")->execute(['id' => $batchId]);
+    }
+
+    return $result;
+}

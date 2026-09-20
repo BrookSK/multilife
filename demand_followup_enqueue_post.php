@@ -174,12 +174,33 @@ try {
 
     $interval = demand_followup_interval_minutes();
     $size = demand_followup_batch_size();
+
+    // PRIMEIRO lote é enviado IMEDIATAMENTE (os próximos ficam para o cron, espaçados).
+    $immediate = ['sent' => 0, 'failed' => 0, 'processed' => 0];
+    try {
+        $immediate = demand_followup_process_one_batch($db, $batchId);
+    } catch (Throwable $e) {
+        error_log('[DEMAND_FOLLOWUP_ENQUEUE] Falha no envio imediato: ' . $e->getMessage());
+    }
+
+    $remaining = max(0, $queued - $immediate['processed']);
+    $msg = 'Cobrança iniciada: ' . $immediate['sent'] . ' enviada(s) agora';
+    if ($immediate['failed'] > 0) {
+        $msg .= ', ' . $immediate['failed'] . ' falha(s)';
+    }
+    if ($remaining > 0) {
+        $msg .= '. Os outros ' . $remaining . ' serão enviados em lotes de ' . $size . ' a cada ~' . $interval . ' min (requer cron ativo).';
+    } else {
+        $msg .= '.';
+    }
+
     echo json_encode([
         'success' => true,
         'batch_id' => $batchId,
         'queued' => $queued,
-        'message' => $queued . ' profissional(is) na fila de cobrança. O envio ocorre em lotes de '
-            . $size . ' a cada ~' . $interval . ' min para reduzir risco de bloqueio.',
+        'sent_now' => $immediate['sent'],
+        'failed_now' => $immediate['failed'],
+        'message' => $msg,
     ]);
     exit;
 } catch (Throwable $e) {
