@@ -1444,6 +1444,25 @@ function closeQuickProfModal() {
   var modal = document.getElementById('quickProfModal');
   if (modal) modal.style.display = 'none';
 }
+// Abre o pré-cadastro já preenchido com dados de um CONTATO INDICADO (card de contato).
+function openQuickProfModalWith(name, phone) {
+  var modal = document.getElementById('quickProfModal');
+  if (!modal) return;
+  var digits = String(phone || '').replace(/[^0-9]/g, '');
+  var elName = document.getElementById('quickProfName');
+  var elPhone = document.getElementById('quickProfPhone');
+  var elErr = document.getElementById('quickProfError');
+  var elEmail = document.getElementById('quickProfEmail');
+  var elSpec = document.getElementById('quickProfSpecialty');
+  var elCity = document.getElementById('quickProfCity');
+  if (elName) elName.value = name || '';
+  if (elPhone) elPhone.value = digits;
+  if (elEmail) elEmail.value = '';
+  if (elCity) elCity.value = '';
+  if (elSpec) elSpec.selectedIndex = 0;
+  if (elErr) { elErr.style.display = 'none'; elErr.textContent = ''; }
+  modal.style.display = 'flex';
+}
 function submitQuickProf() {
   var name = (document.getElementById('quickProfName') || {}).value || '';
   var phone = (document.getElementById('quickProfPhone') || {}).value || '';
@@ -2315,9 +2334,11 @@ if (empty($selectedChat)) {
                     if ($cJid !== '') {
                         echo '<a href="/chat_web.php?chat=' . urlencode($cJid) . '&type=all" style="flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#00a884;text-decoration:none;border-right:1px solid rgba(0,0,0,.08)">Conversar</a>';
                     }
-                    // "Adicionar": leva ao cadastro de usuário/profissional com nome e telefone pré-preenchidos.
-                    $addUrl = '/users_edit.php?prefill_name=' . urlencode($cName) . '&prefill_phone=' . urlencode($cPhone);
-                    echo '<a href="' . h($addUrl) . '" style="flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#00a884;text-decoration:none">Adicionar</a>';
+                    // "Adicionar": abre o pop-up de PRÉ-CADASTRO de profissional já preenchido
+                    // com o nome/telefone do contato indicado (não sai do Chat ao Vivo).
+                    $cNameJs = htmlspecialchars(json_encode($cName), ENT_QUOTES);
+                    $cPhoneJs = htmlspecialchars(json_encode($cPhone), ENT_QUOTES);
+                    echo '<a href="#" onclick="openQuickProfModalWith(' . $cNameJs . ',' . $cPhoneJs . ');return false;" style="flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#00a884;text-decoration:none">Adicionar</a>';
                     echo '</div>';
                     echo '</div>';
                 }
