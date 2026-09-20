@@ -182,15 +182,20 @@ function demand_followup_candidates(PDO $db, int $demandId): array
  * Gera a mensagem de cobrança para UM profissional.
  * Tenta a IA (uma variação única); se falhar, usa fallback com pequena variação.
  */
-function demand_followup_generate_message(array $demand, string $professionalName): string
+function demand_followup_generate_message(array $demand, string $professionalName, string $uniquenessSeed = ''): string
 {
     $title = trim((string)($demand['title'] ?? 'a demanda'));
     $specialty = trim((string)($demand['specialty'] ?? ''));
     $city = trim((string)($demand['location_city'] ?? ''));
     $firstName = trim((string)preg_split('/\s+/', trim($professionalName))[0] ?? '');
     $greetingName = $firstName !== '' ? $firstName : 'profissional';
+    // Seed único por destinatário (ex.: telefone) para garantir variação mesmo
+    // quando dois profissionais têm o mesmo primeiro nome.
+    if ($uniquenessSeed === '') {
+        $uniquenessSeed = $professionalName . '|' . bin2hex(random_bytes(3));
+    }
 
-    // Tentar IA.
+    // Tentar IA — cada chamada gera uma variação única (temperatura alta + nonce).
     try {
         $api = new OpenAiApi();
         $sys = 'Você escreve mensagens curtas e cordiais de WhatsApp, em português do Brasil, '
@@ -198,18 +203,20 @@ function demand_followup_generate_message(array $demand, string $professionalNam
             . '1) cumprimentar pelo primeiro nome; '
             . '2) perguntar, de forma gentil, se o profissional realmente não tem interesse/disponibilidade na demanda; '
             . '3) pedir que, se não puder, indique o contato de outro profissional que possa atender; '
-            . '4) ser breve (até ~50 palavras), sem parecer spam, sem links, tom humano e levemente variado. '
+            . '4) ser breve (até ~50 palavras), sem parecer spam, sem links, tom humano. '
+            . 'IMPORTANTE: varie a estrutura, a saudação e as palavras a cada mensagem — nunca repita o mesmo texto. '
             . 'Não use dados sensíveis do paciente. Assine como "Equipe MultiLife".';
         $user = "Profissional: {$greetingName}\n"
             . 'Demanda: ' . $title . "\n"
             . ($specialty !== '' ? 'Especialidade: ' . $specialty . "\n" : '')
             . ($city !== '' ? 'Cidade: ' . $city . "\n" : '')
-            . 'Gere UMA mensagem única (variada), pronta para envio.';
+            . 'Identificador único desta mensagem (para garantir texto diferente, não cite): ' . $uniquenessSeed . "\n"
+            . 'Gere UMA mensagem única e original, pronta para envio.';
 
         $res = $api->chatCompletions([
             ['role' => 'system', 'content' => $sys],
             ['role' => 'user', 'content' => $user],
-        ], null, ['temperature' => 0.9, 'max_tokens' => 200]);
+        ], null, ['temperature' => 1.0, 'max_tokens' => 220]);
 
         if (($res['status'] ?? 0) >= 200 && ($res['status'] ?? 0) < 300) {
             $text = trim((string)($res['json']['choices'][0]['message']['content'] ?? ''));
@@ -221,13 +228,16 @@ function demand_followup_generate_message(array $demand, string $professionalNam
         // cai no fallback
     }
 
-    // Fallback determinístico com leve variação por nome.
+    // Fallback determinístico: escolhe a variação pelo SEED único (telefone),
+    // não só pelo nome — assim dois "Lucas" recebem textos diferentes.
     $variants = [
         "Olá, {$greetingName}! Tudo bem? Passando para saber se você realmente não tem interesse/disponibilidade na demanda \"{$title}\". Se não puder assumir, você conhece algum colega que possa? Pode nos passar o contato. Obrigado! Equipe MultiLife",
         "Oi, {$greetingName}! Sobre a demanda \"{$title}\": ainda dá para você atender? Se não for possível, teria alguém para indicar? É só nos enviar o contato. Agradecemos! Equipe MultiLife",
         "{$greetingName}, tudo certo? Estamos finalizando a captação da demanda \"{$title}\". Você tem interesse? Caso não, poderia indicar outro profissional? Fico no aguardo. Equipe MultiLife",
+        "E aí, {$greetingName}? Ainda temos a demanda \"{$title}\" em aberto. Consegue assumir? Se não rolar, uma indicação de colega ajudaria bastante — manda o contato pra gente. Abraço! Equipe MultiLife",
+        "{$greetingName}, bom falar com você! Sobre \"{$title}\": segue disponível para atender? Caso não, você indicaria alguém de confiança? Podemos falar com essa pessoa. Obrigado! Equipe MultiLife",
     ];
-    $idx = abs(crc32($greetingName . $title)) % count($variants);
+    $idx = abs(crc32($uniquenessSeed)) % count($variants);
     return $variants[$idx];
 }
 
@@ -302,7 +312,9 @@ function demand_followup_process_one_batch(PDO $db, int $batchId): array
             continue;
         }
 
-        $message = demand_followup_generate_message($demand, $name);
+        // Seed único por destinatário (telefone + item) garante mensagem diferente por contato.
+        $seed = (string)($item['phone'] ?? '') . '#' . $itemId;
+        $message = demand_followup_generate_message($demand, $name, $seed);
 
         try {
             $res = $api->sendText($jid, $message, ['delay' => $perMsgDelay]);

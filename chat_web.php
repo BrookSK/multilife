@@ -2286,6 +2286,41 @@ if (empty($selectedChat)) {
                 echo '<div style="margin-bottom:4px">';
                 echo '<img src="' . h($mediaUrl) . '" alt="Sticker" style="max-width:150px;max-height:150px" onerror="this.alt=\'[Sticker]\';this.style.display=\'none\'">';
                 echo '</div>';
+            } elseif ($messageType === 'contact' || strpos((string)$messageText, '[Contato indicado]') === 0) {
+                // Card de CONTATO (estilo WhatsApp) — usado nas indicações de profissionais.
+                // O texto vem como "[Contato indicado] Nome — telefone | Nome2 — telefone2".
+                $raw = trim(str_replace('[Contato indicado]', '', (string)$messageText));
+                $raw = trim(str_replace(['👤', '👥'], '', $raw));
+                $entries = array_filter(array_map('trim', explode('|', $raw)));
+                if (empty($entries)) { $entries = ['Contato']; }
+                foreach ($entries as $entry) {
+                    // Separar nome e telefone (separador "—" ou "-").
+                    $cName = $entry;
+                    $cPhone = '';
+                    if (preg_match('/^(.*?)[—-]\s*([+\d][\d\s\-()]+)$/u', $entry, $mm)) {
+                        $cName = trim($mm[1]);
+                        $cPhone = preg_replace('/\D+/', '', $mm[2]);
+                    }
+                    if ($cName === '') { $cName = 'Contato'; }
+                    $cInitials = mb_strtoupper(mb_substr($cName, 0, 2));
+                    $cJid = $cPhone !== '' ? $cPhone . '@s.whatsapp.net' : '';
+                    echo '<div style="min-width:240px;max-width:300px;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:10px;overflow:hidden;margin-bottom:4px">';
+                    echo '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px">';
+                    echo '<div style="width:40px;height:40px;border-radius:50%;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">' . h($cInitials) . '</div>';
+                    echo '<div style="min-width:0"><div style="font-size:14px;font-weight:600;color:#111b21;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' . h($cName) . '</div>';
+                    if ($cPhone !== '') { echo '<div style="font-size:12px;color:#667781">' . h($cPhone) . '</div>'; }
+                    echo '</div></div>';
+                    echo '<div style="display:flex;border-top:1px solid rgba(0,0,0,.08)">';
+                    // "Conversar": abre a conversa privada com esse contato no próprio Chat ao Vivo.
+                    if ($cJid !== '') {
+                        echo '<a href="/chat_web.php?chat=' . urlencode($cJid) . '&type=all" style="flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#00a884;text-decoration:none;border-right:1px solid rgba(0,0,0,.08)">Conversar</a>';
+                    }
+                    // "Adicionar": leva ao cadastro de usuário/profissional com nome e telefone pré-preenchidos.
+                    $addUrl = '/users_edit.php?prefill_name=' . urlencode($cName) . '&prefill_phone=' . urlencode($cPhone);
+                    echo '<a href="' . h($addUrl) . '" style="flex:1;text-align:center;padding:10px;font-size:13px;font-weight:600;color:#00a884;text-decoration:none">Adicionar</a>';
+                    echo '</div>';
+                    echo '</div>';
+                }
             } else {
                 // Texto com suporte a menções e quebras de linha
                 $displayText = $messageText;
