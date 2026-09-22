@@ -1397,6 +1397,7 @@ try {
         Pré-cadastro rápido. Preencha o essencial agora; os demais dados podem ser completados depois em Usuários.
       </div>
       <div id="quickProfError" style="display:none;background:#f8d7da;color:#721c24;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px"></div>
+      <div id="quickProfDupWarn" style="display:none;background:#fff3cd;color:#664d03;border:1px solid #ffe69c;padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:13px"></div>
 
       <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Nome *</label>
       <input type="text" id="quickProfName" placeholder="Nome completo" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
@@ -1438,6 +1439,8 @@ function openQuickProfModal() {
   if (elName) elName.value = chatName || '';
   if (elPhone) elPhone.value = /^[0-9]+$/.test(phone) ? phone : '';
   if (elErr) { elErr.style.display = 'none'; elErr.textContent = ''; }
+  var elDup = document.getElementById('quickProfDupWarn');
+  if (elDup) { elDup.style.display = 'none'; elDup.innerHTML = ''; }
   modal.style.display = 'flex';
 }
 function closeQuickProfModal() {
@@ -1461,16 +1464,23 @@ function openQuickProfModalWith(name, phone) {
   if (elCity) elCity.value = '';
   if (elSpec) elSpec.selectedIndex = 0;
   if (elErr) { elErr.style.display = 'none'; elErr.textContent = ''; }
+  var elDup = document.getElementById('quickProfDupWarn');
+  if (elDup) { elDup.style.display = 'none'; elDup.innerHTML = ''; }
   modal.style.display = 'flex';
 }
-function submitQuickProf() {
+// force=false: verificação normal (avisa se houver parecidos).
+// force=true: cadastra mesmo assim (após o operador confirmar no aviso).
+function submitQuickProf(force) {
   var name = (document.getElementById('quickProfName') || {}).value || '';
   var phone = (document.getElementById('quickProfPhone') || {}).value || '';
   var email = (document.getElementById('quickProfEmail') || {}).value || '';
   var specialty = (document.getElementById('quickProfSpecialty') || {}).value || '';
   var city = (document.getElementById('quickProfCity') || {}).value || '';
   var err = document.getElementById('quickProfError');
+  var dup = document.getElementById('quickProfDupWarn');
   function showErr(msg) { if (err) { err.textContent = msg; err.style.display = 'block'; } }
+  if (err) { err.style.display = 'none'; }
+  if (!force && dup) { dup.style.display = 'none'; dup.innerHTML = ''; }
 
   if (!name.trim()) { showErr('Informe o nome do profissional.'); return; }
   if (phone.replace(/[^0-9]/g, '').length < 10) { showErr('Informe um telefone válido (com DDD).'); return; }
@@ -1484,6 +1494,7 @@ function submitQuickProf() {
   fd.append('email', email);
   fd.append('specialty', specialty);
   fd.append('city', city);
+  if (force) { fd.append('force', '1'); }
 
   fetch('/professional_quick_create_post.php', { method: 'POST', body: fd })
     .then(function (r) { return r.json(); })
@@ -1493,14 +1504,42 @@ function submitQuickProf() {
         closeQuickProfModal();
         alert('Profissional pré-cadastrado com sucesso: ' + (data.name || name));
         location.reload();
-      } else {
-        showErr((data && data.message) ? data.message : 'Erro ao pré-cadastrar.');
+        return;
       }
+      // Encontrou parecidos: mostra o aviso com opções (reutilizar / cadastrar mesmo assim).
+      if (data && data.needs_confirmation && Array.isArray(data.duplicates) && data.duplicates.length > 0) {
+        renderQuickProfDuplicates(data.duplicates);
+        return;
+      }
+      showErr((data && data.message) ? data.message : 'Erro ao pré-cadastrar.');
     })
     .catch(function () {
       if (btn) { btn.disabled = false; btn.textContent = 'Salvar pré-cadastro'; }
       showErr('Erro de conexão. Tente novamente.');
     });
+}
+
+// Monta o aviso de profissionais parecidos com botões de reutilizar e cadastrar mesmo assim.
+function renderQuickProfDuplicates(dups) {
+  var dup = document.getElementById('quickProfDupWarn');
+  if (!dup) return;
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); };
+  var html = '<div style="font-weight:700;margin-bottom:8px">⚠ Já existe profissional parecido</div>';
+  dups.forEach(function (d) {
+    var motivo = d.reason === 'phone' ? 'mesmo telefone' : 'nome parecido';
+    var linha = esc(d.name);
+    if (d.phone) linha += ' — ' + esc(d.phone);
+    if (d.specialty) linha += ' · ' + esc(d.specialty);
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid #ffe69c">';
+    html += '<div><div style="font-weight:600">' + linha + '</div><div style="font-size:11px;color:#8a6d3b">(' + motivo + ')</div></div>';
+    var jid = d.phone ? (d.phone.replace(/\D+/g, '') + '@s.whatsapp.net') : '';
+    html += '<a href="/chat_web.php?chat=' + encodeURIComponent(jid) + '&type=all" style="flex-shrink:0;padding:6px 12px;background:#00a884;color:#fff;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600">Reutilizar</a>';
+    html += '</div>';
+  });
+  html += '<div style="margin-top:12px;font-size:13px">É a mesma pessoa? Use <strong>Reutilizar</strong>. São pessoas diferentes?</div>';
+  html += '<button type="button" onclick="submitQuickProf(true)" style="margin-top:8px;width:100%;padding:10px;background:#e67e22;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Cadastrar mesmo assim (são diferentes)</button>';
+  dup.innerHTML = html;
+  dup.style.display = 'block';
 }
 </script>
 <?php

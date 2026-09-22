@@ -63,18 +63,83 @@ try { $db->exec("ALTER TABLE users ADD COLUMN is_pre_registration TINYINT(1) NOT
 try { $db->exec("ALTER TABLE users ADD COLUMN city VARCHAR(120) NULL"); } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
 
-// Evitar duplicidade: por e-mail (se informado) ou por telefone.
+// "force=1" pula a verificação de duplicados (a pessoa confirmou "cadastrar mesmo assim").
+$force = (string)($_POST['force'] ?? '') === '1';
+
+// ====================================================================
+// VERIFICAÇÃO DE DUPLICADOS/PARECIDOS (a menos que force=1).
+// Avisa (não bloqueia) para o operador decidir reutilizar ou cadastrar mesmo assim:
+//  - telefone EXATAMENTE igual;
+//  - nome PARECIDO (um contém o outro, ignorando caixa/acentos).
+// ====================================================================
+if (!$force) {
+    $matches = [];
+    $seen = [];
+
+    // 1) Telefone exatamente igual.
+    $stmt = $db->prepare("
+        SELECT id, name, phone, specialty, city
+        FROM users
+        WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone,''),' ',''),'-',''),'(',''),')','') = :phone
+        LIMIT 5
+    ");
+    $stmt->execute(['phone' => $phone]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $seen[(int)$row['id']] = true;
+        $matches[] = [
+            'id' => (int)$row['id'],
+            'name' => (string)$row['name'],
+            'phone' => (string)$row['phone'],
+            'specialty' => (string)($row['specialty'] ?? ''),
+            'city' => (string)($row['city'] ?? ''),
+            'reason' => 'phone',
+        ];
+    }
+
+    // 2) Nome parecido: um nome contém o outro (case/acento-insensitive).
+    //    Ex.: cadastrando "Lucas Mendes Campanha", acha "Lucas Mendes".
+    $nameNorm = mb_strtolower($name);
+    $stmtN = $db->prepare("
+        SELECT id, name, phone, specialty, city
+        FROM users u
+        INNER JOIN user_roles ur ON ur.user_id = u.id
+        INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
+        WHERE LOWER(u.name) LIKE :contains
+           OR :nameNorm LIKE CONCAT('%', LOWER(u.name), '%')
+        LIMIT 10
+    ");
+    $stmtN->execute(['contains' => '%' . $nameNorm . '%', 'nameNorm' => $nameNorm]);
+    foreach ($stmtN->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        if (isset($seen[(int)$row['id']])) {
+            continue; // já listado pelo telefone
+        }
+        $seen[(int)$row['id']] = true;
+        $matches[] = [
+            'id' => (int)$row['id'],
+            'name' => (string)$row['name'],
+            'phone' => (string)$row['phone'],
+            'specialty' => (string)($row['specialty'] ?? ''),
+            'city' => (string)($row['city'] ?? ''),
+            'reason' => 'name',
+        ];
+    }
+
+    if (count($matches) > 0) {
+        // Não cadastra ainda: devolve os parecidos para o operador decidir.
+        qc_json(false, 'Encontramos profissional(is) parecido(s). Reutilize um existente ou confirme para cadastrar mesmo assim.', [
+            'duplicates' => $matches,
+            'needs_confirmation' => true,
+        ]);
+    }
+}
+
+// E-mail informado que já existe é sempre bloqueado (e-mail é chave única).
 if ($email !== null) {
     $stmt = $db->prepare('SELECT id, name FROM users WHERE email = :email LIMIT 1');
     $stmt->execute(['email' => $email]);
     if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         qc_json(false, 'Já existe um usuário com esse e-mail: ' . (string)$row['name']);
     }
-}
-$stmt = $db->prepare("SELECT id, name FROM users WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone,''),' ',''),'-',''),'(',''),')','') = :phone LIMIT 1");
-$stmt->execute(['phone' => $phone]);
-if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    qc_json(false, 'Já existe um profissional com esse telefone: ' . (string)$row['name'], ['duplicate_user_id' => (int)$row['id']]);
 }
 
 // E-mail placeholder quando não informado (a coluna costuma ser NOT NULL/única).
