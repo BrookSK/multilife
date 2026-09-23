@@ -613,10 +613,29 @@ try {
         
         // MULTI-INSTÂNCIA: Filtrar conversas por instância
         // - Se o usuário escolheu um WhatsApp específico no filtro, usa essa instância.
-        // - Caso contrário ("Todos WhatsApp"), mostra as conversas de todas as instâncias.
+        // - Caso contrário ("Todos WhatsApp"), mostra as conversas de TODAS as
+        //   instâncias vinculadas ao usuário logado (nunca do sistema inteiro).
         if ($instanceFilter !== '') {
             $whereClauses[] = "cc.instance_name = ?";
             $params[] = $instanceFilter;
+        } else {
+            // Nomes das instâncias do usuário logado
+            $userInstanceNames = array_values(array_filter(array_map(
+                static fn($i) => (string)($i['instance_name'] ?? ''),
+                $availableInstances
+            ), static fn($n) => $n !== ''));
+
+            if (!empty($userInstanceNames)) {
+                $placeholders = implode(',', array_fill(0, count($userInstanceNames), '?'));
+                $whereClauses[] = "cc.instance_name IN ($placeholders)";
+                foreach ($userInstanceNames as $uin) {
+                    $params[] = $uin;
+                }
+            } else {
+                // Usuário sem instância vinculada: fallback para a instância padrão dele
+                $whereClauses[] = "cc.instance_name = ?";
+                $params[] = $instanceName;
+            }
         }
         
         // SEMPRE excluir conversas arquivadas
