@@ -168,8 +168,23 @@ function billing_closure_group_by_patient(array $sessions): array
                 'total_receivable' => 0.0,
                 'total_payable' => 0.0,
                 'lines' => [],
+                'session_items' => [], // detalhamento sessão a sessão (para o pop-up)
             ];
         }
+
+        // Guardar cada sessão individual para o detalhamento (pop-up).
+        $byPatient[$pid]['session_items'][] = [
+            'requirement_id' => (int)($s['requirement_id'] ?? 0),
+            'session_number' => (int)($s['session_number'] ?? 0),
+            'session_date' => (string)($s['session_date'] ?? ''),
+            'professional_name' => (string)($s['professional_name'] ?? '-'),
+            'specialty' => (string)($s['specialty'] ?? '-'),
+            'insurer_name' => (string)($s['insurer_name'] ?? '') !== '' ? (string)$s['insurer_name'] : 'Sem operadora',
+            'is_manual' => (int)($s['is_manual'] ?? 0),
+            'operator_name' => (string)($s['operator_name'] ?? ''),
+            'receivable' => (float)$s['receivable_per_session'],
+            'payable' => (float)$s['payable_per_session'],
+        ];
 
         $insurerId = $s['health_insurer_id'] !== null ? (int)$s['health_insurer_id'] : 0;
         $insurerName = (string)($s['insurer_name'] ?? '') !== '' ? (string)$s['insurer_name'] : 'Sem operadora';
