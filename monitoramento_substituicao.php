@@ -192,11 +192,30 @@ echo '</div>';
 // A frequência é MANTIDA (não é solicitada aqui).
 echo '<div style="margin-top:6px;padding:14px 16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:10px">';
 echo '<div style="font-weight:700;margin-bottom:4px">Dados do atendimento com o novo profissional</div>';
-echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Informe novamente os dados abaixo. A <strong>frequência é mantida</strong> (' . h(function_exists('frequency_translate') ? frequency_translate((string)($assignment['session_frequency'] ?? '-')) : (string)($assignment['session_frequency'] ?? '-')) . ').</div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Informe os dados do atendimento com o novo profissional. A primeira sessão começa na data de início informada e a frequência pode ser ajustada.</div>';
 echo '<div class="grid">';
 echo '<div class="col4"><label>Data de início *<input type="date" name="start_date" value="' . h($currentSchedule['start_date']) . '" required></label></div>';
 echo '<div class="col4"><label>Horário de início *<input type="time" name="start_time" value="' . h($currentSchedule['start_time'] ?: '08:00') . '" required></label></div>';
 echo '<div class="col4"><label>Horário de fim *<input type="time" name="end_time" value="' . h($currentSchedule['end_time'] ?: '09:00') . '" required></label></div>';
+
+// Frequência: editável na substituição (o novo profissional pode ter outra frequência).
+$currentFreqVal = (string)($assignment['session_frequency'] ?? '');
+echo '<div class="col6"><label>Frequência *<select name="frequency" required>';
+if (function_exists('frequency_get_options')) {
+    foreach (frequency_get_options() as $fo) {
+        $sel = ($fo['code'] === $currentFreqVal) ? ' selected' : '';
+        echo '<option value="' . h($fo['code']) . '"' . $sel . '>' . h($fo['label']) . '</option>';
+    }
+} else {
+    // Fallback simples se o helper não estiver disponível.
+    $freqOpts = ['1x_semana' => '1x/Semana', '2x_semana' => '2x/Semana', '3x_semana' => '3x/Semana', '4x_semana' => '4x/Semana', '5x_semana' => '5x/Semana', 'quinzenal' => 'Quinzenal', 'mensal' => 'Mensal'];
+    foreach ($freqOpts as $fk => $fl) {
+        $sel = ($fk === $currentFreqVal) ? ' selected' : '';
+        echo '<option value="' . h($fk) . '"' . $sel . '>' . h($fl) . '</option>';
+    }
+}
+echo '</select></label></div>';
+
 echo '<div class="col6"><label>Valor acordado com o novo profissional (R$) *<input type="number" name="agreed_value" step="0.01" min="0" value="' . h($currentSchedule['agreed_value']) . '" placeholder="Ex: 150.00" required></label></div>';
 echo '</div>';
 echo '</div>';

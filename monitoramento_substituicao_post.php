@@ -16,11 +16,13 @@ $notifyPatient = isset($_POST['notify_patient']);
 $notifyOldProf = isset($_POST['notify_old_professional']);
 $notifyNewProf = isset($_POST['notify_new_professional']);
 
-// Novos dados do atendimento com o novo profissional (a frequência é mantida).
+// Novos dados do atendimento com o novo profissional.
 $newStartDate = trim((string)($_POST['start_date'] ?? ''));
 $newStartTime = trim((string)($_POST['start_time'] ?? ''));
 $newEndTime = trim((string)($_POST['end_time'] ?? ''));
 $newAgreedValue = (float)str_replace(',', '.', (string)($_POST['agreed_value'] ?? '0'));
+// Frequência: pode ser alterada na substituição. Vazio = manter a atual.
+$newFrequency = trim((string)($_POST['frequency'] ?? ''));
 
 if ($assignmentId <= 0 || $newProfessionalId <= 0 || $reasonType === '') {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
@@ -106,17 +108,25 @@ $newProfJid = $newProfPhone !== '' ? $newProfPhone . '@s.whatsapp.net' : '';
 $db = db();
 $db->beginTransaction();
 try {
-    // Atualizar o atendimento (novo profissional + novo valor acordado; frequência mantida)
-    $upd = $db->prepare('UPDATE patient_assignments SET professional_user_id = :uid, professional_remote_jid = :jid, agreed_value = :av WHERE id = :id');
+    // Frequência efetiva: a nova (se informada) ou a atual.
+    $currentFrequency = $newFrequency !== '' ? $newFrequency : (string)($assignment['session_frequency'] ?? '');
+
+    // Atualizar o atendimento: novo profissional, valor, frequência e a NOVA data de início
+    // (admitted_at é a base que o Monitoramento usa para posicionar as sessões no calendário).
+    $upd = $db->prepare(
+        'UPDATE patient_assignments
+         SET professional_user_id = :uid, professional_remote_jid = :jid, agreed_value = :av,
+             session_frequency = :freq, admitted_at = :adm
+         WHERE id = :id'
+    );
     $upd->execute([
         'uid' => $newProfessionalId,
         'jid' => $newProfJid,
         'av' => $newAgreedValue,
+        'freq' => $currentFrequency,
+        'adm' => $newStartDate . ' ' . $newStartTimeSql,
         'id' => $assignmentId,
     ]);
-
-    // Frequência atual (mantida) para recalcular as datas das sessões futuras.
-    $currentFrequency = (string)($assignment['session_frequency'] ?? '');
 
     // Atualizar a proposta/autorização vinculada com os novos dados (data/horário/valor).
     try {
@@ -162,8 +172,11 @@ try {
             );
             $updSessProf->execute(['uid' => $newProfessionalId, 'aid' => $assignmentId]);
 
-            // Recalcular datas pela frequência mantida, a partir da nova data de início.
+            // Recalcular datas a partir da nova data de início, usando a frequência efetiva.
+            // A PRIMEIRA sessão cai EXATAMENTE na data de início escolhida; as demais
+            // seguem a frequência a partir dela.
             $newDates = [];
+            $qtd = count($pendingSessions);
             if (function_exists('frequency_normalize') && function_exists('frequency_generate_session_dates')) {
                 $freqCode = $currentFrequency;
                 if (!defined('FREQUENCY_WEEKDAYS_MAP') || !isset(FREQUENCY_WEEKDAYS_MAP[$freqCode])) {
@@ -171,17 +184,29 @@ try {
                 }
                 if ($freqCode !== '') {
                     try {
-                        $gen = frequency_generate_session_dates($freqCode, new DateTime($newStartDate), count($pendingSessions));
+                        // Gera a partir da data de início; depois força a 1ª a ser a data escolhida.
+                        $gen = frequency_generate_session_dates($freqCode, new DateTime($newStartDate), $qtd);
                         foreach ($gen as $dt) { $newDates[] = $dt->format('Y-m-d'); }
                     } catch (Throwable $e) { $newDates = []; }
                 }
             }
 
+            // Garantir que a 1ª sessão seja exatamente a data de início informada.
+            if (count($newDates) === 0) {
+                // Sem helper de frequência: pelo menos a 1ª sessão na data de início.
+                $newDates = [$newStartDate];
+            } elseif (($newDates[0] ?? '') !== $newStartDate) {
+                array_unshift($newDates, $newStartDate);
+                $newDates = array_slice($newDates, 0, $qtd);
+            }
+
             if (count($newDates) > 0) {
                 $updDate = $db->prepare('UPDATE billing_document_requirements SET session_date = :sd WHERE id = :id');
                 foreach ($pendingSessions as $idx => $sess) {
+                    // Se acabaram as datas geradas, mantém a última conhecida (não zera).
+                    $sd = $newDates[$idx] ?? ($newDates[count($newDates) - 1] ?? $newStartDate);
                     $updDate->execute([
-                        'sd' => $newDates[$idx] ?? null,
+                        'sd' => $sd,
                         'id' => (int)$sess['id'],
                     ]);
                 }
