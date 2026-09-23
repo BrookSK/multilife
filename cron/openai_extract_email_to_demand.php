@@ -201,6 +201,14 @@ $demandCols2 = $db->prepare("SHOW COLUMNS FROM demands LIKE 'source_email_id'");
 $demandCols2->execute();
 $hasSourceEmailId = (bool)$demandCols2->fetch();
 
+// Refactor cliente/operadora: card nasce já classificado quando possível.
+$demandCols3 = $db->prepare("SHOW COLUMNS FROM demands LIKE 'client_id'");
+$demandCols3->execute();
+$hasClientId = (bool)$demandCols3->fetch();
+$demandCols4 = $db->prepare("SHOW COLUMNS FROM demands LIKE 'health_insurer_id'");
+$demandCols4->execute();
+$hasHealthInsurerId = (bool)$demandCols4->fetch();
+
 $insDemandCols = 'title, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests';
 $insDemandVals = ':t,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr';
 
@@ -211,6 +219,14 @@ if ($hasPatientName) {
 if ($hasSourceEmailId) {
     $insDemandCols .= ', source_email_id';
     $insDemandVals .= ',:seid';
+}
+if ($hasClientId) {
+    $insDemandCols .= ', client_id';
+    $insDemandVals .= ',:client_id';
+}
+if ($hasHealthInsurerId) {
+    $insDemandCols .= ', health_insurer_id';
+    $insDemandVals .= ',:health_insurer_id';
 }
 
 $insDemand = $db->prepare(
@@ -1019,6 +1035,18 @@ foreach ($emails as $e) {
                 }
                 if ($hasSourceEmailId) {
                     $demandParams['seid'] = $id;
+                }
+                // Detectar cliente/operadora pelo domínio do e-mail de origem.
+                if ($hasClientId || $hasHealthInsurerId) {
+                    $detected = function_exists('clients_detect_from_email')
+                        ? clients_detect_from_email((string)$fromEmail)
+                        : ['client_id' => null, 'health_insurer_id' => null];
+                    if ($hasClientId) {
+                        $demandParams['client_id'] = $detected['client_id'];
+                    }
+                    if ($hasHealthInsurerId) {
+                        $demandParams['health_insurer_id'] = $detected['health_insurer_id'];
+                    }
                 }
                 $insDemand->execute($demandParams);
                 $demandId = (int)$db->lastInsertId();

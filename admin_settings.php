@@ -277,8 +277,11 @@ foreach ($sections as $sectionTitle => $sectionData) {
     } elseif ($sectionTitle === 'Operadoras / Clientes') {
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle" style="display:flex;align-items:center;justify-content:space-between">';
-        echo '<span>Operadoras / Clientes</span>';
-        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Gerenciar</a>';
+        echo '<span>Clientes / Operadoras</span>';
+        echo '<span style="display:flex;gap:8px">';
+        echo '<a class="btn" href="/clients_config.php" style="font-size:12px;padding:6px 12px">Clientes</a>';
+        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Operadoras</a>';
+        echo '</span>';
         echo '</div>';
         
         // Buscar operadoras
@@ -303,7 +306,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--info)/.08);border-radius:8px;font-size:13px;color:hsl(var(--muted-foreground))">';
-        echo '💡 <strong>Dica:</strong> As operadoras são usadas para identificar convênios nos atendimentos. Clique em "Gerenciar Operadoras" para adicionar, editar ou desativar.';
+        echo '💡 <strong>Dica:</strong> Cadastre primeiro os <strong>Clientes</strong> (contratantes, ex.: GLOBAL) com o dia de fechamento, depois vincule as <strong>Operadoras</strong> (convênios, ex.: Bradesco) a cada cliente. Nomes podem repetir — o sistema identifica por ID.';
         echo '</div>';
         
         echo '</div>';

@@ -76,6 +76,7 @@ function view_header(string $title): void
             ['title' => 'Faturamento', 'path' => '/faturamento_list.php', 'perm' => 'faturamento.manage'],
             ['title' => 'Fechamento Mensal', 'path' => '/faturamento_fechamento.php', 'perm' => 'billing.closure.manage'],
             ['title' => 'Financeiro', 'path' => '/finance_dashboard.php', 'perm' => 'finance.manage'],
+            ['title' => 'Fechamento Financeiro', 'path' => '/financeiro_fechamento.php', 'perm' => 'finance.manage'],
             ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php', 'perm' => 'finance.manage'],
             ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php', 'perm' => 'finance.manage'],
             ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php', 'perm' => 'finance.manage'],

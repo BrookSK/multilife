@@ -87,6 +87,10 @@ function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlr
         $extraWhere .= ' AND pa.health_insurer_id = :insurer_id';
         $params['insurer_id'] = (int)$filters['insurer_id'];
     }
+    if (!empty($filters['client_id'])) {
+        $extraWhere .= ' AND pa.client_id = :client_id';
+        $params['client_id'] = (int)$filters['client_id'];
+    }
     if (!empty($filters['professional_id'])) {
         $extraWhere .= ' AND pa.professional_user_id = :professional_id';
         $params['professional_id'] = (int)$filters['professional_id'];
@@ -107,19 +111,22 @@ function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlr
             pa.patient_id,
             pa.professional_user_id,
             pa.health_insurer_id,
+            pa.client_id,
             pa.specialty,
             COALESCE(pa.authorized_value, pa.payment_value, 0) AS receivable_per_session,
             COALESCE(pa.agreed_value, pa.payment_value, 0) AS payable_per_session,
             p.full_name AS patient_name,
             u.name AS professional_name,
             op.name AS operator_name,
-            hi.name AS insurer_name
+            hi.name AS insurer_name,
+            cl.name AS client_name
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN users op ON op.id = bdr.created_by_user_id
         LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+        LEFT JOIN clients cl ON cl.id = pa.client_id
         WHERE bdr.status IN ($statusIn)
           AND bdr.session_date IS NOT NULL
           AND bdr.session_date BETWEEN :first AND :last
@@ -264,4 +271,131 @@ function billing_closure_find(PDO $db, string $month): ?array
     } catch (Throwable $e) {
         return null;
     }
+}
+
+/**
+ * Agrupa as sessões por CLIENTE -> OPERADORA -> (paciente/profissional/especialidade).
+ * Usado na tela de Fechamento Mensal (acompanhamento por quantidade) e na tela
+ * financeira (com valores).
+ *
+ * Estrutura de retorno:
+ * [
+ *   client_id => [
+ *     'client_id', 'client_name', 'total_sessions', 'total_receivable', 'total_payable',
+ *     'operators' => [
+ *        insurer_id => [
+ *           'insurer_id', 'insurer_name', 'total_sessions', 'total_receivable',
+ *           'total_payable', 'patients_count',
+ *           'lines' => [ ['patient_name','professional_name','specialty','sessions',
+ *                         'receivable','payable'], ... ],
+ *        ], ...
+ *     ],
+ *   ], ...
+ * ]
+ *
+ * @param array<int,array<string,mixed>> $sessions
+ * @return array<int,array<string,mixed>>
+ */
+function billing_closure_group_by_client(array $sessions): array
+{
+    $byClient = [];
+
+    foreach ($sessions as $s) {
+        $clientId = $s['client_id'] !== null ? (int)$s['client_id'] : 0;
+        $clientName = (string)($s['client_name'] ?? '') !== '' ? (string)$s['client_name'] : 'Sem cliente';
+        $insurerId = $s['health_insurer_id'] !== null ? (int)$s['health_insurer_id'] : 0;
+        $insurerName = (string)($s['insurer_name'] ?? '') !== '' ? (string)$s['insurer_name'] : 'Sem operadora';
+
+        if (!isset($byClient[$clientId])) {
+            $byClient[$clientId] = [
+                'client_id' => $clientId,
+                'client_name' => $clientName,
+                'total_sessions' => 0,
+                'total_receivable' => 0.0,
+                'total_payable' => 0.0,
+                'operators' => [],
+            ];
+        }
+        if (!isset($byClient[$clientId]['operators'][$insurerId])) {
+            $byClient[$clientId]['operators'][$insurerId] = [
+                'insurer_id' => $insurerId,
+                'insurer_name' => $insurerName,
+                'total_sessions' => 0,
+                'total_receivable' => 0.0,
+                'total_payable' => 0.0,
+                'patients' => [],
+                'lines' => [],
+            ];
+        }
+
+        $recv = (float)$s['receivable_per_session'];
+        $pay = (float)$s['payable_per_session'];
+        $pid = (int)$s['patient_id'];
+        $profId = (int)($s['professional_user_id'] ?? 0);
+        $specialty = (string)($s['specialty'] ?? '');
+        $lineKey = $pid . '|' . $profId . '|' . $specialty;
+
+        $op =& $byClient[$clientId]['operators'][$insurerId];
+        $op['patients'][$pid] = true;
+        if (!isset($op['lines'][$lineKey])) {
+            $op['lines'][$lineKey] = [
+                'patient_id' => $pid,
+                'patient_name' => (string)($s['patient_name'] ?? '-'),
+                'professional_name' => (string)($s['professional_name'] ?? '-'),
+                'specialty' => $specialty !== '' ? $specialty : '-',
+                'sessions' => 0,
+                'receivable' => 0.0,
+                'payable' => 0.0,
+            ];
+        }
+        $op['lines'][$lineKey]['sessions']++;
+        $op['lines'][$lineKey]['receivable'] += $recv;
+        $op['lines'][$lineKey]['payable'] += $pay;
+        $op['total_sessions']++;
+        $op['total_receivable'] += $recv;
+        $op['total_payable'] += $pay;
+
+        $byClient[$clientId]['total_sessions']++;
+        $byClient[$clientId]['total_receivable'] += $recv;
+        $byClient[$clientId]['total_payable'] += $pay;
+        unset($op);
+    }
+
+    // Consolidar contagem de pacientes por operadora.
+    foreach ($byClient as &$c) {
+        foreach ($c['operators'] as &$o) {
+            $o['patients_count'] = count($o['patients']);
+            unset($o['patients']);
+        }
+        unset($o);
+    }
+    unset($c);
+
+    return $byClient;
+}
+
+/**
+ * Busca os fechamentos (billing_monthly_closures) de uma competência,
+ * indexados por chave de escopo. Permite saber o que já foi fechado.
+ *
+ * @return array{operators: array<int,array>, clients: array<int,array>}
+ */
+function billing_closure_scoped_status(PDO $db, string $month): array
+{
+    $result = ['operators' => [], 'clients' => []];
+    try {
+        $stmt = $db->prepare("SELECT * FROM billing_monthly_closures WHERE reference_month = :m");
+        $stmt->execute(['m' => $month]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $scope = (string)($row['scope'] ?? 'global');
+            if ($scope === 'operator' && $row['health_insurer_id'] !== null) {
+                $result['operators'][(int)$row['health_insurer_id']] = $row;
+            } elseif ($scope === 'client' && $row['client_id'] !== null) {
+                $result['clients'][(int)$row['client_id']] = $row;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[BILLING] scoped_status: ' . $e->getMessage());
+    }
+    return $result;
 }

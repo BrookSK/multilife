@@ -144,13 +144,19 @@ try {
         $professionalName = $phoneNumber;
     }
     
+    // Resolver o cliente (contratante) a partir da operadora escolhida.
+    $clientId = null;
+    if ($healthInsurerId && function_exists('operator_client_id')) {
+        $clientId = operator_client_id((int)$healthInsurerId);
+    }
+
     // Inserir atribuição
     $insertStmt = $db->prepare("
         INSERT INTO patient_assignments (
             demand_id, patient_id, professional_remote_jid, professional_user_id,
-            assigned_by_user_id, specialty, specialty_service_id, health_insurer_id,
+            assigned_by_user_id, specialty, specialty_service_id, health_insurer_id, client_id,
             session_quantity, session_frequency, agreed_value, authorized_value, notes, status, confirmed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())
     ");
     
     $insertStmt->execute([
@@ -162,6 +168,7 @@ try {
         $specialty,
         $serviceTypeId,
         $healthInsurerId,
+        $clientId,
         $sessionQuantity,
         $sessionFrequency,
         $agreedValue,
