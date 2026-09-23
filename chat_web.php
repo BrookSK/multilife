@@ -134,13 +134,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("[$debugId] SEND via EvolutionApiV1 jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
             
             try {
-                // Se houver filtro de WhatsApp ativo, enviar pela instância selecionada;
-                // caso contrário, usar a instância padrão (comportamento anterior).
+                // Escolha da instância para o envio:
+                // 1) Se há filtro de WhatsApp específico ativo, usa essa instância.
+                // 2) Caso contrário, usa a instância do usuário logado (a conectada),
+                //    e só cai na instância padrão global se o usuário não tiver nenhuma.
                 if ($instanceFilter !== '') {
                     $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceFilter);
                 } else {
-                    $api = new EvolutionApiV1();
+                    $api = whatsapp_get_api_for_user($currentUserId);
                 }
+                // Alinhar o instance_name gravado no banco com a instância usada no envio
+                $instanceName = $api->getInstance();
                 $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
                 $res = $api->sendText($remoteJid, $message, $sendOptions);
             } catch (Exception $apiEx) {
@@ -600,6 +604,11 @@ try {
             if (!$statusCol) {
                 db()->exec("ALTER TABLE chat_contacts ADD COLUMN status VARCHAR(20) DEFAULT 'aguardando' AFTER profile_picture_url");
             }
+            // Nome personalizado (agenda de contatos): tem prioridade na exibição/busca
+            $customNameCol = db()->query("SHOW COLUMNS FROM chat_contacts LIKE 'custom_name'")->fetch();
+            if (!$customNameCol) {
+                db()->exec("ALTER TABLE chat_contacts ADD COLUMN custom_name VARCHAR(120) DEFAULT NULL AFTER contact_name");
+            }
         } catch (Exception $e) {
             error_log("Erro ao verificar/adicionar colunas: " . $e->getMessage());
         }
@@ -658,7 +667,8 @@ try {
         }
         
         if (!empty($searchQuery)) {
-            $whereClauses[] = "(cc.contact_name LIKE ? OR cc.remote_jid LIKE ?)";
+            $whereClauses[] = "(cc.custom_name LIKE ? OR cc.contact_name LIKE ? OR cc.remote_jid LIKE ?)";
+            $params[] = '%' . $searchQuery . '%';
             $params[] = '%' . $searchQuery . '%';
             $params[] = '%' . $searchQuery . '%';
         }
@@ -670,7 +680,8 @@ try {
             $stmt = db()->prepare("
                 SELECT 
                     cc.remote_jid as id,
-                    COALESCE(u.name, cc.contact_name) as name,
+                    COALESCE(NULLIF(cc.custom_name, ''), u.name, cc.contact_name) as name,
+                    cc.custom_name as customName,
                     cc.profile_picture_url as profilePictureUrl,
                     cc.is_group,
                     cc.status,
@@ -1775,6 +1786,8 @@ echo '.whatsapp-info-section button:hover{transform:translateY(-1px);box-shadow:
 echo '.whatsapp-info-section select, .whatsapp-info-section textarea{font-family:inherit;font-size:14px}';
 echo '.whatsapp-info-section select:focus, .whatsapp-info-section textarea:focus{outline:none;border-color:#00a884;box-shadow:0 0 0 2px rgba(0,168,132,.1)}';
 echo '.whatsapp-info-avatar{width:120px;height:120px;border-radius:50%;background:#dfe5e7;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:600;color:#54656f;margin:0 auto 16px}';
+echo '.contact-name-edit-btn{background:none;border:none;cursor:pointer;color:#8696a0;padding:4px;margin-left:4px;vertical-align:middle;border-radius:50%;transition:all .2s}';
+echo '.contact-name-edit-btn:hover{background:#f0f2f5;color:#00a884}';
 echo '.whatsapp-status-badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600}';
 echo '.whatsapp-status-badge.atendendo{background:#dcf8c6;color:#0a8754}';
 echo '.whatsapp-status-badge.aguardando{background:#fff3cd;color:#856404}';
@@ -2631,10 +2644,12 @@ if (!empty($selectedChat)) {
     $contactName = '';
     $contactPhone = '';
     $contactStatus = 'aguardando';
+    $contactCustomName = '';
     foreach ($chats as $chat) {
         if ($chat['id'] === $selectedChat) {
             $contactName = $chat['name'] ?? '';
             $contactStatus = $chat['status'] ?? 'aguardando';
+            $contactCustomName = $chat['customName'] ?? '';
             $profilePic = $chat['profilePictureUrl'] ?? '';
             break;
         }
@@ -2652,7 +2667,21 @@ if (!empty($selectedChat)) {
         $initials = strtoupper(substr($contactName ?: 'C', 0, 2));
         echo '<div class="whatsapp-info-avatar">' . h($initials) . '</div>';
     }
-    echo '<h3 style="margin:8px 0;font-size:18px;color:#111b21">' . h($contactName ?: 'Contato') . '</h3>';
+    // Nome do contato com edição inline (agenda de contatos)
+    echo '<div class="contact-name-view" id="contactNameView">';
+    echo '<h3 style="margin:8px 0;font-size:18px;color:#111b21;display:inline-block">' . h($contactName ?: 'Contato') . '</h3>';
+    echo '<button type="button" class="contact-name-edit-btn" onclick="startEditContactName()" title="Editar nome do contato">';
+    echo '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+    echo '</button>';
+    echo '</div>';
+    // Editor (oculto por padrão)
+    echo '<div class="contact-name-edit" id="contactNameEdit" style="display:none;margin:8px 0">';
+    echo '<input type="text" id="contactNameInput" value="' . h($contactCustomName) . '" placeholder="' . h($contactName ?: 'Nome do contato') . '" maxlength="100" style="width:100%;padding:8px 10px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;text-align:center">';
+    echo '<div style="display:flex;gap:8px;margin-top:8px;justify-content:center">';
+    echo '<button type="button" onclick="saveContactName()" style="padding:6px 14px;background:#00a884;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Salvar</button>';
+    echo '<button type="button" onclick="cancelEditContactName()" style="padding:6px 14px;background:#e9edef;color:#54656f;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Cancelar</button>';
+    echo '</div>';
+    echo '</div>';
     echo '<p style="margin:0;font-size:13px;color:#667781">' . h($selectedChat) . '</p>';
     echo '</div>';
     
@@ -3617,6 +3646,51 @@ function filterByInstance(instanceName) {
         url += "&instance=" + encodeURIComponent(instanceName);
     }
     window.location.href = url;
+}
+
+// AGENDA DE CONTATOS: edição inline do nome do contato no painel de informações.
+function startEditContactName() {
+    const view = document.getElementById("contactNameView");
+    const edit = document.getElementById("contactNameEdit");
+    if (!view || !edit) return;
+    view.style.display = "none";
+    edit.style.display = "block";
+    const input = document.getElementById("contactNameInput");
+    if (input) { input.focus(); input.select(); }
+}
+
+function cancelEditContactName() {
+    const view = document.getElementById("contactNameView");
+    const edit = document.getElementById("contactNameEdit");
+    if (!view || !edit) return;
+    edit.style.display = "none";
+    view.style.display = "block";
+}
+
+async function saveContactName() {
+    const chatId = window.chatId || new URLSearchParams(window.location.search).get("chat") || "";
+    if (!chatId) {
+        alert("Nenhuma conversa selecionada.");
+        return;
+    }
+    const input = document.getElementById("contactNameInput");
+    const customName = input ? input.value.trim() : "";
+
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("custom_name", customName);
+    try {
+        const resp = await fetch("/chat_update_contact_name.php", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (data.success) {
+            // Recarregar para refletir o novo nome na lista e no painel
+            window.location.reload();
+        } else {
+            alert("Erro ao salvar nome: " + (data.error || "desconhecido"));
+        }
+    } catch (e) {
+        alert("Erro ao salvar o nome do contato.");
+    }
 }
 
 // Inicializar respostas rápidas quando a página carregar
