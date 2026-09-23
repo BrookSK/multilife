@@ -252,19 +252,29 @@ function syncEvolution() {
   const icon = document.getElementById("syncIcon");
   btn.disabled = true;
   icon.classList.add("rotating");
-  
-  // Sincronizar mensagens primeiro
+
+  // Preservar o filtro de WhatsApp (instância) selecionado na tela
+  const instance = new URLSearchParams(window.location.search).get("instance") || "";
+  const instanceQS = instance ? ("&instance=" + encodeURIComponent(instance)) : "";
+
+  // 1) Grupos
   fetch("/chat_sync_evolution.php")
     .then(r => r.json())
     .then(data => {
-      // Depois sincronizar contatos (nomes e fotos)
-      return fetch("/chat_sync_contacts.php?action=sync_all")
+      // 2) Conversas/contatos existentes na instância (popula a lista)
+      return fetch("/chat_sync_whatsapp.php?ajax=1" + instanceQS)
         .then(r => r.json())
-        .then(contactData => {
-          const msgInfo = data.success ? "Mensagens OK" : "Erro msgs";
-          const contactInfo = contactData.success ? (contactData.updated + " contatos atualizados") : "Erro contatos";
-          alert("Sincronização concluída!\n" + msgInfo + "\n" + contactInfo);
-          location.reload();
+        .then(chatData => {
+          // 3) Nomes e fotos dos contatos
+          return fetch("/chat_sync_contacts.php?action=sync_all")
+            .then(r => r.json())
+            .then(contactData => {
+              const msgInfo = data.success ? "Grupos OK" : "Erro grupos";
+              const chatInfo = chatData.success ? (chatData.message || "Conversas OK") : ("Erro conversas: " + (chatData.message || ""));
+              const contactInfo = contactData.success ? (contactData.updated + " contatos atualizados") : "Erro contatos";
+              alert("Sincronização concluída!\n" + msgInfo + "\n" + chatInfo + "\n" + contactInfo);
+              location.reload();
+            });
         });
     })
     .catch(err => {

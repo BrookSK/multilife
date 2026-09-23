@@ -348,3 +348,37 @@ function whatsapp_update_connection_status(string $instanceName, string $status,
     ");
     $stmt->execute($params);
 }
+
+/**
+ * Lista os usuários que podem atuar como atendentes do Chat ao Vivo, ou seja,
+ * usuários ativos cujas roles concedem a permissão 'chat.manage'.
+ *
+ * Usado para popular o filtro "por atendente" (admin) e o seletor de atendente
+ * responsável no painel de informações da conversa.
+ *
+ * @return array<int, array{id:int, name:string}>
+ */
+function chat_list_attendants(): array
+{
+    $stmt = db()->prepare("
+        SELECT DISTINCT u.id, u.name
+        FROM users u
+        INNER JOIN user_roles ur ON ur.user_id = u.id
+        INNER JOIN role_permissions rp ON rp.role_id = ur.role_id
+        INNER JOIN permissions p ON p.id = rp.permission_id
+        WHERE p.slug = 'chat.manage'
+          AND u.status = 'active'
+        ORDER BY u.name ASC
+    ");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $attendants = [];
+    foreach ($rows as $row) {
+        $attendants[] = [
+            'id' => (int)$row['id'],
+            'name' => (string)$row['name'],
+        ];
+    }
+    return $attendants;
+}

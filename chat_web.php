@@ -16,6 +16,7 @@ $selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
 $chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $instanceFilter = isset($_GET['instance']) ? trim((string)$_GET['instance']) : '';
+$attendantFilter = isset($_GET['attendant']) ? (int)$_GET['attendant'] : 0;
 $chatName = ''; // Inicializar para evitar erro no JavaScript
 
 // Buscar configurações da Evolution API
@@ -46,6 +47,28 @@ if ($instanceFilter !== '') {
     } else {
         $instanceFilter = '';
     }
+}
+
+// FILTRO POR ATENDENTE: apenas admin pode filtrar/atribuir conversas por atendente.
+$isChatAdmin = rbac_user_has_role($currentUserId, 'admin');
+$chatAttendants = [];
+if ($isChatAdmin) {
+    try {
+        $chatAttendants = chat_list_attendants();
+    } catch (Throwable $e) {
+        error_log('[CHAT] Erro ao listar atendentes: ' . $e->getMessage());
+        $chatAttendants = [];
+    }
+    // Validar que o atendente filtrado existe na lista (evita valor inválido)
+    if ($attendantFilter > 0) {
+        $attendantIds = array_map(static fn($a) => (int)$a['id'], $chatAttendants);
+        if (!in_array($attendantFilter, $attendantIds, true)) {
+            $attendantFilter = 0;
+        }
+    }
+} else {
+    // Usuário não-admin não pode aplicar o filtro por atendente.
+    $attendantFilter = 0;
 }
 
 $success = '';
@@ -672,6 +695,12 @@ try {
             $params[] = '%' . $searchQuery . '%';
             $params[] = '%' . $searchQuery . '%';
         }
+
+        // FILTRO POR ATENDENTE (somente admin): conversas atribuídas ao atendente.
+        if ($attendantFilter > 0) {
+            $whereClauses[] = "cc.assigned_to_user_id = ?";
+            $params[] = $attendantFilter;
+        }
         
         // Não buscar chats se estiver na aba de grupos ou lista de espera
         if ($chatType !== 'grupos' && $chatType !== 'lista_espera') {
@@ -682,6 +711,7 @@ try {
                     cc.remote_jid as id,
                     COALESCE(NULLIF(cc.custom_name, ''), u.name, cc.contact_name) as name,
                     cc.custom_name as customName,
+                    cc.assigned_to_user_id as assignedToUserId,
                     cc.profile_picture_url as profilePictureUrl,
                     cc.is_group,
                     cc.status,
@@ -1857,6 +1887,10 @@ if (!empty($chatType)) {
 if ($instanceFilter !== '') {
     echo '<input type="hidden" name="instance" value="' . h($instanceFilter) . '">';
 }
+// Preservar o filtro de atendente ao pesquisar
+if ($attendantFilter > 0) {
+    echo '<input type="hidden" name="attendant" value="' . (int)$attendantFilter . '">';
+}
 echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
 echo '</form>';
 echo '</div>';
@@ -1888,6 +1922,22 @@ if (!empty($availableInstances)) {
     echo '</div>';
 }
 
+// FILTRO POR ATENDENTE: dropdown visível apenas para admin (útil quando vários
+// atendentes compartilham o mesmo WhatsApp).
+if ($isChatAdmin && !empty($chatAttendants)) {
+    echo '<div class="whatsapp-instance-filter">';
+    echo '<select onchange="filterByAttendant(this.value)" title="Filtrar por atendente">';
+    echo '<option value="0"' . ($attendantFilter === 0 ? ' selected' : '') . '>Todos os atendentes</option>';
+    foreach ($chatAttendants as $att) {
+        $attId = (int)$att['id'];
+        $attName = (string)$att['name'];
+        $selected = ($attendantFilter === $attId) ? ' selected' : '';
+        echo '<option value="' . $attId . '"' . $selected . '>' . h($attName) . '</option>';
+    }
+    echo '</select>';
+    echo '</div>';
+}
+
 // Abas de navegação com ícones
 echo '<div class="whatsapp-tabs">';
 $tabs = [
@@ -1898,9 +1948,10 @@ $tabs = [
     'todos' => ['label' => 'Todos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>']
 ];
 $instanceQS = $instanceFilter !== '' ? '&instance=' . rawurlencode($instanceFilter) : '';
+$attendantQS = $attendantFilter > 0 ? '&attendant=' . (int)$attendantFilter : '';
 foreach ($tabs as $tabKey => $tabData) {
     $activeClass = ($chatType === $tabKey) ? 'active' : '';
-    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . $instanceQS . '\'" title="' . h($tabData['label']) . '">';
+    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . $instanceQS . $attendantQS . '\'" title="' . h($tabData['label']) . '">';
     echo $tabData['icon'];
     echo '</div>';
 }
@@ -2645,11 +2696,13 @@ if (!empty($selectedChat)) {
     $contactPhone = '';
     $contactStatus = 'aguardando';
     $contactCustomName = '';
+    $contactAssignedTo = 0;
     foreach ($chats as $chat) {
         if ($chat['id'] === $selectedChat) {
             $contactName = $chat['name'] ?? '';
             $contactStatus = $chat['status'] ?? 'aguardando';
             $contactCustomName = $chat['customName'] ?? '';
+            $contactAssignedTo = (int)($chat['assignedToUserId'] ?? 0);
             $profilePic = $chat['profilePictureUrl'] ?? '';
             break;
         }
@@ -2684,7 +2737,23 @@ if (!empty($selectedChat)) {
     echo '</div>';
     echo '<p style="margin:0;font-size:13px;color:#667781">' . h($selectedChat) . '</p>';
     echo '</div>';
-    
+
+    // ATENDENTE RESPONSÁVEL (apenas admin): permite atribuir a conversa a um atendente.
+    // Útil quando vários atendentes compartilham o mesmo WhatsApp.
+    if ($isChatAdmin && !$isGroup) {
+        echo '<div class="whatsapp-info-section">';
+        echo '<div class="whatsapp-info-label">ATENDENTE RESPONSÁVEL</div>';
+        echo '<select id="attendantSelect" onchange="assignAttendant(this.value)" style="width:100%;padding:8px;border:1px solid #d1d7db;border-radius:6px">';
+        echo '<option value="0"' . ($contactAssignedTo === 0 ? ' selected' : '') . '>Não atribuído</option>';
+        foreach ($chatAttendants as $att) {
+            $attId = (int)$att['id'];
+            $sel = ($contactAssignedTo === $attId) ? ' selected' : '';
+            echo '<option value="' . $attId . '"' . $sel . '>' . h((string)$att['name']) . '</option>';
+        }
+        echo '</select>';
+        echo '</div>';
+    }
+
     // Atribuir Paciente (logo após a foto - apenas para profissionais)
     if (!$isGroup && strpos($selectedChat, '@s.whatsapp.net') !== false) {
         echo '<div class="whatsapp-info-section">';
@@ -3637,15 +3706,57 @@ function updateStatus(status) {
 }
 
 // FILTRO POR WHATSAPP: recarrega a lista filtrando pela instância escolhida,
-// preservando a aba atual (type) e limpando o chat aberto/busca.
+// preservando a aba atual (type) e o filtro de atendente.
 function filterByInstance(instanceName) {
     const params = new URLSearchParams(window.location.search);
     const type = params.get("type") || "all";
+    const attendant = params.get("attendant") || "";
     let url = "/chat_web.php?type=" + encodeURIComponent(type);
     if (instanceName) {
         url += "&instance=" + encodeURIComponent(instanceName);
     }
+    if (attendant && attendant !== "0") {
+        url += "&attendant=" + encodeURIComponent(attendant);
+    }
     window.location.href = url;
+}
+
+// FILTRO POR ATENDENTE: recarrega a lista filtrando pelo atendente escolhido,
+// preservando a aba atual (type) e o filtro de WhatsApp.
+function filterByAttendant(attendantId) {
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("type") || "all";
+    const instance = params.get("instance") || "";
+    let url = "/chat_web.php?type=" + encodeURIComponent(type);
+    if (instance) {
+        url += "&instance=" + encodeURIComponent(instance);
+    }
+    if (attendantId && attendantId !== "0") {
+        url += "&attendant=" + encodeURIComponent(attendantId);
+    }
+    window.location.href = url;
+}
+
+// ATRIBUIR ATENDENTE: define o atendente responsável pela conversa aberta.
+async function assignAttendant(attendantId) {
+    const chatId = window.chatId || new URLSearchParams(window.location.search).get("chat") || "";
+    if (!chatId) {
+        alert("Nenhuma conversa selecionada.");
+        return;
+    }
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("attendant_id", attendantId || "0");
+    try {
+        const resp = await fetch("/chat_assign_attendant.php", { method: "POST", body: formData });
+        const data = await resp.json();
+        if (!data.success) {
+            alert("Erro ao atribuir atendente: " + (data.error || "desconhecido"));
+        }
+        // Não recarrega a página: a mudança já foi persistida e o select reflete a escolha.
+    } catch (e) {
+        alert("Erro ao atribuir atendente.");
+    }
 }
 
 // AGENDA DE CONTATOS: edição inline do nome do contato no painel de informações.
