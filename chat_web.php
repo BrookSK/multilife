@@ -3061,8 +3061,10 @@ if (!empty($selectedChat)) {
 
 echo '</div>'; // Fecha whatsapp-container
 
-// Carregar funções JavaScript de arquivo externo
-echo '<script src="/chat_web_functions.js"></script>';
+// Carregar funções JavaScript de arquivo externo.
+// Versionamento por filemtime para o navegador sempre pegar a versão nova (cache-busting).
+$__jsVer = @filemtime(__DIR__ . '/chat_web_functions.js') ?: time();
+echo '<script src="/chat_web_functions.js?v=' . $__jsVer . '"></script>';
 
 // JavaScript inline apenas para configuração específica da página
 echo '<script>';
