@@ -502,17 +502,17 @@ function handleMediaUpload(input, mediaType) {
     return;
   }
   
-  // Validar tipo
+  // Validar tipo. 'document' aceita QUALQUER tipo de arquivo (pdf, doc, xls, zip...).
   const validTypes = {
     'audio': ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/webm'],
     'image': ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
     'video': ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'],
-    'document': ['application/pdf']
+    'document': '*'
   };
   
   console.log('Tipos válidos para', mediaType, ':', validTypes[mediaType]);
   
-  if (!validTypes[mediaType].includes(file.type)) {
+  if (validTypes[mediaType] !== '*' && !validTypes[mediaType].includes(file.type)) {
     console.error('Tipo de arquivo não permitido:', file.type);
     alert('Tipo de arquivo não permitido para ' + mediaType);
     input.value = '';
