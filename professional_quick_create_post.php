@@ -20,6 +20,28 @@ function qc_json(bool $ok, string $message, array $extra = []): void
     exit;
 }
 
+// Rede de segurança: qualquer exceção não tratada vira JSON (não HTML de erro 500,
+// que no front apareceria como "Erro de conexão").
+set_exception_handler(function (Throwable $e): void {
+    error_log('[QUICK_PROF_CREATE] Exceção não tratada: ' . $e->getMessage());
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+    }
+    echo json_encode(['ok' => false, 'message' => 'Erro ao pré-cadastrar: ' . $e->getMessage()]);
+    exit;
+});
+// Captura erros fatais (ex.: coluna inexistente) e também devolve JSON.
+register_shutdown_function(function (): void {
+    $err = error_get_last();
+    if ($err !== null && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        error_log('[QUICK_PROF_CREATE] Erro fatal: ' . $err['message']);
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode(['ok' => false, 'message' => 'Erro interno ao pré-cadastrar. Verifique os logs.']);
+    }
+});
+
 try {
     auth_require_login();
 } catch (Throwable $e) {
@@ -76,52 +98,74 @@ if (!$force) {
     $matches = [];
     $seen = [];
 
-    // 1) Telefone exatamente igual.
-    $stmt = $db->prepare("
-        SELECT id, name, phone, specialty, city
-        FROM users
-        WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone,''),' ',''),'-',''),'(',''),')','') = :phone
-        LIMIT 5
-    ");
-    $stmt->execute(['phone' => $phone]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $seen[(int)$row['id']] = true;
-        $matches[] = [
-            'id' => (int)$row['id'],
-            'name' => (string)$row['name'],
-            'phone' => (string)$row['phone'],
-            'specialty' => (string)($row['specialty'] ?? ''),
-            'city' => (string)($row['city'] ?? ''),
-            'reason' => 'phone',
-        ];
+    // Descobrir dinamicamente se as colunas opcionais existem (evita erro fatal
+    // caso 'city'/'specialty' ainda não tenham sido criadas no banco).
+    $hasCity = false;
+    $hasSpecialty = false;
+    try {
+        $cols = $db->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+        $hasCity = in_array('city', $cols, true);
+        $hasSpecialty = in_array('specialty', $cols, true);
+    } catch (Throwable $e) {
+        $hasCity = false;
+        $hasSpecialty = false;
     }
+    $selSpecialty = $hasSpecialty ? 'specialty' : "'' AS specialty";
+    $selCity = $hasCity ? 'city' : "'' AS city";
 
-    // 2) Nome parecido: um nome contém o outro (case/acento-insensitive).
-    //    Ex.: cadastrando "Lucas Mendes Campanha", acha "Lucas Mendes".
-    $nameNorm = mb_strtolower($name);
-    $stmtN = $db->prepare("
-        SELECT id, name, phone, specialty, city
-        FROM users u
-        INNER JOIN user_roles ur ON ur.user_id = u.id
-        INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
-        WHERE LOWER(u.name) LIKE :contains
-           OR :nameNorm LIKE CONCAT('%', LOWER(u.name), '%')
-        LIMIT 10
-    ");
-    $stmtN->execute(['contains' => '%' . $nameNorm . '%', 'nameNorm' => $nameNorm]);
-    foreach ($stmtN->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        if (isset($seen[(int)$row['id']])) {
-            continue; // já listado pelo telefone
+    // Toda a verificação é "best-effort": se algo falhar, NÃO derruba o cadastro —
+    // apenas segue sem aviso de duplicados.
+    try {
+        // 1) Telefone exatamente igual.
+        $stmt = $db->prepare("
+            SELECT id, name, phone, {$selSpecialty}, {$selCity}
+            FROM users
+            WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone,''),' ',''),'-',''),'(',''),')','') = :phone
+            LIMIT 5
+        ");
+        $stmt->execute(['phone' => $phone]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $seen[(int)$row['id']] = true;
+            $matches[] = [
+                'id' => (int)$row['id'],
+                'name' => (string)$row['name'],
+                'phone' => (string)$row['phone'],
+                'specialty' => (string)($row['specialty'] ?? ''),
+                'city' => (string)($row['city'] ?? ''),
+                'reason' => 'phone',
+            ];
         }
-        $seen[(int)$row['id']] = true;
-        $matches[] = [
-            'id' => (int)$row['id'],
-            'name' => (string)$row['name'],
-            'phone' => (string)$row['phone'],
-            'specialty' => (string)($row['specialty'] ?? ''),
-            'city' => (string)($row['city'] ?? ''),
-            'reason' => 'name',
-        ];
+
+        // 2) Nome parecido: um nome contém o outro (case-insensitive).
+        //    Usa placeholders DISTINTOS (o PDO sem emulação não permite reusar o mesmo).
+        $nameNorm = mb_strtolower($name);
+        $stmtN = $db->prepare("
+            SELECT id, name, phone, {$selSpecialty}, {$selCity}
+            FROM users u
+            INNER JOIN user_roles ur ON ur.user_id = u.id
+            INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
+            WHERE LOWER(u.name) LIKE :contains
+               OR :nameNorm LIKE CONCAT('%', LOWER(u.name), '%')
+            LIMIT 10
+        ");
+        $stmtN->execute(['contains' => '%' . $nameNorm . '%', 'nameNorm' => $nameNorm]);
+        foreach ($stmtN->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if (isset($seen[(int)$row['id']])) {
+                continue; // já listado pelo telefone
+            }
+            $seen[(int)$row['id']] = true;
+            $matches[] = [
+                'id' => (int)$row['id'],
+                'name' => (string)$row['name'],
+                'phone' => (string)$row['phone'],
+                'specialty' => (string)($row['specialty'] ?? ''),
+                'city' => (string)($row['city'] ?? ''),
+                'reason' => 'name',
+            ];
+        }
+    } catch (Throwable $e) {
+        error_log('[QUICK_PROF_CREATE] Verificação de duplicados falhou (ignorada): ' . $e->getMessage());
+        $matches = [];
     }
 
     if (count($matches) > 0) {
