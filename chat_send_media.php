@@ -125,7 +125,9 @@ $allowedTypes = [
     'audio' => ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/webm'],
     'image' => ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
     'video' => ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'],
-    'document' => ['application/pdf']
+    // 'document' aceita QUALQUER tipo de arquivo (pdf, doc, xls, zip, etc.).
+    // O WhatsApp entrega como anexo; a validação por MIME não se aplica aqui.
+    'document' => '*',
 ];
 
 if (!isset($allowedTypes[$mediaType])) {
@@ -135,7 +137,8 @@ if (!isset($allowedTypes[$mediaType])) {
     exit;
 }
 
-if (!in_array($fileMimeType, $allowedTypes[$mediaType])) {
+// Documentos: qualquer tipo é permitido. Demais mídias: validar o MIME.
+if ($allowedTypes[$mediaType] !== '*' && !in_array($fileMimeType, $allowedTypes[$mediaType])) {
     error_log("[$debugId] ERRO: MIME type '$fileMimeType' não permitido para '$mediaType'");
     error_log("[$debugId] Tipos permitidos: " . json_encode($allowedTypes[$mediaType]));
     $response['error'] = 'Tipo de arquivo não permitido para ' . $mediaType;
@@ -236,8 +239,27 @@ try {
             $apiResponse = $api->sendMedia($remoteJid, 'video', $fileName, $base64Media, $caption !== '' ? $caption : null);
             break;
         case 'document':
-            error_log("[$debugId] Chamando sendMedia(document)");
-            $apiResponse = $api->sendMedia($remoteJid, 'document', $fileName, $base64Media);
+            // Mimetype confiável: usa o do navegador; se vazio, infere pela extensão.
+            $docMime = $fileMimeType;
+            if ($docMime === '' || $docMime === 'application/octet-stream') {
+                $extMap = [
+                    'pdf' => 'application/pdf',
+                    'doc' => 'application/msword',
+                    'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'xls' => 'application/vnd.ms-excel',
+                    'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'ppt' => 'application/vnd.ms-powerpoint',
+                    'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    'txt' => 'text/plain',
+                    'csv' => 'text/csv',
+                    'zip' => 'application/zip',
+                    'rar' => 'application/x-rar-compressed',
+                ];
+                $extLower = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+                $docMime = $extMap[$extLower] ?? 'application/octet-stream';
+            }
+            error_log("[$debugId] Chamando sendMedia(document) mime='$docMime'");
+            $apiResponse = $api->sendMedia($remoteJid, 'document', $fileName, $base64Media, null, [], $docMime);
             break;
     }
     

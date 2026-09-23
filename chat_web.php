@@ -2784,8 +2784,8 @@ function toggleRec(){
     echo '</button>';
     
     // Botão de documento
-    echo '<input type="file" id="documentInput" accept=".pdf" style="display:none" data-media-type="document">';
-    echo '<button type="button" onclick="document.getElementById(\'documentInput\').click()" class="whatsapp-action-btn" title="Enviar documento PDF">';
+    echo '<input type="file" id="documentInput" style="display:none" data-media-type="document">';
+    echo '<button type="button" onclick="document.getElementById(\'documentInput\').click()" class="whatsapp-action-btn" title="Enviar documento (qualquer tipo)">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
     echo '</button>';
     
