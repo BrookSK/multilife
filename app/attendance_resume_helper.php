@@ -30,6 +30,22 @@ const RESUME_HOSPITALIZATION_SLUG = 'hospitalizacao';
  */
 const RESUME_HOSPITALIZATION_MAX_DAYS = 3;
 
+/**
+ * Motivos de encerramento DEFINITIVO — não permitem retomar o atendimento.
+ * Óbito é o caso central (paciente falecido). Comparação por slug, case-insensitive.
+ */
+const RESUME_BLOCKED_REASON_SLUGS = ['obito'];
+
+/**
+ * Indica se um motivo (slug) PERMITE retomada.
+ * Óbito (e outros definitivos) não permitem; todos os demais permitem.
+ */
+function resume_is_allowed(?string $reasonSlug): bool
+{
+    $slug = mb_strtolower(trim((string)$reasonSlug));
+    return !in_array($slug, RESUME_BLOCKED_REASON_SLUGS, true);
+}
+
 /** Destinos possíveis do retorno. */
 const RESUME_DEST_MONITORING = 'monitoramento';
 const RESUME_DEST_CAPTATION = 'captacao';

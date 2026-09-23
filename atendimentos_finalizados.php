@@ -185,6 +185,9 @@ if (count($rows) === 0) {
                 } else {
                     echo '<td><span class="badge">Retomado em ' . h($resumedFmt) . '</span></td>';
                 }
+            } elseif (!resume_is_allowed((string)($r['end_reason_slug'] ?? ''))) {
+                // Motivo definitivo (óbito): não pode retomar.
+                echo '<td><span style="font-size:12px;color:hsl(var(--muted-foreground))">Encerramento definitivo — não retomável</span></td>';
             } else {
                 // Decide o destino previsto para orientar o operador antes de clicar.
                 $decision = resume_decide_destination((string)($r['end_reason_slug'] ?? ''), (string)($r['ended_at'] ?? ''));

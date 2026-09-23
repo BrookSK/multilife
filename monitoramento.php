@@ -31,12 +31,14 @@ $sql = "SELECT bdr.id,
         u.id as professional_id, u.name as professional_name, u.phone as professional_phone, u.email as professional_email,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
         pa.service_type, pa.payment_value, pa.session_quantity,
-        pa.session_frequency, pa.is_indefinite
+        pa.session_frequency, pa.is_indefinite,
+        pa.health_insurer_id, hi.name as insurer_name
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = bdr.patient_id
         INNER JOIN users u ON u.id = bdr.professional_user_id
         LEFT JOIN demands d ON d.id = pa.demand_id
+        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
         WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval')
         AND pa.admitted_at IS NOT NULL
         ORDER BY first_at ASC";
@@ -97,6 +99,7 @@ foreach ($appointments as $apt) {
             'is_indefinite' => (int)($apt['is_indefinite'] ?? 0),
             'location_city' => $apt['location_city'] ?? '',
             'location_state' => $apt['location_state'] ?? '',
+            'insurer_name' => $apt['insurer_name'] ?? '',
             'created_at' => $apt['created_at'] ?? ''
         ]
     ];
@@ -194,6 +197,7 @@ body{margin:0;padding:0;overflow:hidden}
                 <div class="row"><span class="label">Especialidade:</span><span class="value" id="aptSpecialty">-</span></div>
                 <div class="row"><span class="label">Tipo de Serviço:</span><span class="value" id="aptServiceType">-</span></div>
                 <div class="row"><span class="label">Localização:</span><span class="value" id="aptLocation">-</span></div>
+                <div class="row"><span class="label">Operadora:</span><span class="value" id="aptInsurer">-</span></div>
             </div>
         </div>
         
@@ -295,6 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('aptLocation').textContent = (p.location_city && p.location_state) 
                 ? p.location_city + '/' + p.location_state 
                 : 'Não informado';
+            document.getElementById('aptInsurer').textContent = p.insurer_name || 'Não informada';
             
             // Paciente
             document.getElementById('patientName').textContent = p.patient_name;

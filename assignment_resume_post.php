@@ -76,6 +76,12 @@ if ((string)$pa['status'] !== 'completed') {
     exit;
 }
 
+// Encerramento DEFINITIVO (óbito) não pode ser retomado.
+if (!resume_is_allowed($pa['reason_slug'] ?? null)) {
+    echo json_encode(['success' => false, 'error' => 'Este atendimento foi encerrado de forma definitiva (' . (string)($pa['reason_name'] ?? 'óbito') . ') e não pode ser retomado.']);
+    exit;
+}
+
 // Decidir o destino com base no motivo e nos dias suspensos.
 $decision = resume_decide_destination(
     $pa['reason_slug'] ?? null,
