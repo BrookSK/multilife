@@ -27,10 +27,10 @@ $currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $userInstance = whatsapp_get_user_instance($currentUserId);
 $instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
 
-// FILTRO POR WHATSAPP: lista de instâncias disponíveis para popular o dropdown
+// FILTRO POR WHATSAPP: mostrar apenas as instâncias vinculadas ao usuário logado
 $availableInstances = [];
 try {
-    $availableInstances = whatsapp_list_all_instances();
+    $availableInstances = whatsapp_list_user_instances($currentUserId);
 } catch (Throwable $e) {
     error_log('[CHAT] Erro ao listar instancias de WhatsApp: ' . $e->getMessage());
     $availableInstances = [];
