@@ -64,10 +64,12 @@ $rows = [];
 try {
     $sql = "SELECT DISTINCT hid.id, hid.file_name, hid.file_path, hid.mime_type,
                    hid.specialty, hid.doc_type, hid.is_extra, hid.professional_type,
-                   hi.name AS insurer_name
+                   hi.name AS insurer_name,
+                   cl.name AS client_name
             FROM health_insurer_documents hid
             INNER JOIN health_insurers hi ON hi.id = hid.health_insurer_id
             INNER JOIN patient_assignments pa ON pa.health_insurer_id = hi.id
+            LEFT JOIN clients cl ON cl.id = hi.client_id
             WHERE pa.professional_user_id = :uid
               AND pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval', 'approved')
             ORDER BY hi.name ASC, hid.is_extra ASC, hid.specialty ASC, hid.doc_type ASC, hid.file_name ASC";
@@ -92,7 +94,7 @@ $byInsurer = [];
 foreach ($rows as $r) {
     $insurer = (string)($r['insurer_name'] ?? 'Operadora');
     if (!isset($byInsurer[$insurer])) {
-        $byInsurer[$insurer] = ['main' => [], 'extra' => []];
+        $byInsurer[$insurer] = ['main' => [], 'extra' => [], 'client_name' => (string)($r['client_name'] ?? '')];
     }
     if ((int)($r['is_extra'] ?? 0) === 1) {
         $byInsurer[$insurer]['extra'][] = $r;
@@ -202,7 +204,7 @@ $totalDocs = count($rows);
     <?php else: ?>
         <?php foreach ($byInsurer as $insurerName => $groups): ?>
             <div class="card">
-                <div class="insurer-title"><?= docs_e($insurerName) ?></div>
+                <div class="insurer-title"><?= docs_e($insurerName) ?><?php if (!empty($groups['client_name'])): ?><span style="font-weight:500;font-size:14px;color:#64748b"> — <?= docs_e($groups['client_name']) ?></span><?php endif; ?></div>
 
                 <?php if (!empty($groups['main'])): ?>
                     <?php foreach ($groups['main'] as $spec => $types): ?>
