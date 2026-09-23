@@ -61,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             if ($sa !== $sb) {
                 return $sa <=> $sb;
             }
-            $wa = insurer_doc_type_sort_weight($a['doc_type'] ?? null);
-            $wb = insurer_doc_type_sort_weight($b['doc_type'] ?? null);
+            $wa = function_exists('insurer_doc_type_sort_weight') ? insurer_doc_type_sort_weight($a['doc_type'] ?? null) : 0;
+            $wb = function_exists('insurer_doc_type_sort_weight') ? insurer_doc_type_sort_weight($b['doc_type'] ?? null) : 0;
             if ($wa !== $wb) {
                 return $wa <=> $wb;
             }
@@ -125,7 +125,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $docSpecialty = $docSpecialty !== '' ? mb_substr($docSpecialty, 0, 120) : null;
     // Tipo de documento: normalizado contra a taxonomia canônica
     // (Avaliação / Relatório gerencial), preservando tipos legados/livres.
-    $docType = insurer_doc_type_normalize($_POST['doc_type'] ?? null);
+    // Fallback defensivo caso o helper não esteja carregado (evita fatal error → HTML no lugar de JSON).
+    if (function_exists('insurer_doc_type_normalize')) {
+        $docType = insurer_doc_type_normalize($_POST['doc_type'] ?? null);
+    } else {
+        $docTypeRaw = trim((string)($_POST['doc_type'] ?? ''));
+        $docType = $docTypeRaw !== '' ? mb_substr($docTypeRaw, 0, 120) : null;
+    }
     $isExtra = (int)(!empty($_POST['is_extra']) && (string)$_POST['is_extra'] !== '0');
     
     if ($action === 'upload' && $insurerId > 0) {
