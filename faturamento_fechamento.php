@@ -249,36 +249,39 @@ if (empty($byClient)) {
 
             // Tabela de linhas (paciente / profissional / especialidade / qtd) — SEM valores.
             echo '<div style="overflow:auto"><table>';
-            echo '<thead><tr><th>Paciente</th><th>Profissional</th><th>Especialidade</th><th style="text-align:center">Atend.</th></tr></thead><tbody>';
+            echo '<thead><tr><th>Paciente</th><th>Profissional</th><th>Especialidade</th><th style="text-align:center">Atend.</th><th style="text-align:center">Detalhes</th></tr></thead><tbody>';
             foreach ($o['lines'] as $line) {
-                $detRowId = 'det_' . $opId . '_' . (int)$line['patient_id'] . '_' . substr(md5((string)$line['professional_name'] . (string)$line['specialty']), 0, 6);
+                // Monta o payload de detalhes (datas das sessões) para o modal.
+                $details = $line['sessions_detail'] ?? [];
+                usort($details, static fn($a, $b) => strcmp((string)($a['session_date'] ?? ''), (string)($b['session_date'] ?? '')));
+                $detailPayload = [];
+                foreach ($details as $d) {
+                    $detailPayload[] = [
+                        'date' => $d['session_date'] !== '' ? date('d/m/Y', strtotime((string)$d['session_date'])) : 's/ data',
+                        'number' => (int)$d['session_number'],
+                        'manual' => (int)($d['is_manual'] ?? 0),
+                        'operator' => (string)($d['operator_name'] ?? ''),
+                    ];
+                }
+                $modalTitle = (string)$line['patient_name'] . ' — ' . (string)$line['professional_name'];
+                $dataDetail = h(json_encode([
+                    'title' => $modalTitle,
+                    'subtitle' => (string)$o['insurer_name'] . ' · ' . (string)$line['specialty'],
+                    'count' => (int)$line['sessions'],
+                    'items' => $detailPayload,
+                ], JSON_UNESCAPED_UNICODE));
+
                 echo '<tr>';
                 echo '<td style="font-weight:600">' . h((string)$line['patient_name']) . '</td>';
                 echo '<td>' . h((string)$line['professional_name']) . '</td>';
                 echo '<td>' . h((string)$line['specialty']) . '</td>';
-                echo '<td style="text-align:center;white-space:nowrap">' . (int)$line['sessions'];
-                echo ' <button type="button" onclick="toggleDetail(\'' . $detRowId . '\')" title="Ver os atendimentos" style="background:none;border:none;cursor:pointer;color:hsl(var(--primary));font-size:12px;text-decoration:underline">ver detalhes</button>';
+                echo '<td style="text-align:center;font-weight:700">' . (int)$line['sessions'] . '</td>';
+                echo '<td style="text-align:center">';
+                echo '<button type="button" class="btn-detail" data-detail="' . $dataDetail . '" onclick="openDetail(this)" title="Ver os atendimentos">'
+                    . '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>'
+                    . ' Detalhes</button>';
                 echo '</td>';
                 echo '</tr>';
-                // Linha expansível com as datas das sessões que compõem a quantidade.
-                echo '<tr id="' . $detRowId . '" style="display:none;background:hsla(var(--muted)/.15)">';
-                echo '<td colspan="4" style="padding:10px 16px">';
-                echo '<div style="font-size:12px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:6px">Atendimentos que compõem a quantidade (' . (int)$line['sessions'] . ')</div>';
-                echo '<div style="display:flex;flex-wrap:wrap;gap:8px">';
-                $details = $line['sessions_detail'] ?? [];
-                usort($details, static fn($a, $b) => strcmp((string)($a['session_date'] ?? ''), (string)($b['session_date'] ?? '')));
-                foreach ($details as $d) {
-                    $dt = $d['session_date'] !== '' ? date('d/m/Y', strtotime((string)$d['session_date'])) : 's/ data';
-                    $manualTag = !empty($d['is_manual']) ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">manual</span>' : '';
-                    $opTag = !empty($d['operator_name']) ? ' · ' . h((string)$d['operator_name']) : '';
-                    echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:6px 10px;font-size:12px;background:#fff">';
-                    echo '📅 ' . h($dt) . ' <span style="color:hsl(var(--muted-foreground))">(Sessão ' . (int)$d['session_number'] . ')</span>' . $manualTag . $opTag;
-                    echo '</div>';
-                }
-                if (empty($details)) {
-                    echo '<div style="color:hsl(var(--muted-foreground));font-size:12px">Sem detalhes disponíveis.</div>';
-                }
-                echo '</div></td></tr>';
             }
             echo '</tbody></table></div>';
             echo '</div>'; // fim operadora
@@ -290,7 +293,61 @@ if (empty($byClient)) {
 
 echo '</div>';
 
-// JS para expandir/recolher os detalhes das sessões.
-echo '<script>function toggleDetail(id){var r=document.getElementById(id);if(r){r.style.display=(r.style.display==="none"||!r.style.display)?"table-row":"none";}}</script>';
+// Estilos do botão de detalhes + modal.
+echo '<style>
+.btn-detail{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;font-size:12px;font-weight:600;color:hsl(var(--primary));background:hsla(var(--primary)/.08);border:1px solid hsla(var(--primary)/.3);border-radius:999px;cursor:pointer;transition:all .15s}
+.btn-detail:hover{background:hsl(var(--primary));color:#fff;border-color:hsl(var(--primary))}
+.det-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(3px);z-index:9999;align-items:center;justify-content:center;padding:20px}
+.det-overlay.open{display:flex}
+.det-modal{background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:detPop .18s ease-out}
+@keyframes detPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.det-head{padding:18px 22px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--primary-dark,var(--primary))));color:#fff}
+.det-head h3{margin:0;font-size:17px;font-weight:800}
+.det-head .sub{margin-top:3px;font-size:13px;opacity:.9}
+.det-body{padding:16px 22px;overflow-y:auto;max-height:60vh}
+.det-count{font-size:13px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:12px}
+.det-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:10px;margin-bottom:8px}
+.det-item .cal{font-size:18px}
+.det-item .dt{font-weight:700}
+.det-item .ses{font-size:12px;color:hsl(var(--muted-foreground))}
+.det-tag{margin-left:auto;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700}
+.det-foot{padding:14px 22px;border-top:1px solid hsl(var(--border));text-align:right}
+.det-close{padding:8px 18px;background:hsl(var(--primary));color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer}
+</style>';
+
+// Modal único (preenchido dinamicamente pelo botão).
+echo '<div class="det-overlay" id="detOverlay" onclick="if(event.target===this)closeDetail()">'
+    . '<div class="det-modal">'
+    . '<div class="det-head"><h3 id="detTitle">Detalhes</h3><div class="sub" id="detSub"></div></div>'
+    . '<div class="det-body"><div class="det-count" id="detCount"></div><div id="detItems"></div></div>'
+    . '<div class="det-foot"><button type="button" class="det-close" onclick="closeDetail()">Fechar</button></div>'
+    . '</div></div>';
+
+echo '<script>
+function openDetail(btn){
+    var data = {};
+    try { data = JSON.parse(btn.getAttribute("data-detail")); } catch(e){ return; }
+    document.getElementById("detTitle").textContent = data.title || "Detalhes";
+    document.getElementById("detSub").textContent = data.subtitle || "";
+    document.getElementById("detCount").textContent = "Atendimentos que compõem a quantidade (" + (data.count||0) + ")";
+    var wrap = document.getElementById("detItems");
+    wrap.innerHTML = "";
+    if(!data.items || data.items.length === 0){
+        wrap.innerHTML = "<div style=\\"color:#64748b;font-size:13px\\">Sem detalhes disponíveis.</div>";
+    } else {
+        data.items.forEach(function(it){
+            var div = document.createElement("div");
+            div.className = "det-item";
+            var manual = it.manual ? "<span class=\\"det-tag\\">manual</span>" : "";
+            var op = it.operator ? " · " + it.operator : "";
+            div.innerHTML = "<span class=\\"cal\\">📅</span><span><span class=\\"dt\\">" + it.date + "</span> <span class=\\"ses\\">(Sessão " + it.number + ")" + op + "</span></span>" + manual;
+            wrap.appendChild(div);
+        });
+    }
+    document.getElementById("detOverlay").classList.add("open");
+}
+function closeDetail(){ document.getElementById("detOverlay").classList.remove("open"); }
+document.addEventListener("keydown", function(e){ if(e.key === "Escape") closeDetail(); });
+</script>';
 
 view_footer();
