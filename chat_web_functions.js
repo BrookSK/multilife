@@ -605,8 +605,24 @@ function showMediaPreview(file, mediaType) {
     return;
   }
   
-  console.log('Inserindo preview antes do textarea');
-  form.insertBefore(previewDiv, textarea);
+  // O textarea pode estar dentro de uma div aninhada (não é filho direto do form).
+  // Inserimos o preview antes do CONTÊINER de nível superior do textarea dentro
+  // do form; se não der, caímos para inserir no topo do form.
+  console.log('Inserindo preview antes do textarea (ancorado no pai correto)');
+  try {
+    let anchor = textarea;
+    while (anchor.parentNode && anchor.parentNode !== form) {
+      anchor = anchor.parentNode;
+    }
+    if (anchor.parentNode === form) {
+      form.insertBefore(previewDiv, anchor);
+    } else {
+      form.insertBefore(previewDiv, form.firstChild);
+    }
+  } catch (e) {
+    console.error('Falha ao inserir preview ancorado, usando prepend:', e);
+    form.insertBefore(previewDiv, form.firstChild);
+  }
   
   console.log('Preview inserido no DOM');
   
