@@ -49,6 +49,51 @@ echo '</div>';
 
 echo '<div style="height:14px"></div>';
 
+// ====================================================================
+// FICHA COMPLETA: dados enviados pelo profissional via link de atualização
+// cadastral ficam em professional_applications (não em users). Exibimos aqui
+// para não parecer que "sumiram" no perfil.
+// ====================================================================
+$profApp = null;
+try {
+    $paStmt = db()->prepare('SELECT * FROM professional_applications WHERE created_user_id = :uid ORDER BY id DESC LIMIT 1');
+    $paStmt->execute(['uid' => (int)$user['id']]);
+    $profApp = $paStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) { $profApp = null; }
+
+if ($profApp !== null) {
+    $val = static fn($v) => trim((string)($v ?? '')) !== '' ? h((string)$v) : '<span style="color:hsl(var(--muted-foreground))">—</span>';
+    $council = trim((string)($profApp['council_abbr'] ?? '') . ' ' . (string)($profApp['council_number'] ?? '')
+        . ((string)($profApp['council_state'] ?? '') !== '' ? '/' . (string)($profApp['council_state'] ?? '') : ''));
+    $addr = trim(
+        (string)($profApp['address_street'] ?? '')
+        . ((string)($profApp['address_number'] ?? '') !== '' ? ', ' . (string)$profApp['address_number'] : '')
+        . ((string)($profApp['address_neighborhood'] ?? '') !== '' ? ' - ' . (string)$profApp['address_neighborhood'] : '')
+        . ((string)($profApp['address_city'] ?? '') !== '' ? ' - ' . (string)$profApp['address_city'] : '')
+        . ((string)($profApp['address_state'] ?? '') !== '' ? '/' . (string)$profApp['address_state'] : '')
+    );
+
+    echo '<div style="border:1px solid hsl(var(--border));border-radius:10px;padding:16px;margin-bottom:16px;background:hsla(var(--muted)/.15)">';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">';
+    echo '<div style="font-weight:800;font-size:15px">📋 Ficha completa do profissional</div>';
+    echo '<a class="btn" href="/professional_applications_view.php?id=' . (int)$profApp['id'] . '">Abrir ficha completa</a>';
+    echo '</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:12px">Dados enviados pelo profissional na atualização cadastral.</div>';
+    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-size:13px">';
+    echo '<div><strong>Endereço:</strong><br>' . ($addr !== '' ? h($addr) : '<span style="color:hsl(var(--muted-foreground))">—</span>') . '</div>';
+    echo '<div><strong>RG:</strong> ' . $val($profApp['rg'] ?? '') . '</div>';
+    echo '<div><strong>Conselho:</strong> ' . ($council !== '' ? h($council) : '<span style="color:hsl(var(--muted-foreground))">—</span>') . '</div>';
+    echo '<div><strong>Banco:</strong> ' . $val($profApp['bank_name'] ?? '') . '</div>';
+    echo '<div><strong>Agência / Conta:</strong> ' . $val(trim((string)($profApp['bank_agency'] ?? '') . ' / ' . (string)($profApp['bank_account'] ?? ''), ' /')) . '</div>';
+    echo '<div><strong>Chave PIX:</strong> ' . $val($profApp['pix_key'] ?? '') . '</div>';
+    echo '<div><strong>Cidades de atuação:</strong> ' . $val($profApp['cities_of_operation'] ?? '') . '</div>';
+    echo '<div><strong>Experiência home care:</strong> ' . $val($profApp['home_care_experience'] ?? '') . '</div>';
+    echo '<div><strong>Tempo de atuação:</strong> ' . $val($profApp['years_of_experience'] ?? '') . '</div>';
+    echo '<div><strong>Especializações/Pós:</strong> ' . $val($profApp['specializations'] ?? '') . '</div>';
+    echo '</div>';
+    echo '</div>';
+}
+
 echo '<form method="post" action="/users_edit_post.php" style="display:grid;gap:12px;max-width:680px">';
 echo '<input type="hidden" name="id" value="' . (int)$user['id'] . '">';
 echo '<label>Nome<input name="name" required value="' . h((string)$user['name']) . '" placeholder="Nome"></label>';
