@@ -77,6 +77,8 @@ try {
 } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE billing_document_requirements ADD COLUMN monthly_closure_id BIGINT UNSIGNED NULL"); } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE financial_entries ADD COLUMN monthly_closure_id BIGINT UNSIGNED NULL"); } catch (Throwable $e) {}
+try { $db->exec("ALTER TABLE billing_document_requirements ADD COLUMN created_by_user_id INT UNSIGNED NULL"); } catch (Throwable $e) {}
+try { $db->exec("ALTER TABLE billing_document_requirements ADD COLUMN is_manual TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 
 // Já existe fechamento ativo para esta competência?
 $existing = billing_closure_find($db, $month);
