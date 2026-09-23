@@ -1522,6 +1522,19 @@ WAJS;
         echo '  .catch(function(e){ alert("Erro ao salvar: " + e.message); });';
         echo '};';
         echo '';
+        // Salvar o apelido (display_name) da instância — usado nos filtros do chat.
+        echo 'window.waInstSaveAlias = function(instanceId){';
+        echo '  var inp = document.getElementById("waAlias_" + instanceId);';
+        echo '  if(!inp){ return; }';
+        echo '  var formData = new FormData();';
+        echo '  formData.append("instance_id", instanceId);';
+        echo '  formData.append("display_name", inp.value);';
+        echo '  fetch("/admin_whatsapp_instance_rename_post.php", {method:"POST", body: formData, headers:{"X-Requested-With":"XMLHttpRequest"}})';
+        echo '  .then(function(r){ return r.json(); })';
+        echo '  .then(function(d){ if(d.success){ alert("Apelido salvo!"); } else { alert("Erro: " + (d.error||"desconhecido")); } })';
+        echo '  .catch(function(e){ alert("Erro ao salvar apelido: " + e.message); });';
+        echo '};';
+        echo '';
         // Limpar conversas SOMENTE desta instância (escopo isolado). Só habilitado para desconectadas.
         echo 'window.waInstClearConversations = function(instanceName){';
         echo '  if(!confirm("Apagar TODAS as conversas e mensagens da instância \'" + instanceName + "\'?\\n\\nSomente esta instância será afetada. As demais permanecem intactas.\\nEsta ação é irreversível."))return;';
@@ -1545,6 +1558,7 @@ WAJS;
             echo '<table style="width:100%;font-size:13px">';
             echo '<thead><tr>';
             echo '<th style="text-align:left">Instância</th>';
+            echo '<th style="text-align:left">Apelido</th>';
             echo '<th style="text-align:left">Número</th>';
             echo '<th style="text-align:left">Usuário</th>';
             echo '<th style="text-align:center">Status</th>';
@@ -1596,8 +1610,16 @@ WAJS;
                     $statusBadge = '<span style="color:#ef4444;font-weight:600">● Desconectado</span>';
                 }
                 
+                $liDisplayName = (string)($li['display_name'] ?? '');
                 echo '<tr>';
                 echo '<td style="font-weight:600">' . h($liName) . '</td>';
+                // Apelido editável (usado nos filtros do chat)
+                echo '<td>';
+                echo '<span style="display:inline-flex;align-items:center;gap:6px">';
+                echo '<input type="text" id="waAlias_' . $liId . '" value="' . h($liDisplayName) . '" placeholder="ex: Atendimento Guethie" style="font-size:12px;padding:4px 8px;min-width:150px;border:1px solid hsl(var(--border));border-radius:6px">';
+                echo '<button class="btn" type="button" style="font-size:11px;padding:4px 10px" onclick="waInstSaveAlias(' . $liId . ')">Salvar</button>';
+                echo '</span>';
+                echo '</td>';
                 echo '<td>' . h($liPhone) . '</td>';
                 echo '<td>';
                 $liUserNames = trim((string)($li['linked_user_names'] ?? ''));

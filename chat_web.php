@@ -1906,9 +1906,12 @@ if (!empty($availableInstances)) {
         if ($instName === '') {
             continue;
         }
-        // Rótulo amigável: nome do usuário/instância + status de conexão
+        // Rótulo amigável: prioriza o apelido definido pelo admin (display_name),
+        // depois nome dos usuários vinculados, depois o nome técnico da instância.
         $label = $instName;
-        if (!empty($inst['linked_user_names'])) {
+        if (!empty($inst['display_name'])) {
+            $label = (string)$inst['display_name'];
+        } elseif (!empty($inst['linked_user_names'])) {
             $label = (string)$inst['linked_user_names'];
         } elseif (!empty($inst['user_name'])) {
             $label = (string)$inst['user_name'];
