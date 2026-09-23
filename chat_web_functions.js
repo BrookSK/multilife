@@ -797,6 +797,11 @@ async function sendMediaMessage() {
   formData.append('media', selectedMediaFile);
   formData.append('remote_jid', window.chatId);
   formData.append('media_type', selectedMediaType);
+  // Preservar o WhatsApp (instância) filtrado, se houver.
+  var _inst = new URLSearchParams(window.location.search).get('instance') || '';
+  if (_inst) {
+    formData.append('instance', _inst);
+  }
   if (caption) {
     formData.append('caption', caption);
   }

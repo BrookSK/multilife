@@ -202,18 +202,24 @@ try {
     $baseUrl = admin_setting_get('evolution.base_url');
     $apiKey = admin_setting_get('evolution.api_key');
     $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
-    $_userInst = whatsapp_get_user_instance($_currentUserId);
-    $instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
-    
+
+    // Instância: se o front informou uma (filtro de WhatsApp), usa ela;
+    // senão, usa a instância CONECTADA do usuário logado (não a padrão global).
+    $requestedInstance = trim((string)($_POST['instance'] ?? ''));
+    if ($requestedInstance !== '') {
+        $instanceName = $requestedInstance;
+        $api = new EvolutionApiV1($baseUrl, $apiKey, $requestedInstance);
+    } else {
+        $api = whatsapp_get_api_for_user($_currentUserId);
+        $instanceName = $api->getInstance();
+    }
+
     error_log("[$debugId] Evolution API - baseUrl: '$baseUrl' | instance: '$instanceName'");
-    
+
     if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
         error_log("[$debugId] ERRO: Evolution API não configurada");
         throw new Exception('Evolution API não configurada');
     }
-    
-    // Enviar mídia via Evolution API
-    $api = new EvolutionApiV1();
     
     // Converter para base64 (mais confiável que URL para Evolution v2.3)
     $fileContent = file_get_contents($destinationPath);
