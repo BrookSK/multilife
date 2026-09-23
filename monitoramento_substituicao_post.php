@@ -286,6 +286,8 @@ try {
     // painel interno (/monitoramento). Só inclui se a flag de notificação permitir.
     $includePortalLink = notifications_should_include_portal_link();
     $attendanceLink = ($includePortalLink && $notifyNewProf) ? professional_registration_link((int)$newProfessionalId) : '';
+    // Link PÚBLICO dos documentos da operadora do NOVO profissional (usável via {{link_documentos}}).
+    $documentsLink = ($includePortalLink && $notifyNewProf) ? professional_documents_link((int)$newProfessionalId) : '';
 
     $dispatcher = new WhatsAppEventDispatcher();
     $eventData = [
@@ -293,6 +295,7 @@ try {
         'attendance_id' => $assignmentId,
         'attendance_link' => $attendanceLink,
         'appointment_link' => $attendanceLink,
+        'documents_link' => $documentsLink,
         'attendance_date' => date('d/m/Y'),
 
         // Paciente
