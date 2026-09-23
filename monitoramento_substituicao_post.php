@@ -151,24 +151,24 @@ try {
         error_log('[SUBSTITUICAO] Erro ao atualizar authorization_requests: ' . $e->getMessage());
     }
 
-    // Atualizar o profissional das sessões futuras (pendentes) e recalcular as datas a
-    // partir da nova data de início, MANTENDO a frequência atual.
+    // Recalcular TODAS as sessões pendentes a partir da nova data de início.
+    // IMPORTANTE: não filtrar por session_date >= CURDATE(), senão uma sessão com
+    // data antiga (ex.: hoje) fica de fora e mantém a data errada. A substituição
+    // redefine o cronograma inteiro das sessões que ainda não foram realizadas.
     try {
         $selSessions = $db->prepare(
             "SELECT id, session_number FROM billing_document_requirements
              WHERE assignment_id = :aid AND status = 'pending'
-               AND (session_date IS NULL OR session_date >= CURDATE())
-             ORDER BY session_number ASC"
+             ORDER BY session_number ASC, id ASC"
         );
         $selSessions->execute(['aid' => $assignmentId]);
         $pendingSessions = $selSessions->fetchAll(PDO::FETCH_ASSOC);
 
         if (count($pendingSessions) > 0) {
-            // Vincular as sessões futuras ao novo profissional
+            // Vincular TODAS as sessões pendentes ao novo profissional.
             $updSessProf = $db->prepare(
                 "UPDATE billing_document_requirements SET professional_user_id = :uid
-                 WHERE assignment_id = :aid AND status = 'pending'
-                   AND (session_date IS NULL OR session_date >= CURDATE())"
+                 WHERE assignment_id = :aid AND status = 'pending'"
             );
             $updSessProf->execute(['uid' => $newProfessionalId, 'aid' => $assignmentId]);
 
@@ -356,12 +356,16 @@ try {
         $eventDataOld['professional_id'] = $oldProfId;
         $eventDataOld['professional_name'] = (string)($assignment['old_professional_name'] ?? '');
         $eventDataOld['professional_phone'] = (string)($assignment['old_professional_phone'] ?? '');
-        // Link público do PROFISSIONAL ANTIGO (não reaproveitar o link do novo).
-        $oldProfLink = $includePortalLink ? professional_registration_link((int)$oldProfId) : '';
-        $eventDataOld['attendance_link'] = $oldProfLink;
-        $eventDataOld['appointment_link'] = $oldProfLink;
+        // O profissional ANTERIOR só recebe o aviso de que foi substituído — SEM
+        // nenhum link/botão (documentos da operadora, atualizar cadastro, etc.),
+        // pois ele não é mais responsável pelo atendimento.
+        $eventDataOld['attendance_link'] = '';
+        $eventDataOld['appointment_link'] = '';
+        $eventDataOld['registration_link'] = '';
+        $eventDataOld['documents_link'] = '';
         // Não reenviar ao paciente neste disparo (já foi no evento anterior).
         $eventDataOld['patient_phone'] = '';
+        $eventDataOld['patient_id'] = 0;
         $dispatcher->dispatch('professional_removed', $eventDataOld);
     }
 } catch (Throwable $e) {
