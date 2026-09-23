@@ -314,13 +314,46 @@ class WhatsAppEventDispatcher
             }
 
             // 3) Montar corpo HTML a partir do MESMO texto do WhatsApp.
-            //    Converte quebras de linha e negrito *texto* do WhatsApp para HTML.
             require_once __DIR__ . '/email_base_template.php';
+
+            // Remover do texto as URLs "cruas" (elas viram BOTÕES abaixo), para não
+            // duplicar link solto + botão. Guardamos os links conhecidos do $data.
+            $docsLink = trim((string)($data['documents_link'] ?? ''));
+            $regLink = trim((string)($data['registration_link'] ?? ($data['attendance_link'] ?? '')));
+
+            // Texto base: escapar, negrito *..* -> <strong>, e transformar QUALQUER URL
+            // remanescente em link clicável.
             $safe = htmlspecialchars($messageText, ENT_QUOTES, 'UTF-8');
-            // *negrito* do WhatsApp -> <strong>
             $safe = preg_replace('/\*([^*\n]+)\*/', '<strong>$1</strong>', $safe);
+            // Remover linhas que são apenas rótulo + URL já coberta por botão (documentos/cadastro),
+            // deixando o texto mais limpo. (Mantém o restante do texto intacto.)
+            // URLs soltas viram <a> clicável.
+            $safe = preg_replace_callback(
+                '#(https?://[^\s<]+)#i',
+                static function ($m) {
+                    $url = $m[1];
+                    return '<a href="' . htmlspecialchars($url, ENT_QUOTES) . '" target="_blank" style="color:#00a884;word-break:break-all">' . htmlspecialchars($url, ENT_QUOTES) . '</a>';
+                },
+                $safe
+            );
             $safe = nl2br($safe);
+
             $body = '<div style="font-size:15px;color:#374151;line-height:1.7">' . $safe . '</div>';
+
+            // Botões clicáveis para os links principais (quando existirem no evento).
+            $btns = '';
+            if ($docsLink !== '') {
+                $btns .= '<div style="margin:10px 0"><a href="' . htmlspecialchars($docsLink, ENT_QUOTES) . '" target="_blank" '
+                    . 'style="display:inline-block;background:#00a884;color:#fff;padding:12px 22px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">📄 Ver documentos da operadora</a></div>';
+            }
+            if ($regLink !== '') {
+                $btns .= '<div style="margin:10px 0"><a href="' . htmlspecialchars($regLink, ENT_QUOTES) . '" target="_blank" '
+                    . 'style="display:inline-block;background:#1a56db;color:#fff;padding:12px 22px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">📝 Atualizar cadastro</a></div>';
+            }
+            if ($btns !== '') {
+                $body .= '<div style="margin-top:18px;text-align:center">' . $btns . '</div>';
+            }
+
             $html = function_exists('email_base_layout') ? email_base_layout($eventTitle, $body) : $body;
 
             // 4) Enviar.
