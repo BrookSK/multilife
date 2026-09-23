@@ -233,8 +233,7 @@ if (empty($byPatient)) {
     echo '</div>';
 } else {
     // Nº de colunas total (para colspan das linhas de detalhe expansíveis)
-    $totalCols = $showValues ? 8 : 5;
-    $detailRowId = 0;
+    $detailModals = []; // acumula o HTML dos pop-ups para renderizar após a tabela
 
     echo '<div style="overflow:auto"><table>';
     echo '<thead><tr>';
@@ -244,6 +243,7 @@ if (empty($byPatient)) {
         echo '<th style="text-align:right">Valor/sessão (receber)</th>';
         echo '<th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th>';
     }
+    echo '<th style="text-align:center">Detalhes</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($byPatient as $p) {
@@ -252,8 +252,6 @@ if (empty($byPatient)) {
         $pid = (int)$p['patient_id'];
         $first = true;
         foreach ($p['lines'] as $line) {
-            $detailRowId++;
-            $rid = 'det_' . $detailRowId;
             echo '<tr>';
             if ($first) {
                 echo '<td style="font-weight:700;vertical-align:top" rowspan="' . $lineCount . '">' . h($p['patient_name']) . '</td>';
@@ -261,39 +259,18 @@ if (empty($byPatient)) {
             }
             echo '<td>' . h((string)$line['professional_name']) . '</td>';
             echo '<td>' . h((string)$line['specialty']) . '</td>';
-            // Coluna Atend. com botão "ver detalhes"
-            echo '<td style="text-align:center;white-space:nowrap">' . (int)$line['sessions'];
-            echo ' <button type="button" onclick="toggleDetail(\'' . $rid . '\')" title="Ver detalhes dos atendimentos" style="background:none;border:none;cursor:pointer;color:hsl(var(--primary));font-size:12px;text-decoration:underline">ver detalhes</button>';
-            echo '</td>';
+            echo '<td style="text-align:center">' . (int)$line['sessions'] . '</td>';
             if ($showValues) {
                 echo '<td style="text-align:right">' . h($brl((float)$line['receivable_per_session'])) . '</td>';
                 echo '<td style="text-align:right;color:#059669;font-weight:600">' . h($brl((float)$line['receivable'])) . '</td>';
                 echo '<td style="text-align:right;color:#b45309;font-weight:600">' . h($brl((float)$line['payable'])) . '</td>';
             }
-            echo '</tr>';
-
-            // Linha expansível com o detalhamento das sessões que compõem a quantidade
-            echo '<tr id="' . $rid . '" style="display:none;background:hsla(var(--muted)/.15)">';
-            echo '<td colspan="' . $totalCols . '" style="padding:10px 16px">';
-            echo '<div style="font-size:12px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:6px">Atendimentos que compõem a quantidade (' . (int)$line['sessions'] . ')</div>';
-            echo '<div style="display:flex;flex-wrap:wrap;gap:8px">';
-            $details = $line['sessions_detail'] ?? [];
-            usort($details, static fn($a, $b) => strcmp((string)($a['session_date'] ?? ''), (string)($b['session_date'] ?? '')));
-            foreach ($details as $d) {
-                $dt = $d['session_date'] !== '' ? date('d/m/Y', strtotime((string)$d['session_date'])) : 's/ data';
-                $manualTag = !empty($d['is_manual']) ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">manual</span>' : '';
-                $opTag = !empty($d['operator_name']) ? ' · ' . h((string)$d['operator_name']) : '';
-                echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:6px 10px;font-size:12px">';
-                echo '📅 ' . h($dt) . ' <span style="color:hsl(var(--muted-foreground))">(Sessão ' . (int)$d['session_number'] . ')</span>' . $manualTag . $opTag;
-                echo '</div>';
+            // Botão de detalhes (abre o pop-up completo do paciente) — 1 vez por paciente.
+            if ($first) {
+                echo '<td style="text-align:center;vertical-align:top" rowspan="' . $lineCount . '">'
+                    . '<button type="button" class="btn" style="font-size:12px;padding:4px 10px" onclick="fechDetail(' . $pid . ')">🔍 Detalhes</button></td>';
             }
-            if (empty($details)) {
-                echo '<div style="color:hsl(var(--muted-foreground));font-size:12px">Sem detalhes disponíveis.</div>';
-            }
-            echo '</div>';
-            echo '</td>';
             echo '</tr>';
-
             $first = false;
         }
         // Subtotal do paciente
@@ -305,12 +282,88 @@ if (empty($byPatient)) {
             echo '<td style="text-align:right;font-weight:800;color:#059669">' . h($brl((float)$p['total_receivable'])) . '</td>';
             echo '<td style="text-align:right;font-weight:800;color:#b45309">' . h($brl((float)$p['total_payable'])) . '</td>';
         }
+        echo '<td></td>';
         echo '</tr>';
+
+        // ---- Pop-up de detalhes deste paciente (renderizado após a tabela) ----
+        ob_start();
+        $items = $p['session_items'] ?? [];
+        usort($items, static fn($a, $b) => strcmp((string)($a['session_date'] ?? ''), (string)($b['session_date'] ?? '')));
+        echo '<div id="fechModal_' . $pid . '" class="fechModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)fechDetailClose(' . $pid . ')">';
+        echo '<div style="background:hsl(var(--card));border-radius:12px;padding:0;max-width:860px;width:100%;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+        // Cabeçalho
+        echo '<div style="padding:20px 24px;border-bottom:1px solid hsl(var(--border));display:flex;justify-content:space-between;align-items:flex-start;gap:12px">';
+        echo '<div>';
+        echo '<div style="font-size:18px;font-weight:900">' . h($p['patient_name']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:4px">Operadora: <strong>' . h($insurerLabel) . '</strong> · Competência ' . h($monthLabel) . ' · ' . (int)$p['total_sessions'] . ' atendimento(s)</div>';
+        echo '</div>';
+        echo '<button type="button" onclick="fechDetailClose(' . $pid . ')" style="background:none;border:none;font-size:26px;cursor:pointer;color:hsl(var(--muted-foreground));line-height:1">×</button>';
+        echo '</div>';
+        // Cards de resumo do paciente
+        echo '<div style="padding:16px 24px;display:flex;gap:12px;flex-wrap:wrap;border-bottom:1px solid hsl(var(--border))">';
+        echo '<div style="flex:1;min-width:120px;padding:12px;background:hsla(var(--primary)/.08);border-radius:8px"><div style="font-size:11px;color:hsl(var(--muted-foreground))">Atendimentos</div><div style="font-size:22px;font-weight:800">' . (int)$p['total_sessions'] . '</div></div>';
+        if ($showValues) {
+            echo '<div style="flex:1;min-width:120px;padding:12px;background:hsla(var(--success)/.10);border-radius:8px"><div style="font-size:11px;color:hsl(var(--muted-foreground))">A receber</div><div style="font-size:20px;font-weight:800;color:#059669">' . h($brl((float)$p['total_receivable'])) . '</div></div>';
+            echo '<div style="flex:1;min-width:120px;padding:12px;background:hsla(var(--warning)/.12);border-radius:8px"><div style="font-size:11px;color:hsl(var(--muted-foreground))">A pagar</div><div style="font-size:20px;font-weight:800;color:#b45309">' . h($brl((float)$p['total_payable'])) . '</div></div>';
+        }
+        echo '</div>';
+        // Tabela de sessões
+        echo '<div style="padding:16px 24px;overflow:auto">';
+        echo '<table style="width:100%"><thead><tr>';
+        echo '<th>#</th><th>Data</th><th>Profissional</th><th>Especialidade</th><th>Origem</th>';
+        if ($showValues) {
+            echo '<th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th>';
+        }
+        echo '</tr></thead><tbody>';
+        $n = 0;
+        foreach ($items as $si) {
+            $n++;
+            $dt = ($si['session_date'] ?? '') !== '' ? date('d/m/Y', strtotime((string)$si['session_date'])) : 's/ data';
+            $origem = !empty($si['is_manual'])
+                ? '<span style="background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700">Manual</span>'
+                : '<span style="background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:8px;font-size:11px;font-weight:700">Automático</span>';
+            if (!empty($si['operator_name'])) {
+                $origem .= '<div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:2px">por ' . h((string)$si['operator_name']) . '</div>';
+            }
+            echo '<tr>';
+            echo '<td>' . (!empty($si['session_number']) ? (int)$si['session_number'] : $n) . '</td>';
+            echo '<td style="white-space:nowrap">' . h($dt) . '</td>';
+            echo '<td>' . h((string)$si['professional_name']) . '</td>';
+            echo '<td>' . h((string)$si['specialty']) . '</td>';
+            echo '<td>' . $origem . '</td>';
+            if ($showValues) {
+                echo '<td style="text-align:right;color:#059669">' . h($brl((float)$si['receivable'])) . '</td>';
+                echo '<td style="text-align:right;color:#b45309">' . h($brl((float)$si['payable'])) . '</td>';
+            }
+            echo '</tr>';
+        }
+        if ($showValues) {
+            echo '<tr style="background:hsla(var(--muted)/.3);font-weight:800">';
+            echo '<td colspan="5" style="text-align:right">Total</td>';
+            echo '<td style="text-align:right;color:#059669">' . h($brl((float)$p['total_receivable'])) . '</td>';
+            echo '<td style="text-align:right;color:#b45309">' . h($brl((float)$p['total_payable'])) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+        echo '</div>';
+        // Rodapé
+        echo '<div style="padding:14px 24px;border-top:1px solid hsl(var(--border));text-align:right">';
+        echo '<button type="button" class="btn" onclick="fechDetailClose(' . $pid . ')">Fechar</button>';
+        echo '</div>';
+        echo '</div></div>';
+        $detailModals[] = ob_get_clean();
     }
     echo '</tbody></table></div>';
 
-    // JS para expandir/recolher os detalhes inline (por linha).
-    echo '<script>function toggleDetail(id){var r=document.getElementById(id);if(r){r.style.display=(r.style.display==="none"||!r.style.display)?"table-row":"none";}}</script>';
+    // Renderiza os pop-ups fora da tabela.
+    foreach ($detailModals as $modalHtml) {
+        echo $modalHtml;
+    }
+    echo '<script>';
+    echo 'function fechDetail(id){var m=document.getElementById("fechModal_"+id);if(m)m.style.display="flex";}';
+    echo 'function fechDetailClose(id){var m=document.getElementById("fechModal_"+id);if(m)m.style.display="none";}';
+    echo 'document.addEventListener("keydown",function(e){if(e.key==="Escape"){document.querySelectorAll(".fechModal").forEach(function(m){m.style.display="none";});}});';
+    echo '</script>';
 
     // Botão Fechar Mês (só quando ainda não fechado e há o que faturar)
     if (!$isClosed) {
