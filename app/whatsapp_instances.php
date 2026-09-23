@@ -194,6 +194,42 @@ function whatsapp_list_all_instances(): array
 }
 
 /**
+ * Retorna apenas as instâncias ativas vinculadas a um usuário específico.
+ *
+ * Considera tanto o vínculo N:N (whatsapp_instance_users) quanto a coluna
+ * legada whatsapp_instances.user_id, para compatibilidade. O formato de
+ * retorno é o mesmo de whatsapp_list_all_instances().
+ *
+ * @param int $userId
+ * @return array Lista de instâncias vinculadas ao usuário
+ */
+function whatsapp_list_user_instances(int $userId): array
+{
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $stmt = db()->prepare("
+        SELECT DISTINCT wi.*,
+               u.name AS user_name, u.email AS user_email,
+               (
+                   SELECT GROUP_CONCAT(us.name ORDER BY us.name SEPARATOR ', ')
+                   FROM whatsapp_instance_users wiu2
+                   INNER JOIN users us ON us.id = wiu2.user_id
+                   WHERE wiu2.instance_id = wi.id
+               ) AS linked_user_names
+        FROM whatsapp_instances wi
+        LEFT JOIN users u ON u.id = wi.user_id
+        LEFT JOIN whatsapp_instance_users wiu ON wiu.instance_id = wi.id AND wiu.user_id = :uid
+        WHERE wi.status = 'active'
+          AND (wiu.user_id = :uid2 OR wi.user_id = :uid3)
+        ORDER BY wi.is_default DESC, wi.created_at ASC
+    ");
+    $stmt->execute(['uid' => $userId, 'uid2' => $userId, 'uid3' => $userId]);
+    return $stmt->fetchAll();
+}
+
+/**
  * Retorna os IDs de usuários vinculados a uma instância (relação N:N).
  *
  * @param int $instanceId
@@ -311,4 +347,38 @@ function whatsapp_update_connection_status(string $instanceName, string $status,
         WHERE instance_name = :name
     ");
     $stmt->execute($params);
+}
+
+/**
+ * Lista os usuários que podem atuar como atendentes do Chat ao Vivo, ou seja,
+ * usuários ativos cujas roles concedem a permissão 'chat.manage'.
+ *
+ * Usado para popular o filtro "por atendente" (admin) e o seletor de atendente
+ * responsável no painel de informações da conversa.
+ *
+ * @return array<int, array{id:int, name:string}>
+ */
+function chat_list_attendants(): array
+{
+    $stmt = db()->prepare("
+        SELECT DISTINCT u.id, u.name
+        FROM users u
+        INNER JOIN user_roles ur ON ur.user_id = u.id
+        INNER JOIN role_permissions rp ON rp.role_id = ur.role_id
+        INNER JOIN permissions p ON p.id = rp.permission_id
+        WHERE p.slug = 'chat.manage'
+          AND u.status = 'active'
+        ORDER BY u.name ASC
+    ");
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $attendants = [];
+    foreach ($rows as $row) {
+        $attendants[] = [
+            'id' => (int)$row['id'],
+            'name' => (string)$row['name'],
+        ];
+    }
+    return $attendants;
 }

@@ -105,6 +105,53 @@ foreach ($appointments as $apt) {
     ];
 }
 
+// Assignments ativos (para o modal de novo atendimento manual): já carregam
+// paciente, profissional, operadora e valores, garantindo que o registro
+// manual seja contabilizado corretamente no fechamento.
+$manualAssignments = [];
+try {
+    $manualAssignments = $db->query("
+        SELECT pa.id AS assignment_id,
+               pa.patient_id, p.full_name AS patient_name,
+               pa.professional_user_id, u.name AS professional_name,
+               pa.specialty, hi.name AS insurer_name
+        FROM patient_assignments pa
+        INNER JOIN patients p ON p.id = pa.patient_id
+        LEFT JOIN users u ON u.id = pa.professional_user_id
+        LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+        WHERE pa.status IN ('admitted','awaiting_documents','awaiting_financial_approval')
+          AND pa.admitted_at IS NOT NULL
+          AND p.deleted_at IS NULL
+        ORDER BY p.full_name ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $manualAssignments = [];
+}
+
+// Listas para os filtros (derivadas dos próprios eventos exibidos).
+$filterPatients = [];
+$filterProfessionals = [];
+$filterInsurers = [];
+$filterSpecialties = [];
+foreach ($appointments as $apt) {
+    if (!empty($apt['patient_id'])) {
+        $filterPatients[(int)$apt['patient_id']] = (string)$apt['patient_name'];
+    }
+    if (!empty($apt['professional_id'])) {
+        $filterProfessionals[(int)$apt['professional_id']] = (string)$apt['professional_name'];
+    }
+    if (!empty($apt['insurer_name'])) {
+        $filterInsurers[(string)$apt['insurer_name']] = (string)$apt['insurer_name'];
+    }
+    if (!empty($apt['specialty'])) {
+        $filterSpecialties[(string)$apt['specialty']] = (string)$apt['specialty'];
+    }
+}
+asort($filterPatients);
+asort($filterProfessionals);
+asort($filterInsurers);
+asort($filterSpecialties);
+
 view_header('Monitoramento de Atendimentos');
 ?>
 
@@ -156,7 +203,39 @@ body{margin:0;padding:0;overflow:hidden}
         <div style="flex:1">
             <h1 class="title" style="margin:0">Monitoramento de Atendimentos</h1>
             <div style="margin-top:6px;color:#6b7280;font-size:14px;line-height:1.6">Visualize e acompanhe todos os atendimentos em calendário</div>
-            <a href="/atendimentos_finalizados.php" class="btn" style="display:inline-block;margin-top:10px;font-size:13px;padding:8px 14px">📁 Ver atendimentos finalizados</a>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+                <a href="/atendimentos_finalizados.php" class="btn" style="font-size:13px;padding:8px 14px">📁 Ver atendimentos finalizados</a>
+                <button type="button" class="btn" style="font-size:13px;padding:8px 14px;background:#0d9488" onclick="openCreateModal()">➕ Novo atendimento</button>
+            </div>
+            <!-- Filtros -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">
+                <input type="text" id="filterText" placeholder="Buscar (paciente/profissional)" oninput="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                <select id="filterPatient" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                    <option value="">Todos pacientes</option>
+                    <?php foreach ($filterPatients as $pid => $pname): ?>
+                    <option value="<?php echo (int)$pid; ?>"><?php echo h($pname); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select id="filterProfessional" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                    <option value="">Todos profissionais</option>
+                    <?php foreach ($filterProfessionals as $prid => $prname): ?>
+                    <option value="<?php echo (int)$prid; ?>"><?php echo h($prname); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select id="filterInsurer" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                    <option value="">Todas operadoras</option>
+                    <?php foreach ($filterInsurers as $iname): ?>
+                    <option value="<?php echo h($iname); ?>"><?php echo h($iname); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select id="filterSpecialty" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                    <option value="">Todas especialidades</option>
+                    <?php foreach ($filterSpecialties as $sname): ?>
+                    <option value="<?php echo h($sname); ?>"><?php echo h($sname); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="button" class="btn" style="font-size:12px;padding:7px 12px;background:#e5e7eb;color:#374151" onclick="clearFilters()">Limpar</button>
+            </div>
         </div>
         <div class="legend">
             <div class="legendItem">
@@ -242,8 +321,10 @@ body{margin:0;padding:0;overflow:hidden}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
 <script>
 const events = <?php echo json_encode($events); ?>;
+const manualAssignments = <?php echo json_encode(array_values($manualAssignments)); ?>;
+let calendar = null;
 document.addEventListener('DOMContentLoaded', function() {
-    const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+    calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
         initialView: 'dayGridMonth',
         locale: 'pt-br',
         headerToolbar: {left:'prev,next today',center:'title',right:'dayGridMonth,timeGridWeek'},
@@ -253,6 +334,10 @@ document.addEventListener('DOMContentLoaded', function() {
         dayMaxEvents: 5,
         moreLinkText: function(num) { return '+' + num + ' - Ver Todos os Eventos'; },
         events: events,
+        dateClick: function(info) {
+            // Clique numa data abre o modal já com a data preenchida
+            openCreateModal(info.dateStr);
+        },
         eventClick: function(info) {
             const p = info.event.extendedProps;
             
@@ -439,6 +524,105 @@ function closeModal() {
 }
 
 // ============================================
+// FILTROS DO CALENDÁRIO (client-side)
+// ============================================
+function applyFilters() {
+    const text = (document.getElementById('filterText').value || '').toLowerCase().trim();
+    const patientId = document.getElementById('filterPatient').value;
+    const profId = document.getElementById('filterProfessional').value;
+    const insurer = document.getElementById('filterInsurer').value;
+    const specialty = document.getElementById('filterSpecialty').value;
+
+    const filtered = events.filter(function(ev) {
+        const p = ev.extendedProps || {};
+        if (patientId && String(p.patient_id) !== String(patientId)) return false;
+        if (profId && String(p.professional_id) !== String(profId)) return false;
+        if (insurer && (p.insurer_name || '') !== insurer) return false;
+        if (specialty && (p.specialty || '') !== specialty) return false;
+        if (text) {
+            const hay = ((ev.title || '') + ' ' + (p.patient_name || '') + ' ' + (p.professional_name || '')).toLowerCase();
+            if (hay.indexOf(text) === -1) return false;
+        }
+        return true;
+    });
+
+    if (calendar) {
+        calendar.removeAllEvents();
+        calendar.addEventSource(filtered);
+    }
+}
+
+function clearFilters() {
+    document.getElementById('filterText').value = '';
+    document.getElementById('filterPatient').value = '';
+    document.getElementById('filterProfessional').value = '';
+    document.getElementById('filterInsurer').value = '';
+    document.getElementById('filterSpecialty').value = '';
+    applyFilters();
+}
+
+// ============================================
+// NOVO ATENDIMENTO MANUAL (contabiliza no fechamento)
+// ============================================
+function openCreateModal(dateStr) {
+    // Preencher select de assignments
+    const sel = document.getElementById('createAssignment');
+    if (sel && sel.options.length <= 1) {
+        manualAssignments.forEach(function(a) {
+            const opt = document.createElement('option');
+            opt.value = a.assignment_id;
+            opt.textContent = a.patient_name + ' — ' + (a.professional_name || 'sem profissional')
+                + (a.specialty ? ' (' + a.specialty + ')' : '');
+            sel.appendChild(opt);
+        });
+    }
+    // Data: a clicada ou hoje
+    const dateInput = document.getElementById('createDate');
+    if (dateStr) {
+        dateInput.value = dateStr;
+    } else if (!dateInput.value) {
+        const now = new Date();
+        const pad = function(n){return (n<10?'0':'')+n;};
+        dateInput.value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+    }
+    document.getElementById('createModal').classList.add('open');
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').classList.remove('open');
+}
+
+function submitCreate() {
+    const assignmentId = document.getElementById('createAssignment').value;
+    const date = document.getElementById('createDate').value;
+    if (!assignmentId) { alert('Selecione o paciente/atendimento.'); return; }
+    if (!date) { alert('Informe a data do atendimento.'); return; }
+
+    const fd = new FormData();
+    fd.append('assignment_id', assignmentId);
+    fd.append('session_date', date);
+    fd.append('notes', document.getElementById('createNotes').value || '');
+
+    const btn = document.getElementById('createSubmitBtn');
+    btn.disabled = true; btn.innerHTML = '⏳ Salvando...';
+    fetch('/monitoramento_atendimento_create_post.php', { method: 'POST', body: fd })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if (data.success) {
+                alert('✅ Atendimento registrado! Ele será contabilizado no fechamento do mês.');
+                window.location.reload();
+            } else {
+                alert('❌ Erro: ' + (data.error || 'desconhecido'));
+                btn.disabled = false; btn.innerHTML = 'Salvar atendimento';
+            }
+        })
+        .catch(function(){
+            alert('❌ Erro ao registrar atendimento.');
+            btn.disabled = false; btn.innerHTML = 'Salvar atendimento';
+        });
+}
+
+// ============================================
 // FINALIZAR ATENDIMENTO (itens 5 e 11)
 // ============================================
 var _finalizeAssignmentId = null;
@@ -527,6 +711,38 @@ function submitFinalize() {
         <div class="actions">
             <button class="btn" style="background:#e5e7eb;color:#374151" onclick="closeFinalizeModal()">Cancelar</button>
             <button class="btn" style="background:#dc2626" id="finalizeSubmitBtn" onclick="submitFinalize()">Finalizar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Novo Atendimento Manual -->
+<div id="createModal" class="modal" onclick="if(event.target===this) closeCreateModal()">
+    <div class="modalContent" style="max-width:520px">
+        <div class="modalHeader">
+            <h2 class="modalTitle">➕ Novo Atendimento</h2>
+            <button class="close" onclick="closeCreateModal()">×</button>
+        </div>
+        <div class="section">
+            <div style="font-size:13px;color:#6b7280;margin-bottom:12px">
+                Registre um atendimento feito fora do sistema. Ele será marcado como aprovado e
+                contabilizado no Fechamento Mensal da competência da data informada.
+            </div>
+            <label style="display:block;font-weight:600;margin-bottom:6px">Paciente / Atendimento *</label>
+            <select id="createAssignment" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+                <option value="">Selecione...</option>
+            </select>
+        </div>
+        <div class="section">
+            <label style="display:block;font-weight:600;margin-bottom:6px">Data do atendimento *</label>
+            <input type="date" id="createDate" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+        </div>
+        <div class="section">
+            <label style="display:block;font-weight:600;margin-bottom:6px">Observações</label>
+            <textarea id="createNotes" rows="3" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px;resize:vertical" placeholder="Observações (opcional)"></textarea>
+        </div>
+        <div class="actions">
+            <button class="btn" style="background:#e5e7eb;color:#374151" onclick="closeCreateModal()">Cancelar</button>
+            <button class="btn" style="background:#0d9488" id="createSubmitBtn" onclick="submitCreate()">Salvar atendimento</button>
         </div>
     </div>
 </div>

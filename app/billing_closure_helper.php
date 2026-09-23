@@ -68,18 +68,42 @@ function billing_closure_status_in_sql(): string
  *        (usado apenas para inspeção; o fechamento sempre usa false).
  * @return array<int,array<string,mixed>>
  */
-function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlreadyClosed = false): array
+function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlreadyClosed = false, array $filters = []): array
 {
     [$first, $last] = billing_closure_month_range($month);
     $statusIn = billing_closure_status_in_sql();
 
     $closureFilter = $includeAlreadyClosed ? '' : ' AND bdr.monthly_closure_id IS NULL';
 
+    $params = ['first' => $first, 'last' => $last];
+    $extraWhere = '';
+
+    // Filtros opcionais (Fechamento Mensal): paciente, operadora, profissional, operador.
+    if (!empty($filters['patient_q'])) {
+        $extraWhere .= ' AND p.full_name LIKE :patient_q';
+        $params['patient_q'] = '%' . $filters['patient_q'] . '%';
+    }
+    if (!empty($filters['insurer_id'])) {
+        $extraWhere .= ' AND pa.health_insurer_id = :insurer_id';
+        $params['insurer_id'] = (int)$filters['insurer_id'];
+    }
+    if (!empty($filters['professional_id'])) {
+        $extraWhere .= ' AND pa.professional_user_id = :professional_id';
+        $params['professional_id'] = (int)$filters['professional_id'];
+    }
+    if (!empty($filters['operator_id'])) {
+        $extraWhere .= ' AND bdr.created_by_user_id = :operator_id';
+        $params['operator_id'] = (int)$filters['operator_id'];
+    }
+
     $sql = "
         SELECT
             bdr.id AS requirement_id,
             bdr.session_date,
+            bdr.session_number,
             bdr.assignment_id,
+            bdr.is_manual,
+            bdr.created_by_user_id,
             pa.patient_id,
             pa.professional_user_id,
             pa.health_insurer_id,
@@ -88,22 +112,25 @@ function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlr
             COALESCE(pa.agreed_value, pa.payment_value, 0) AS payable_per_session,
             p.full_name AS patient_name,
             u.name AS professional_name,
+            op.name AS operator_name,
             hi.name AS insurer_name
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
+        LEFT JOIN users op ON op.id = bdr.created_by_user_id
         LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
         WHERE bdr.status IN ($statusIn)
           AND bdr.session_date IS NOT NULL
           AND bdr.session_date BETWEEN :first AND :last
           AND p.deleted_at IS NULL
           $closureFilter
+          $extraWhere
         ORDER BY p.full_name ASC, u.name ASC, pa.specialty ASC, bdr.session_date ASC
     ";
 
     $stmt = $db->prepare($sql);
-    $stmt->execute(['first' => $first, 'last' => $last]);
+    $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -175,6 +202,7 @@ function billing_closure_group_by_patient(array $sessions): array
                 'payable_per_session' => (float)$s['payable_per_session'],
                 'receivable' => 0.0,
                 'payable' => 0.0,
+                'sessions_detail' => [],
             ];
         }
 
@@ -184,6 +212,14 @@ function billing_closure_group_by_patient(array $sessions): array
         $byPatient[$pid]['lines'][$lineKey]['sessions']++;
         $byPatient[$pid]['lines'][$lineKey]['receivable'] += $recv;
         $byPatient[$pid]['lines'][$lineKey]['payable'] += $pay;
+        // Detalhe sessão-a-sessão (para o "ver detalhes")
+        $byPatient[$pid]['lines'][$lineKey]['sessions_detail'][] = [
+            'requirement_id' => (int)($s['requirement_id'] ?? 0),
+            'session_date' => (string)($s['session_date'] ?? ''),
+            'session_number' => (int)($s['session_number'] ?? 0),
+            'is_manual' => (int)($s['is_manual'] ?? 0),
+            'operator_name' => (string)($s['operator_name'] ?? ''),
+        ];
 
         $byPatient[$pid]['total_sessions']++;
         $byPatient[$pid]['total_receivable'] += $recv;
