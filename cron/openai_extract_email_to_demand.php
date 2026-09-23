@@ -1052,6 +1052,36 @@ foreach ($emails as $e) {
                 $demandId = (int)$db->lastInsertId();
                 $createdDemandIds[] = $demandId;
 
+                // PRÉ-CRIAÇÃO DE PACIENTE: se veio nome de paciente e ainda não
+                // existe paciente com esse nome, cria uma PENDÊNCIA de pré-cadastro
+                // (pending_items) para a equipe fazer o cadastro rápido depois.
+                if ($patientName !== '') {
+                    try {
+                        $chkPat = $db->prepare("SELECT id FROM patients WHERE deleted_at IS NULL AND LOWER(full_name) = LOWER(:n) LIMIT 1");
+                        $chkPat->execute(['n' => $patientName]);
+                        $patientExists = (bool)$chkPat->fetch();
+
+                        if (!$patientExists) {
+                            // Evitar pendência duplicada para a mesma demanda.
+                            $chkPend = $db->prepare("SELECT id FROM pending_items WHERE type = 'patient_pre_registration' AND related_table = 'demands' AND related_id = :rid AND status = 'open' LIMIT 1");
+                            $chkPend->execute(['rid' => $demandId]);
+                            if (!$chkPend->fetch()) {
+                                $insPend = $db->prepare("
+                                    INSERT INTO pending_items (type, status, title, detail, related_table, related_id)
+                                    VALUES ('patient_pre_registration', 'open', :title, :detail, 'demands', :rid)
+                                ");
+                                $insPend->execute([
+                                    'title' => 'Pré-cadastrar paciente: ' . $patientName,
+                                    'detail' => 'Card #' . $demandId . ' criado por captação. Paciente "' . $patientName . '" ainda não tem cadastro.',
+                                    'rid' => $demandId,
+                                ]);
+                            }
+                        }
+                    } catch (Throwable $ePend) {
+                        error_log('[EMAIL_EXTRACT] Falha ao criar pendência de pré-cadastro de paciente: ' . $ePend->getMessage());
+                    }
+                }
+
                 // Inserir sub-solicitações se houver múltiplas
                 if ($hasMultipleRequests) {
                     $insSubReq = $db->prepare(

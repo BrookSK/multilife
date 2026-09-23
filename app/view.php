@@ -70,6 +70,7 @@ function view_header(string $title): void
             ['title' => 'Sessoes', 'path' => '/admin_professional_sessions.php', 'perm' => 'appointments.manage'],
             ['title' => 'Candidaturas', 'path' => '/professional_applications_list.php', 'perm' => 'professional_applications.manage'],
             ['title' => 'Pacientes', 'path' => '/patients_list.php', 'perm' => 'patients.manage'],
+            ['title' => 'Pacientes Pendentes', 'path' => '/patient_pre_registrations_list.php', 'perm' => 'patients.manage'],
             ['title' => 'Profissionais', 'path' => '/users_list.php?role=profissional', 'perm' => 'users.manage'],
             ['title' => 'Cadastros Pendentes', 'path' => '/professional_pre_registrations_list.php', 'perm' => 'users.manage'],
             ['title' => 'Documentos', 'path' => '/documents_list.php', 'perm' => 'documents.manage'],
