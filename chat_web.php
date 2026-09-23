@@ -15,6 +15,7 @@ $specialties = $specialtiesStmt->fetchAll();
 $selectedChat = isset($_GET['chat']) ? trim((string)$_GET['chat']) : '';
 $chatType = isset($_GET['type']) ? trim((string)$_GET['type']) : 'all';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+$instanceFilter = isset($_GET['instance']) ? trim((string)$_GET['instance']) : '';
 $chatName = ''; // Inicializar para evitar erro no JavaScript
 
 // Buscar configurações da Evolution API
@@ -25,6 +26,27 @@ $apiKey = admin_setting_get('evolution.api_key');
 $currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $userInstance = whatsapp_get_user_instance($currentUserId);
 $instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
+
+// FILTRO POR WHATSAPP: lista de instâncias disponíveis para popular o dropdown
+$availableInstances = [];
+try {
+    $availableInstances = whatsapp_list_all_instances();
+} catch (Throwable $e) {
+    error_log('[CHAT] Erro ao listar instancias de WhatsApp: ' . $e->getMessage());
+    $availableInstances = [];
+}
+
+// Validar que a instância filtrada realmente existe (evita valor inválido).
+// Se não for válida, ignora o filtro e cai no comportamento padrão.
+if ($instanceFilter !== '') {
+    $instanceNames = array_map(static fn($i) => (string)($i['instance_name'] ?? ''), $availableInstances);
+    if (in_array($instanceFilter, $instanceNames, true)) {
+        // Ações (envio, gravação de contatos/mensagens) usam a instância escolhida.
+        $instanceName = $instanceFilter;
+    } else {
+        $instanceFilter = '';
+    }
+}
 
 $success = '';
 $error = '';
@@ -112,7 +134,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             error_log("[$debugId] SEND via EvolutionApiV1 jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
             
             try {
-                $api = new EvolutionApiV1();
+                // Se houver filtro de WhatsApp ativo, enviar pela instância selecionada;
+                // caso contrário, usar a instância padrão (comportamento anterior).
+                if ($instanceFilter !== '') {
+                    $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceFilter);
+                } else {
+                    $api = new EvolutionApiV1();
+                }
                 $sendOptions = $isGroupMsg ? [] : ['delay' => 1200];
                 $res = $api->sendText($remoteJid, $message, $sendOptions);
             } catch (Exception $apiEx) {
@@ -583,9 +611,13 @@ try {
         // SEMPRE excluir grupos das abas de chat (grupos têm aba própria)
         $whereClauses[] = "cc.is_group = 0";
         
-        // MULTI-INSTÂNCIA: Filtrar conversas pela instância do usuário logado
-        $whereClauses[] = "(cc.instance_name = ? OR cc.instance_name IS NULL)";
-        $params[] = $instanceName;
+        // MULTI-INSTÂNCIA: Filtrar conversas por instância
+        // - Se o usuário escolheu um WhatsApp específico no filtro, usa essa instância.
+        // - Caso contrário ("Todos WhatsApp"), mostra as conversas de todas as instâncias.
+        if ($instanceFilter !== '') {
+            $whereClauses[] = "cc.instance_name = ?";
+            $params[] = $instanceFilter;
+        }
         
         // SEMPRE excluir conversas arquivadas
         $whereClauses[] = "(cc.status != 'arquivado' OR cc.status IS NULL)";
@@ -1641,6 +1673,9 @@ echo '.whatsapp-sidebar{width:380px;background:#fff;border-right:1px solid #d1d7
 echo '.whatsapp-header{padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
 echo '.whatsapp-search{padding:8px 16px;background:#fff}';
 echo '.whatsapp-search input{width:100%;padding:8px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px}';
+echo '.whatsapp-instance-filter{padding:0 16px 8px;background:#fff}';
+echo '.whatsapp-instance-filter select{width:100%;padding:8px 12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;color:#111b21;background:#fff;cursor:pointer}';
+echo '.whatsapp-instance-filter select:focus{outline:none;border-color:#00a884;box-shadow:0 0 0 2px rgba(0,168,132,.1)}';
 echo '.whatsapp-tabs{display:flex;gap:0;padding:0;background:#fff;border-bottom:1px solid #d1d7db;overflow-x:auto;justify-content:space-evenly}';
 echo '.whatsapp-tab{padding:12px 16px;font-size:12px;font-weight:500;color:#54656f;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;justify-content:center}';
 echo '.whatsapp-tab:hover{background:#f5f6f6}';
@@ -1786,9 +1821,40 @@ if (!empty($selectedChat)) {
 if (!empty($chatType)) {
     echo '<input type="hidden" name="type" value="' . h($chatType) . '">';
 }
+// Preservar o filtro de WhatsApp ao pesquisar
+if ($instanceFilter !== '') {
+    echo '<input type="hidden" name="instance" value="' . h($instanceFilter) . '">';
+}
 echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
 echo '</form>';
 echo '</div>';
+
+// FILTRO POR WHATSAPP: dropdown para filtrar conversas por instância (número conectado)
+if (!empty($availableInstances)) {
+    // Preservar chat/type/q ao trocar de WhatsApp (montado em JS abaixo)
+    echo '<div class="whatsapp-instance-filter">';
+    echo '<select onchange="filterByInstance(this.value)" title="Filtrar por WhatsApp">';
+    echo '<option value=""' . ($instanceFilter === '' ? ' selected' : '') . '>Todos WhatsApp</option>';
+    foreach ($availableInstances as $inst) {
+        $instName = (string)($inst['instance_name'] ?? '');
+        if ($instName === '') {
+            continue;
+        }
+        // Rótulo amigável: nome do usuário/instância + status de conexão
+        $label = $instName;
+        if (!empty($inst['linked_user_names'])) {
+            $label = (string)$inst['linked_user_names'];
+        } elseif (!empty($inst['user_name'])) {
+            $label = (string)$inst['user_name'];
+        }
+        $connected = (string)($inst['connection_status'] ?? '') === 'connected';
+        $statusDot = $connected ? '🟢 ' : '⚪ ';
+        $selected = ($instanceFilter === $instName) ? ' selected' : '';
+        echo '<option value="' . h($instName) . '"' . $selected . '>' . $statusDot . h($label) . '</option>';
+    }
+    echo '</select>';
+    echo '</div>';
+}
 
 // Abas de navegação com ícones
 echo '<div class="whatsapp-tabs">';
@@ -1799,9 +1865,10 @@ $tabs = [
     'grupos' => ['label' => 'Grupos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'],
     'todos' => ['label' => 'Todos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>']
 ];
+$instanceQS = $instanceFilter !== '' ? '&instance=' . rawurlencode($instanceFilter) : '';
 foreach ($tabs as $tabKey => $tabData) {
     $activeClass = ($chatType === $tabKey) ? 'active' : '';
-    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . '\'" title="' . h($tabData['label']) . '">';
+    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . $instanceQS . '\'" title="' . h($tabData['label']) . '">';
     echo $tabData['icon'];
     echo '</div>';
 }
@@ -3519,6 +3586,18 @@ function reopenConversation() {
 // Função usada pelo <select> de status no painel lateral
 function updateStatus(status) {
     setConversationStatus(status);
+}
+
+// FILTRO POR WHATSAPP: recarrega a lista filtrando pela instância escolhida,
+// preservando a aba atual (type) e limpando o chat aberto/busca.
+function filterByInstance(instanceName) {
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("type") || "all";
+    let url = "/chat_web.php?type=" + encodeURIComponent(type);
+    if (instanceName) {
+        url += "&instance=" + encodeURIComponent(instanceName);
+    }
+    window.location.href = url;
 }
 
 // Inicializar respostas rápidas quando a página carregar
