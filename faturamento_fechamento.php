@@ -251,12 +251,34 @@ if (empty($byClient)) {
             echo '<div style="overflow:auto"><table>';
             echo '<thead><tr><th>Paciente</th><th>Profissional</th><th>Especialidade</th><th style="text-align:center">Atend.</th></tr></thead><tbody>';
             foreach ($o['lines'] as $line) {
+                $detRowId = 'det_' . $opId . '_' . (int)$line['patient_id'] . '_' . substr(md5((string)$line['professional_name'] . (string)$line['specialty']), 0, 6);
                 echo '<tr>';
                 echo '<td style="font-weight:600">' . h((string)$line['patient_name']) . '</td>';
                 echo '<td>' . h((string)$line['professional_name']) . '</td>';
                 echo '<td>' . h((string)$line['specialty']) . '</td>';
-                echo '<td style="text-align:center">' . (int)$line['sessions'] . '</td>';
+                echo '<td style="text-align:center;white-space:nowrap">' . (int)$line['sessions'];
+                echo ' <button type="button" onclick="toggleDetail(\'' . $detRowId . '\')" title="Ver os atendimentos" style="background:none;border:none;cursor:pointer;color:hsl(var(--primary));font-size:12px;text-decoration:underline">ver detalhes</button>';
+                echo '</td>';
                 echo '</tr>';
+                // Linha expansível com as datas das sessões que compõem a quantidade.
+                echo '<tr id="' . $detRowId . '" style="display:none;background:hsla(var(--muted)/.15)">';
+                echo '<td colspan="4" style="padding:10px 16px">';
+                echo '<div style="font-size:12px;font-weight:700;color:hsl(var(--muted-foreground));margin-bottom:6px">Atendimentos que compõem a quantidade (' . (int)$line['sessions'] . ')</div>';
+                echo '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+                $details = $line['sessions_detail'] ?? [];
+                usort($details, static fn($a, $b) => strcmp((string)($a['session_date'] ?? ''), (string)($b['session_date'] ?? '')));
+                foreach ($details as $d) {
+                    $dt = $d['session_date'] !== '' ? date('d/m/Y', strtotime((string)$d['session_date'])) : 's/ data';
+                    $manualTag = !empty($d['is_manual']) ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">manual</span>' : '';
+                    $opTag = !empty($d['operator_name']) ? ' · ' . h((string)$d['operator_name']) : '';
+                    echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:6px 10px;font-size:12px;background:#fff">';
+                    echo '📅 ' . h($dt) . ' <span style="color:hsl(var(--muted-foreground))">(Sessão ' . (int)$d['session_number'] . ')</span>' . $manualTag . $opTag;
+                    echo '</div>';
+                }
+                if (empty($details)) {
+                    echo '<div style="color:hsl(var(--muted-foreground));font-size:12px">Sem detalhes disponíveis.</div>';
+                }
+                echo '</div></td></tr>';
             }
             echo '</tbody></table></div>';
             echo '</div>'; // fim operadora
@@ -267,4 +289,8 @@ if (empty($byClient)) {
 }
 
 echo '</div>';
+
+// JS para expandir/recolher os detalhes das sessões.
+echo '<script>function toggleDetail(id){var r=document.getElementById(id);if(r){r.style.display=(r.style.display==="none"||!r.style.display)?"table-row":"none";}}</script>';
+
 view_footer();

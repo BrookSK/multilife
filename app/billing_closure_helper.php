@@ -346,11 +346,20 @@ function billing_closure_group_by_client(array $sessions): array
                 'sessions' => 0,
                 'receivable' => 0.0,
                 'payable' => 0.0,
+                'sessions_detail' => [],
             ];
         }
         $op['lines'][$lineKey]['sessions']++;
         $op['lines'][$lineKey]['receivable'] += $recv;
         $op['lines'][$lineKey]['payable'] += $pay;
+        // Detalhe sessão-a-sessão para o "ver detalhes".
+        $op['lines'][$lineKey]['sessions_detail'][] = [
+            'requirement_id' => (int)($s['requirement_id'] ?? 0),
+            'session_date' => (string)($s['session_date'] ?? ''),
+            'session_number' => (int)($s['session_number'] ?? 0),
+            'is_manual' => (int)($s['is_manual'] ?? 0),
+            'operator_name' => (string)($s['operator_name'] ?? ''),
+        ];
         $op['total_sessions']++;
         $op['total_receivable'] += $recv;
         $op['total_payable'] += $pay;
