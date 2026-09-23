@@ -143,12 +143,14 @@ if (empty($byPatient)) {
     echo '<thead><tr>';
     echo '<th>Paciente</th><th>Operadora</th><th>Profissional</th><th>Especialidade</th>';
     echo '<th style="text-align:center">Atend.</th><th style="text-align:right">Valor/sessão (receber)</th>';
-    echo '<th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th>';
+    echo '<th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th><th style="text-align:center">Detalhes</th>';
     echo '</tr></thead><tbody>';
 
+    $detailModals = []; // acumula o HTML dos pop-ups para renderizar após a tabela
     foreach ($byPatient as $p) {
         $insurerLabel = implode(', ', array_values($p['insurers']));
         $lineCount = count($p['lines']);
+        $pid = (int)$p['patient_id'];
         $first = true;
         foreach ($p['lines'] as $line) {
             echo '<tr>';
@@ -162,6 +164,10 @@ if (empty($byPatient)) {
             echo '<td style="text-align:right">' . h($brl((float)$line['receivable_per_session'])) . '</td>';
             echo '<td style="text-align:right;color:#059669;font-weight:600">' . h($brl((float)$line['receivable'])) . '</td>';
             echo '<td style="text-align:right;color:#b45309;font-weight:600">' . h($brl((float)$line['payable'])) . '</td>';
+            if ($first) {
+                echo '<td style="text-align:center;vertical-align:top" rowspan="' . $lineCount . '">'
+                    . '<button type="button" class="btn" style="font-size:12px;padding:4px 10px" onclick="showFechDetail(' . $pid . ')">Ver detalhes</button></td>';
+            }
             echo '</tr>';
             $first = false;
         }
@@ -172,9 +178,54 @@ if (empty($byPatient)) {
         echo '<td></td>';
         echo '<td style="text-align:right;font-weight:800;color:#059669">' . h($brl((float)$p['total_receivable'])) . '</td>';
         echo '<td style="text-align:right;font-weight:800;color:#b45309">' . h($brl((float)$p['total_payable'])) . '</td>';
+        echo '<td></td>';
         echo '</tr>';
+
+        // Monta o pop-up de detalhes deste paciente (sessão a sessão).
+        ob_start();
+        echo '<div id="fechDetail_' . $pid . '" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center;padding:20px">';
+        echo '<div style="background:hsl(var(--card));border-radius:12px;padding:24px;max-width:720px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+        echo '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        echo '<div style="font-size:18px;font-weight:900">Detalhes — ' . h($p['patient_name']) . '</div>';
+        echo '<button type="button" onclick="hideFechDetail(' . $pid . ')" style="background:none;border:none;font-size:24px;cursor:pointer;color:hsl(var(--muted-foreground))">×</button>';
+        echo '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:14px">Operadora: ' . h($insurerLabel) . ' · ' . (int)$p['total_sessions'] . ' atendimento(s) na competência ' . h($monthLabel) . '.</div>';
+        echo '<div style="overflow:auto"><table>';
+        echo '<thead><tr><th>#</th><th>Data</th><th>Profissional</th><th>Especialidade</th><th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th></tr></thead><tbody>';
+        $n = 0;
+        foreach ($p['session_items'] as $si) {
+            $n++;
+            $dt = $si['session_date'] !== '' ? date('d/m/Y', strtotime((string)$si['session_date'])) : '-';
+            echo '<tr>';
+            echo '<td>' . $n . '</td>';
+            echo '<td>' . h($dt) . '</td>';
+            echo '<td>' . h((string)$si['professional_name']) . '</td>';
+            echo '<td>' . h((string)$si['specialty']) . '</td>';
+            echo '<td style="text-align:right;color:#059669">' . h($brl((float)$si['receivable'])) . '</td>';
+            echo '<td style="text-align:right;color:#b45309">' . h($brl((float)$si['payable'])) . '</td>';
+            echo '</tr>';
+        }
+        echo '<tr style="background:hsla(var(--muted)/.25);font-weight:800">';
+        echo '<td colspan="4" style="text-align:right">Total</td>';
+        echo '<td style="text-align:right;color:#059669">' . h($brl((float)$p['total_receivable'])) . '</td>';
+        echo '<td style="text-align:right;color:#b45309">' . h($brl((float)$p['total_payable'])) . '</td>';
+        echo '</tr>';
+        echo '</tbody></table></div>';
+        echo '<div style="margin-top:16px;text-align:right"><button type="button" class="btn" onclick="hideFechDetail(' . $pid . ')">Fechar</button></div>';
+        echo '</div>';
+        echo '</div>';
+        $detailModals[] = ob_get_clean();
     }
     echo '</tbody></table></div>';
+
+    // Renderiza os pop-ups de detalhe fora da tabela.
+    foreach ($detailModals as $modalHtml) {
+        echo $modalHtml;
+    }
+    echo '<script>';
+    echo 'function showFechDetail(id){var el=document.getElementById("fechDetail_"+id);if(el)el.style.display="flex";}';
+    echo 'function hideFechDetail(id){var el=document.getElementById("fechDetail_"+id);if(el)el.style.display="none";}';
+    echo '</script>';
 
     // Botão Fechar Mês (só quando ainda não fechado e há o que faturar)
     if (!$isClosed) {
