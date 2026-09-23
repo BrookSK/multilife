@@ -177,17 +177,25 @@ if (count($rows) === 0) {
         echo '<td style="max-width:280px">' . ($r['end_notes'] ? h((string)$r['end_notes']) : '<span style="color:hsl(var(--muted-foreground))">-</span>') . '</td>';
         if ($canResume) {
             $assignmentId = (int)($r['assignment_id'] ?? 0);
-            if (!empty($r['resumed_at'])) {
-                // Já retomado: mostra para onde foi.
-                $resumedFmt = date('d/m/Y', strtotime((string)$r['resumed_at']));
+            $endedAtStr = (string)($r['ended_at'] ?? '');
+            $resumedAtStr = (string)($r['resumed_at'] ?? '');
+            // "Já retomado" vale só para o ENCERRAMENTO ATUAL: a retomada tem que ser
+            // POSTERIOR ao ended_at atual. Se o atendimento foi retomado e depois
+            // finalizado de novo, ended_at > resumed_at → volta a ser retomável.
+            $alreadyResumedForThisClosure = $resumedAtStr !== '' && $endedAtStr !== ''
+                && strtotime($resumedAtStr) >= strtotime($endedAtStr);
+
+            if (!resume_is_allowed((string)($r['end_reason_slug'] ?? ''))) {
+                // Motivo definitivo (óbito): nunca retomável — prioridade máxima.
+                echo '<td><span style="font-size:12px;color:hsl(var(--muted-foreground))">Encerramento definitivo — não retomável</span></td>';
+            } elseif ($alreadyResumedForThisClosure) {
+                // Já retomado neste encerramento: mostra para onde foi.
+                $resumedFmt = date('d/m/Y', strtotime($resumedAtStr));
                 if (!empty($r['resumed_to_demand_id'])) {
                     echo '<td><span class="badge">Retomado (Captação) em ' . h($resumedFmt) . '</span></td>';
                 } else {
                     echo '<td><span class="badge">Retomado em ' . h($resumedFmt) . '</span></td>';
                 }
-            } elseif (!resume_is_allowed((string)($r['end_reason_slug'] ?? ''))) {
-                // Motivo definitivo (óbito): não pode retomar.
-                echo '<td><span style="font-size:12px;color:hsl(var(--muted-foreground))">Encerramento definitivo — não retomável</span></td>';
             } else {
                 // Decide o destino previsto para orientar o operador antes de clicar.
                 $decision = resume_decide_destination((string)($r['end_reason_slug'] ?? ''), (string)($r['ended_at'] ?? ''));

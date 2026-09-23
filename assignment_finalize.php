@@ -49,6 +49,9 @@ try {
         "ALTER TABLE patient_assignments ADD COLUMN end_reason_id INT UNSIGNED NULL",
         "ALTER TABLE patient_assignments ADD COLUMN end_notes TEXT NULL",
         "ALTER TABLE patient_assignments ADD COLUMN ended_by_user_id INT UNSIGNED NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN resumed_at DATETIME NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN resumed_by_user_id INT UNSIGNED NULL",
+        "ALTER TABLE patient_assignments ADD COLUMN resumed_to_demand_id INT UNSIGNED NULL",
     ] as $alter) {
         try { $db->exec($alter); } catch (Throwable $e) { /* já existe */ }
     }
@@ -60,7 +63,10 @@ try {
             end_reason_id = :reason_id,
             end_notes = :notes,
             ended_by_user_id = :uid,
-            completed_at = COALESCE(completed_at, :ended_at2)
+            completed_at = COALESCE(completed_at, :ended_at2),
+            resumed_at = NULL,
+            resumed_by_user_id = NULL,
+            resumed_to_demand_id = NULL
         WHERE id = :id
     ");
     $stmt->execute([
