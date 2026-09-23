@@ -77,6 +77,12 @@ if ($autoSendAuthView !== '1' && (string)$auth['status'] === 'aguardando_autoriz
     echo '<input type="number" name="authorized_value" required min="0.01" step="0.01" placeholder="Valor autorizado (total) R$ *" title="Valor total autorizado pela operadora / cliente" style="height:40px;min-width:220px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
     echo '<button type="submit" class="btn btnPrimary">✅ Marcar como aprovada</button>';
     echo '</form>';
+    // Recusar: a operadora/cliente NÃO autorizou. Move o card para "Negativas".
+    echo '<form method="post" action="/authorization_mark_denied_post.php" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap" onsubmit="return confirm(\'Confirmar que a autorização foi RECUSADA? O card irá para Negativas.\')">';
+    echo '<input type="hidden" name="auth_id" value="' . $authId . '">';
+    echo '<input type="text" name="denial_reason" placeholder="Motivo da recusa (opcional)" title="Motivo informado pela operadora / cliente" style="height:40px;min-width:220px;padding:8px 12px;border:1px solid hsl(var(--border));border-radius:8px">';
+    echo '<button type="submit" class="btn" style="background:hsl(var(--destructive));color:#fff">❌ Marcar como recusada</button>';
+    echo '</form>';
 }
 echo '</div>';
 echo '</div>';
