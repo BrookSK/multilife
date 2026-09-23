@@ -219,6 +219,7 @@ function h(string $value): string {
 
         .input {
             position: relative;
+            display: block;
         }
 
         input[type="email"],
