@@ -325,8 +325,8 @@ try {
     $dispatcher->dispatch('professional_substituted', $eventData);
 
     // Notificar o profissional ANTERIOR (evento separado, template próprio).
-    // Usa o canal "professional" do dispatcher com os dados do profissional antigo.
-    if ($notifyOldProf && $oldProfId > 0 && !empty($assignment['old_professional_phone'])) {
+    // Dispara mesmo sem telefone: o dispatcher envia por e-mail (busca users.email pelo id).
+    if ($notifyOldProf && $oldProfId > 0) {
         $eventDataOld = $eventData;
         $eventDataOld['professional_id'] = $oldProfId;
         $eventDataOld['professional_name'] = (string)($assignment['old_professional_name'] ?? '');

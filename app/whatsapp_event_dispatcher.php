@@ -111,6 +111,24 @@ class WhatsAppEventDispatcher
                     
                     // Enviar arquivos anexos
                     $this->sendEventFiles($event['id'], 'professional', $data['professional_phone']);
+
+                    // ESPELHAR no E-MAIL do profissional (mesmo texto do WhatsApp).
+                    $this->sendEmailNotification(
+                        'professional',
+                        (string)($event['name'] ?? 'Notificação'),
+                        $message,
+                        $data,
+                        (int)($data['professional_id'] ?? 0)
+                    );
+                }
+            }
+            // Mesmo se não tem telefone, tentar o e-mail do profissional (canal independente).
+            elseif ($event['send_to_professional'] && empty($data['professional_phone'])) {
+                $professionalId = (int)($data['professional_id'] ?? 0);
+                $guardResult = $professionalId > 0 ? notification_guard_check_professional($professionalId) : ['allowed' => true, 'reason' => null];
+                if ($guardResult['allowed']) {
+                    $message = $this->processTemplate($event['template_professional'], $data);
+                    $this->sendEmailNotification('professional', (string)($event['name'] ?? 'Notificação'), $message, $data, $professionalId);
                 }
             }
             
@@ -140,6 +158,24 @@ class WhatsAppEventDispatcher
                     
                     // Enviar arquivos anexos
                     $this->sendEventFiles($event['id'], 'patient', $data['patient_phone']);
+
+                    // ESPELHAR no E-MAIL do paciente (mesmo texto do WhatsApp).
+                    $this->sendEmailNotification(
+                        'patient',
+                        (string)($event['name'] ?? 'Notificação'),
+                        $message,
+                        $data,
+                        (int)($data['patient_id'] ?? 0)
+                    );
+                }
+            }
+            // Mesmo sem telefone do paciente, tentar o e-mail (canal independente).
+            elseif ($event['send_to_patient'] && empty($data['patient_phone'])) {
+                $patientId = (int)($data['patient_id'] ?? 0);
+                $guardResult = $patientId > 0 ? notification_guard_check_patient($patientId) : ['allowed' => true, 'reason' => null];
+                if ($guardResult['allowed']) {
+                    $message = $this->processTemplate($event['template_patient'], $data);
+                    $this->sendEmailNotification('patient', (string)($event['name'] ?? 'Notificação'), $message, $data, $patientId);
                 }
             }
             
@@ -215,6 +251,85 @@ class WhatsAppEventDispatcher
         $message = preg_replace('/\{\{[^}]+\}\}/', '', $message);
         
         return trim($message);
+    }
+
+    /**
+     * Espelha a notificação no E-MAIL do destinatário (mesmo texto enviado no WhatsApp).
+     *
+     * Resolve o e-mail: usa o passado no $data (professional_email/patient_email) ou,
+     * na ausência, busca pelo id em users/patients. Envia via SmtpClient com o layout
+     * padrão. É best-effort: qualquer falha é logada e não interrompe o fluxo.
+     *
+     * @param string $recipientType 'professional' | 'patient'
+     * @param string $eventTitle Nome do evento (assunto do e-mail)
+     * @param string $messageText Texto já processado (o mesmo do WhatsApp)
+     * @param array $data Dados do dispatch
+     * @param int $recipientId ID do profissional (users) ou paciente (patients)
+     */
+    private function sendEmailNotification(string $recipientType, string $eventTitle, string $messageText, array $data, int $recipientId): void
+    {
+        try {
+            // 1) Resolver o e-mail do destinatário.
+            $toEmail = '';
+            $toName = '';
+            if ($recipientType === 'professional') {
+                $toEmail = trim((string)($data['professional_email'] ?? ''));
+                $toName = trim((string)($data['professional_name'] ?? ''));
+                if ($toEmail === '' && $recipientId > 0) {
+                    $st = db()->prepare('SELECT name, email FROM users WHERE id = :id LIMIT 1');
+                    $st->execute(['id' => $recipientId]);
+                    if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+                        $toEmail = trim((string)($row['email'] ?? ''));
+                        if ($toName === '') { $toName = trim((string)($row['name'] ?? '')); }
+                    }
+                }
+            } else {
+                $toEmail = trim((string)($data['patient_email'] ?? ''));
+                $toName = trim((string)($data['patient_name'] ?? ''));
+                if ($toEmail === '' && $recipientId > 0) {
+                    $st = db()->prepare('SELECT full_name, email FROM patients WHERE id = :id LIMIT 1');
+                    $st->execute(['id' => $recipientId]);
+                    if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+                        $toEmail = trim((string)($row['email'] ?? ''));
+                        if ($toName === '') { $toName = trim((string)($row['full_name'] ?? '')); }
+                    }
+                }
+            }
+
+            // Sem e-mail válido: nada a fazer (não é erro — o destinatário pode não ter e-mail).
+            if ($toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+                return;
+            }
+            // Ignorar e-mails placeholder de pré-cadastro (não são caixas reais).
+            if (str_ends_with(mb_strtolower($toEmail), '@precadastro.local')) {
+                return;
+            }
+
+            // 2) Remetente configurado.
+            $fromEmail = trim((string)admin_setting_get('smtp.out.from_email', ''));
+            $fromName = trim((string)admin_setting_get('smtp.out.from_name', 'MultiLife Care'));
+            if ($fromEmail === '' || !filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+                error_log('[WHATSAPP_DISPATCHER] E-mail não enviado: remetente SMTP não configurado.');
+                return;
+            }
+
+            // 3) Montar corpo HTML a partir do MESMO texto do WhatsApp.
+            //    Converte quebras de linha e negrito *texto* do WhatsApp para HTML.
+            require_once __DIR__ . '/email_base_template.php';
+            $safe = htmlspecialchars($messageText, ENT_QUOTES, 'UTF-8');
+            // *negrito* do WhatsApp -> <strong>
+            $safe = preg_replace('/\*([^*\n]+)\*/', '<strong>$1</strong>', $safe);
+            $safe = nl2br($safe);
+            $body = '<div style="font-size:15px;color:#374151;line-height:1.7">' . $safe . '</div>';
+            $html = function_exists('email_base_layout') ? email_base_layout($eventTitle, $body) : $body;
+
+            // 4) Enviar.
+            $smtp = new SmtpClient();
+            $smtp->send($fromEmail, $fromName, $toEmail, $eventTitle . ' - MultiLife Care', $html);
+            error_log('[WHATSAPP_DISPATCHER] E-mail espelhado enviado para ' . $recipientType . ': ' . $toEmail);
+        } catch (Throwable $e) {
+            error_log('[WHATSAPP_DISPATCHER] Falha ao espelhar e-mail (' . $recipientType . '): ' . $e->getMessage());
+        }
     }
     
     /**
