@@ -16,6 +16,7 @@ $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $specialty = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $city = isset($_GET['city']) ? trim((string)$_GET['city']) : '';
 $assumedBy = isset($_GET['assumed_by']) ? trim((string)$_GET['assumed_by']) : '';
+$clientId = isset($_GET['client_id']) ? (int)$_GET['client_id'] : 0;
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
@@ -64,6 +65,23 @@ if ($city !== '') {
     $params['city'] = '%' . $city . '%';
 }
 
+// Filtro por CLIENTE (contratante). Cobre: cliente salvo no card, cliente da
+// operadora do card, ou cliente resolvido pelo domínio do e-mail de origem.
+if ($clientId > 0) {
+    $where[] = '(
+        d.client_id = :cli_id
+        OR EXISTS (SELECT 1 FROM health_insurers hix WHERE hix.id = d.health_insurer_id AND hix.client_id = :cli_id2)
+        OR EXISTS (SELECT 1 FROM clients clx WHERE clx.id = :cli_id3 AND clx.email_domain IS NOT NULL AND clx.email_domain != ""
+                   AND LOWER(SUBSTRING_INDEX(d.origin_email, "@", -1)) = LOWER(clx.email_domain))
+        OR EXISTS (SELECT 1 FROM health_insurers hiy WHERE hiy.client_id = :cli_id4 AND hiy.email_domain IS NOT NULL AND hiy.email_domain != ""
+                   AND LOWER(SUBSTRING_INDEX(d.origin_email, "@", -1)) = LOWER(hiy.email_domain))
+    )';
+    $params['cli_id'] = $clientId;
+    $params['cli_id2'] = $clientId;
+    $params['cli_id3'] = $clientId;
+    $params['cli_id4'] = $clientId;
+}
+
 if ($assumedBy !== '' && ctype_digit($assumedBy)) {
     $where[] = 'd.assumed_by_user_id = :assumed_by';
     $params['assumed_by'] = (int)$assumedBy;
@@ -106,13 +124,29 @@ if (!$hasFullAccess && $isProfessional) {
 
 // Query única (uma consulta) — o agrupamento por status é feito em PHP mais abaixo.
 // O scroll interno de cada coluna (CSS) cuida de exibir muitos cards sem travar a tela.
+// Cliente/operadora do card: prioriza o vínculo salvo (d.client_id); se vazio
+// (cards antigos), resolve pelo DOMÍNIO do e-mail de origem — via operadora
+// (health_insurers.email_domain) ou direto pelo cliente (clients.email_domain),
+// exatamente como o resto do sistema faz.
 $sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state,
         CASE WHEN pa.status = "completed" THEN "concluido" ELSE d.status END AS status,
         d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
-        pa.completed_at
+        pa.completed_at,
+        d.origin_email,
+        COALESCE(cli.name, cli_hi.name, cli_dom.name) AS client_name,
+        COALESCE(hi.name, hi_dom.name) AS insurer_name
         FROM demands d
         LEFT JOIN users u ON u.id = d.assumed_by_user_id
-        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id';
+        LEFT JOIN patient_assignments pa ON pa.demand_id = d.id
+        LEFT JOIN clients cli ON cli.id = d.client_id
+        LEFT JOIN health_insurers hi ON hi.id = d.health_insurer_id
+        LEFT JOIN clients cli_hi ON cli_hi.id = hi.client_id
+        LEFT JOIN health_insurers hi_dom ON (d.client_id IS NULL AND d.health_insurer_id IS NULL
+             AND hi_dom.email_domain IS NOT NULL AND hi_dom.email_domain != ""
+             AND LOWER(SUBSTRING_INDEX(d.origin_email, "@", -1)) = LOWER(hi_dom.email_domain))
+        LEFT JOIN clients cli_dom ON (
+             cli_dom.email_domain IS NOT NULL AND cli_dom.email_domain != ""
+             AND LOWER(SUBSTRING_INDEX(d.origin_email, "@", -1)) = LOWER(cli_dom.email_domain))';
 
 if (count($where) > 0) {
     $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -219,6 +253,19 @@ foreach ($cities as $c) {
     echo '<option value="' . h($val) . '"' . $sel . '>' . h($val) . '</option>';
 }
 echo '</select>';
+
+// Filtro por cliente (contratante)
+$clientsForFilter = [];
+try { $clientsForFilter = clients_list(false); } catch (Throwable $e) { $clientsForFilter = []; }
+if (!empty($clientsForFilter)) {
+    echo '<select name="client_id">';
+    echo '<option value="0">Todos os clientes</option>';
+    foreach ($clientsForFilter as $cl) {
+        $sel = ($clientId === (int)$cl['id']) ? ' selected' : '';
+        echo '<option value="' . (int)$cl['id'] . '"' . $sel . '>' . h((string)$cl['name']) . '</option>';
+    }
+    echo '</select>';
+}
 
 $captadores = db()->query("SELECT DISTINCT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.slug = 'captador' AND u.status = 'active' ORDER BY u.name ASC")->fetchAll();
 echo '<select name="assumed_by">';
@@ -337,6 +384,17 @@ foreach ($columns as $col) {
             }
             
             echo '<div class="kanbanMeta">' . h($locTxt) . ' • ' . h((string)($r['specialty'] ?? '-')) . '</div>';
+
+            // Cliente / Operadora (detectado pelo e-mail de origem quando não salvo).
+            $clientName = trim((string)($r['client_name'] ?? ''));
+            $insurerName = trim((string)($r['insurer_name'] ?? ''));
+            if ($clientName !== '' || $insurerName !== '') {
+                $cliLabel = $clientName !== '' ? $clientName : $insurerName;
+                if ($insurerName !== '' && $insurerName !== $clientName) {
+                    $cliLabel .= ' · ' . $insurerName;
+                }
+                echo '<div style="margin-top:6px"><span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;background:hsla(var(--primary)/.12);color:hsl(var(--primary))">🏢 ' . h($cliLabel) . '</span></div>';
+            }
             
             // Valor do procedimento (se disponível)
             $procedureValue = $r['procedure_value'] !== null ? (float)$r['procedure_value'] : null;
