@@ -160,9 +160,15 @@ view_header('Monitoramento de Atendimentos');
 body{margin:0;padding:0;overflow:hidden}
 .grid{display:none !important}
 .container{position:fixed;top:70px;left:270px;right:20px;bottom:20px;display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
-.header{padding:16px 20px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-radius:8px 8px 0 0}
-.title{font-size:20px;font-weight:800;margin:0}
+.header{padding:10px 20px;background:#fff;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-radius:8px 8px 0 0}
+.title{font-size:18px;font-weight:800;margin:0}
 .legend{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.filterBar{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+.filterBar input,.filterBar select{padding:6px 8px;border:1px solid #d1d7db;border-radius:6px;font-size:12px;height:32px;flex:0 0 auto;background:#fff}
+.filterBar input#filterText{width:150px}
+.filterBar select{max-width:150px}
+.filterClear{padding:6px 10px;border:none;border-radius:6px;font-size:12px;background:#e5e7eb;color:#374151;cursor:pointer;height:32px;flex:0 0 auto;white-space:nowrap}
+.filterClear:hover{background:#d1d5db}
 .legendItem{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
 .legendColor{width:14px;height:14px;border-radius:3px}
 .calendar{flex:1;background:#fff;padding:16px;overflow:auto;min-height:0}
@@ -201,40 +207,39 @@ body{margin:0;padding:0;overflow:hidden}
 <div class="container">
     <div class="header">
         <div style="flex:1">
-            <h1 class="title" style="margin:0">Monitoramento de Atendimentos</h1>
-            <div style="margin-top:6px;color:#6b7280;font-size:14px;line-height:1.6">Visualize e acompanhe todos os atendimentos em calendário</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-                <a href="/atendimentos_finalizados.php" class="btn" style="font-size:13px;padding:8px 14px">📁 Ver atendimentos finalizados</a>
-                <button type="button" class="btn" style="font-size:13px;padding:8px 14px;background:#0d9488" onclick="openCreateModal()">➕ Novo atendimento</button>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <h1 class="title" style="margin:0">Monitoramento de Atendimentos</h1>
+                <a href="/atendimentos_finalizados.php" class="btn" style="font-size:12px;padding:6px 12px">📁 Finalizados</a>
+                <button type="button" class="btn" style="font-size:12px;padding:6px 12px;background:#0d9488" onclick="openCreateModal()">➕ Novo atendimento</button>
             </div>
-            <!-- Filtros -->
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">
-                <input type="text" id="filterText" placeholder="Buscar (paciente/profissional)" oninput="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
-                <select id="filterPatient" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
-                    <option value="">Todos pacientes</option>
+            <!-- Filtros (compactos, em uma única faixa horizontal) -->
+            <div class="filterBar">
+                <input type="text" id="filterText" placeholder="🔍 Buscar..." oninput="applyFilters()">
+                <select id="filterPatient" onchange="applyFilters()">
+                    <option value="">Pacientes</option>
                     <?php foreach ($filterPatients as $pid => $pname): ?>
                     <option value="<?php echo (int)$pid; ?>"><?php echo h($pname); ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select id="filterProfessional" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
-                    <option value="">Todos profissionais</option>
+                <select id="filterProfessional" onchange="applyFilters()">
+                    <option value="">Profissionais</option>
                     <?php foreach ($filterProfessionals as $prid => $prname): ?>
                     <option value="<?php echo (int)$prid; ?>"><?php echo h($prname); ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select id="filterInsurer" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
-                    <option value="">Todas operadoras</option>
+                <select id="filterInsurer" onchange="applyFilters()">
+                    <option value="">Operadoras</option>
                     <?php foreach ($filterInsurers as $iname): ?>
                     <option value="<?php echo h($iname); ?>"><?php echo h($iname); ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select id="filterSpecialty" onchange="applyFilters()" style="padding:7px 10px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
-                    <option value="">Todas especialidades</option>
+                <select id="filterSpecialty" onchange="applyFilters()">
+                    <option value="">Especialidades</option>
                     <?php foreach ($filterSpecialties as $sname): ?>
                     <option value="<?php echo h($sname); ?>"><?php echo h($sname); ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="button" class="btn" style="font-size:12px;padding:7px 12px;background:#e5e7eb;color:#374151" onclick="clearFilters()">Limpar</button>
+                <button type="button" class="filterClear" onclick="clearFilters()">Limpar</button>
             </div>
         </div>
         <div class="legend">
