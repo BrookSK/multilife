@@ -140,7 +140,6 @@ function zoho_billing_flatten_payload($payload): array
 function zoho_billing_extract_fields($payload): array
 {
     $flat = zoho_billing_flatten_payload($payload);
-    $aliases = zoho_billing_field_aliases();
 
     $result = [
         'professional_name' => '',
@@ -150,7 +149,35 @@ function zoho_billing_extract_fields($payload): array
         'phone' => '',
     ];
 
+    // 1) Mapeamento por posição no formato padrão do Zoho Forms (Field_N).
+    //    O flatten normaliza "Field_1" -> "field1".
+    //    Layout do formulário de faturamento:
+    //      Field_1 = Nome do profissional (primeiro nome)
+    //      Field_2 = Sobrenome do profissional
+    //      Field_3 = Telefone (com DDD)
+    //      Field_4 = Nome do paciente (primeiro nome)
+    //      Field_5 = Sobrenome do paciente
+    //      Field_6 = Especialidade (múltipla escolha)
+    //      Field_7 = Nº de atendimentos (Number)
+    //      Field_8..Field_16 = uploads de imagem (ignorados)
+    $hasZohoFields = isset($flat['field1']) || isset($flat['field3']) || isset($flat['field7']);
+    if ($hasZohoFields) {
+        $get = static fn(string $k): string => isset($flat[$k]) ? trim($flat[$k]) : '';
+
+        $result['professional_name'] = zoho_billing_join_name($get('field1'), $get('field2'));
+        $result['phone'] = $get('field3');
+        $result['patient_name'] = zoho_billing_join_name($get('field4'), $get('field5'));
+        $result['specialty'] = $get('field6');
+        $result['sessions_count'] = $get('field7');
+    }
+
+    // 2) Fallback por aliases (rótulos amigáveis), preenchendo apenas o que
+    //    ainda estiver vazio. Cobre configurações alternativas do webhook.
+    $aliases = zoho_billing_field_aliases();
     foreach ($aliases as $field => $names) {
+        if (($result[$field] ?? '') !== '') {
+            continue;
+        }
         foreach ($names as $name) {
             $nk = zoho_billing_normalize_key($name);
             if (isset($flat[$nk]) && trim($flat[$nk]) !== '') {
@@ -161,6 +188,16 @@ function zoho_billing_extract_fields($payload): array
     }
 
     return $result;
+}
+
+/**
+ * Junta primeiro nome e sobrenome, ignorando partes vazias e colapsando
+ * espaços duplicados.
+ */
+function zoho_billing_join_name(string $first, string $last): string
+{
+    $full = trim($first . ' ' . $last);
+    return (string)preg_replace('/\s+/', ' ', $full);
 }
 
 /**
@@ -185,17 +222,20 @@ function zoho_billing_build_message(array $fields, ?string $template = null): st
 
 /**
  * Payload de exemplo usado no botão "Testar webhook".
+ * Usa o mesmo formato Field_N do Zoho Forms para exercitar o parsing real.
  *
  * @return array<string,string>
  */
 function zoho_billing_sample_payload(): array
 {
     return [
-        'professional_name' => 'Ananda Carolline Brandão Luz',
-        'patient_name' => 'Jorge Machado Mendes',
-        'specialty' => 'Fonoaudiologia',
-        'sessions_count' => '9',
-        'phone' => '(17) 99999-9999',
+        'Field_1' => 'Ananda Carolline',   // profissional - primeiro nome
+        'Field_2' => 'Brandão Luz',        // profissional - sobrenome
+        'Field_3' => '(17) 99999-9999',    // telefone com DDD
+        'Field_4' => 'Jorge',              // paciente - primeiro nome
+        'Field_5' => 'Machado Mendes',     // paciente - sobrenome
+        'Field_6' => 'Fonoaudiologia',     // especialidade
+        'Field_7' => '9',                  // nº de atendimentos
     ];
 }
 
