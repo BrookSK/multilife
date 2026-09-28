@@ -15,12 +15,14 @@ $sendIntervalMs = (int)($_POST['send_interval_ms'] ?? 1200);
 if ($sendIntervalMs < 0) {
     $sendIntervalMs = 0;
 }
+$preferredInstance = trim((string)($_POST['preferred_instance'] ?? 'financeiro'));
 
 $settings = [
     'zoho_billing.webhook_token' => $webhookToken,
     'zoho_billing.test_mode' => $testMode,
     'zoho_billing.test_phone' => $testPhone,
     'zoho_billing.send_interval_ms' => (string)$sendIntervalMs,
+    'zoho_billing.preferred_instance' => $preferredInstance,
     'zoho_billing.template' => $template,
 ];
 

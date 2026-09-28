@@ -11,6 +11,7 @@ $webhookToken = (string)admin_setting_get('zoho_billing.webhook_token', '');
 $testMode = admin_setting_get('zoho_billing.test_mode', '0') === '1';
 $testPhone = (string)admin_setting_get('zoho_billing.test_phone', '');
 $sendIntervalMs = (int)admin_setting_get('zoho_billing.send_interval_ms', '1200');
+$preferredInstance = (string)admin_setting_get('zoho_billing.preferred_instance', 'financeiro');
 $template = zoho_billing_get_template();
 
 // Monta a URL pública do webhook.
@@ -86,6 +87,12 @@ echo '<input type="number" name="send_interval_ms" value="' . h((string)$sendInt
 echo '<span class="helpText">Espaçamento aplicado quando vários formulários chegam ao mesmo tempo, para não sobrecarregar o WhatsApp. Padrão: 1200ms. Use 0 para enviar sem espaçamento.</span>';
 echo '</label>';
 
+// Instância preferida
+echo '<label>Instância preferida para envio';
+echo '<input type="text" name="preferred_instance" value="' . h($preferredInstance) . '" placeholder="financeiro">';
+echo '<span class="helpText">Termo do apelido/nome da instância WhatsApp preferida para enviar (ex.: <code>financeiro</code>). Se ela estiver desconectada, o sistema usa automaticamente outra instância que esteja conectada.</span>';
+echo '</label>';
+
 // Template
 echo '<label>Template da mensagem';
 echo '<textarea name="template" rows="12" style="font-family:monospace;line-height:1.5">' . h($template) . '</textarea>';
@@ -105,6 +112,35 @@ echo '<div class="formSectionTitle" style="font-weight:700;margin-bottom:10px">P
 echo '<div style="background:#e5ddd5;padding:16px;border-radius:10px">';
 echo '<div style="background:#dcf8c6;padding:12px 14px;border-radius:8px;max-width:520px;white-space:pre-wrap;font-size:14px;line-height:1.5;box-shadow:0 1px 1px rgba(0,0,0,.1)">' . h($previewMessage) . '</div>';
 echo '</div>';
+echo '</section>';
+
+// Status das instâncias WhatsApp (diagnóstico)
+echo '<section class="card col12">';
+echo '<div class="formSectionTitle" style="font-weight:700;margin-bottom:10px">Instâncias WhatsApp</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;margin-bottom:12px">Ordem de preferência que o sistema usa para enviar. A primeira <strong>conectada</strong> é escolhida automaticamente.</div>';
+
+$candidates = zoho_billing_candidate_instances();
+if (count($candidates) === 0) {
+    echo '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:14px">Nenhuma instância WhatsApp ativa encontrada. Configure/conecte uma instância na aba WhatsApp Conexão.</div>';
+} else {
+    echo '<table style="width:100%;border-collapse:collapse;font-size:14px">';
+    echo '<thead><tr style="text-align:left;border-bottom:1px solid hsl(var(--border))">';
+    echo '<th style="padding:8px">#</th><th style="padding:8px">Instância</th><th style="padding:8px">Status (tempo real)</th></tr></thead><tbody>';
+    $pos = 1;
+    foreach ($candidates as $cand) {
+        $connected = zoho_billing_instance_is_connected($cand);
+        $badge = $connected
+            ? '<span style="padding:2px 10px;background:#dcfce7;color:#166534;border-radius:12px;font-weight:600">Conectada</span>'
+            : '<span style="padding:2px 10px;background:#fee2e2;color:#991b1b;border-radius:12px;font-weight:600">Desconectada</span>';
+        echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
+        echo '<td style="padding:8px">' . $pos . '</td>';
+        echo '<td style="padding:8px;font-family:monospace">' . h($cand) . '</td>';
+        echo '<td style="padding:8px">' . $badge . '</td>';
+        echo '</tr>';
+        $pos++;
+    }
+    echo '</tbody></table>';
+}
 echo '</section>';
 
 // Testar webhook

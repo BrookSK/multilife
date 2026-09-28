@@ -346,22 +346,163 @@ function zoho_billing_next_slot(): ?string
 }
 
 /**
+ * Verifica, EM TEMPO REAL na Evolution, se uma instância está conectada.
+ * Retorna true se o estado for "open"/"connected". Usa cache estático curto
+ * para não repetir a chamada dentro do mesmo processo.
+ */
+function zoho_billing_instance_is_connected(string $instanceName): bool
+{
+    static $cache = [];
+
+    $instanceName = trim($instanceName);
+    if ($instanceName === '') {
+        return false;
+    }
+    if (array_key_exists($instanceName, $cache)) {
+        return $cache[$instanceName];
+    }
+
+    $connected = false;
+    try {
+        $baseUrl = (string)admin_setting_get('evolution.base_url', '');
+        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $evo = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+        $res = $evo->connectionState($instanceName);
+
+        $status = (int)($res['status'] ?? 0);
+        if ($status >= 200 && $status < 300) {
+            $json = $res['json'] ?? [];
+            $state = '';
+            if (is_array($json)) {
+                $state = (string)($json['state'] ?? ($json['instance']['state'] ?? ''));
+            }
+            $connected = in_array(strtolower($state), ['open', 'connected'], true);
+        }
+    } catch (Throwable $e) {
+        $connected = false;
+    }
+
+    $cache[$instanceName] = $connected;
+    return $connected;
+}
+
+/**
+ * Monta a lista ordenada de instâncias candidatas para envio.
+ *
+ * Prioridade:
+ *   1. Instância(s) cujo apelido (display_name) ou nome contém o termo
+ *      preferido (setting zoho_billing.preferred_instance, padrão "financeiro").
+ *   2. Demais instâncias ativas, priorizando as que o banco marca como
+ *      connection_status = 'connected'.
+ *
+ * @return string[] Nomes de instância (instance_name) em ordem de preferência.
+ */
+function zoho_billing_candidate_instances(): array
+{
+    $preferred = trim((string)admin_setting_get('zoho_billing.preferred_instance', 'financeiro'));
+    $candidates = [];
+
+    try {
+        $stmt = db()->prepare(
+            "SELECT instance_name, display_name, connection_status, is_default
+             FROM whatsapp_instances
+             WHERE status = 'active' AND instance_name IS NOT NULL AND instance_name != ''
+             ORDER BY (connection_status = 'connected') DESC, is_default DESC, id ASC"
+        );
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+    } catch (Throwable $e) {
+        $rows = [];
+    }
+
+    $preferredMatches = [];
+    $others = [];
+    $needle = mb_strtolower($preferred);
+
+    foreach ($rows as $row) {
+        $name = trim((string)($row['instance_name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $display = mb_strtolower((string)($row['display_name'] ?? ''));
+        $nameLc = mb_strtolower($name);
+
+        if ($needle !== '' && (str_contains($display, $needle) || str_contains($nameLc, $needle))) {
+            $preferredMatches[] = $name;
+        } else {
+            $others[] = $name;
+        }
+    }
+
+    foreach (array_merge($preferredMatches, $others) as $n) {
+        if (!in_array($n, $candidates, true)) {
+            $candidates[] = $n;
+        }
+    }
+
+    // Fallback: instância configurada nas settings, caso a tabela esteja vazia.
+    $settingInstance = trim((string)admin_setting_get('evolution.instance', ''));
+    if ($settingInstance !== '' && !in_array($settingInstance, $candidates, true)) {
+        $candidates[] = $settingInstance;
+    }
+
+    return $candidates;
+}
+
+/**
+ * Resolve a melhor instância CONECTADA para envio, seguindo a ordem de
+ * preferência e verificando o estado real na Evolution.
+ *
+ * @return string|null  Nome da instância conectada, ou null se nenhuma estiver.
+ */
+function zoho_billing_resolve_instance(): ?string
+{
+    foreach (zoho_billing_candidate_instances() as $name) {
+        if (zoho_billing_instance_is_connected($name)) {
+            return $name;
+        }
+    }
+    return null;
+}
+
+/**
  * Envia diretamente (síncrono) uma mensagem já montada para um telefone já
  * normalizado. Usado pelo worker e pelo teste. Lança exceção em falha (para
  * o worker acionar retry).
  *
- * @return array{success:bool, http_status:int}
+ * Escolhe automaticamente uma instância conectada: tenta a preferida
+ * ("financeiro") e, se estiver desconectada, cai para outras conectadas.
+ *
+ * @param string      $phone
+ * @param string      $message
+ * @param string|null $preferInstance  Força tentar esta instância primeiro.
+ * @return array{success:bool, http_status:int, instance:string}
  */
-function zoho_billing_send(string $phone, string $message): array
+function zoho_billing_send(string $phone, string $message, ?string $preferInstance = null): array
 {
-    $evo = new EvolutionApiV1();
+    // Se veio uma instância preferida (ex.: a que já enviou no enfileiramento)
+    // e ela está conectada, usa. Senão, resolve a melhor conectada.
+    $instance = null;
+    if ($preferInstance !== null && $preferInstance !== '' && zoho_billing_instance_is_connected($preferInstance)) {
+        $instance = $preferInstance;
+    } else {
+        $instance = zoho_billing_resolve_instance();
+    }
+
+    if ($instance === null) {
+        throw new RuntimeException('Nenhuma instância WhatsApp conectada disponível para envio.');
+    }
+
+    $baseUrl = (string)admin_setting_get('evolution.base_url', '');
+    $apiKey = (string)admin_setting_get('evolution.api_key', '');
+    $evo = new EvolutionApiV1($baseUrl, $apiKey, $instance);
     $res = $evo->sendText($phone, $message);
     $status = (int)($res['status'] ?? 0);
     $ok = $status >= 200 && $status < 300;
     if (!$ok) {
-        throw new RuntimeException('Evolution HTTP ' . $status);
+        throw new RuntimeException('Evolution HTTP ' . $status . ' (instância "' . $instance . '")');
     }
-    return ['success' => true, 'http_status' => $status];
+    return ['success' => true, 'http_status' => $status, 'instance' => $instance];
 }
 
 /**
@@ -410,7 +551,7 @@ function zoho_billing_process(array $payload, bool $forceTest = false): array
 
     return [
         'success' => true,
-        'message' => 'Mensagem enviada com sucesso para ' . $phone . ($testMode ? ' (modo teste)' : '') . '.',
+        'message' => 'Mensagem enviada com sucesso para ' . $phone . ' pela instância "' . $res['instance'] . '"' . ($testMode ? ' (modo teste)' : '') . '.',
         'fields' => $prep['fields'],
         'phone' => $phone,
         'test_mode' => $testMode,
