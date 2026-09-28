@@ -115,7 +115,22 @@ function zoho_billing_flatten_payload($payload): array
     }
     foreach ($payload as $k => $v) {
         if (is_array($v)) {
-            // Mescla recursivamente (sub-objetos como "data", "values", etc.)
+            // Lista de escalares (ex.: múltipla escolha ["Fonoaudiologia"] ou
+            // uploads ["a.png","b.png"]): junta os valores numa única string
+            // sob a própria chave (vírgula como separador).
+            if (zoho_billing_is_scalar_list($v)) {
+                $joined = implode(', ', array_map(
+                    static fn($item) => is_scalar($item) ? trim((string)$item) : '',
+                    $v
+                ));
+                $joined = trim(preg_replace('/(,\s*)+/', ', ', $joined) ?? '', ', ');
+                $nk = zoho_billing_normalize_key((string)$k);
+                if ($nk !== '' && !isset($out[$nk])) {
+                    $out[$nk] = $joined;
+                }
+                continue;
+            }
+            // Objeto associativo aninhado (ex.: "data", "values"): mescla recursivamente.
             foreach (zoho_billing_flatten_payload($v) as $sk => $sv) {
                 if (!isset($out[$sk])) {
                     $out[$sk] = $sv;
@@ -129,6 +144,28 @@ function zoho_billing_flatten_payload($payload): array
         }
     }
     return $out;
+}
+
+/**
+ * Retorna true se o array é uma lista (chaves sequenciais 0..n) cujos itens
+ * são todos escalares — típico de múltipla escolha e uploads do Zoho.
+ *
+ * @param array<mixed> $arr
+ */
+function zoho_billing_is_scalar_list(array $arr): bool
+{
+    if ($arr === []) {
+        return true;
+    }
+    if (array_keys($arr) !== range(0, count($arr) - 1)) {
+        return false;
+    }
+    foreach ($arr as $item) {
+        if (!is_scalar($item)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -326,6 +363,23 @@ function zoho_billing_enqueue(array $payload, bool $forceTest = false): array
         ];
     }
 
+    // Deduplicação: se o Zoho disparar o mesmo formulário mais de uma vez em
+    // sequência, evitamos enfileirar envios idênticos. Consideramos duplicado
+    // um job com o MESMO destino + MESMA mensagem criado dentro da janela
+    // configurável (setting zoho_billing.dedupe_window_seconds, padrão 600s).
+    if (zoho_billing_is_duplicate($phone, $prep['message_text'])) {
+        return [
+            'queued' => false,
+            'duplicate' => true,
+            'message' => 'Envio ignorado: mensagem idêntica já enfileirada recentemente para ' . $phone . ' (proteção contra webhook duplicado).',
+            'job_id' => null,
+            'fields' => $prep['fields'],
+            'phone' => $phone,
+            'test_mode' => $testMode,
+            'message_text' => $prep['message_text'],
+        ];
+    }
+
     // Espaçar os envios para não estourar rate limits da Evolution quando
     // muitos webhooks chegam juntos: cada job novo roda alguns segundos após
     // o anterior enfileirado nos últimos instantes.
@@ -340,6 +394,7 @@ function zoho_billing_enqueue(array $payload, bool $forceTest = false): array
 
     return [
         'queued' => true,
+        'duplicate' => false,
         'message' => 'Envio enfileirado para ' . $phone . ($testMode ? ' (modo teste)' : '') . '.',
         'job_id' => $jobId,
         'fields' => $prep['fields'],
@@ -347,6 +402,61 @@ function zoho_billing_enqueue(array $payload, bool $forceTest = false): array
         'test_mode' => $testMode,
         'message_text' => $prep['message_text'],
     ];
+}
+
+/**
+ * Verifica se já existe um job zoho_billing_notify com o mesmo destino e a
+ * mesma mensagem criado dentro da janela de deduplicação. Isso protege contra
+ * o Zoho chamar o webhook mais de uma vez para o mesmo envio.
+ */
+function zoho_billing_is_duplicate(string $phone, string $message): bool
+{
+    $windowSeconds = (int)admin_setting_get('zoho_billing.dedupe_window_seconds', '600');
+    if ($windowSeconds <= 0) {
+        return false; // deduplicação desativada
+    }
+
+    try {
+        $since = (new DateTime('now'))->modify("-{$windowSeconds} seconds")->format('Y-m-d H:i:s');
+        $stmt = db()->prepare(
+            "SELECT COUNT(*) AS c FROM integration_jobs
+             WHERE provider = 'evolution' AND action = 'zoho_billing_notify'
+               AND created_at >= :since
+               AND status IN ('pending','running','success')
+               AND payload LIKE :needle"
+        );
+        // Casa pelo par phone+message no JSON do payload.
+        $needle = '%' . str_replace(['%', '_'], ['\%', '\_'], json_encode($phone, JSON_UNESCAPED_UNICODE)) . '%';
+        // Refinamos comparando a mensagem também, via segundo LIKE em memória.
+        $stmt->execute(['since' => $since, 'needle' => $needle]);
+        $rows = (int)($stmt->fetch()['c'] ?? 0);
+        if ($rows === 0) {
+            return false;
+        }
+
+        // Confirmação precisa: buscar os payloads recentes desse telefone e
+        // comparar a mensagem exata (evita falso positivo por telefones parecidos).
+        $stmt2 = db()->prepare(
+            "SELECT payload FROM integration_jobs
+             WHERE provider = 'evolution' AND action = 'zoho_billing_notify'
+               AND created_at >= :since
+               AND status IN ('pending','running','success')
+             ORDER BY id DESC LIMIT 50"
+        );
+        $stmt2->execute(['since' => $since]);
+        foreach ($stmt2->fetchAll() as $r) {
+            $p = json_decode((string)($r['payload'] ?? ''), true);
+            if (is_array($p)
+                && (string)($p['phone'] ?? '') === $phone
+                && (string)($p['message'] ?? '') === $message) {
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        return false;
+    }
+
+    return false;
 }
 
 /**

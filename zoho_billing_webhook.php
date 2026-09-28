@@ -87,6 +87,17 @@ zoho_billing_log(
     . ' | ' . $result['message']
 );
 
+// Duplicado (mesmo envio já enfileirado recentemente): responder 200 sem erro,
+// pois é um caso esperado/intencional — não há falha nem retentativa.
+if (!empty($result['duplicate'])) {
+    http_response_code(200);
+    echo json_encode([
+        'status' => 'duplicate_ignored',
+        'message' => $result['message'],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if (!$result['queued']) {
     // Telefone inválido/ausente = erro de dados (400). Não há o que reprocessar.
     http_response_code(400);
