@@ -1355,6 +1355,12 @@ WAJS;
         echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
         echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
         echo '</div>';
+
+        // Atalho: integração Zoho Faturamento → WhatsApp
+        echo '<div style="margin-top:20px;padding:14px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5"><strong style="color:hsl(var(--foreground))">Zoho Faturamento → WhatsApp</strong><br>Receba o webhook do formulário de faturamento do Zoho e envie a confirmação por WhatsApp.</div>';
+        echo '<a class="btn" href="/admin_zoho_billing.php">Configurar</a>';
+        echo '</div>';
         echo '</div>';
         
         // --- Sub-aba: Instâncias (Multi-instância por usuário) ---

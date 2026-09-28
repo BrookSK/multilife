@@ -932,6 +932,33 @@ foreach ($jobs as $j) {
             continue;
         }
 
+        // Zoho Forms (faturamento) → WhatsApp. Payload já vem com telefone
+        // normalizado e mensagem montada pelo webhook; aqui só enviamos.
+        if ($provider === 'evolution' && $action === 'zoho_billing_notify') {
+            if (!is_array($payload)) {
+                throw new RuntimeException('Payload inválido (esperado JSON).');
+            }
+            $phone = trim((string)($payload['phone'] ?? ''));
+            $message = (string)($payload['message'] ?? '');
+            if ($phone === '' || $message === '') {
+                throw new RuntimeException('phone/message ausentes no payload.');
+            }
+
+            zoho_billing_send($phone, $message);
+
+            $updRun->execute([
+                'status' => 'success',
+                'attempts' => $attempts,
+                'last_error' => null,
+                'next_run_at' => null,
+                'last_run_at' => $runAt,
+                'id' => $id,
+            ]);
+            $success++;
+            integration_log($provider, 'job ' . $action, 'success', null, ['phone' => $phone, 'test_mode' => $payload['test_mode'] ?? false], null, null, $attempts);
+            continue;
+        }
+
         throw new RuntimeException('Unknown job action: ' . $provider . ' / ' . $action);
     } catch (Throwable $e) {
         $attempts++;
