@@ -28,7 +28,16 @@ if ($method !== 'POST') {
 
 // Corpo cru para log e parsing.
 $rawPayload = file_get_contents('php://input');
-zoho_billing_log('Webhook recebido: ' . ($rawPayload !== '' ? $rawPayload : '[corpo vazio]'));
+$contentType = (string)($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '');
+zoho_billing_log('==== NOVA REQUISIÇÃO ====');
+zoho_billing_log('Content-Type: ' . ($contentType !== '' ? $contentType : '[vazio]'));
+zoho_billing_log('Body cru: ' . ($rawPayload !== '' ? $rawPayload : '[corpo vazio]'));
+if (!empty($_POST)) {
+    zoho_billing_log('$_POST: ' . json_encode($_POST, JSON_UNESCAPED_UNICODE));
+}
+if (!empty($_GET)) {
+    zoho_billing_log('$_GET: ' . json_encode($_GET, JSON_UNESCAPED_UNICODE));
+}
 
 // Validação do token secreto (se configurado).
 $expectedToken = trim((string)admin_setting_get('zoho_billing.webhook_token', ''));
