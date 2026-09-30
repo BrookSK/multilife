@@ -537,82 +537,119 @@ function zoho_billing_instance_is_connected(string $instanceName): bool
 }
 
 /**
- * Monta a lista ordenada de instâncias candidatas para envio.
+ * Localiza a instância "financeiro" (a única autorizada a enviar os avisos do
+ * Zoho). Casa pelo apelido (display_name) ou nome (instance_name) contendo o
+ * termo configurado em zoho_billing.preferred_instance (padrão "financeiro").
  *
- * Prioridade:
- *   1. Instância(s) cujo apelido (display_name) ou nome contém o termo
- *      preferido (setting zoho_billing.preferred_instance, padrão "financeiro").
- *   2. Demais instâncias ativas, priorizando as que o banco marca como
- *      connection_status = 'connected'.
- *
- * @return string[] Nomes de instância (instance_name) em ordem de preferência.
+ * @return array{id:int, instance_name:string, display_name:string, connection_status:string}|null
  */
-function zoho_billing_candidate_instances(): array
+function zoho_billing_financeiro_instance(): ?array
 {
     $preferred = trim((string)admin_setting_get('zoho_billing.preferred_instance', 'financeiro'));
-    $candidates = [];
+    if ($preferred === '') {
+        return null;
+    }
 
     try {
         $stmt = db()->prepare(
-            "SELECT instance_name, display_name, connection_status, is_default
+            "SELECT id, instance_name, display_name, connection_status
              FROM whatsapp_instances
-             WHERE status = 'active' AND instance_name IS NOT NULL AND instance_name != ''
-             ORDER BY (connection_status = 'connected') DESC, is_default DESC, id ASC"
+             WHERE status = 'active'
+               AND instance_name IS NOT NULL AND instance_name != ''
+               AND (LOWER(display_name) LIKE :needle OR LOWER(instance_name) LIKE :needle2)
+             ORDER BY (connection_status = 'connected') DESC, is_default DESC, id ASC
+             LIMIT 1"
         );
-        $stmt->execute();
-        $rows = $stmt->fetchAll();
+        $like = '%' . mb_strtolower($preferred) . '%';
+        $stmt->execute(['needle' => $like, 'needle2' => $like]);
+        $row = $stmt->fetch();
     } catch (Throwable $e) {
-        $rows = [];
+        $row = false;
     }
 
-    $preferredMatches = [];
-    $others = [];
-    $needle = mb_strtolower($preferred);
-
-    foreach ($rows as $row) {
-        $name = trim((string)($row['instance_name'] ?? ''));
-        if ($name === '') {
-            continue;
-        }
-        $display = mb_strtolower((string)($row['display_name'] ?? ''));
-        $nameLc = mb_strtolower($name);
-
-        if ($needle !== '' && (str_contains($display, $needle) || str_contains($nameLc, $needle))) {
-            $preferredMatches[] = $name;
-        } else {
-            $others[] = $name;
-        }
+    if (!$row) {
+        return null;
     }
 
-    foreach (array_merge($preferredMatches, $others) as $n) {
-        if (!in_array($n, $candidates, true)) {
-            $candidates[] = $n;
-        }
-    }
-
-    // Fallback: instância configurada nas settings, caso a tabela esteja vazia.
-    $settingInstance = trim((string)admin_setting_get('evolution.instance', ''));
-    if ($settingInstance !== '' && !in_array($settingInstance, $candidates, true)) {
-        $candidates[] = $settingInstance;
-    }
-
-    return $candidates;
+    return [
+        'id' => (int)$row['id'],
+        'instance_name' => (string)$row['instance_name'],
+        'display_name' => (string)($row['display_name'] ?? ''),
+        'connection_status' => (string)($row['connection_status'] ?? ''),
+    ];
 }
 
 /**
- * Resolve a melhor instância CONECTADA para envio, seguindo a ordem de
- * preferência e verificando o estado real na Evolution.
+ * Notifica in-app os usuários vinculados à instância financeiro que ela está
+ * desconectada e, por isso, os avisos do Zoho não estão sendo enviados.
  *
- * @return string|null  Nome da instância conectada, ou null se nenhuma estiver.
+ * Aplica um throttle (setting zoho_billing.disconnect_notice_throttle_seconds,
+ * padrão 1800s = 30min) para não criar dezenas de notificações quando muitos
+ * webhooks chegam juntos com a instância caída.
+ *
+ * @param array{id:int, instance_name:string, display_name:string}|null $instance
  */
-function zoho_billing_resolve_instance(): ?string
+function zoho_billing_notify_disconnected(?array $instance): void
 {
-    foreach (zoho_billing_candidate_instances() as $name) {
-        if (zoho_billing_instance_is_connected($name)) {
-            return $name;
+    if ($instance === null || (int)$instance['id'] <= 0) {
+        return;
+    }
+
+    $throttle = (int)admin_setting_get('zoho_billing.disconnect_notice_throttle_seconds', '1800');
+    $throttleKey = 'zoho_billing.last_disconnect_notice_at';
+
+    if ($throttle > 0) {
+        $last = (string)admin_setting_get($throttleKey, '');
+        if ($last !== '') {
+            $lastTs = strtotime($last);
+            if ($lastTs !== false && (time() - $lastTs) < $throttle) {
+                return; // ainda dentro da janela — não notifica de novo
+            }
         }
     }
-    return null;
+
+    // Usuários vinculados à instância (N:N + dono legado).
+    $userIds = whatsapp_instance_user_ids((int)$instance['id']);
+    try {
+        $stmt = db()->prepare("SELECT user_id FROM whatsapp_instances WHERE id = :id AND user_id IS NOT NULL");
+        $stmt->execute(['id' => (int)$instance['id']]);
+        $legacy = $stmt->fetchColumn();
+        if ($legacy) {
+            $userIds[] = (int)$legacy;
+        }
+    } catch (Throwable $e) {
+        // segue com os IDs que já temos
+    }
+    $userIds = array_values(array_unique(array_filter($userIds, static fn($v) => (int)$v > 0)));
+
+    if (count($userIds) === 0) {
+        return;
+    }
+
+    $label = $instance['display_name'] !== '' ? $instance['display_name'] : $instance['instance_name'];
+    $title = 'WhatsApp do Financeiro desconectado';
+    $message = 'A conexão "' . $label . '" está desconectada e os avisos de faturamento do Zoho não estão sendo enviados. Reconecte pelo Meu WhatsApp.';
+
+    foreach ($userIds as $uid) {
+        try {
+            notification_create((int)$uid, 'whatsapp', $title, $message, '/my_whatsapp.php');
+        } catch (Throwable $e) {
+            // não interrompe o fluxo por causa de uma notificação
+        }
+    }
+
+    // Marca o horário do último aviso (para o throttle). Gravamos direto com
+    // updated_by_user_id = NULL, pois este código roda no worker/cron (sem
+    // usuário logado) e a coluna tem FK para users(id).
+    try {
+        db()->prepare(
+            'INSERT INTO admin_settings (setting_key, setting_value, updated_by_user_id)
+             VALUES (:k, :v, NULL)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        )->execute(['k' => $throttleKey, 'v' => date('Y-m-d H:i:s')]);
+    } catch (Throwable $e) {
+        // ignora falha ao gravar o throttle
+    }
 }
 
 /**
@@ -620,27 +657,29 @@ function zoho_billing_resolve_instance(): ?string
  * normalizado. Usado pelo worker e pelo teste. Lança exceção em falha (para
  * o worker acionar retry).
  *
- * Escolhe automaticamente uma instância conectada: tenta a preferida
- * ("financeiro") e, se estiver desconectada, cai para outras conectadas.
+ * REGRA: envia SOMENTE pela instância "financeiro". Não há fallback para
+ * outras instâncias. Se a financeiro estiver desconectada, notifica os
+ * usuários vinculados a ela e lança exceção (o job/teste falha).
  *
  * @param string      $phone
  * @param string      $message
- * @param string|null $preferInstance  Força tentar esta instância primeiro.
+ * @param string|null $preferInstance  (ignorado — mantido por compatibilidade)
  * @return array{success:bool, http_status:int, instance:string}
  */
 function zoho_billing_send(string $phone, string $message, ?string $preferInstance = null): array
 {
-    // Se veio uma instância preferida (ex.: a que já enviou no enfileiramento)
-    // e ela está conectada, usa. Senão, resolve a melhor conectada.
-    $instance = null;
-    if ($preferInstance !== null && $preferInstance !== '' && zoho_billing_instance_is_connected($preferInstance)) {
-        $instance = $preferInstance;
-    } else {
-        $instance = zoho_billing_resolve_instance();
+    $financeiro = zoho_billing_financeiro_instance();
+
+    if ($financeiro === null) {
+        throw new RuntimeException('Instância "financeiro" não encontrada. Verifique o apelido/nome e a configuração (Configurações → Zoho Faturamento).');
     }
 
-    if ($instance === null) {
-        throw new RuntimeException('Nenhuma instância WhatsApp conectada disponível para envio.');
+    $instance = $financeiro['instance_name'];
+
+    if (!zoho_billing_instance_is_connected($instance)) {
+        // Notifica quem usa a financeiro para reconectar.
+        zoho_billing_notify_disconnected($financeiro);
+        throw new RuntimeException('A instância "' . $instance . '" (financeiro) está desconectada. Reconecte o WhatsApp para enviar os avisos do Zoho.');
     }
 
     $baseUrl = (string)admin_setting_get('evolution.base_url', '');

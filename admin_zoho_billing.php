@@ -88,9 +88,9 @@ echo '<span class="helpText">Espaçamento aplicado quando vários formulários c
 echo '</label>';
 
 // Instância preferida
-echo '<label>Instância preferida para envio';
+echo '<label>Instância de envio (Financeiro)';
 echo '<input type="text" name="preferred_instance" value="' . h($preferredInstance) . '" placeholder="financeiro">';
-echo '<span class="helpText">Termo do apelido/nome da instância WhatsApp preferida para enviar (ex.: <code>financeiro</code>). Se ela estiver desconectada, o sistema usa automaticamente outra instância que esteja conectada.</span>';
+echo '<span class="helpText">Termo do apelido/nome da instância WhatsApp usada para enviar (ex.: <code>financeiro</code>). Os avisos são enviados <strong>somente</strong> por ela — não há troca para outra instância. Se estiver desconectada, os usuários vinculados são notificados no sistema.</span>';
 echo '</label>';
 
 // Template
@@ -114,32 +114,28 @@ echo '<div style="background:#dcf8c6;padding:12px 14px;border-radius:8px;max-wid
 echo '</div>';
 echo '</section>';
 
-// Status das instâncias WhatsApp (diagnóstico)
+// Status da instância financeiro (única usada para envio)
 echo '<section class="card col12">';
-echo '<div class="formSectionTitle" style="font-weight:700;margin-bottom:10px">Instâncias WhatsApp</div>';
-echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;margin-bottom:12px">Ordem de preferência que o sistema usa para enviar. A primeira <strong>conectada</strong> é escolhida automaticamente.</div>';
+echo '<div class="formSectionTitle" style="font-weight:700;margin-bottom:10px">Instância de envio (Financeiro)</div>';
+echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;margin-bottom:12px">Os avisos do Zoho são enviados <strong>exclusivamente</strong> pela instância do financeiro. Não há troca automática para outra instância. Se ela estiver desconectada, os usuários vinculados recebem uma notificação no sistema pedindo para reconectar.</div>';
 
-$candidates = zoho_billing_candidate_instances();
-if (count($candidates) === 0) {
-    echo '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:14px">Nenhuma instância WhatsApp ativa encontrada. Configure/conecte uma instância na aba WhatsApp Conexão.</div>';
+$financeiro = zoho_billing_financeiro_instance();
+if ($financeiro === null) {
+    echo '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:14px">Instância "financeiro" não encontrada. Verifique se existe uma instância ativa cujo apelido ou nome contenha o termo configurado no campo <strong>Instância preferida</strong> acima.</div>';
 } else {
-    echo '<table style="width:100%;border-collapse:collapse;font-size:14px">';
-    echo '<thead><tr style="text-align:left;border-bottom:1px solid hsl(var(--border))">';
-    echo '<th style="padding:8px">#</th><th style="padding:8px">Instância</th><th style="padding:8px">Status (tempo real)</th></tr></thead><tbody>';
-    $pos = 1;
-    foreach ($candidates as $cand) {
-        $connected = zoho_billing_instance_is_connected($cand);
-        $badge = $connected
-            ? '<span style="padding:2px 10px;background:#dcfce7;color:#166534;border-radius:12px;font-weight:600">Conectada</span>'
-            : '<span style="padding:2px 10px;background:#fee2e2;color:#991b1b;border-radius:12px;font-weight:600">Desconectada</span>';
-        echo '<tr style="border-bottom:1px solid hsl(var(--border))">';
-        echo '<td style="padding:8px">' . $pos . '</td>';
-        echo '<td style="padding:8px;font-family:monospace">' . h($cand) . '</td>';
-        echo '<td style="padding:8px">' . $badge . '</td>';
-        echo '</tr>';
-        $pos++;
+    $instName = $financeiro['instance_name'];
+    $label = $financeiro['display_name'] !== '' ? $financeiro['display_name'] : $instName;
+    $connected = zoho_billing_instance_is_connected($instName);
+    $badge = $connected
+        ? '<span style="padding:3px 12px;background:#dcfce7;color:#166534;border-radius:12px;font-weight:700">Conectada</span>'
+        : '<span style="padding:3px 12px;background:#fee2e2;color:#991b1b;border-radius:12px;font-weight:700">Desconectada</span>';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px;border:1px solid hsl(var(--border));border-radius:10px">';
+    echo '<div><div style="font-weight:700">' . h($label) . '</div><div style="font-family:monospace;font-size:13px;color:hsl(var(--muted-foreground))">' . h($instName) . '</div></div>';
+    echo '<div>' . $badge . '</div>';
+    echo '</div>';
+    if (!$connected) {
+        echo '<div style="margin-top:10px;padding:12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;color:#92400e;font-size:13px">A instância está desconectada. Reconecte pela aba <strong>WhatsApp Conexão → Instâncias</strong> ou peça ao usuário vinculado para reconectar em <strong>Meu WhatsApp</strong>.</div>';
     }
-    echo '</tbody></table>';
 }
 echo '</section>';
 
