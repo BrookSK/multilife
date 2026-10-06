@@ -24,7 +24,7 @@ $hasFromEmail = isset($cols['from_email']);
 $hasFromAddress = isset($cols['from_address']);
 $hasLinkedDemandId = isset($cols['linked_demand_id']);
 
-$allowed = ['', 'received', 'ai_pending', 'ai_processed', 'archived', 'processed', 'error'];
+$allowed = ['', 'received', 'ai_pending', 'ai_processed', 'archived', 'processed', 'error', 'not_captation'];
 if (!in_array($status, $allowed, true)) {
     $status = '';
 }
@@ -104,6 +104,7 @@ $opts = [
     'ai_processed' => 'ai_processed',
     'archived' => 'archived',
     'error' => 'error',
+    'not_captation' => 'Não é captação',
 ];
 foreach ($opts as $k => $label) {
     $sel = ($status === $k) ? ' selected' : '';
@@ -116,6 +117,23 @@ echo '<input name="q" value="' . h($q) . '" placeholder="Buscar (remetente, assu
 echo '<button class="btn" type="submit">Filtrar</button>';
 
 echo '</form>';
+
+// Abas rápidas: separar visualmente CAPTAÇÃO x NÃO-CAPTAÇÃO x TODOS.
+echo '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
+$tabs = [
+    '' => 'Todos',
+    'ai_processed' => '✅ Captação (viraram card)',
+    'not_captation' => '🚫 Não é captação',
+    'error' => '⚠️ Erros',
+];
+foreach ($tabs as $tk => $tlabel) {
+    $active = ($status === $tk);
+    $style = $active
+        ? 'background:hsl(var(--primary));color:#fff'
+        : 'background:hsl(var(--accent))';
+    echo '<a class="btn" href="/inbound_emails_list.php?status=' . h($tk) . ($q !== '' ? '&q=' . urlencode($q) : '') . '" style="' . $style . '">' . h($tlabel) . '</a>';
+}
+echo '</div>';
 
 echo '</section>';
 
@@ -137,9 +155,21 @@ foreach ($rows as $r) {
     $did = $r['linked_demand_id'] !== null ? (int)$r['linked_demand_id'] : 0;
 
     echo '<tr>';
+    $stVal = (string)$r['status'];
+    $stBadgeStyle = 'background:hsl(var(--accent))';
+    $stLabel = $stVal;
+    if ($stVal === 'not_captation') {
+        $stBadgeStyle = 'background:hsl(0,84%,60%);color:#fff';
+        $stLabel = 'não é captação';
+    } elseif ($stVal === 'ai_processed' || $stVal === 'processed') {
+        $stBadgeStyle = 'background:hsl(142,76%,36%);color:#fff';
+    } elseif ($stVal === 'error') {
+        $stBadgeStyle = 'background:hsl(38,92%,50%);color:#111';
+    }
+
     echo '<td>' . (int)$r['id'] . '</td>';
     echo '<td>' . h((string)$r['received_at']) . '</td>';
-    echo '<td>' . h((string)$r['status']) . '</td>';
+    echo '<td><span class="badge" style="' . $stBadgeStyle . ';font-size:12px">' . h($stLabel) . '</span></td>';
     echo '<td>' . h($from) . '</td>';
     echo '<td>' . h(mb_strimwidth($subj, 0, 90, '...')) . '</td>';
     echo '<td>';

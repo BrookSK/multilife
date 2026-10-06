@@ -3071,13 +3071,17 @@ echo '<script>';
 echo 'window.chatId = ' . json_encode($selectedChat) . ';';
 echo 'window.chatName = ' . json_encode($chatName) . ';';
 $lastTs = 0;
+$lastMsgId = 0;
 if (!empty($messages)) {
     foreach ($messages as $m) {
         $ts = (int)($m['timestamp'] ?? $m['message_timestamp'] ?? 0);
         if ($ts > $lastTs) $lastTs = $ts;
+        $mid = (int)($m['id'] ?? 0);
+        if ($mid > $lastMsgId) $lastMsgId = $mid;
     }
 }
 echo 'window.lastTimestamp = ' . $lastTs . ';';
+echo 'window.lastMsgId = ' . $lastMsgId . ';';
 echo 'if (typeof startChatPolling === "function") startChatPolling();';
 echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window.chatName);';
 

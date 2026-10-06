@@ -280,6 +280,34 @@ view_header('Configuração de Operadoras');
                     <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB)</div>
                 </div>
             </div>
+
+            <!-- Orientações ao profissional (variações) -->
+            <div id="orientationsSection" style="margin-bottom:20px;display:none">
+                <label style="display:block;margin-bottom:8px;font-weight:600">Orientações ao profissional (variações)</label>
+                <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:10px">Cada variação é um texto enviado ao profissional na pré-admissão (ex.: "Com tablet", "Sem tablet", "Avaliação de enfermagem"). Use <code>{{login_externo}}</code>, <code>{{senha_externa}}</code>, <code>{{profissional_nome}}</code>, <code>{{paciente_nome}}</code>, <code>{{especialidade}}</code> e <code>{{tabela_dias}}</code> onde quiser que o sistema preencha automaticamente.</div>
+                <div id="orientationsListContainer" style="margin-bottom:12px"></div>
+                <div style="border:2px dashed hsl(var(--border));border-radius:8px;padding:16px;text-align:left">
+                    <input type="hidden" id="orientationEditId" value="">
+                    <div style="margin-bottom:10px">
+                        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Rótulo da variação *</label>
+                        <input type="text" id="orientationLabel" placeholder='Ex: Com tablet, Sem tablet, Avaliação de enfermagem' style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Texto da orientação *</label>
+                        <textarea id="orientationBody" rows="8" placeholder="Cole aqui o texto completo da orientação..." style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px;resize:vertical"></textarea>
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer">
+                            <input type="checkbox" id="orientationRequiresCred" style="width:16px;height:16px">
+                            Esta variação exige login/senha de sistema externo (tablet, SALVUS, Outcare…)
+                        </label>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button type="button" onclick="saveOrientation()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">Salvar orientação</button>
+                        <button type="button" onclick="resetOrientationForm()" style="padding:8px 16px;font-size:12px;font-weight:600;background:transparent;color:hsl(var(--muted-foreground));border:1px solid hsl(var(--border));border-radius:6px;cursor:pointer">Limpar</button>
+                    </div>
+                </div>
+            </div>
             
             <div style="display:flex;gap:12px">
                 <button type="button" onclick="closeModal()" class="btn" style="flex:1">Cancelar</button>
@@ -313,12 +341,108 @@ function editInsurer(insurer) {
     document.getElementById('insurerNotes').value = insurer.notes || '';
     document.getElementById('documentsSection').style.display = 'block';
     loadDocuments(insurer.id);
+    document.getElementById('orientationsSection').style.display = 'block';
+    resetOrientationForm();
+    loadOrientations(insurer.id);
     document.getElementById('insurerModal').style.display = 'block';
 }
 
 function closeModal() {
     document.getElementById('insurerModal').style.display = 'none';
     document.getElementById('documentsSection').style.display = 'none';
+    var os = document.getElementById('orientationsSection');
+    if (os) os.style.display = 'none';
+}
+
+// ===== Orientações (variações) =====
+function loadOrientations(insurerId) {
+    var container = document.getElementById('orientationsListContainer');
+    if (!container) return;
+    container.innerHTML = '<div style="font-size:12px;color:hsl(var(--muted-foreground))">Carregando...</div>';
+    fetch('/insurer_orientations_api.php?action=list&insurer_id=' + insurerId)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.orientations || data.orientations.length === 0) {
+                container.innerHTML = '<div style="font-size:12px;color:hsl(var(--muted-foreground));padding:8px 0">Nenhuma orientação cadastrada.</div>';
+                return;
+            }
+            var esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            var html = '';
+            data.orientations.forEach(function(o) {
+                var credBadge = Number(o.requires_credentials) === 1 ? '<span style="font-size:10px;font-weight:700;background:#e7f0fd;color:#1a56db;padding:1px 6px;border-radius:8px;margin-left:6px">LOGIN/SENHA</span>' : '';
+                var inactive = Number(o.is_active) === 0 ? '<span style="font-size:10px;font-weight:700;background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;margin-left:6px">INATIVA</span>' : '';
+                var preview = esc((o.body || '').substring(0, 90)) + ((o.body || '').length > 90 ? '…' : '');
+                html += '<div style="padding:10px 12px;background:hsl(var(--secondary));border-radius:6px;margin-bottom:6px">';
+                html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+                html += '<div style="font-size:13px;font-weight:700">' + esc(o.label) + credBadge + inactive + '</div>';
+                html += '<div style="display:flex;gap:6px">';
+                html += '<button type="button" onclick=\'editOrientation(' + JSON.stringify(o) + ')\' style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--primary));border:1px solid hsl(var(--primary));border-radius:4px;cursor:pointer">Editar</button>';
+                html += '<button type="button" onclick="deleteOrientation(' + o.id + ',' + insurerId + ')" style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--destructive));border:1px solid hsl(var(--destructive));border-radius:4px;cursor:pointer">×</button>';
+                html += '</div></div>';
+                html += '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px;white-space:pre-wrap">' + preview + '</div>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(() => { container.innerHTML = '<div style="font-size:12px;color:hsl(var(--destructive))">Erro ao carregar orientações.</div>'; });
+}
+
+function resetOrientationForm() {
+    var e = document.getElementById('orientationEditId'); if (e) e.value = '';
+    var l = document.getElementById('orientationLabel'); if (l) l.value = '';
+    var b = document.getElementById('orientationBody'); if (b) b.value = '';
+    var c = document.getElementById('orientationRequiresCred'); if (c) c.checked = false;
+}
+
+function editOrientation(o) {
+    document.getElementById('orientationEditId').value = o.id;
+    document.getElementById('orientationLabel').value = o.label || '';
+    document.getElementById('orientationBody').value = o.body || '';
+    document.getElementById('orientationRequiresCred').checked = Number(o.requires_credentials) === 1;
+    var sec = document.getElementById('orientationsSection');
+    if (sec) sec.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function saveOrientation() {
+    var insurerId = document.getElementById('insurerId').value;
+    if (!insurerId) { alert('Salve a operadora primeiro.'); return; }
+    var label = document.getElementById('orientationLabel').value.trim();
+    var body = document.getElementById('orientationBody').value.trim();
+    if (!label || !body) { alert('Informe o rótulo e o texto da orientação.'); return; }
+    var payload = {
+        action: 'save',
+        id: parseInt(document.getElementById('orientationEditId').value) || 0,
+        insurer_id: parseInt(insurerId),
+        label: label,
+        body: body,
+        requires_credentials: document.getElementById('orientationRequiresCred').checked ? 1 : 0,
+        is_active: 1
+    };
+    fetch('/insurer_orientations_api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { resetOrientationForm(); loadOrientations(insurerId); }
+        else { alert(data.error || 'Erro ao salvar orientação.'); }
+    })
+    .catch(() => { alert('Erro de conexão.'); });
+}
+
+function deleteOrientation(id, insurerId) {
+    if (!confirm('Remover esta orientação?')) return;
+    fetch('/insurer_orientations_api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ action: 'delete', id: id })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) loadOrientations(insurerId);
+        else alert(data.error || 'Erro ao remover.');
+    });
 }
 
 function loadDocuments(insurerId) {

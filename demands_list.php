@@ -212,6 +212,8 @@ echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/demands_create.php">Novo card</a>';
 echo '<a class="btn" href="/inbound_emails_list.php">Inbox (E-mails)</a>';
+echo '<a class="btn" href="/imported_contacts_list.php">Contatos</a>';
+echo '<a class="btn" href="/captation_import.php">Importar planilha</a>';
 echo '<a class="btn" href="/whatsapp_groups_list.php">Grupos WhatsApp</a>';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';

@@ -81,6 +81,7 @@ function view_header(string $title): void
             ['title' => 'Lançamentos', 'path' => '/finance_entries_list.php', 'perm' => 'finance.manage'],
             ['title' => 'Contas a Receber', 'path' => '/finance_receivable_list.php', 'perm' => 'finance.manage'],
             ['title' => 'Contas a Pagar', 'path' => '/finance_payable_list.php', 'perm' => 'finance.manage'],
+            ['title' => 'Notas Fiscais', 'path' => '/finance_invoices_list.php', 'perm' => 'finance.manage'],
             ['title' => 'RH', 'path' => '/hr_dashboard.php', 'perm' => 'hr.manage'],
             ['title' => 'Usuários', 'path' => '/users_list.php', 'perm' => 'users.manage'],
             ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php', 'perm' => 'chat.manage'],

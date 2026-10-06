@@ -34,6 +34,15 @@ if (!$d) {
     exit;
 }
 
+// SIGILO (Ajuste 8): se a demanda está em recaptação sigilosa, NÃO disparar em grupo
+// (o profissional atual poderia estar no grupo). A recaptação sigilosa usa mensagem
+// direta via demands_recaptar_sigiloso_post.php.
+if (array_key_exists('is_confidential', $d) && (int)$d['is_confidential'] === 1) {
+    flash_set('error', 'Esta captação é SIGILOSA e não pode ser disparada em grupo. Use "Recaptar sigiloso" (mensagem direta) na tela de substituição.');
+    header('Location: /demands_view.php?id=' . $id);
+    exit;
+}
+
 // Se foi selecionada uma sub-solicitação, usar os dados dela
 $subRequest = null;
 if ($subRequestId > 0) {

@@ -917,7 +917,8 @@ function checkForNewMessages() {
   if (!window.chatId || isPolling) return;
   isPolling = true;
   
-  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp)
+  var lastIdParam = (typeof window.lastMsgId === 'number' && window.lastMsgId > 0) ? ('&last_id=' + window.lastMsgId) : '';
+  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam)
     .then(r => r.json())
     .then(data => {
       isPolling = false;
@@ -935,6 +936,10 @@ function checkForNewMessages() {
         // Atualizar lastTimestamp
         if (data.last_timestamp > window.lastTimestamp) {
           window.lastTimestamp = data.last_timestamp;
+        }
+        // Atualizar cursor por id (evita perder mensagens no mesmo segundo)
+        if (typeof data.last_id === 'number' && data.last_id > (window.lastMsgId || 0)) {
+          window.lastMsgId = data.last_id;
         }
         
         // Auto-scroll apenas se já estava no final
@@ -957,9 +962,11 @@ function appendMessageToDOM(msg) {
   const container = document.getElementById('messagesContainer');
   if (!container) return;
   
-  // Verificar se mensagem já existe no DOM (evitar duplicatas por external_message_id)
-  if (msg.external_message_id) {
-    const existing = container.querySelector('[data-msg-id="' + msg.external_message_id + '"]');
+  // Verificar se mensagem já existe no DOM (evitar duplicatas).
+  // Preferir external_message_id; se ausente, usar o id do banco como chave estável.
+  var dedupKey = msg.external_message_id || (msg.id ? ('row-' + msg.id) : '');
+  if (dedupKey) {
+    const existing = container.querySelector('[data-msg-id="' + (window.CSS && CSS.escape ? CSS.escape(dedupKey) : dedupKey) + '"]');
     if (existing) return;
   }
   
@@ -1002,7 +1009,7 @@ function appendMessageToDOM(msg) {
   const senderName = msg.sender_name || '';
   const reactions = msg.reactions || [];
   
-  let html = '<div class="whatsapp-message ' + messageClass + '"' + (msg.external_message_id ? ' data-msg-id="' + escapeHtml(msg.external_message_id) + '"' : '') + '>';
+  let html = '<div class="whatsapp-message ' + messageClass + '"' + (dedupKey ? ' data-msg-id="' + escapeHtml(dedupKey) + '"' : '') + '>';
   html += '<div class="whatsapp-message-bubble">';
   
   // Nome do remetente em grupos

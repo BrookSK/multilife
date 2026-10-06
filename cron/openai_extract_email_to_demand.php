@@ -82,6 +82,99 @@ if ($limit <= 0 || $limit > 100) {
 
 $debug = isset($_GET['debug']) && ((string)$_GET['debug'] === '1' || strtolower((string)$_GET['debug']) === 'true');
 
+/**
+ * Classifica se um e-mail recebido é de CAPTAÇÃO (solicitação de atendimento
+ * domiciliar que deve virar um card). Combina regras determinísticas rápidas com
+ * uma verificação por IA.
+ *
+ * @return array{is_captation:bool, reason:string}
+ */
+function classify_email_is_captation(OpenAiApi $api, string $subject, string $fromEmail, string $content): array
+{
+    $subjectLower = mb_strtolower(trim($subject));
+    $fromLower = mb_strtolower(trim($fromEmail));
+    $bodySample = mb_strtolower(mb_substr(trim($content), 0, 1500));
+    $haystack = $subjectLower . ' ' . $bodySample;
+
+    // 1) REGRAS NEGATIVAS fortes: remetentes/assuntos que claramente NÃO são captação.
+    $negativeFrom = ['no-reply', 'noreply', 'nao-responda', 'naoresponda', 'mailer-daemon', 'postmaster', 'newsletter', 'notificacao', 'notification'];
+    foreach ($negativeFrom as $nf) {
+        if ($fromLower !== '' && strpos($fromLower, $nf) !== false) {
+            return ['is_captation' => false, 'reason' => 'remetente automático/não-captação (' . $nf . ')'];
+        }
+    }
+
+    $negativeKeywords = [
+        'auditoria', 'glosa', 'fatura', 'faturamento', 'boleto', 'cobrança', 'cobranca',
+        'nota fiscal', 'nfe', 'nf-e', 'imposto', 'recibo de pagamento', 'extrato',
+        'newsletter', 'promoção', 'promocao', 'marketing', 'convite para evento',
+        'confirmação de recebimento', 'confirmacao de recebimento', 'leia-se',
+        'relatório financeiro', 'relatorio financeiro', 'demonstrativo',
+    ];
+    foreach ($negativeKeywords as $nk) {
+        if (strpos($haystack, $nk) !== false) {
+            return ['is_captation' => false, 'reason' => 'palavra-chave de não-captação (' . $nk . ')'];
+        }
+    }
+
+    // 2) REGRAS POSITIVAS fortes: sinais claros de solicitação de atendimento.
+    $positiveKeywords = [
+        'atendimento domiciliar', 'home care', 'home-care', 'solicitação de atendimento',
+        'solicitacao de atendimento', 'captação', 'captacao', 'paciente', 'segurado',
+        'fisioterapia', 'fonoaudiologia', 'enfermagem', 'cuidador', 'terapia ocupacional',
+        'pad', 'desospitalização', 'desospitalizacao', 'internação domiciliar', 'internacao domiciliar',
+    ];
+    $positiveHits = 0;
+    foreach ($positiveKeywords as $pk) {
+        if (strpos($haystack, $pk) !== false) {
+            $positiveHits++;
+        }
+    }
+
+    // 3) IA decide os casos não óbvios (e confirma os prováveis positivos).
+    try {
+        $sys = "Você classifica e-mails recebidos por uma empresa de atendimento domiciliar (home care).\n"
+            . "Responda SOMENTE JSON: {\"is_captation\": true|false, \"reason\": \"curto\"}.\n"
+            . "is_captation = true SOMENTE quando o e-mail for uma SOLICITAÇÃO de atendimento/paciente "
+            . "(captação) — ex.: pedido de fisioterapia, enfermagem, fono, cuidador, PAD, desospitalização, "
+            . "com nome de paciente/segurado e/ou especialidade.\n"
+            . "is_captation = false para auditoria, financeiro, cobrança, nota fiscal, newsletter, "
+            . "confirmações automáticas, respostas administrativas e qualquer coisa que não seja pedido de atendimento.";
+        $usr = "ASSUNTO: " . $subject . "\nREMETENTE: " . $fromEmail . "\n\nCORPO (trecho):\n" . mb_substr($content, 0, 2500);
+
+        $res = $api->chatCompletions(
+            [
+                ['role' => 'system', 'content' => $sys],
+                ['role' => 'user', 'content' => $usr],
+            ],
+            null,
+            ['temperature' => 0.0, 'response_format' => ['type' => 'json_object']]
+        );
+        $status = (int)($res['status'] ?? 0);
+        if ($status >= 200 && $status < 300) {
+            $raw = '';
+            if (is_array($res['json'] ?? null)) {
+                $raw = (string)($res['json']['choices'][0]['message']['content'] ?? '');
+            }
+            $parsed = json_decode(trim($raw), true);
+            if (is_array($parsed) && array_key_exists('is_captation', $parsed)) {
+                return [
+                    'is_captation' => (bool)$parsed['is_captation'],
+                    'reason' => (string)($parsed['reason'] ?? 'classificado pela IA'),
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[EMAIL_EXTRACT] Classificador IA falhou: ' . $e->getMessage());
+    }
+
+    // 4) Fallback sem IA: se houve sinais positivos, trata como captação (não perde
+    //    captação por indisponibilidade da IA). Caso contrário, deixa passar como
+    //    captação também (comportamento conservador — melhor um card a mais do que
+    //    perder uma solicitação real).
+    return ['is_captation' => true, 'reason' => $positiveHits > 0 ? 'sinais positivos de captação' : 'fallback conservador (IA indisponível)'];
+}
+
 $db = db();
 
 $colsStmt = $db->prepare('SHOW COLUMNS FROM inbound_emails');
@@ -240,6 +333,7 @@ $insDemandLog = $db->prepare(
 $ok = 0;
 $manual = 0;
 $errors = 0;
+$skippedNotCaptation = 0;
 $errorLines = [];
 $selectedEmailIds = [];
 $createdLines = [];
@@ -471,6 +565,43 @@ foreach ($emails as $e) {
         }
         
         continue;
+    }
+
+    // ============================================================
+    // CLASSIFICAÇÃO: o e-mail é de CAPTAÇÃO? (Ajuste 6)
+    // Só e-mails de captação (solicitação de atendimento domiciliar) viram card.
+    // Os demais (auditoria, financeiro, cobrança, newsletters, etc.) são marcados
+    // como 'not_captation' e NÃO geram demanda. Pode ser desligado via setting
+    // 'demands.captation_filter_enabled' = '0'.
+    // ============================================================
+    $captationFilterEnabled = (string)admin_setting_get('demands.captation_filter_enabled', '1') !== '0';
+    if ($captationFilterEnabled) {
+        $classification = classify_email_is_captation($api, $subject, $fromEmail, $content);
+        if ($classification['is_captation'] === false) {
+            $reasonTxt = (string)($classification['reason'] ?? 'não é solicitação de atendimento');
+            error_log("[EMAIL_EXTRACT] E-mail #$id classificado como NÃO-CAPTAÇÃO ($reasonTxt). Não será criado card.");
+            // Marca com status dedicado para separar na inbox, sem gerar demanda.
+            try {
+                $updNotCapt = $db->prepare(
+                    "UPDATE inbound_emails SET status = 'not_captation', processed_at = :pa, error_message = :msg WHERE id = :id"
+                );
+                $updNotCapt->execute([
+                    'pa' => date('Y-m-d H:i:s'),
+                    'msg' => mb_substr('Classificado como não-captação: ' . $reasonTxt, 0, 250),
+                    'id' => $id,
+                ]);
+            } catch (Throwable $eNc) {
+                // Fallback se a coluna error_message não existir.
+                try {
+                    $db->prepare("UPDATE inbound_emails SET status = 'not_captation', processed_at = :pa WHERE id = :id")
+                        ->execute(['pa' => date('Y-m-d H:i:s'), 'id' => $id]);
+                } catch (Throwable $eNc2) {
+                    error_log('[EMAIL_EXTRACT] Falha ao marcar not_captation: ' . $eNc2->getMessage());
+                }
+            }
+            $skippedNotCaptation = (isset($skippedNotCaptation) ? $skippedNotCaptation : 0) + 1;
+            continue;
+        }
     }
 
     // CHAMADA 1: Extrair dados básicos (título, localização, especialidade, valor, urgência)
@@ -1176,7 +1307,7 @@ foreach ($emails as $e) {
     }
 }
 
-echo 'OK: created=' . ($ok + $manual) . ' manual=' . $manual . ' errors=' . $errors . "\n";
+echo 'OK: created=' . ($ok + $manual) . ' manual=' . $manual . ' errors=' . $errors . ' not_captation=' . $skippedNotCaptation . "\n";
 
 if ($debug && count($errorLines) > 0) {
     echo "\n";

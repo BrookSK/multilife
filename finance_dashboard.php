@@ -375,6 +375,7 @@ echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/finance_receivable_list.php">Contas a Receber</a>';
 echo '<a class="btn" href="/finance_payable_list.php">Contas a Pagar</a>';
+echo '<a class="btn" href="/finance_invoices_list.php">Notas Fiscais</a>';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';

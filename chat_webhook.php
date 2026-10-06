@@ -960,15 +960,33 @@ if ($event === 'messages.upsert') {
                 // Para mensagens fromMe: verificar se já existe (pode ter sido salva pelo chat_web.php)
                 if ($fromMe) {
                     $normalizedCheckJid = normalizeJid($remoteJid);
-                    $stmtDupCheck = db()->prepare("
-                        SELECT id FROM chat_messages 
-                        WHERE remote_jid = ? AND from_me = 1 AND message_text = ? 
-                        AND message_timestamp BETWEEN ? AND ?
-                        LIMIT 1
-                    ");
-                    $stmtDupCheck->execute([$normalizedCheckJid, $messageText, $timestamp - 10, $timestamp + 10]);
-                    $existingMsg = $stmtDupCheck->fetch();
-                    
+                    $existingMsg = false;
+
+                    // 1) Dedup FORTE por external_message_id (chave única real da mensagem).
+                    //    É o critério confiável e NÃO descarta múltiplos arquivos (cada um
+                    //    tem seu próprio key.id).
+                    if (!empty($externalMsgId)) {
+                        $stmtDupId = db()->prepare("SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1");
+                        $stmtDupId->execute([$externalMsgId]);
+                        $existingMsg = $stmtDupId->fetch();
+                    }
+
+                    // 2) Dedup por texto+janela SOMENTE para mensagens de TEXTO sem id externo
+                    //    (eco da mensagem salva otimisticamente pelo chat_web.php). Para MÍDIA
+                    //    não aplicamos esse critério, pois vários arquivos sem legenda têm o
+                    //    mesmo placeholder ([Imagem]/[Documento]) e timestamps próximos, e seriam
+                    //    descartados indevidamente.
+                    if (!$existingMsg && empty($externalMsgId) && $messageType === 'text') {
+                        $stmtDupCheck = db()->prepare("
+                            SELECT id FROM chat_messages 
+                            WHERE remote_jid = ? AND from_me = 1 AND message_text = ? 
+                            AND message_timestamp BETWEEN ? AND ?
+                            LIMIT 1
+                        ");
+                        $stmtDupCheck->execute([$normalizedCheckJid, $messageText, $timestamp - 10, $timestamp + 10]);
+                        $existingMsg = $stmtDupCheck->fetch();
+                    }
+
                     if ($existingMsg) {
                         // Já existe, apenas atualizar external_message_id se necessário
                         if (!empty($externalMsgId)) {

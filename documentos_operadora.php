@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/app/bootstrap.php';
+require_once __DIR__ . '/app/insurer_orientations_helper.php';
 
 function docs_invalid_link(): void
 {
@@ -123,6 +124,57 @@ foreach ($byInsurer as &$groupsRef) {
 }
 unset($groupsRef);
 
+// ORIENTAÇÕES por operadora (variação escolhida na pré-admissão) + tabela de dias.
+// Monta um mapa insurer_name => ['orientation' => html, 'days' => html].
+$orientationByInsurer = [];
+try {
+    insurer_orientations_ensure_schema();
+    $oriStmt = db()->prepare(
+        "SELECT hi.name AS insurer_name, pa.orientation_id, pa.external_login, pa.external_password,
+                pa.session_frequency, p.full_name AS patient_name, pa.specialty
+         FROM patient_assignments pa
+         INNER JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+         INNER JOIN patients p ON p.id = pa.patient_id
+         WHERE pa.professional_user_id = :uid
+           AND pa.status IN ('admitted','awaiting_documents','awaiting_financial_approval','approved')
+           AND pa.orientation_id IS NOT NULL
+         ORDER BY pa.admitted_at DESC, pa.id DESC"
+    );
+    $oriStmt->execute(['uid' => $userId]);
+    foreach ($oriStmt->fetchAll(PDO::FETCH_ASSOC) as $oa) {
+        $insurerName = (string)($oa['insurer_name'] ?? '');
+        if ($insurerName === '' || isset($orientationByInsurer[$insurerName])) {
+            continue; // uma orientação por operadora (a mais recente)
+        }
+        $ori = insurer_orientation_get((int)$oa['orientation_id']);
+        if (!$ori || empty($ori['body'])) {
+            continue;
+        }
+        // Frequência -> código para destacar a linha na tabela de dias.
+        $freq = (string)($oa['session_frequency'] ?? '');
+        $freqCode = $freq;
+        if ($freq !== '' && function_exists('frequency_normalize')
+            && (!defined('FREQUENCY_WEEKDAYS_MAP') || !isset(FREQUENCY_WEEKDAYS_MAP[$freq]))) {
+            $n = frequency_normalize($freq);
+            if ($n !== '') { $freqCode = $n; }
+        }
+        $daysHtml = attendance_days_table_html($freqCode);
+        $bodyText = insurer_orientation_render((string)$ori['body'], [
+            'external_login' => (string)($oa['external_login'] ?? ''),
+            'external_password' => (string)($oa['external_password'] ?? ''),
+            'patient_name' => (string)($oa['patient_name'] ?? ''),
+            'specialty' => (string)($oa['specialty'] ?? ''),
+            'attendance_days_table' => '', // a tabela é renderizada à parte, em HTML
+        ]);
+        $orientationByInsurer[$insurerName] = [
+            'orientation' => nl2br(htmlspecialchars($bodyText, ENT_QUOTES)),
+            'days' => $daysHtml,
+        ];
+    }
+} catch (Throwable $e) {
+    error_log('[DOCUMENTOS_OPERADORA] Erro ao montar orientações: ' . $e->getMessage());
+}
+
 $logoUrl = (string)admin_setting_get('app.logo_url', '');
 $profName = (string)($user['name'] ?? 'profissional');
 
@@ -205,6 +257,14 @@ $totalDocs = count($rows);
         <?php foreach ($byInsurer as $insurerName => $groups): ?>
             <div class="card">
                 <div class="insurer-title"><?= docs_e($insurerName) ?><?php if (!empty($groups['client_name'])): ?><span style="font-weight:500;font-size:14px;color:#64748b"> — <?= docs_e($groups['client_name']) ?></span><?php endif; ?></div>
+
+                <?php if (!empty($orientationByInsurer[$insurerName])): ?>
+                    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin:12px 0">
+                        <div style="font-weight:800;font-size:14px;color:#166534;margin-bottom:8px">📌 Orientações do atendimento</div>
+                        <div style="font-size:13px;color:#1a1a2e;line-height:1.6"><?= $orientationByInsurer[$insurerName]['orientation'] ?></div>
+                        <div style="margin-top:14px"><?= $orientationByInsurer[$insurerName]['days'] ?></div>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (!empty($groups['main'])): ?>
                     <?php foreach ($groups['main'] as $spec => $types): ?>

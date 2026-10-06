@@ -240,6 +240,9 @@ class WhatsAppEventDispatcher
             '{{login_externo}}' => $data['external_login'] ?? '',
             '{{senha_externa}}' => $data['external_password'] ?? '',
             '{{atendente_nome}}' => $data['attendant_name'] ?? (string)admin_setting_get('app.attendant_name', 'Maria Jullia'),
+            // Orientação da operadora (variação escolhida na pré-admissão) e tabela de dias.
+            '{{orientacao_operadora}}' => $data['insurer_orientation'] ?? '',
+            '{{tabela_dias}}' => $data['attendance_days_table'] ?? '',
         ];
         
         $message = $template;

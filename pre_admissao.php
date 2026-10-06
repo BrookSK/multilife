@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
+require_once __DIR__ . '/app/insurer_orientations_helper.php';
 
 auth_require_login();
 rbac_require_permission('demands.manage');
+
+insurer_orientations_ensure_schema();
 
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $status = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
@@ -561,9 +564,26 @@ if ($selected) {
     echo '<div style="margin-top:6px;padding:12px 14px;background:hsla(var(--info)/.08);border:1px solid hsla(var(--info)/.25);border-radius:8px;display:grid;gap:12px">';
     echo '<div style="font-size:13px;font-weight:700;color:hsl(var(--foreground))">Credenciais de sistema externo</div>';
     echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.5;margin-top:-6px">Login e senha que o profissional usará em sistemas externos. Serão enviados a ele na comunicação de aprovação. Não é o acesso ao MultiLife.</div>';
-    echo '<label>Login (sistema externo)<input type="text" name="external_login" form="approveForm" autocomplete="off" placeholder="Login de acesso do profissional"></label>';
-    echo '<label>Senha (sistema externo)<input type="text" name="external_password" form="approveForm" autocomplete="off" placeholder="Senha de acesso do profissional"></label>';
+    echo '<label>Login (sistema externo)<input type="text" name="external_login" id="paExternalLogin" form="approveForm" autocomplete="off" placeholder="Login de acesso do profissional"></label>';
+    echo '<label>Senha (sistema externo)<input type="text" name="external_password" id="paExternalPassword" form="approveForm" autocomplete="off" placeholder="Senha de acesso do profissional"></label>';
     echo '</div>';
+
+    // ORIENTAÇÃO AO PROFISSIONAL (variação da operadora) — escolhida aqui na pré-admissão.
+    // As variações são carregadas conforme a operadora selecionada na aba Faturamento.
+    $orientationsForDetected = $detectedInsurerId > 0 ? insurer_orientations_list($detectedInsurerId, true) : [];
+    echo '<div style="margin-top:6px;padding:12px 14px;background:hsla(var(--primary)/.06);border:1px solid hsl(var(--border));border-radius:8px;display:grid;gap:10px">';
+    echo '<div style="font-size:13px;font-weight:700">Orientação ao profissional (operadora)</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.5;margin-top:-4px">Selecione a variação de orientação que será enviada ao profissional junto com os documentos e o link. As opções mudam conforme a operadora escolhida na aba Faturamento.</div>';
+    echo '<label>Variação de orientação<select name="orientation_id" id="paOrientationSelect" form="approveForm">';
+    echo '<option value="">— Nenhuma / usar padrão —</option>';
+    foreach ($orientationsForDetected as $ori) {
+        $cred = (int)($ori['requires_credentials'] ?? 0) === 1 ? ' [pede login/senha]' : '';
+        echo '<option value="' . (int)$ori['id'] . '" data-cred="' . (int)($ori['requires_credentials'] ?? 0) . '">' . h((string)$ori['label']) . $cred . '</option>';
+    }
+    echo '</select></label>';
+    echo '<div id="paOrientationCredHint" style="display:none;font-size:12px;color:hsl(var(--warning));font-weight:600">⚠️ Esta variação exige login/senha de sistema externo. Preencha os campos acima.</div>';
+    echo '</div>';
+
     echo '</div>';
     echo '</div>';
 
@@ -711,6 +731,56 @@ echo '  }';
 echo '  if(paDurHint){paDurHint.style.display=on?"none":"block";}';
 echo '}';
 echo 'if(paIndef){paIndef.addEventListener("change",paToggleIndefinite);paToggleIndefinite();}';
+
+// ORIENTAÇÕES por operadora: repopular o select ao trocar a operadora na aba Faturamento.
+// Mapa { insurerId: [{id,label,requires_credentials}, ...] } com as variações ATIVAS.
+$orientationsByInsurer = [];
+try {
+    $oriRows = db()->query(
+        "SELECT id, health_insurer_id, label, requires_credentials
+         FROM health_insurer_orientations
+         WHERE is_active = 1
+         ORDER BY sort_order ASC, id ASC"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($oriRows as $o) {
+        $hid = (int)$o['health_insurer_id'];
+        if (!isset($orientationsByInsurer[$hid])) {
+            $orientationsByInsurer[$hid] = [];
+        }
+        $orientationsByInsurer[$hid][] = [
+            'id' => (int)$o['id'],
+            'label' => (string)$o['label'],
+            'requires_credentials' => (int)$o['requires_credentials'],
+        ];
+    }
+} catch (Throwable $e) {}
+
+echo 'var paOrientationsByInsurer=' . json_encode($orientationsByInsurer, JSON_UNESCAPED_UNICODE) . ';';
+echo 'var paInsurerSelect=document.querySelector("select[name=health_insurer_id][form=approveForm]");';
+echo 'var paOriSelect=document.getElementById("paOrientationSelect");';
+echo 'var paOriCredHint=document.getElementById("paOrientationCredHint");';
+echo 'function paUpdateCredHint(){';
+echo '  if(!paOriSelect||!paOriCredHint)return;';
+echo '  var opt=paOriSelect.options[paOriSelect.selectedIndex];';
+echo '  var needs=opt&&opt.getAttribute("data-cred")==="1";';
+echo '  paOriCredHint.style.display=needs?"block":"none";';
+echo '}';
+echo 'function paReloadOrientations(){';
+echo '  if(!paInsurerSelect||!paOriSelect)return;';
+echo '  var hid=parseInt(paInsurerSelect.value)||0;';
+echo '  var list=paOrientationsByInsurer[hid]||[];';
+echo '  paOriSelect.innerHTML="<option value=\"\">— Nenhuma / usar padrão —</option>";';
+echo '  list.forEach(function(o){';
+echo '    var opt=document.createElement("option");';
+echo '    opt.value=o.id;';
+echo '    opt.setAttribute("data-cred", o.requires_credentials?"1":"0");';
+echo '    opt.textContent=o.label+(o.requires_credentials?" [pede login/senha]":"");';
+echo '    paOriSelect.appendChild(opt);';
+echo '  });';
+echo '  paUpdateCredHint();';
+echo '}';
+echo 'if(paInsurerSelect){paInsurerSelect.addEventListener("change",paReloadOrientations);}';
+echo 'if(paOriSelect){paOriSelect.addEventListener("change",paUpdateCredHint);paUpdateCredHint();}';
 
 echo '})();';
 echo '</script>';
