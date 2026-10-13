@@ -757,7 +757,61 @@ foreach ($emails as $e) {
             }
             
             if (count($allClients) === 0) {
-                throw new RuntimeException('Nenhum cliente extraído de nenhum chunk (email grande).');
+                // FALLBACK 1: o chunking não extraiu ninguém (comum em e-mails "RE:"
+                // com histórico/assinatura longos que cortam mal). Tenta UMA única
+                // chamada com o e-mail inteiro (truncado a um limite seguro).
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Chunking vazio; tentando chamada única (fallback).");
+                try {
+                    $resWhole = $api->chatCompletions(
+                        [
+                            ['role' => 'system', 'content' => $systemPrompt1],
+                            ['role' => 'user', 'content' => "ASSUNTO: " . $subject . "\nREMETENTE: " . $fromEmail . "\n\nCORPO DO E-MAIL:\n" . mb_substr($content, 0, 12000)],
+                        ],
+                        null,
+                        ['temperature' => 0.1, 'response_format' => ['type' => 'json_object']]
+                    );
+                    $wStatus = (int)($resWhole['status'] ?? 0);
+                    if ($wStatus >= 200 && $wStatus < 300) {
+                        $wRaw = '';
+                        if (is_array($resWhole['json'] ?? null)) {
+                            $wRaw = (string)($resWhole['json']['choices'][0]['message']['content'] ?? '');
+                        }
+                        $wRaw = trim($wRaw);
+                        $wParsed = json_decode($wRaw, true);
+                        if (!is_array($wParsed)) {
+                            $s = strpos($wRaw, '{'); $e = strrpos($wRaw, '}');
+                            if ($s !== false && $e !== false && $e > $s) {
+                                $wParsed = json_decode(substr($wRaw, $s, $e - $s + 1), true);
+                            }
+                        }
+                        if (is_array($wParsed)) {
+                            if (isset($wParsed['clients']) && is_array($wParsed['clients'])) {
+                                foreach ($wParsed['clients'] as $c) {
+                                    if (is_array($c)) $allClients[] = $c;
+                                }
+                            } else {
+                                $allClients[] = $wParsed;
+                            }
+                        }
+                    }
+                } catch (Throwable $eWhole) {
+                    error_log("[EMAIL_EXTRACT] E-mail #$id - Fallback de chamada única falhou: " . $eWhole->getMessage());
+                }
+
+                // FALLBACK 2: ainda sem cliente -> cria 1 card em TRATAMENTO MANUAL com os
+                // dados do e-mail, para a equipe tratar. NÃO marca como erro (não perde o card).
+                if (count($allClients) === 0) {
+                    error_log("[EMAIL_EXTRACT] E-mail #$id - Sem cliente após fallback; criando card em tratamento_manual.");
+                    $allClients[] = [
+                        'patient_name' => '',
+                        'title' => ($subject !== '' ? $subject : 'Demanda recebida por e-mail'),
+                        'specialty' => null,
+                        'location_city' => null,
+                        'location_state' => null,
+                        'requests' => [],
+                        '_force_manual' => true,
+                    ];
+                }
             }
             
             // DEDUPLICAÇÃO: Remover pacientes duplicados (mesmo nome aparece em múltiplos chunks)
@@ -1130,15 +1184,18 @@ foreach ($emails as $e) {
                 // Determinar status
                 $hasSpecialty = ($specialty !== '');
                 $hasLocation = ($city !== '' && $state !== '');
+                $forceManual = !empty($client['_force_manual']);
                 
                 $status = 'aguardando_captacao';
-                if (!$hasSpecialty || (!$hasLocation && $city === '' && $state === '')) {
+                if ($forceManual || !$hasSpecialty || (!$hasLocation && $city === '' && $state === '')) {
                     $status = 'tratamento_manual';
                     $needsManual = true;
                 } else {
                     $needsManual = false;
                 }
-                if ($urgency === 'urgente' && $hasSpecialty) {
+                // Urgente com especialidade vai direto p/ captação — exceto quando o
+                // card veio do fallback (sem extração), que precisa de tratamento manual.
+                if (!$forceManual && $urgency === 'urgente' && $hasSpecialty) {
                     $status = 'aguardando_captacao';
                     $needsManual = false;
                 }
