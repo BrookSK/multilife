@@ -124,7 +124,13 @@ if ($street !== '') {
 if ($neighborhood !== '') $locParts[] = $neighborhood;
 $cityState = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : ($uf !== '' ? $uf : '');
 if ($cityState !== '') $locParts[] = $cityState;
-$locTxt = count($locParts) > 0 ? implode(' — ', $locParts) : '-';
+// Fallback: endereço informado como campo único no card manual (ainda não separado pela IA).
+$locationRaw = trim((string)($d['location_raw'] ?? ''));
+if (count($locParts) === 0 && $locationRaw !== '') {
+    $locTxt = $locationRaw;
+} else {
+    $locTxt = count($locParts) > 0 ? implode(' — ', $locParts) : '-';
+}
 $assumedBy = $d['assumed_by_name'] ? (string)$d['assumed_by_name'] : '-';
 
 view_header('Demanda #' . (string)$d['id']);

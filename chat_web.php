@@ -1634,6 +1634,131 @@ function renderQuickProfDuplicates(dups) {
   dup.style.display = 'block';
 }
 </script>
+
+<!-- Modal de Pré-cadastro rápido de PACIENTE (espelha o do profissional) -->
+<div id="quickPatientModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;overflow-y:auto">
+  <div style="background:#fff;border-radius:12px;width:90%;max-width:480px;max-height:90vh;overflow:auto;margin:20px 0">
+    <div style="padding:20px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0;font-size:19px;color:#111b21">Cadastrar Paciente</h2>
+      <button type="button" onclick="closeQuickPatientModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#54656f">&times;</button>
+    </div>
+    <div style="padding:20px">
+      <div style="background:#e7f8f4;padding:12px 14px;border-radius:8px;margin-bottom:16px;font-size:13px;color:#00695c">
+        Pré-cadastro rápido. Preencha o essencial agora; o cadastro completo pode ser feito depois em Pacientes.
+      </div>
+      <div id="quickPatientError" style="display:none;background:#f8d7da;color:#721c24;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px"></div>
+      <div id="quickPatientDupWarn" style="display:none;background:#fff3cd;color:#664d03;border:1px solid #ffe69c;padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:13px"></div>
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Nome *</label>
+      <input type="text" id="quickPatientName" placeholder="Nome completo do paciente" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
+
+      <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Telefone / WhatsApp <span style="color:#8696a0;font-weight:400">(opcional)</span></label>
+      <input type="text" id="quickPatientPhone" placeholder="Ex: 5511999999999" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:14px">
+
+      <div style="display:flex;gap:12px;margin-bottom:20px">
+        <div style="flex:2">
+          <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">Cidade</label>
+          <input type="text" id="quickPatientCity" placeholder="Ex: São Paulo" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">
+        </div>
+        <div style="flex:1">
+          <label style="display:block;margin-bottom:6px;font-weight:600;color:#111b21;font-size:14px">UF</label>
+          <input type="text" id="quickPatientState" maxlength="2" placeholder="SP" style="width:100%;padding:11px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;text-transform:uppercase">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px">
+        <button type="button" onclick="closeQuickPatientModal()" style="flex:1;padding:12px;background:#f0f2f5;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#54656f;cursor:pointer">Cancelar</button>
+        <button type="button" id="quickPatientSubmitBtn" onclick="submitQuickPatient()" style="flex:1;padding:12px;background:#00a884;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">Salvar pré-cadastro</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function openQuickPatientModal() {
+  var modal = document.getElementById('quickPatientModal');
+  if (!modal) return;
+  var chatId = window.chatId || '';
+  var chatName = window.chatName || '';
+  var phone = chatId.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@g.us', '');
+  var elName = document.getElementById('quickPatientName');
+  var elPhone = document.getElementById('quickPatientPhone');
+  var elErr = document.getElementById('quickPatientError');
+  var elDup = document.getElementById('quickPatientDupWarn');
+  if (elName) elName.value = chatName || '';
+  if (elPhone) elPhone.value = /^[0-9]+$/.test(phone) ? phone : '';
+  if (document.getElementById('quickPatientCity')) document.getElementById('quickPatientCity').value = '';
+  if (document.getElementById('quickPatientState')) document.getElementById('quickPatientState').value = '';
+  if (elErr) { elErr.style.display = 'none'; elErr.textContent = ''; }
+  if (elDup) { elDup.style.display = 'none'; elDup.innerHTML = ''; }
+  modal.style.display = 'flex';
+}
+function closeQuickPatientModal() {
+  var modal = document.getElementById('quickPatientModal');
+  if (modal) modal.style.display = 'none';
+}
+function submitQuickPatient(force) {
+  var name = (document.getElementById('quickPatientName') || {}).value || '';
+  var phone = (document.getElementById('quickPatientPhone') || {}).value || '';
+  var city = (document.getElementById('quickPatientCity') || {}).value || '';
+  var state = (document.getElementById('quickPatientState') || {}).value || '';
+  var err = document.getElementById('quickPatientError');
+  var dup = document.getElementById('quickPatientDupWarn');
+  function showErr(msg) { if (err) { err.textContent = msg; err.style.display = 'block'; } }
+  if (err) { err.style.display = 'none'; }
+  if (!force && dup) { dup.style.display = 'none'; dup.innerHTML = ''; }
+  if (!name.trim()) { showErr('Informe o nome do paciente.'); return; }
+
+  var btn = document.getElementById('quickPatientSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
+  var fd = new FormData();
+  fd.append('name', name);
+  fd.append('phone', phone);
+  fd.append('city', city);
+  fd.append('state', state);
+  if (force) { fd.append('force', '1'); }
+
+  fetch('/patient_quick_create_post.php', { method: 'POST', body: fd })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Salvar pré-cadastro'; }
+      if (data && data.ok) {
+        closeQuickPatientModal();
+        alert('Paciente pré-cadastrado com sucesso: ' + (data.name || name));
+        location.reload();
+        return;
+      }
+      if (data && data.needs_confirmation && Array.isArray(data.duplicates) && data.duplicates.length > 0) {
+        renderQuickPatientDuplicates(data.duplicates);
+        return;
+      }
+      showErr((data && data.message) ? data.message : 'Erro ao pré-cadastrar.');
+    })
+    .catch(function () {
+      if (btn) { btn.disabled = false; btn.textContent = 'Salvar pré-cadastro'; }
+      showErr('Erro de conexão. Tente novamente.');
+    });
+}
+function renderQuickPatientDuplicates(dups) {
+  var dup = document.getElementById('quickPatientDupWarn');
+  if (!dup) return;
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); };
+  var html = '<div style="font-weight:700;margin-bottom:8px">⚠ Já existe paciente parecido</div>';
+  dups.forEach(function (d) {
+    var motivo = d.reason === 'phone' ? 'mesmo telefone' : 'nome parecido';
+    var linha = esc(d.name);
+    if (d.phone) linha += ' — ' + esc(d.phone);
+    if (d.city) linha += ' · ' + esc(d.city);
+    html += '<div style="padding:8px 0;border-top:1px solid #ffe69c">';
+    html += '<div style="font-weight:600">' + linha + '</div><div style="font-size:11px;color:#8a6d3b">(' + motivo + ')</div>';
+    html += '</div>';
+  });
+  html += '<div style="margin-top:12px;font-size:13px">É o mesmo paciente? Selecione-o na atribuição. São pessoas diferentes?</div>';
+  html += '<button type="button" onclick="submitQuickPatient(true)" style="margin-top:8px;width:100%;padding:10px;background:#e67e22;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Cadastrar mesmo assim (são diferentes)</button>';
+  dup.innerHTML = html;
+  dup.style.display = 'block';
+}
+</script>
 <?php
 
 // Exibir mensagens de sucesso/erro
@@ -1906,9 +2031,12 @@ if (!empty($availableInstances)) {
         if ($instName === '') {
             continue;
         }
-        // Rótulo amigável: nome do usuário/instância + status de conexão
+        // Rótulo amigável: prioriza o apelido definido pelo admin (display_name),
+        // depois nome dos usuários vinculados, depois o nome técnico da instância.
         $label = $instName;
-        if (!empty($inst['linked_user_names'])) {
+        if (!empty($inst['display_name'])) {
+            $label = (string)$inst['display_name'];
+        } elseif (!empty($inst['linked_user_names'])) {
             $label = (string)$inst['linked_user_names'];
         } elseif (!empty($inst['user_name'])) {
             $label = (string)$inst['user_name'];
@@ -2656,8 +2784,8 @@ function toggleRec(){
     echo '</button>';
     
     // Botão de documento
-    echo '<input type="file" id="documentInput" accept=".pdf" style="display:none" data-media-type="document">';
-    echo '<button type="button" onclick="document.getElementById(\'documentInput\').click()" class="whatsapp-action-btn" title="Enviar documento PDF">';
+    echo '<input type="file" id="documentInput" style="display:none" data-media-type="document">';
+    echo '<button type="button" onclick="document.getElementById(\'documentInput\').click()" class="whatsapp-action-btn" title="Enviar documento (qualquer tipo)">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>';
     echo '</button>';
     
@@ -2933,21 +3061,27 @@ if (!empty($selectedChat)) {
 
 echo '</div>'; // Fecha whatsapp-container
 
-// Carregar funções JavaScript de arquivo externo
-echo '<script src="/chat_web_functions.js"></script>';
+// Carregar funções JavaScript de arquivo externo.
+// Versionamento por filemtime para o navegador sempre pegar a versão nova (cache-busting).
+$__jsVer = @filemtime(__DIR__ . '/chat_web_functions.js') ?: time();
+echo '<script src="/chat_web_functions.js?v=' . $__jsVer . '"></script>';
 
 // JavaScript inline apenas para configuração específica da página
 echo '<script>';
 echo 'window.chatId = ' . json_encode($selectedChat) . ';';
 echo 'window.chatName = ' . json_encode($chatName) . ';';
 $lastTs = 0;
+$lastMsgId = 0;
 if (!empty($messages)) {
     foreach ($messages as $m) {
         $ts = (int)($m['timestamp'] ?? $m['message_timestamp'] ?? 0);
         if ($ts > $lastTs) $lastTs = $ts;
+        $mid = (int)($m['id'] ?? 0);
+        if ($mid > $lastMsgId) $lastMsgId = $mid;
     }
 }
 echo 'window.lastTimestamp = ' . $lastTs . ';';
+echo 'window.lastMsgId = ' . $lastMsgId . ';';
 echo 'if (typeof startChatPolling === "function") startChatPolling();';
 echo 'console.log("✅ Chat configurado - ID:", window.chatId, "| Nome:", window.chatName);';
 
@@ -3366,22 +3500,21 @@ function cadastrarProfissional() {
     }
 }
 
-// Função para cadastrar paciente
+// Função para cadastrar paciente (pré-cadastro rápido via popup)
 function cadastrarPaciente() {
     const chatId = window.chatId || "";
-    const chatName = window.chatName || "";
-    
     if (!chatId) {
         alert("Erro: Chat não identificado");
         return;
     }
-    
-    // Extrair telefone do chat ID (remover @s.whatsapp.net)
-    const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "");
-    
-    // Redirecionar para página de cadastro de paciente com dados pré-preenchidos
-    const url = "/patients_create.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName);
-    window.open(url, "_blank");
+    if (typeof openQuickPatientModal === "function") {
+        openQuickPatientModal();
+    } else {
+        // Fallback: cadastro completo em nova aba.
+        const chatName = window.chatName || "";
+        const phone = chatId.replace("@s.whatsapp.net", "").replace("@c.us", "");
+        window.open("/patients_create.php?phone=" + encodeURIComponent(phone) + "&name=" + encodeURIComponent(chatName), "_blank");
+    }
 }
 
 // ============================================

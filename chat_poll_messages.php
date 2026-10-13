@@ -12,14 +12,19 @@ header('Cache-Control: no-cache, no-store, must-revalidate');
 
 $chatId = trim($_GET['chat_id'] ?? '');
 $since  = (int)($_GET['since'] ?? 0);
+// Cursor adicional por id: resolve o caso de VÁRIAS mensagens no MESMO segundo
+// (ex.: vários arquivos enviados de uma vez). Sem ele, mensagens com o mesmo
+// message_timestamp já "consumido" nunca mais apareciam no polling incremental.
+$lastId = (int)($_GET['last_id'] ?? 0);
 
 if (empty($chatId)) {
-    echo json_encode(['messages' => [], 'last_timestamp' => $since]);
+    echo json_encode(['messages' => [], 'last_timestamp' => $since, 'last_id' => $lastId]);
     exit;
 }
 
 try {
-    // Buscar mensagens novas desde o último timestamp
+    // Buscar mensagens novas desde o último cursor (timestamp + id).
+    // Condição: timestamp estritamente maior, OU mesmo timestamp porém id maior.
     $stmt = db()->prepare("
         SELECT 
             id,
@@ -42,11 +47,14 @@ try {
             external_message_id
         FROM chat_messages
         WHERE remote_jid = ?
-          AND message_timestamp > ?
+          AND (
+                message_timestamp > ?
+                OR (message_timestamp = ? AND id > ?)
+          )
         ORDER BY message_timestamp ASC, id ASC
         LIMIT 50
     ");
-    $stmt->execute([$chatId, $since]);
+    $stmt->execute([$chatId, $since, $since, $lastId]);
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Converter URLs relativas para absolutas
@@ -86,17 +94,22 @@ try {
     }
     unset($msg);
 
+    // Avança os cursores com base na ÚLTIMA mensagem do lote (ordenado por ts, id).
     $lastTimestamp = $since;
+    $lastIdOut = $lastId;
     if (!empty($messages)) {
-        $lastTimestamp = (int)end($messages)['message_timestamp'];
+        $lastMsg = end($messages);
+        $lastTimestamp = (int)$lastMsg['message_timestamp'];
+        $lastIdOut = (int)$lastMsg['id'];
     }
 
     echo json_encode([
         'messages'       => $messages,
         'count'          => count($messages),
         'last_timestamp' => $lastTimestamp,
+        'last_id'        => $lastIdOut,
     ]);
 } catch (Exception $e) {
     error_log('Erro no chat_poll_messages: ' . $e->getMessage());
-    echo json_encode(['messages' => [], 'last_timestamp' => $since, 'error' => $e->getMessage()]);
+    echo json_encode(['messages' => [], 'last_timestamp' => $since, 'last_id' => $lastId, 'error' => $e->getMessage()]);
 }

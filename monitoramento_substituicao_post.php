@@ -24,6 +24,10 @@ $newAgreedValue = (float)str_replace(',', '.', (string)($_POST['agreed_value'] ?
 // Frequência: pode ser alterada na substituição. Vazio = manter a atual.
 $newFrequency = trim((string)($_POST['frequency'] ?? ''));
 
+// Cobertura (substituição por tempo determinado) — Ajuste 7.
+$isCoverage = isset($_POST['is_coverage']) && $_POST['is_coverage'] === '1';
+$coverageEndDate = trim((string)($_POST['coverage_end_date'] ?? ''));
+
 if ($assignmentId <= 0 || $newProfessionalId <= 0 || $reasonType === '') {
     flash_set('error', 'Preencha todos os campos obrigatórios.');
     header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
@@ -50,6 +54,19 @@ if ($newAgreedValue <= 0) {
     flash_set('error', 'Informe o valor acordado com o novo profissional.');
     header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
     exit;
+}
+// Validação da cobertura: fim obrigatório e não anterior ao início.
+if ($isCoverage) {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $coverageEndDate)) {
+        flash_set('error', 'Informe a data de término da cobertura.');
+        header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
+        exit;
+    }
+    if ($coverageEndDate < $newStartDate) {
+        flash_set('error', 'A data de término da cobertura deve ser igual ou posterior à data de início.');
+        header('Location: /monitoramento_substituicao.php?assignment_id=' . $assignmentId);
+        exit;
+    }
 }
 $newStartTimeSql = $newStartTime . ':00';
 $newEndTimeSql = $newEndTime . ':00';
@@ -236,6 +253,65 @@ try {
         'uid' => auth_user_id(),
     ]);
 
+    // COBERTURA (tempo determinado): registra o período e guarda os dados ORIGINAIS
+    // do atendimento para que o cron restaure o profissional anterior ao fim.
+    if ($isCoverage && $oldProfId > 0) {
+        try {
+            $db->exec("CREATE TABLE IF NOT EXISTS assignment_coverages (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                assignment_id BIGINT UNSIGNED NOT NULL,
+                patient_id BIGINT UNSIGNED NULL,
+                original_professional_user_id INT UNSIGNED NULL,
+                cover_professional_user_id INT UNSIGNED NOT NULL,
+                original_professional_jid VARCHAR(100) NULL,
+                cover_professional_jid VARCHAR(100) NULL,
+                original_agreed_value DECIMAL(10,2) NULL,
+                cover_agreed_value DECIMAL(10,2) NULL,
+                original_frequency VARCHAR(120) NULL,
+                original_admitted_at DATETIME NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                reason VARCHAR(255) NULL,
+                status ENUM('active','finished','cancelled') NOT NULL DEFAULT 'active',
+                restored_at DATETIME NULL,
+                created_by_user_id INT UNSIGNED NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_cov_assignment (assignment_id),
+                KEY idx_cov_status (status),
+                KEY idx_cov_end_date (end_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            $insCov = $db->prepare(
+                'INSERT INTO assignment_coverages
+                   (assignment_id, patient_id, original_professional_user_id, cover_professional_user_id,
+                    original_professional_jid, cover_professional_jid, original_agreed_value, cover_agreed_value,
+                    original_frequency, original_admitted_at, start_date, end_date, reason, status, created_by_user_id)
+                 VALUES
+                   (:aid, :pid, :oprof, :cprof, :ojid, :cjid, :oval, :cval, :ofreq, :oadm, :sd, :ed, :reason, \'active\', :uid)'
+            );
+            $insCov->execute([
+                'aid' => $assignmentId,
+                'pid' => $patientId,
+                'oprof' => $oldProfId,
+                'cprof' => $newProfessionalId,
+                'ojid' => $oldProfJid !== '' ? $oldProfJid : null,
+                'cjid' => $newProfJid !== '' ? $newProfJid : null,
+                'oval' => isset($assignment['agreed_value']) ? (float)$assignment['agreed_value'] : null,
+                'cval' => $newAgreedValue,
+                'ofreq' => (string)($assignment['session_frequency'] ?? ''),
+                'oadm' => $assignment['admitted_at'] ?? null,
+                'sd' => $newStartDate,
+                'ed' => $coverageEndDate,
+                'reason' => $reason,
+                'uid' => auth_user_id(),
+            ]);
+        } catch (Throwable $e) {
+            error_log('[SUBSTITUICAO] Erro ao registrar cobertura: ' . $e->getMessage());
+        }
+    }
+
     // Se aplicar a todos, atualizar outros atendimentos do paciente com o mesmo profissional
     if ($applyToAll && $oldProfId > 0) {
         $updAll = $db->prepare(
@@ -286,17 +362,18 @@ try {
     $chkEvt = db()->prepare("SELECT id FROM whatsapp_events WHERE system_event = 'professional_removed' LIMIT 1");
     $chkEvt->execute();
     if (!$chkEvt->fetch()) {
+        // Mensagem NEUTRA: o profissional anterior não deve perceber que houve
+        // substituição. Comunicamos apenas o encerramento do atendimento.
         $tplRemovido = "Olá, {{profissional_nome}}!\n\n"
-            . "🔄 *Substituição de Profissional*\n\n"
-            . "Informamos que você foi substituído no atendimento abaixo e não é mais o responsável por ele:\n\n"
+            . "Informamos que o atendimento abaixo foi encerrado e não está mais sob sua responsabilidade:\n\n"
             . "• Paciente: {{paciente_nome}}\n"
             . "• Atendimento: #{{id_atendimento}}\n"
             . "• Especialidade: {{especialidade}}\n\n"
-            . "Agradecemos o seu trabalho.\n\nEquipe MultiLife Care";
+            . "Agradecemos o seu trabalho e dedicação.\n\nEquipe MultiLife Care";
         db()->prepare(
             "INSERT INTO whatsapp_events (name, system_event, status, send_to_professional, send_to_patient, template_professional, template_patient)
              VALUES (?, 'professional_removed', 'active', 1, 0, ?, NULL)"
-        )->execute(['Substituição - Profissional anterior', $tplRemovido]);
+        )->execute(['Encerramento - Profissional anterior', $tplRemovido]);
     }
 } catch (Throwable $e) {
     error_log('[SUBSTITUICAO] Erro ao garantir evento professional_removed: ' . $e->getMessage());
@@ -390,6 +467,10 @@ audit_log('update', 'patient_assignment_substitution', (string)$assignmentId, [
     'reason' => $reason,
 ]);
 
-flash_set('success', 'Profissional substituído com sucesso! De "' . ($assignment['old_professional_name'] ?? '-') . '" para "' . $newProf['name'] . '".');
+if ($isCoverage) {
+    flash_set('success', 'Cobertura registrada! "' . $newProf['name'] . '" cobre até ' . date('d/m/Y', strtotime($coverageEndDate)) . '. Depois, "' . ($assignment['old_professional_name'] ?? '-') . '" volta automaticamente.');
+} else {
+    flash_set('success', 'Profissional substituído com sucesso! De "' . ($assignment['old_professional_name'] ?? '-') . '" para "' . $newProf['name'] . '".');
+}
 header('Location: /monitoramento.php');
 exit;

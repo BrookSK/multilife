@@ -32,13 +32,15 @@ $sql = "SELECT bdr.id,
         d.id as demand_id, d.specialty, d.location_city, d.location_state,
         pa.service_type, pa.payment_value, pa.session_quantity,
         pa.session_frequency, pa.is_indefinite,
-        pa.health_insurer_id, hi.name as insurer_name
+        pa.health_insurer_id, hi.name as insurer_name,
+        pa.client_id, c.name as client_name
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = bdr.patient_id
         INNER JOIN users u ON u.id = bdr.professional_user_id
         LEFT JOIN demands d ON d.id = pa.demand_id
         LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
+        LEFT JOIN clients c ON c.id = pa.client_id
         WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval')
         AND pa.admitted_at IS NOT NULL
         ORDER BY first_at ASC";
@@ -55,6 +57,9 @@ try {
 
 $events = [];
 foreach ($appointments as $apt) {
+    // Falta operadora preenchida?
+    $needsOperator = empty($apt['health_insurer_id']);
+
     // Cor baseada no status da sessão
     $color = match((string)$apt['session_status']) {
         'pending' => '#f59e0b',      // Laranja - aguardando
@@ -63,17 +68,27 @@ foreach ($appointments as $apt) {
         'rejected' => '#dc2626',     // Vermelho - rejeitado
         default => '#6366f1'         // Roxo - padrão
     };
+    // Atendimento sem operadora: destaque vermelho-escuro para chamar atenção.
+    if ($needsOperator) {
+        $color = '#991b1b';
+    }
     
     $events[] = [
         'id' => (int)$apt['id'],
         'title' => (
-            ((string)($apt['session_frequency'] ?? '') === 'avaliacao' ? '🩺 [AVALIAÇÃO] ' :
-            ((string)($apt['session_frequency'] ?? '') === 'pontual' ? '📌 [PONTUAL] ' : ''))
+            ($needsOperator ? '⚠️ [SEM OPERADORA] ' : '')
+            . ((string)($apt['session_frequency'] ?? '') === 'avaliacao' ? '🩺 [AVALIAÇÃO] ' :
+            ((string)($apt['session_frequency'] ?? '') === 'pontual' ? '📌 [PONTUAL] ' : '')
+            )
             . '#' . ($apt['demand_id'] ?? '') . ' ' . $apt['patient_name'] . ' - ' . $apt['professional_name'] . ' (Sessão ' . $apt['session_number'] . ')'
         ),
         'start' => $apt['first_at'],
         'backgroundColor' => $color,
         'extendedProps' => [
+            'needs_operator' => $needsOperator ? 1 : 0,
+            'health_insurer_id' => (int)($apt['health_insurer_id'] ?? 0),
+            'client_id' => (int)($apt['client_id'] ?? 0),
+            'client_name' => $apt['client_name'] ?? '',
             'assignment_id' => (int)$apt['assignment_id'],
             'patient_id' => (int)$apt['patient_id'],
             'patient_name' => $apt['patient_name'],
@@ -126,6 +141,22 @@ try {
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $manualAssignments = [];
+}
+
+// Operadoras disponíveis para preencher a operadora que faltou.
+$operatorsForSelect = [];
+try {
+    $operatorsForSelect = operators_list(null, true);
+} catch (Throwable $e) {
+    $operatorsForSelect = [];
+}
+
+// Quantos atendimentos estão sem operadora (para o alerta).
+$missingOperatorCount = 0;
+foreach ($appointments as $aptChk) {
+    if (empty($aptChk['health_insurer_id'])) {
+        $missingOperatorCount++;
+    }
 }
 
 // Listas para os filtros (derivadas dos próprios eventos exibidos).
@@ -229,6 +260,7 @@ body{margin:0;padding:0;overflow:hidden}
                 </select>
                 <select id="filterInsurer" onchange="applyFilters()">
                     <option value="">Operadoras</option>
+                    <option value="__none__">⚠️ Sem operadora</option>
                     <?php foreach ($filterInsurers as $iname): ?>
                     <option value="<?php echo h($iname); ?>"><?php echo h($iname); ?></option>
                     <?php endforeach; ?>
@@ -241,6 +273,11 @@ body{margin:0;padding:0;overflow:hidden}
                 </select>
                 <button type="button" class="filterClear" onclick="clearFilters()">Limpar</button>
             </div>
+            <?php if ($missingOperatorCount > 0): ?>
+            <div style="margin-top:8px;padding:6px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#991b1b;font-weight:600;display:inline-block">
+                ⚠️ <?= (int)$missingOperatorCount ?> atendimento(s) sem operadora. Abra o card e preencha a operadora.
+            </div>
+            <?php endif; ?>
         </div>
         <div class="legend">
             <div class="legendItem">
@@ -258,6 +295,10 @@ body{margin:0;padding:0;overflow:hidden}
             <div class="legendItem">
                 <div class="legendColor" style="background:#dc2626"></div>
                 <span>Rejeitado</span>
+            </div>
+            <div class="legendItem">
+                <div class="legendColor" style="background:#991b1b"></div>
+                <span>⚠️ Sem operadora</span>
             </div>
         </div>
     </div>
@@ -281,7 +322,20 @@ body{margin:0;padding:0;overflow:hidden}
                 <div class="row"><span class="label">Especialidade:</span><span class="value" id="aptSpecialty">-</span></div>
                 <div class="row"><span class="label">Tipo de Serviço:</span><span class="value" id="aptServiceType">-</span></div>
                 <div class="row"><span class="label">Localização:</span><span class="value" id="aptLocation">-</span></div>
+                <div class="row"><span class="label">Cliente:</span><span class="value" id="aptClient">-</span></div>
                 <div class="row"><span class="label">Operadora:</span><span class="value" id="aptInsurer">-</span></div>
+                <div class="row" id="setOperatorRow" style="display:none;align-items:center;gap:8px">
+                    <span class="label">Definir operadora:</span>
+                    <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <select id="setOperatorSelect" style="padding:6px 8px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                            <option value="">Selecione…</option>
+                            <?php foreach ($operatorsForSelect as $op): ?>
+                                <option value="<?= (int)$op['id'] ?>"><?= h((string)$op['name']) ?><?= $op['client_name'] ? ' — ' . h((string)$op['client_name']) : '' ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" id="setOperatorBtn" onclick="saveOperator()" style="padding:6px 12px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Salvar</button>
+                    </span>
+                </div>
             </div>
         </div>
         
@@ -389,7 +443,21 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('aptLocation').textContent = (p.location_city && p.location_state) 
                 ? p.location_city + '/' + p.location_state 
                 : 'Não informado';
-            document.getElementById('aptInsurer').textContent = p.insurer_name || 'Não informada';
+            document.getElementById('aptClient').textContent = p.client_name || 'Não informado';
+            var insurerEl = document.getElementById('aptInsurer');
+            if (Number(p.needs_operator) === 1) {
+                insurerEl.innerHTML = '<span style="color:#991b1b;font-weight:700">⚠️ Sem operadora</span>';
+            } else {
+                insurerEl.textContent = p.insurer_name || 'Não informada';
+            }
+            // Seletor para definir/alterar a operadora (guarda o assignment atual)
+            window._monAssignmentId = p.assignment_id || info.event.id;
+            var setRow = document.getElementById('setOperatorRow');
+            var setSel = document.getElementById('setOperatorSelect');
+            if (setRow && setSel) {
+                setRow.style.display = 'flex';
+                setSel.value = p.health_insurer_id ? String(p.health_insurer_id) : '';
+            }
             
             // Paciente
             document.getElementById('patientName').textContent = p.patient_name;
@@ -529,6 +597,36 @@ function closeModal() {
 }
 
 // ============================================
+// DEFINIR OPERADORA (preencher a que faltou)
+// ============================================
+function saveOperator() {
+    var assignmentId = window._monAssignmentId || 0;
+    var operatorId = document.getElementById('setOperatorSelect').value;
+    if (!assignmentId) { alert('Atendimento não identificado.'); return; }
+    if (!operatorId) { alert('Selecione a operadora.'); return; }
+    var btn = document.getElementById('setOperatorBtn');
+    btn.disabled = true; btn.innerHTML = '⏳...';
+    var fd = new FormData();
+    fd.append('assignment_id', assignmentId);
+    fd.append('health_insurer_id', operatorId);
+    fetch('/monitoramento_set_operator_post.php', { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.success) {
+                alert('✅ Operadora definida: ' + data.operator_name + (data.client_name ? ' (Cliente: ' + data.client_name + ')' : ''));
+                window.location.reload();
+            } else {
+                alert('❌ Erro: ' + (data.error || 'desconhecido'));
+                btn.disabled = false; btn.innerHTML = 'Salvar';
+            }
+        })
+        .catch(function () {
+            alert('❌ Erro ao salvar operadora.');
+            btn.disabled = false; btn.innerHTML = 'Salvar';
+        });
+}
+
+// ============================================
 // FILTROS DO CALENDÁRIO (client-side)
 // ============================================
 function applyFilters() {
@@ -542,7 +640,11 @@ function applyFilters() {
         const p = ev.extendedProps || {};
         if (patientId && String(p.patient_id) !== String(patientId)) return false;
         if (profId && String(p.professional_id) !== String(profId)) return false;
-        if (insurer && (p.insurer_name || '') !== insurer) return false;
+        if (insurer === '__none__') {
+            if (Number(p.needs_operator) !== 1) return false;
+        } else if (insurer && (p.insurer_name || '') !== insurer) {
+            return false;
+        }
         if (specialty && (p.specialty || '') !== specialty) return false;
         if (text) {
             const hay = ((ev.title || '') + ' ' + (p.patient_name || '') + ' ' + (p.professional_name || '')).toLowerCase();

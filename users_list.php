@@ -12,6 +12,8 @@ $roleFilter = isset($_GET['role']) ? trim((string)$_GET['role']) : '';
 $statusFilter = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
 $typeFilter = isset($_GET['type']) ? trim((string)$_GET['type']) : ''; // equipe | profissional
 $specialtyFilter = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
+$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
+$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 
 // ITEM 16: Paginação no backend
 $page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
@@ -60,6 +62,16 @@ if ($q !== '') {
     $params['q2'] = $qLike;
 }
 
+// Filtro por período de cadastro
+if ($dateFrom !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) {
+    $where[] = 'DATE(u.created_at) >= :date_from';
+    $params['date_from'] = $dateFrom;
+}
+if ($dateTo !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) {
+    $where[] = 'DATE(u.created_at) <= :date_to';
+    $params['date_to'] = $dateTo;
+}
+
 $joinSql = $needsRoleJoin ? ' LEFT JOIN user_roles ur ON ur.user_id = u.id LEFT JOIN roles r ON r.id = ur.role_id' : '';
 $whereSql = !empty($where) ? ' WHERE ' . implode(' AND ', $where) : '';
 
@@ -79,10 +91,10 @@ $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
 // Helper para preservar filtros nos links de paginação
-$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter, $specialtyFilter): string {
+$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter, $specialtyFilter, $dateFrom, $dateTo): string {
     $qs = array_filter([
         'q' => $q, 'role' => $roleFilter, 'status' => $statusFilter, 'type' => $typeFilter,
-        'specialty' => $specialtyFilter, 'page' => $p,
+        'specialty' => $specialtyFilter, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'page' => $p,
     ], fn($v) => $v !== '' && $v !== null);
     return '/users_list.php?' . http_build_query($qs);
 };
@@ -140,8 +152,14 @@ echo '<option value="active"' . ($statusFilter === 'active' ? ' selected' : '') 
 echo '<option value="inactive"' . ($statusFilter === 'inactive' ? ' selected' : '') . '>Inativo</option>';
 echo '</select>';
 
+// Período de cadastro
+echo '<label style="font-size:12px;color:hsl(var(--muted-foreground))">De</label>';
+echo '<input type="date" name="date_from" value="' . h($dateFrom) . '" style="width:150px">';
+echo '<label style="font-size:12px;color:hsl(var(--muted-foreground))">Até</label>';
+echo '<input type="date" name="date_to" value="' . h($dateTo) . '" style="width:150px">';
+
 echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
-if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '' || $specialtyFilter !== '') {
+if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '' || $specialtyFilter !== '' || $dateFrom !== '' || $dateTo !== '') {
     echo '<a class="btn" href="/users_list.php">Limpar</a>';
 }
 echo '</form>';

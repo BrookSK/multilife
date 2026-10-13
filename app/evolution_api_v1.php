@@ -321,7 +321,7 @@ final class EvolutionApiV1
         return $res;
     }
 
-    public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = []): array
+    public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = [], ?string $mimeType = null): array
     {
         $body = [
             'number' => $number,
@@ -329,6 +329,11 @@ final class EvolutionApiV1
             'fileName' => $fileName,
             'media' => $media,
         ];
+        // Informar o mimetype real ajuda o WhatsApp a tratar documentos de
+        // tipos variados (doc, xls, zip, etc.), não só PDF.
+        if ($mimeType !== null && $mimeType !== '') {
+            $body['mimetype'] = $mimeType;
+        }
         if ($caption !== null && $caption !== '') {
             $body['caption'] = $caption;
         }

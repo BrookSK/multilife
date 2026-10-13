@@ -133,6 +133,19 @@ echo '<div class="col6"><div class="pill" style="display:block"><strong>Frequên
 echo '</div>';
 echo '</section>';
 
+// Recaptação SIGILOSA (Ajuste 8): refazer a captação sem avisar o profissional atual.
+// Não usa grupo (ele poderia estar no grupo) — envia por mensagem direta aos elegíveis.
+if ($demandId > 0) {
+    echo '<section class="card col12" style="border:1px solid hsl(38,92%,50%);background:hsla(38,92%,50%,.06)">';
+    echo '<div style="font-weight:900;margin-bottom:6px">🔒 Recaptar para substituir (sigiloso)</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5;margin-bottom:10px">Refaz a captação deste atendimento <strong>sem avisar o profissional atual</strong>. A oportunidade é enviada por <strong>mensagem direta</strong> aos profissionais elegíveis (nenhum grupo é usado, pois o profissional atual poderia estar nele). Depois, selecione o novo profissional no formulário abaixo e confirme a substituição.</div>';
+    echo '<form method="post" action="/demands_recaptar_sigiloso_post.php" onsubmit="return confirm(\'Enviar recaptação sigilosa por mensagem direta aos profissionais elegíveis? O profissional atual NÃO será avisado.\');">';
+    echo '<input type="hidden" name="assignment_id" value="' . $assignmentId . '">';
+    echo '<button class="btn btnPrimary" type="submit" style="background:#d97706">🔒 Recaptar sigiloso (não avisa o atual)</button>';
+    echo '</form>';
+    echo '</section>';
+}
+
 // Formulário
 echo '<section class="card col12">';
 echo '<div style="font-weight:900;margin-bottom:12px">Novo Profissional</div>';
@@ -217,6 +230,19 @@ if (function_exists('frequency_get_options')) {
 echo '</select></label></div>';
 
 echo '<div class="col6"><label>Valor acordado com o novo profissional (R$) *<input type="number" name="agreed_value" step="0.01" min="0" value="' . h($currentSchedule['agreed_value']) . '" placeholder="Ex: 150.00" required></label></div>';
+echo '</div>';
+echo '</div>';
+
+// COBERTURA (substituição por tempo determinado) — Ajuste 7.
+// Quando marcada, ao fim do período o profissional ORIGINAL volta automaticamente.
+echo '<div style="margin-top:6px;padding:14px 16px;background:hsla(38,92%,50%,.08);border:1px solid hsl(38,92%,50%);border-radius:10px">';
+echo '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700">';
+echo '<input type="checkbox" name="is_coverage" value="1" id="isCoverageChk" onchange="document.getElementById(\'coverageEndWrap\').style.display=this.checked?\'block\':\'none\'">';
+echo ' Cobertura (tempo determinado) — o profissional atual volta ao fim do período';
+echo '</label>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin:6px 0 4px">Use quando a troca é temporária (ex.: o profissional atual não pode atender em algumas datas). A data de início da cobertura é a "Data de início" informada acima.</div>';
+echo '<div id="coverageEndWrap" style="display:none">';
+echo '<div class="grid"><div class="col6"><label>Fim da cobertura (último dia) *<input type="date" name="coverage_end_date"></label></div></div>';
 echo '</div>';
 echo '</div>';
 

@@ -23,15 +23,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $billingEmail = trim($_POST['billing_email'] ?? '');
         $emailDomain = trim($_POST['email_domain'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
+        $clientId = (int)($_POST['client_id'] ?? 0) ?: null;
+        $closingDay = (int)($_POST['closing_day'] ?? 0);
+        $closingDay = ($closingDay >= 1 && $closingDay <= 31) ? $closingDay : null;
         
         if ($name !== '') {
             try {
                 $stmt = $db->prepare("
-                    INSERT INTO health_insurers (name, cnpj, contact_phone, contact_email, billing_email, email_domain, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO health_insurers (name, client_id, closing_day, cnpj, contact_phone, contact_email, billing_email, email_domain, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes]);
-                $_SESSION['success'] = 'Operadora / Cliente cadastrada com sucesso!';
+                $stmt->execute([$name, $clientId, $closingDay, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes]);
+                $_SESSION['success'] = 'Operadora cadastrada com sucesso!';
             } catch (PDOException $e) {
                 $_SESSION['error'] = 'Erro ao cadastrar: ' . $e->getMessage();
             }
@@ -49,16 +52,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $billingEmail = trim($_POST['billing_email'] ?? '');
         $emailDomain = trim($_POST['email_domain'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
+        $clientId = (int)($_POST['client_id'] ?? 0) ?: null;
+        $closingDay = (int)($_POST['closing_day'] ?? 0);
+        $closingDay = ($closingDay >= 1 && $closingDay <= 31) ? $closingDay : null;
         
         if ($id > 0 && $name !== '') {
             try {
                 $stmt = $db->prepare("
                     UPDATE health_insurers 
-                    SET name = ?, cnpj = ?, contact_phone = ?, contact_email = ?, billing_email = ?, email_domain = ?, notes = ?
+                    SET name = ?, client_id = ?, closing_day = ?, cnpj = ?, contact_phone = ?, contact_email = ?, billing_email = ?, email_domain = ?, notes = ?
                     WHERE id = ?
                 ");
-                $stmt->execute([$name, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes, $id]);
-                $_SESSION['success'] = 'Operadora / Cliente atualizada com sucesso!';
+                $stmt->execute([$name, $clientId, $closingDay, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes, $id]);
+                $_SESSION['success'] = 'Operadora atualizada com sucesso!';
             } catch (PDOException $e) {
                 $_SESSION['error'] = 'Erro ao atualizar: ' . $e->getMessage();
             }
@@ -79,24 +85,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Buscar operadoras
+// Garantir estruturas do refactor cliente/operadora
+clients_ensure_schema();
+
+// Clientes disponíveis (para vincular a operadora)
+$clientsForSelect = clients_list(false);
+
+// Buscar operadoras (com nome do cliente)
 $insurers = $db->query("
-    SELECT * FROM health_insurers 
-    ORDER BY is_active DESC, name ASC
+    SELECT hi.*, c.name AS client_name
+    FROM health_insurers hi
+    LEFT JOIN clients c ON c.id = hi.client_id
+    ORDER BY hi.is_active DESC, hi.name ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
-view_header('Configuração de Operadoras / Clientes');
+view_header('Configuração de Operadoras');
 ?>
 
 <div class="grid">
     <section class="card col12">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
             <div>
-                <div style="font-size:22px;font-weight:900">Operadoras / Clientes</div>
-                <div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Gerenciar convênios, operadoras e clientes</div>
+                <div style="font-size:22px;font-weight:900">Operadoras</div>
+                <div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Convênios (ex.: Bradesco) vinculados a um Cliente. Cada operadora pode ter seu dia de fechamento.</div>
             </div>
             <div style="display:flex;gap:10px">
-                <button onclick="openCreateModal()" class="btn-primary">+ Nova Operadora / Cliente</button>
+                <a href="/clients_config.php" class="btn">Clientes</a>
+                <button onclick="openCreateModal()" class="btn-primary">+ Nova Operadora</button>
                 <a href="/settings.php" class="btn">← Voltar</a>
             </div>
         </div>
@@ -106,10 +121,10 @@ view_header('Configuração de Operadoras / Clientes');
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Nome</th>
+                    <th>Operadora</th>
+                    <th>Cliente</th>
+                    <th>Dia fech.</th>
                     <th>CNPJ</th>
-                    <th>Telefone</th>
-                    <th>E-mail Contato</th>
                     <th>E-mail Faturamento</th>
                     <th>Status</th>
                     <th style="width:120px">Ações</th>
@@ -119,9 +134,9 @@ view_header('Configuração de Operadoras / Clientes');
                 <?php foreach ($insurers as $insurer): ?>
                 <tr>
                     <td><strong><?= h($insurer['name']) ?></strong></td>
+                    <td><?= $insurer['client_name'] ? h($insurer['client_name']) : '<span style="color:hsl(var(--destructive))">Sem cliente</span>' ?></td>
+                    <td><?= $insurer['closing_day'] ? ('dia ' . (int)$insurer['closing_day']) : '-' ?></td>
                     <td><?= h($insurer['cnpj'] ?? '-') ?></td>
-                    <td><?= h($insurer['contact_phone'] ?? '-') ?></td>
-                    <td><?= h($insurer['contact_email'] ?? '-') ?></td>
                     <td><?= h($insurer['billing_email'] ?? '-') ?></td>
                     <td>
                         <?php if ($insurer['is_active']): ?>
@@ -159,8 +174,26 @@ view_header('Configuração de Operadoras / Clientes');
             <input type="hidden" name="id" id="insurerId">
             
             <div style="margin-bottom:16px">
-                <label style="display:block;margin-bottom:8px;font-weight:600">Nome da Operadora / Cliente *</label>
+                <label style="display:block;margin-bottom:8px;font-weight:600">Nome da Operadora *</label>
                 <input type="text" name="name" id="insurerName" required style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+            </div>
+
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:16px">
+                <div>
+                    <label style="display:block;margin-bottom:8px;font-weight:600">Cliente (contratante) *</label>
+                    <select name="client_id" id="insurerClientId" required style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+                        <option value="">Selecione o cliente…</option>
+                        <?php foreach ($clientsForSelect as $cl): ?>
+                            <option value="<?= (int)$cl['id'] ?>"><?= h((string)$cl['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Cadastre clientes na aba <a href="/clients_config.php">Clientes</a>.</div>
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:8px;font-weight:600">Dia de fechamento</label>
+                    <input type="number" name="closing_day" id="insurerClosingDay" min="1" max="31" placeholder="1-31" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+                    <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Prazo de entrega ao financeiro.</div>
+                </div>
             </div>
             
             <div style="margin-bottom:16px">
@@ -242,9 +275,37 @@ view_header('Configuração de Operadoras / Clientes');
                             Documento extra / complementar da operadora
                         </label>
                     </div>
-                    <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="uploadDocuments(this.files)">
+                    <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.mp4,.webm,.mov,.avi,.mkv" style="display:none" onchange="uploadDocuments(this.files)">
                     <button type="button" onclick="document.getElementById('docFileInput').click()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">+ Adicionar Documento</button>
-                    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB)</div>
+                    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB) · Vídeo MP4, WEBM, MOV, AVI, MKV (máx. 200MB)</div>
+                </div>
+            </div>
+
+            <!-- Orientações ao profissional (variações) -->
+            <div id="orientationsSection" style="margin-bottom:20px;display:none">
+                <label style="display:block;margin-bottom:8px;font-weight:600">Orientações ao profissional (variações)</label>
+                <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:10px">Cada variação é um texto enviado ao profissional na pré-admissão (ex.: "Com tablet", "Sem tablet", "Avaliação de enfermagem"). Use <code>{{login_externo}}</code>, <code>{{senha_externa}}</code>, <code>{{profissional_nome}}</code>, <code>{{paciente_nome}}</code>, <code>{{especialidade}}</code> e <code>{{tabela_dias}}</code> onde quiser que o sistema preencha automaticamente.</div>
+                <div id="orientationsListContainer" style="margin-bottom:12px"></div>
+                <div style="border:2px dashed hsl(var(--border));border-radius:8px;padding:16px;text-align:left">
+                    <input type="hidden" id="orientationEditId" value="">
+                    <div style="margin-bottom:10px">
+                        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Rótulo da variação *</label>
+                        <input type="text" id="orientationLabel" placeholder='Ex: Com tablet, Sem tablet, Avaliação de enfermagem' style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px">
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Texto da orientação *</label>
+                        <textarea id="orientationBody" rows="8" placeholder="Cole aqui o texto completo da orientação..." style="width:100%;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:13px;resize:vertical"></textarea>
+                    </div>
+                    <div style="margin-bottom:10px">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;cursor:pointer">
+                            <input type="checkbox" id="orientationRequiresCred" style="width:16px;height:16px">
+                            Esta variação exige login/senha de sistema externo (tablet, SALVUS, Outcare…)
+                        </label>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button type="button" onclick="saveOrientation()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">Salvar orientação</button>
+                        <button type="button" onclick="resetOrientationForm()" style="padding:8px 16px;font-size:12px;font-weight:600;background:transparent;color:hsl(var(--muted-foreground));border:1px solid hsl(var(--border));border-radius:6px;cursor:pointer">Limpar</button>
+                    </div>
                 </div>
             </div>
             
@@ -258,7 +319,7 @@ view_header('Configuração de Operadoras / Clientes');
 
 <script>
 function openCreateModal() {
-    document.getElementById('modalTitle').textContent = 'Nova Operadora / Cliente';
+    document.getElementById('modalTitle').textContent = 'Nova Operadora';
     document.getElementById('formAction').value = 'create';
     document.getElementById('insurerForm').reset();
     document.getElementById('insurerId').value = '';
@@ -266,10 +327,12 @@ function openCreateModal() {
 }
 
 function editInsurer(insurer) {
-    document.getElementById('modalTitle').textContent = 'Editar Operadora / Cliente';
+    document.getElementById('modalTitle').textContent = 'Editar Operadora';
     document.getElementById('formAction').value = 'update';
     document.getElementById('insurerId').value = insurer.id;
     document.getElementById('insurerName').value = insurer.name;
+    document.getElementById('insurerClientId').value = insurer.client_id || '';
+    document.getElementById('insurerClosingDay').value = insurer.closing_day || '';
     document.getElementById('insurerCnpj').value = insurer.cnpj || '';
     document.getElementById('insurerPhone').value = insurer.contact_phone || '';
     document.getElementById('insurerEmail').value = insurer.contact_email || '';
@@ -278,12 +341,108 @@ function editInsurer(insurer) {
     document.getElementById('insurerNotes').value = insurer.notes || '';
     document.getElementById('documentsSection').style.display = 'block';
     loadDocuments(insurer.id);
+    document.getElementById('orientationsSection').style.display = 'block';
+    resetOrientationForm();
+    loadOrientations(insurer.id);
     document.getElementById('insurerModal').style.display = 'block';
 }
 
 function closeModal() {
     document.getElementById('insurerModal').style.display = 'none';
     document.getElementById('documentsSection').style.display = 'none';
+    var os = document.getElementById('orientationsSection');
+    if (os) os.style.display = 'none';
+}
+
+// ===== Orientações (variações) =====
+function loadOrientations(insurerId) {
+    var container = document.getElementById('orientationsListContainer');
+    if (!container) return;
+    container.innerHTML = '<div style="font-size:12px;color:hsl(var(--muted-foreground))">Carregando...</div>';
+    fetch('/insurer_orientations_api.php?action=list&insurer_id=' + insurerId)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.orientations || data.orientations.length === 0) {
+                container.innerHTML = '<div style="font-size:12px;color:hsl(var(--muted-foreground));padding:8px 0">Nenhuma orientação cadastrada.</div>';
+                return;
+            }
+            var esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            var html = '';
+            data.orientations.forEach(function(o) {
+                var credBadge = Number(o.requires_credentials) === 1 ? '<span style="font-size:10px;font-weight:700;background:#e7f0fd;color:#1a56db;padding:1px 6px;border-radius:8px;margin-left:6px">LOGIN/SENHA</span>' : '';
+                var inactive = Number(o.is_active) === 0 ? '<span style="font-size:10px;font-weight:700;background:#fee2e2;color:#b91c1c;padding:1px 6px;border-radius:8px;margin-left:6px">INATIVA</span>' : '';
+                var preview = esc((o.body || '').substring(0, 90)) + ((o.body || '').length > 90 ? '…' : '');
+                html += '<div style="padding:10px 12px;background:hsl(var(--secondary));border-radius:6px;margin-bottom:6px">';
+                html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+                html += '<div style="font-size:13px;font-weight:700">' + esc(o.label) + credBadge + inactive + '</div>';
+                html += '<div style="display:flex;gap:6px">';
+                html += '<button type="button" onclick=\'editOrientation(' + JSON.stringify(o) + ')\' style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--primary));border:1px solid hsl(var(--primary));border-radius:4px;cursor:pointer">Editar</button>';
+                html += '<button type="button" onclick="deleteOrientation(' + o.id + ',' + insurerId + ')" style="padding:3px 8px;font-size:11px;background:transparent;color:hsl(var(--destructive));border:1px solid hsl(var(--destructive));border-radius:4px;cursor:pointer">×</button>';
+                html += '</div></div>';
+                html += '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px;white-space:pre-wrap">' + preview + '</div>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        })
+        .catch(() => { container.innerHTML = '<div style="font-size:12px;color:hsl(var(--destructive))">Erro ao carregar orientações.</div>'; });
+}
+
+function resetOrientationForm() {
+    var e = document.getElementById('orientationEditId'); if (e) e.value = '';
+    var l = document.getElementById('orientationLabel'); if (l) l.value = '';
+    var b = document.getElementById('orientationBody'); if (b) b.value = '';
+    var c = document.getElementById('orientationRequiresCred'); if (c) c.checked = false;
+}
+
+function editOrientation(o) {
+    document.getElementById('orientationEditId').value = o.id;
+    document.getElementById('orientationLabel').value = o.label || '';
+    document.getElementById('orientationBody').value = o.body || '';
+    document.getElementById('orientationRequiresCred').checked = Number(o.requires_credentials) === 1;
+    var sec = document.getElementById('orientationsSection');
+    if (sec) sec.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+function saveOrientation() {
+    var insurerId = document.getElementById('insurerId').value;
+    if (!insurerId) { alert('Salve a operadora primeiro.'); return; }
+    var label = document.getElementById('orientationLabel').value.trim();
+    var body = document.getElementById('orientationBody').value.trim();
+    if (!label || !body) { alert('Informe o rótulo e o texto da orientação.'); return; }
+    var payload = {
+        action: 'save',
+        id: parseInt(document.getElementById('orientationEditId').value) || 0,
+        insurer_id: parseInt(insurerId),
+        label: label,
+        body: body,
+        requires_credentials: document.getElementById('orientationRequiresCred').checked ? 1 : 0,
+        is_active: 1
+    };
+    fetch('/insurer_orientations_api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { resetOrientationForm(); loadOrientations(insurerId); }
+        else { alert(data.error || 'Erro ao salvar orientação.'); }
+    })
+    .catch(() => { alert('Erro de conexão.'); });
+}
+
+function deleteOrientation(id, insurerId) {
+    if (!confirm('Remover esta orientação?')) return;
+    fetch('/insurer_orientations_api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ action: 'delete', id: id })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) loadOrientations(insurerId);
+        else alert(data.error || 'Erro ao remover.');
+    });
 }
 
 function loadDocuments(insurerId) {
@@ -304,7 +463,7 @@ function loadDocuments(insurerId) {
             };
             const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             data.documents.forEach(doc => {
-                const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : '🖼️'));
+                const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : (doc.file_name.match(/\.(mp4|webm|mov|avi|mkv)$/i) ? '🎬' : '🖼️')));
                 const badge = typeBadges[doc.professional_type] || typeBadges['ambos'];
                 // Metadados: especialidade, tipo e extra
                 let meta = '';

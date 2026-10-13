@@ -277,8 +277,11 @@ foreach ($sections as $sectionTitle => $sectionData) {
     } elseif ($sectionTitle === 'Operadoras / Clientes') {
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle" style="display:flex;align-items:center;justify-content:space-between">';
-        echo '<span>Operadoras / Clientes</span>';
-        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Gerenciar</a>';
+        echo '<span>Clientes / Operadoras</span>';
+        echo '<span style="display:flex;gap:8px">';
+        echo '<a class="btn" href="/clients_config.php" style="font-size:12px;padding:6px 12px">Clientes</a>';
+        echo '<a class="btn btnPrimary" href="/health_insurers_config.php" style="font-size:12px;padding:6px 12px">Operadoras</a>';
+        echo '</span>';
         echo '</div>';
         
         // Buscar operadoras
@@ -303,7 +306,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         }
         
         echo '<div style="margin-top:16px;padding:12px;background:hsla(var(--info)/.08);border-radius:8px;font-size:13px;color:hsl(var(--muted-foreground))">';
-        echo '💡 <strong>Dica:</strong> As operadoras são usadas para identificar convênios nos atendimentos. Clique em "Gerenciar Operadoras" para adicionar, editar ou desativar.';
+        echo '💡 <strong>Dica:</strong> Cadastre primeiro os <strong>Clientes</strong> (contratantes, ex.: GLOBAL) com o dia de fechamento, depois vincule as <strong>Operadoras</strong> (convênios, ex.: Bradesco) a cada cliente. Nomes podem repetir — o sistema identifica por ID.';
         echo '</div>';
         
         echo '</div>';
@@ -1352,6 +1355,12 @@ WAJS;
         echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
         echo '<button class="btn btnPrimary" type="submit">Salvar Configurações</button>';
         echo '</div>';
+
+        // Atalho: integração Zoho Faturamento → WhatsApp
+        echo '<div style="margin-top:20px;padding:14px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5"><strong style="color:hsl(var(--foreground))">Zoho Faturamento → WhatsApp</strong><br>Receba o webhook do formulário de faturamento do Zoho e envie a confirmação por WhatsApp.</div>';
+        echo '<a class="btn" href="/admin_zoho_billing.php">Configurar</a>';
+        echo '</div>';
         echo '</div>';
         
         // --- Sub-aba: Instâncias (Multi-instância por usuário) ---
@@ -1519,6 +1528,19 @@ WAJS;
         echo '  .catch(function(e){ alert("Erro ao salvar: " + e.message); });';
         echo '};';
         echo '';
+        // Salvar o apelido (display_name) da instância — usado nos filtros do chat.
+        echo 'window.waInstSaveAlias = function(instanceId){';
+        echo '  var inp = document.getElementById("waAlias_" + instanceId);';
+        echo '  if(!inp){ return; }';
+        echo '  var formData = new FormData();';
+        echo '  formData.append("instance_id", instanceId);';
+        echo '  formData.append("display_name", inp.value);';
+        echo '  fetch("/admin_whatsapp_instance_rename_post.php", {method:"POST", body: formData, headers:{"X-Requested-With":"XMLHttpRequest"}})';
+        echo '  .then(function(r){ return r.json(); })';
+        echo '  .then(function(d){ if(d.success){ alert("Apelido salvo!"); } else { alert("Erro: " + (d.error||"desconhecido")); } })';
+        echo '  .catch(function(e){ alert("Erro ao salvar apelido: " + e.message); });';
+        echo '};';
+        echo '';
         // Limpar conversas SOMENTE desta instância (escopo isolado). Só habilitado para desconectadas.
         echo 'window.waInstClearConversations = function(instanceName){';
         echo '  if(!confirm("Apagar TODAS as conversas e mensagens da instância \'" + instanceName + "\'?\\n\\nSomente esta instância será afetada. As demais permanecem intactas.\\nEsta ação é irreversível."))return;';
@@ -1542,6 +1564,7 @@ WAJS;
             echo '<table style="width:100%;font-size:13px">';
             echo '<thead><tr>';
             echo '<th style="text-align:left">Instância</th>';
+            echo '<th style="text-align:left">Apelido</th>';
             echo '<th style="text-align:left">Número</th>';
             echo '<th style="text-align:left">Usuário</th>';
             echo '<th style="text-align:center">Status</th>';
@@ -1593,8 +1616,16 @@ WAJS;
                     $statusBadge = '<span style="color:#ef4444;font-weight:600">● Desconectado</span>';
                 }
                 
+                $liDisplayName = (string)($li['display_name'] ?? '');
                 echo '<tr>';
                 echo '<td style="font-weight:600">' . h($liName) . '</td>';
+                // Apelido editável (usado nos filtros do chat)
+                echo '<td>';
+                echo '<span style="display:inline-flex;align-items:center;gap:6px">';
+                echo '<input type="text" id="waAlias_' . $liId . '" value="' . h($liDisplayName) . '" placeholder="ex: Atendimento Guethie" style="font-size:12px;padding:4px 8px;min-width:150px;border:1px solid hsl(var(--border));border-radius:6px">';
+                echo '<button class="btn" type="button" style="font-size:11px;padding:4px 10px" onclick="waInstSaveAlias(' . $liId . ')">Salvar</button>';
+                echo '</span>';
+                echo '</td>';
                 echo '<td>' . h($liPhone) . '</td>';
                 echo '<td>';
                 $liUserNames = trim((string)($li['linked_user_names'] ?? ''));
