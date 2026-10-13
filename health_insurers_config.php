@@ -275,9 +275,9 @@ view_header('Configuração de Operadoras');
                             Documento extra / complementar da operadora
                         </label>
                     </div>
-                    <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style="display:none" onchange="uploadDocuments(this.files)">
+                    <input type="file" id="docFileInput" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.mp4,.webm,.mov,.avi,.mkv" style="display:none" onchange="uploadDocuments(this.files)">
                     <button type="button" onclick="document.getElementById('docFileInput').click()" style="padding:8px 16px;font-size:12px;font-weight:600;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border:none;border-radius:6px;cursor:pointer">+ Adicionar Documento</button>
-                    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB)</div>
+                    <div style="font-size:11px;color:hsl(var(--muted-foreground));margin-top:6px">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, WEBP (máx. 10MB) · Vídeo MP4, WEBM, MOV, AVI, MKV (máx. 200MB)</div>
                 </div>
             </div>
 
@@ -463,7 +463,7 @@ function loadDocuments(insurerId) {
             };
             const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             data.documents.forEach(doc => {
-                const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : '🖼️'));
+                const icon = doc.file_name.match(/\.pdf$/i) ? '📄' : (doc.file_name.match(/\.(xls|xlsx)$/i) ? '📊' : (doc.file_name.match(/\.(doc|docx)$/i) ? '📝' : (doc.file_name.match(/\.(mp4|webm|mov|avi|mkv)$/i) ? '🎬' : '🖼️')));
                 const badge = typeBadges[doc.professional_type] || typeBadges['ambos'];
                 // Metadados: especialidade, tipo e extra
                 let meta = '';

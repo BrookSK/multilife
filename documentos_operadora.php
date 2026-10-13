@@ -185,6 +185,7 @@ function docs_icon(string $fileName): string
     if (preg_match('/\.pdf$/i', $fileName)) return '📄';
     if (preg_match('/\.(doc|docx)$/i', $fileName)) return '📝';
     if (preg_match('/\.(xls|xlsx)$/i', $fileName)) return '📊';
+    if (preg_match('/\.(mp4|webm|mov|avi|mkv)$/i', $fileName)) return '🎬';
     return '📎';
 }
 

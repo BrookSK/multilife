@@ -141,10 +141,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'application/vnd.ms-excel',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'image/jpeg', 'image/png', 'image/webp'
+            'image/jpeg', 'image/png', 'image/webp',
+            // Vídeos (ex.: vídeo de orientação do Outcare / Global).
+            'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
         ];
-        $allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'webp'];
-        $maxSize = 10 * 1024 * 1024; // 10MB
+        $allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'mov', 'avi', 'mkv'];
+        $videoExtensions = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
+        $maxSize = 10 * 1024 * 1024; // 10MB (documentos/imagens)
+        $maxVideoSize = 200 * 1024 * 1024; // 200MB (vídeos)
         
         $uploadDir = __DIR__ . '/uploads/insurer_docs/' . $insurerId . '/';
         if (!is_dir($uploadDir)) {
@@ -168,18 +172,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $files['error'][$i];
             
             if ($error !== UPLOAD_ERR_OK) {
-                $errors[] = "$fileName: erro no upload";
-                continue;
-            }
-            
-            if ($fileSize > $maxSize) {
-                $errors[] = "$fileName: excede 10MB";
+                // Erro comum em vídeos grandes: excede upload_max_filesize/post_max_size do PHP.
+                if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+                    $errors[] = "$fileName: arquivo excede o limite do servidor (ajuste upload_max_filesize/post_max_size no PHP para enviar vídeos grandes)";
+                } else {
+                    $errors[] = "$fileName: erro no upload";
+                }
                 continue;
             }
             
             $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
             if (!in_array($ext, $allowedExtensions)) {
                 $errors[] = "$fileName: formato não permitido";
+                continue;
+            }
+            
+            // Limite de tamanho conforme o tipo: vídeos têm limite maior.
+            $isVideo = in_array($ext, $videoExtensions, true);
+            $limit = $isVideo ? $maxVideoSize : $maxSize;
+            if ($fileSize > $limit) {
+                $errors[] = "$fileName: excede " . ($isVideo ? '200MB (vídeo)' : '10MB');
                 continue;
             }
             
