@@ -111,7 +111,6 @@ foreach ($rows as $r) {
     echo '<td><span class="badge" style="background:' . $badgeColor . ';color:#fff;font-size:12px">' . h($labels[$cat] ?? $cat) . '</span></td>';
     echo '<td style="white-space:nowrap">';
     if ($phone !== '') {
-        echo '<a class="btn" href="https://wa.me/' . h($phone) . '" target="_blank" rel="noopener" style="margin-right:6px">Chamar no WhatsApp</a>';
         echo '<a class="btn btnPrimary" href="/chat_open_imported_contact.php?id=' . (int)$r['id'] . '">Abrir conversa</a>';
     }
     echo '</td>';

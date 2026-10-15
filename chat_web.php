@@ -2330,10 +2330,9 @@ if ($chatType === 'grupos') {
             }
             echo '</div>';
             echo '</div>';
-            echo '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">';
+            echo '<div style="flex-shrink:0">';
             if ($icPhone !== '') {
-                echo '<a href="https://wa.me/' . h($icPhone) . '" target="_blank" rel="noopener" style="padding:6px 10px;background:#00a884;color:#fff;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;text-align:center">Chamar</a>';
-                echo '<a href="/chat_open_imported_contact.php?id=' . (int)$ic['id'] . '" style="padding:6px 10px;background:#fff;color:#00a884;border:1px solid #00a884;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;text-align:center">Abrir</a>';
+                echo '<a href="/chat_open_imported_contact.php?id=' . (int)$ic['id'] . '" style="padding:6px 10px;background:#00a884;color:#fff;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;text-align:center">Abrir</a>';
             }
             echo '</div>';
             echo '</div>';
