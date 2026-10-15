@@ -29,15 +29,21 @@ $offset = ($page - 1) * $perPage;
 
 $where = [];
 $params = [];
-if ($category === 'operadora') {
-    $where[] = "category IN ('operadora','cliente')";
-} else {
-    $where[] = 'category = :cat';
-    $params['cat'] = $category;
+// Com busca, olha todos os contatos importados. Sem busca, respeita o grupo escolhido.
+if ($q === '') {
+    if ($category === 'operadora') {
+        $where[] = "category IN ('operadora','cliente')";
+    } else {
+        $where[] = 'category = :cat';
+        $params['cat'] = $category;
+    }
 }
 if ($q !== '') {
-    $where[] = '(name LIKE :q OR phone LIKE :q OR phone_raw LIKE :q)';
-    $params['q'] = '%' . $q . '%';
+    $like = '%' . $q . '%';
+    $where[] = '(name LIKE :q_name OR phone LIKE :q_phone OR phone_raw LIKE :q_raw)';
+    $params['q_name'] = $like;
+    $params['q_phone'] = $like;
+    $params['q_raw'] = $like;
 }
 $whereSql = 'WHERE ' . implode(' AND ', $where);
 
@@ -72,11 +78,11 @@ echo '</div>';
 
 echo '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">';
 foreach ($labels as $key => $label) {
-    $active = $category === $key;
+    $active = $q === '' && $category === $key;
     $style = $active
         ? 'background:#00a884;color:#fff;border-color:#00a884'
         : 'background:#fff;color:#54656f;border-color:hsl(var(--border))';
-    $href = '/imported_contacts_list.php?category=' . urlencode($key) . ($q !== '' ? '&q=' . urlencode($q) : '');
+    $href = '/imported_contacts_list.php?category=' . urlencode($key);
     echo '<a href="' . h($href) . '" style="padding:8px 12px;border-radius:999px;border:1px solid;font-size:13px;font-weight:700;text-decoration:none;' . $style . '">' . h($label) . ' (' . (int)$counts[$key] . ')</a>';
 }
 echo '</div>';

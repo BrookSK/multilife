@@ -2032,7 +2032,10 @@ if ($chatType === 'contatos') {
     $contactQuery = isset($_GET['cq']) ? trim((string)$_GET['cq']) : '';
     $contactCat = isset($_GET['cat']) ? trim((string)$_GET['cat']) : 'profissional';
     echo '<input type="hidden" name="cat" value="' . h($contactCat) . '">';
-    echo '<input type="text" name="cq" value="' . h($contactQuery) . '" placeholder="Pesquisar contatos">';
+    echo '<input type="text" name="cq" id="contactSearchInput" value="' . h($contactQuery) . '" placeholder="Pesquisar contatos" autocomplete="off">';
+    echo '<script>';
+    echo '(function(){var input=document.getElementById("contactSearchInput");if(!input||!input.form)return;var t;input.addEventListener("input",function(){clearTimeout(t);t=setTimeout(function(){input.form.submit();},350);});})();';
+    echo '</script>';
 } else {
     echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
 }
@@ -2274,15 +2277,22 @@ if ($chatType === 'grupos') {
 
     $cw = [];
     $cp = [];
-    if ($contactCat === 'operadora') {
-        $cw[] = "category IN ('operadora','cliente')";
-    } else {
-        $cw[] = 'category = :cat';
-        $cp['cat'] = $contactCat;
+    // Com texto na busca, procura em todos os contatos importados.
+    // Sem texto, a lista segue o grupo escolhido (profissionais, operadoras, pacientes, outros).
+    if ($contactQuery === '') {
+        if ($contactCat === 'operadora') {
+            $cw[] = "category IN ('operadora','cliente')";
+        } else {
+            $cw[] = 'category = :cat';
+            $cp['cat'] = $contactCat;
+        }
     }
     if ($contactQuery !== '') {
-        $cw[] = '(name LIKE :q OR phone LIKE :q)';
-        $cp['q'] = '%' . $contactQuery . '%';
+        $like = '%' . $contactQuery . '%';
+        $cw[] = '(name LIKE :q_name OR phone LIKE :q_phone OR phone_raw LIKE :q_raw)';
+        $cp['q_name'] = $like;
+        $cp['q_phone'] = $like;
+        $cp['q_raw'] = $like;
     }
     $cWhere = 'WHERE ' . implode(' AND ', $cw);
     $cCountStmt = db()->prepare("SELECT COUNT(*) FROM imported_contacts $cWhere");
@@ -2299,12 +2309,15 @@ if ($chatType === 'grupos') {
 
     echo '<div style="display:flex;gap:6px;padding:8px 10px;overflow-x:auto;border-bottom:1px solid #f0f2f5">';
     foreach ($contactLabels as $key => $label) {
-        $on = $contactCat === $key;
+        $on = $contactQuery === '' && $contactCat === $key;
         $chip = $on ? 'background:#00a884;color:#fff' : 'background:#f0f2f5;color:#54656f';
-        $href = '/chat_web.php?type=contatos&cat=' . urlencode($key) . ($contactQuery !== '' ? '&cq=' . urlencode($contactQuery) : '') . $instanceQS . $attendantQS;
+        $href = '/chat_web.php?type=contatos&cat=' . urlencode($key) . $instanceQS . $attendantQS;
         echo '<a href="' . h($href) . '" style="flex:0 0 auto;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700;text-decoration:none;' . $chip . '">' . h($label) . ' ' . (int)$contactCounts[$key] . '</a>';
     }
     echo '</div>';
+    if ($contactQuery !== '') {
+        echo '<div style="padding:6px 12px;font-size:12px;color:#667781">Buscando em todos os contatos importados</div>';
+    }
 
     if (!empty($seed['ran'])) {
         echo '<div style="margin:8px 12px;padding:8px 10px;background:#e7f8f4;border-radius:8px;font-size:12px;color:#027a48">Agenda importada e separada nos grupos acima.</div>';
@@ -2312,8 +2325,13 @@ if ($chatType === 'grupos') {
 
     if (count($contactRows) === 0) {
         echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
-        echo '<p style="margin:0;font-weight:600">Nenhum contato neste grupo</p>';
-        echo '<p style="margin:8px 0 0;font-size:13px"><a href="/contacts_import.php" style="color:#00a884">Importar agenda</a></p>';
+        if ($contactQuery !== '') {
+            echo '<p style="margin:0;font-weight:600">Nenhum contato encontrado</p>';
+            echo '<p style="margin:8px 0 0;font-size:13px">Nada com "' . h($contactQuery) . '" na agenda importada.</p>';
+        } else {
+            echo '<p style="margin:0;font-weight:600">Nenhum contato neste grupo</p>';
+            echo '<p style="margin:8px 0 0;font-size:13px"><a href="/contacts_import.php" style="color:#00a884">Importar agenda</a></p>';
+        }
         echo '</div>';
     } else {
         foreach ($contactRows as $ic) {
@@ -2324,7 +2342,14 @@ if ($chatType === 'grupos') {
             echo '<div class="whatsapp-chat-avatar">' . h(strtoupper(mb_substr($icName, 0, 1))) . '</div>';
             echo '<div class="whatsapp-chat-info">';
             echo '<div class="whatsapp-chat-name">' . h($icName) . '</div>';
+            $icCat = (string)($ic['category'] ?? '');
+            if ($icCat === 'cliente') {
+                $icCat = 'operadora';
+            }
             echo '<div class="whatsapp-chat-preview">' . h($icPhone !== '' ? imported_contacts_format_phone($icPhone) : '');
+            if ($contactQuery !== '' && isset($contactLabels[$icCat])) {
+                echo ' · ' . h($contactLabels[$icCat]);
+            }
             if ($inactive) {
                 echo ' · Não atende';
             }
