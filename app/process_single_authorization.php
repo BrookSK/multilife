@@ -184,7 +184,7 @@ function process_single_authorization(int $authId, int $emailId): array
             $demand = $demandStmt->fetch();
             
             if (!$demand) {
-                $db->rollBack();
+                if ($db->inTransaction()) { $db->rollBack(); }
                 return ['success' => false, 'error' => 'Demanda não encontrada'];
             }
             
@@ -198,7 +198,7 @@ function process_single_authorization(int $authId, int $emailId): array
             $patientData = $verifyPatient->fetch();
             
             if (!$patientData) {
-                $db->rollBack();
+                if ($db->inTransaction()) { $db->rollBack(); }
                 error_log("[PROCESS_SINGLE_AUTH] ❌❌❌ ERRO CRÍTICO: Paciente #$patientId NÃO EXISTE no banco de dados");
                 error_log("[PROCESS_SINGLE_AUTH] Possíveis causas:");
                 error_log("[PROCESS_SINGLE_AUTH]   1. Paciente foi deletado (deleted_at IS NOT NULL)");
@@ -247,7 +247,11 @@ function process_single_authorization(int $authId, int $emailId): array
             $assignmentId = (int)$db->lastInsertId();
             error_log("[PROCESS_SINGLE_AUTH] ✓ Atendimento criado - ID: $assignmentId");
             
-            // Disparar evento WhatsApp attendance_assigned (operadora APROVOU)
+            // Coletar dados do evento WhatsApp attendance_assigned para disparar APÓS o commit.
+            // IMPORTANTE: o dispatch NÃO pode rodar dentro da transação, pois gera links que
+            // executam ALTER TABLE (DDL) — e DDL causa commit implícito no MySQL, encerrando a
+            // transação e provocando "There is no active transaction" no commit final.
+            $pendingDispatch = null;
             try {
                 $profStmt = $db->prepare('SELECT name, phone FROM users WHERE id = :id');
                 $profStmt->execute(['id' => $professionalUserId]);
@@ -275,8 +279,7 @@ function process_single_authorization(int $authId, int $emailId): array
                 ], fn($c) => $c !== '');
                 $patientContacts = implode(' / ', array_unique($contactParts));
 
-                $dispatcher = new WhatsAppEventDispatcher();
-                $dispatcher->dispatch('attendance_assigned', [
+                $pendingDispatch = [
                     'professional_id' => $professionalUserId,
                     'professional_name' => $profData['name'] ?? '',
                     'professional_phone' => preg_replace('/\D+/', '', (string)($profData['phone'] ?? '')),
@@ -285,20 +288,17 @@ function process_single_authorization(int $authId, int $emailId): array
                     'patient_phone' => preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? '')),
                     'attendance_id' => (string)$assignmentId,
                     'attendance_date' => date('d/m/Y'),
-                    // Link PÚBLICO por token (sem login). Só inclui se a flag de notificação permitir.
-                    'attendance_link' => notifications_should_include_portal_link() ? professional_registration_link((int)$professionalUserId) : '',
                     'specialty' => (string)($demand['specialty'] ?? ''),
                     'service_type' => (string)($demand['title'] ?? ''),
                     'session_quantity' => (string)$totalSessions,
                     'session_frequency' => $frequency,
                     'agreed_value' => number_format($agreedPerSession, 2, ',', '.'),
-                    // Campos do template oficial "novo paciente autorizado"
                     'patient_address' => $patientAddress,
                     'patient_contacts' => $patientContacts,
                     'schedule' => $frequency,
-                ]);
+                ];
             } catch (Throwable $evtErr) {
-                error_log('[PROCESS_SINGLE_AUTH] Erro ao disparar evento: ' . $evtErr->getMessage());
+                error_log('[PROCESS_SINGLE_AUTH] Erro ao preparar evento: ' . $evtErr->getMessage());
             }
             
             // Criar lançamentos financeiros
@@ -387,12 +387,24 @@ function process_single_authorization(int $authId, int $emailId): array
             ]);
             error_log("[PROCESS_SINGLE_AUTH] ✓ Histórico de auditoria registrado");
             
-            $db->commit();
+            if ($db->inTransaction()) { $db->commit(); }
             
             error_log("[PROCESS_SINGLE_AUTH] ✅ APROVAÇÃO PROCESSADA COM SUCESSO!");
             error_log("[PROCESS_SINGLE_AUTH] === FIM AUDITORIA CRÍTICA ===");
             error_log("[PROCESS_SINGLE_AUTH] Atendimento #$assignmentId criado");
             error_log("[PROCESS_SINGLE_AUTH] Paciente #$patientId vinculado");
+
+            // Disparar a notificação SOMENTE após o commit (fora da transação).
+            if ($pendingDispatch !== null) {
+                try {
+                    $pendingDispatch['attendance_link'] = notifications_should_include_portal_link()
+                        ? professional_registration_link((int)$professionalUserId) : '';
+                    $dispatcher = new WhatsAppEventDispatcher();
+                    $dispatcher->dispatch('attendance_assigned', $pendingDispatch);
+                } catch (Throwable $evtErr) {
+                    error_log('[PROCESS_SINGLE_AUTH] Erro ao disparar evento (pós-commit): ' . $evtErr->getMessage());
+                }
+            }
             
             return [
                 'success' => true,
@@ -481,7 +493,7 @@ function process_single_authorization(int $authId, int $emailId): array
             ]);
             error_log("[PROCESS_SINGLE_AUTH] ✓ Histórico de auditoria registrado");
             
-            $db->commit();
+            if ($db->inTransaction()) { $db->commit(); }
             
             error_log("[PROCESS_SINGLE_AUTH] ❌ NEGAÇÃO PROCESSADA COM SUCESSO!");
             error_log("[PROCESS_SINGLE_AUTH] === FIM AUDITORIA CRÍTICA ===");
