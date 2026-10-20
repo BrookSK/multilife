@@ -325,7 +325,14 @@ foreach ($columns as $col) {
 
     echo '<div class="kanbanCol" data-column-id="' . h($colId) . '">';
     echo '<div class="kanbanColHead">';
-    echo '<span class="kanbanEmoji">' . h((string)$col['emoji']) . '</span>';
+    // Ação em massa OCULTA na coluna "Tratamento Manual": o emoji do cabeçalho é um
+    // gatilho secreto — DUPLO CLIQUE abre a confirmação de limpeza (cancelar todos).
+    // Não há botão visível; parece o cabeçalho normal.
+    if ($colId === 'tratamento_manual') {
+        echo '<span class="kanbanEmoji" style="cursor:default;user-select:none" title="" ondblclick="bulkCancelManual(event, ' . (int)$colTotal . ')">' . h((string)$col['emoji']) . '</span>';
+    } else {
+        echo '<span class="kanbanEmoji">' . h((string)$col['emoji']) . '</span>';
+    }
     echo '<div class="kanbanTitle">' . h((string)$col['title']) . '</div>';
     echo '<div class="kanbanCount">' . (int)$colTotal . '</div>';
     echo '</div>';
@@ -512,6 +519,24 @@ echo '      console.log("Novos e-mails: " + newEmails + ". CRON vai processar em
 echo '    }';
 echo '  }).catch(function(e){ console.log("Sync emails:", e); });';
 echo '})();';
+echo '</script>';
+
+// Ação em MASSA OCULTA: cancelar todos os cards de "Tratamento Manual".
+// Acionada por DUPLO CLIQUE no emoji do cabeçalho da coluna + confirmação por digitação.
+echo '<form id="bulkCancelManualForm" method="post" action="/demands_bulk_cancel_manual_post.php" style="display:none">';
+echo '<input type="hidden" name="cancellation_reason" value="Limpeza em massa — Tratamento Manual">';
+echo '</form>';
+echo '<script>';
+echo 'function bulkCancelManual(ev, total){';
+echo '  if(ev){ ev.preventDefault(); ev.stopPropagation(); }';
+echo '  if(!total || total < 1){ alert("Não há cards em Tratamento Manual para limpar."); return; }';
+echo '  var step1 = confirm("Ação em massa: CANCELAR todos os " + total + " cards de Tratamento Manual?\\n\\nEsta ação move todos para Cancelado.");';
+echo '  if(!step1) return;';
+echo '  var typed = prompt("Confirmação de segurança: digite LIMPAR para cancelar os " + total + " cards.");';
+echo '  if(typed === null) return;';
+echo '  if(String(typed).trim().toUpperCase() !== "LIMPAR"){ alert("Confirmação incorreta. Nada foi alterado."); return; }';
+echo '  document.getElementById("bulkCancelManualForm").submit();';
+echo '}';
 echo '</script>';
 
 view_footer();
