@@ -1364,6 +1364,62 @@ foreach ($emails as $e) {
     }
 }
 
+// =====================================================================
+// AUTO-ENCADEAMENTO (chain): quando acionado com chain=1, ao terminar o lote
+// o cron dispara a PRÓXIMA rodada em background se ainda houver e-mails
+// pendentes. Isso esvazia filas grandes (ex.: dezenas de milhares) em lotes,
+// sem travar a tela e sem precisar clicar várias vezes.
+// Teto de segurança: chain_depth evita loop infinito.
+// =====================================================================
+$chain = isset($_GET['chain']) && ((string)$_GET['chain'] === '1' || strtolower((string)$_GET['chain']) === 'true');
+if ($chain) {
+    $chainDepth = isset($_GET['chain_depth']) ? (int)$_GET['chain_depth'] : 0;
+    $chainMax = 1000; // teto de rodadas encadeadas (seguro p/ dezenas de milhares)
+
+    // Ainda há e-mails a processar? (received + opcionalmente error, se retry_errors)
+    $pendingLeft = 0;
+    try {
+        if ($retryErrors) {
+            $pendingLeft = (int)db()->query("SELECT COUNT(*) FROM inbound_emails WHERE status IN ('received','error')")->fetchColumn();
+        } else {
+            $pendingLeft = (int)db()->query("SELECT COUNT(*) FROM inbound_emails WHERE status = 'received'")->fetchColumn();
+        }
+    } catch (Throwable $e) {
+        $pendingLeft = 0;
+    }
+
+    // Progresso efetivo nesta rodada (evita encadear à toa se nada avançou).
+    $processedThisRound = $ok + $manual + $errors + $skippedNotCaptation;
+
+    if ($pendingLeft > 0 && $processedThisRound > 0 && $chainDepth < $chainMax) {
+        $cronToken = (string)admin_setting_get('cron.token', '');
+        if ($cronToken !== '') {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+            $nextUrl = $scheme . '://' . $host . '/cron/openai_extract_email_to_demand.php?'
+                . http_build_query([
+                    'token' => $cronToken,
+                    'retry_errors' => $retryErrors ? '1' : '0',
+                    'limit' => $limit,
+                    'chain' => '1',
+                    'chain_depth' => $chainDepth + 1,
+                ]);
+            if (function_exists('curl_init')) {
+                $chNext = curl_init($nextUrl);
+                curl_setopt($chNext, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($chNext, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($chNext, CURLOPT_SSL_VERIFYHOST, false);
+                curl_setopt($chNext, CURLOPT_CONNECTTIMEOUT, 2);
+                curl_setopt($chNext, CURLOPT_TIMEOUT_MS, 800); // fire-and-forget
+                curl_setopt($chNext, CURLOPT_NOSIGNAL, true);
+                curl_exec($chNext);
+                curl_close($chNext);
+            }
+            error_log("[EMAIL_EXTRACT] CHAIN rodada " . ($chainDepth + 1) . " disparada (pendentes restantes: $pendingLeft)");
+        }
+    }
+}
+
 echo 'OK: created=' . ($ok + $manual) . ' manual=' . $manual . ' errors=' . $errors . ' not_captation=' . $skippedNotCaptation . "\n";
 
 if ($debug && count($errorLines) > 0) {

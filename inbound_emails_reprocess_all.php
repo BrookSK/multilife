@@ -46,37 +46,35 @@ if ($cronToken === '') {
 // qualquer e-mail em 'error' remanescente; limit alto para pegar o lote todo.
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+// chain=1: o cron se auto-encadeia em background, processando em lotes até
+// esvaziar a fila — sem travar a tela e sem precisar clicar de novo.
 $url = $scheme . '://' . $host . '/cron/openai_extract_email_to_demand.php?'
     . http_build_query([
         'token' => $cronToken,
         'retry_errors' => '1',
-        'limit' => max(20, min(100, $resetCount)),
+        'limit' => 15,
+        'chain' => '1',
+        'chain_depth' => 0,
     ]);
 
-$dispatched = false;
+// Disparo em BACKGROUND (fire-and-forget): não esperamos o cron terminar, apenas
+// "cutucamos" para ele começar. O cron processa em lotes e, a cada execução, fecha
+// a conexão com fastcgi_finish_request() e segue em background. Isso evita travar a
+// tela mesmo com dezenas de milhares de e-mails na fila.
 if (function_exists('curl_init')) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+    // Timeout curtíssimo: só dispara e não aguarda o processamento.
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 800);
+    curl_setopt($ch, CURLOPT_NOSIGNAL, true);
     curl_exec($ch);
-    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
     curl_close($ch);
-    if ($httpCode === 200) {
-        $dispatched = true;
-    } else {
-        error_log("[REPROCESS_ALL] Loopback falhou (HTTP $httpCode): $curlErr");
-    }
 }
 
-if ($dispatched) {
-    flash_set('success', $resetCount . ' e-mail(s) com erro enviados para reprocessamento. Aguarde alguns segundos e recarregue a página. Se houver muitos, pode ser necessário clicar novamente para processar o restante.');
-} else {
-    flash_set('success', $resetCount . ' e-mail(s) com erro foram marcados como "received" e serão processados no próximo ciclo do cron.');
-}
+flash_set('success', $resetCount . ' e-mail(s) com erro foram enfileirados e estão sendo reprocessados em segundo plano. Você pode continuar usando o sistema; recarregue a página daqui a pouco para ver o progresso. Como são muitos, o processamento ocorre em lotes e leva alguns minutos.');
 
 header('Location: /inbound_emails_list.php');
 exit;
