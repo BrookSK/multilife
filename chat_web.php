@@ -702,8 +702,8 @@ try {
             $params[] = $attendantFilter;
         }
         
-        // Não buscar chats se estiver na aba de grupos ou lista de espera
-        if ($chatType !== 'grupos' && $chatType !== 'lista_espera') {
+        // Não buscar chats se estiver na aba de grupos, lista de espera ou contatos importados
+        if ($chatType !== 'grupos' && $chatType !== 'lista_espera' && $chatType !== 'contatos') {
             $whereSQL = !empty($whereClauses) ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
             
             $stmt = db()->prepare("
@@ -859,6 +859,18 @@ if (!empty($selectedChat)) {
             $userRow = $userStmt->fetch();
             if ($userRow) {
                 $chatName = (string)$userRow['name'];
+            } else {
+                try {
+                    $icStmt = db()->prepare("SELECT name FROM imported_contacts WHERE phone = ? OR phone = ? LIMIT 1");
+                    $with55 = strlen($phonePart) >= 12 ? $phonePart : ('55' . $phonePart);
+                    $icStmt->execute([$phonePart, $with55]);
+                    $icRow = $icStmt->fetch();
+                    if ($icRow && trim((string)$icRow['name']) !== '') {
+                        $chatName = (string)$icRow['name'];
+                    }
+                } catch (Throwable $e) {
+                    // tabela ainda não criada
+                }
             }
         }
         $selectedChatData = [
@@ -2016,7 +2028,17 @@ if ($instanceFilter !== '') {
 if ($attendantFilter > 0) {
     echo '<input type="hidden" name="attendant" value="' . (int)$attendantFilter . '">';
 }
-echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
+if ($chatType === 'contatos') {
+    $contactQuery = isset($_GET['cq']) ? trim((string)$_GET['cq']) : '';
+    $contactCat = isset($_GET['cat']) ? trim((string)$_GET['cat']) : 'profissional';
+    echo '<input type="hidden" name="cat" value="' . h($contactCat) . '">';
+    echo '<input type="text" name="cq" id="contactSearchInput" value="' . h($contactQuery) . '" placeholder="Pesquisar contatos" autocomplete="off">';
+    echo '<script>';
+    echo '(function(){var input=document.getElementById("contactSearchInput");if(!input||!input.form)return;var t;input.addEventListener("input",function(){clearTimeout(t);t=setTimeout(function(){input.form.submit();},350);});})();';
+    echo '</script>';
+} else {
+    echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
+}
 echo '</form>';
 echo '</div>';
 
@@ -2073,7 +2095,8 @@ $tabs = [
     'concluidos' => ['label' => 'Concluídos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'],
     'lista_espera' => ['label' => 'Lista de Espera', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'],
     'grupos' => ['label' => 'Grupos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'],
-    'todos' => ['label' => 'Todos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>']
+    'todos' => ['label' => 'Todos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>'],
+    'contatos' => ['label' => 'Contatos', 'icon' => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
 ];
 $instanceQS = $instanceFilter !== '' ? '&instance=' . rawurlencode($instanceFilter) : '';
 $attendantQS = $attendantFilter > 0 ? '&attendant=' . (int)$attendantFilter : '';
@@ -2235,6 +2258,109 @@ if ($chatType === 'grupos') {
         echo '<p style="margin:0;font-weight:600">Nenhum profissional na lista de espera</p>';
         echo '<p style="margin:8px 0 0;font-size:13px">Quando profissionais reagirem às captações nos grupos, aparecerão aqui</p>';
         echo '</div>';
+    }
+} elseif ($chatType === 'contatos') {
+    require_once __DIR__ . '/app/imported_contacts_helper.php';
+    try {
+        $seed = imported_contacts_seed_bundled(false);
+    } catch (Throwable $e) {
+        error_log('[IMPORTED_CONTACTS] seed: ' . $e->getMessage());
+        $seed = ['ran' => false];
+    }
+    $contactLabels = imported_contacts_categories();
+    $contactCat = isset($_GET['cat']) && isset($contactLabels[$_GET['cat']]) ? (string)$_GET['cat'] : 'profissional';
+    $contactQuery = isset($_GET['cq']) ? trim((string)$_GET['cq']) : '';
+    $contactPage = max(1, (int)($_GET['pg'] ?? 1));
+    $contactPerPage = 40;
+    $contactOffset = ($contactPage - 1) * $contactPerPage;
+    $contactCounts = imported_contacts_counts();
+
+    $cw = [];
+    $cp = [];
+    if ($contactCat === 'operadora') {
+        $cw[] = "category IN ('operadora','cliente')";
+    } else {
+        $cw[] = 'category = :cat';
+        $cp['cat'] = $contactCat;
+    }
+    if ($contactQuery !== '') {
+        $like = '%' . $contactQuery . '%';
+        $cw[] = '(name LIKE :q_name OR phone LIKE :q_phone OR phone_raw LIKE :q_raw)';
+        $cp['q_name'] = $like;
+        $cp['q_phone'] = $like;
+        $cp['q_raw'] = $like;
+    }
+    $cWhere = 'WHERE ' . implode(' AND ', $cw);
+    $cCountStmt = db()->prepare("SELECT COUNT(*) FROM imported_contacts $cWhere");
+    $cCountStmt->execute($cp);
+    $contactTotal = (int)$cCountStmt->fetchColumn();
+    $contactPages = max(1, (int)ceil($contactTotal / $contactPerPage));
+    if ($contactPage > $contactPages) {
+        $contactPage = $contactPages;
+        $contactOffset = ($contactPage - 1) * $contactPerPage;
+    }
+    $cStmt = db()->prepare("SELECT id, name, phone, notes, category FROM imported_contacts $cWhere ORDER BY name ASC LIMIT $contactPerPage OFFSET $contactOffset");
+    $cStmt->execute($cp);
+    $contactRows = $cStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo '<div style="display:flex;gap:6px;padding:8px 10px;overflow-x:auto;border-bottom:1px solid #f0f2f5">';
+    foreach ($contactLabels as $key => $label) {
+        $on = $contactCat === $key;
+        $chip = $on ? 'background:#00a884;color:#fff' : 'background:#f0f2f5;color:#54656f';
+        $href = '/chat_web.php?type=contatos&cat=' . urlencode($key) . ($contactQuery !== '' ? '&cq=' . urlencode($contactQuery) : '') . $instanceQS . $attendantQS;
+        echo '<a href="' . h($href) . '" style="flex:0 0 auto;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:700;text-decoration:none;' . $chip . '">' . h($label) . ' ' . (int)$contactCounts[$key] . '</a>';
+    }
+    echo '</div>';
+    if (!empty($seed['ran'])) {
+        echo '<div style="margin:8px 12px;padding:8px 10px;background:#e7f8f4;border-radius:8px;font-size:12px;color:#027a48">Agenda importada e separada nos grupos acima.</div>';
+    }
+
+    if (count($contactRows) === 0) {
+        echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
+        if ($contactQuery !== '') {
+            echo '<p style="margin:0;font-weight:600">Nenhum contato encontrado</p>';
+            echo '<p style="margin:8px 0 0;font-size:13px">Nada com "' . h($contactQuery) . '" em ' . h($contactLabels[$contactCat] ?? 'este grupo') . '.</p>';
+        } else {
+            echo '<p style="margin:0;font-weight:600">Nenhum contato neste grupo</p>';
+            echo '<p style="margin:8px 0 0;font-size:13px"><a href="/contacts_import.php" style="color:#00a884">Importar agenda</a></p>';
+        }
+        echo '</div>';
+    } else {
+        foreach ($contactRows as $ic) {
+            $icPhone = (string)($ic['phone'] ?? '');
+            $icName = (string)$ic['name'];
+            $inactive = (string)($ic['notes'] ?? '') === 'nao_atende';
+            echo '<div class="whatsapp-chat-item" style="cursor:default;align-items:center">';
+            echo '<div class="whatsapp-chat-avatar">' . h(strtoupper(mb_substr($icName, 0, 1))) . '</div>';
+            echo '<div class="whatsapp-chat-info">';
+            echo '<div class="whatsapp-chat-name">' . h($icName) . '</div>';
+            echo '<div class="whatsapp-chat-preview">' . h($icPhone !== '' ? imported_contacts_format_phone($icPhone) : '');
+            if ($inactive) {
+                echo ' · Não atende';
+            }
+            echo '</div>';
+            echo '</div>';
+            echo '<div style="flex-shrink:0">';
+            if ($icPhone !== '') {
+                echo '<a href="/chat_open_imported_contact.php?id=' . (int)$ic['id'] . '" style="padding:6px 10px;background:#00a884;color:#fff;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;text-align:center">Abrir</a>';
+            }
+            echo '</div>';
+            echo '</div>';
+        }
+        if ($contactPages > 1) {
+            echo '<div style="display:flex;justify-content:space-between;gap:8px;padding:10px 12px">';
+            $pageBase = '/chat_web.php?type=contatos&cat=' . urlencode($contactCat) . ($contactQuery !== '' ? '&cq=' . urlencode($contactQuery) : '') . $instanceQS . $attendantQS;
+            if ($contactPage > 1) {
+                echo '<a href="' . h($pageBase . '&pg=' . ($contactPage - 1)) . '" style="font-size:13px;color:#00a884;font-weight:700;text-decoration:none">Anterior</a>';
+            } else {
+                echo '<span></span>';
+            }
+            echo '<span style="font-size:12px;color:#667781">' . $contactPage . ' / ' . $contactPages . '</span>';
+            if ($contactPage < $contactPages) {
+                echo '<a href="' . h($pageBase . '&pg=' . ($contactPage + 1)) . '" style="font-size:13px;color:#00a884;font-weight:700;text-decoration:none">Próxima</a>';
+            }
+            echo '</div>';
+        }
     }
 } else {
     // Exibir chats normais
