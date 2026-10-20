@@ -61,7 +61,15 @@ try {
             if (!$mbox) {
                 $results['imap'] = ['error' => 'Connection failed: ' . imap_last_error()];
             } else {
-                $emails = imap_search($mbox, 'UNSEEN');
+                // DATA DE CORTE: só capturar e-mails a partir da ativação (evita puxar
+                // e-mails antigos não lidos). Mesma config usada pelo cron smtp_poll.
+                $syncSince = trim((string)admin_setting_get('smtp.in.since_date', ''));
+                if ($syncSince === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $syncSince)) {
+                    $syncSince = date('Y-m-d');
+                }
+                $syncSinceTs = strtotime($syncSince . ' 00:00:00');
+                $syncImapSince = date('d-M-Y', $syncSinceTs ?: time());
+                $emails = imap_search($mbox, 'UNSEEN SINCE "' . $syncImapSince . '"');
                 $newCount = 0;
 
                 if (is_array($emails) && count($emails) > 0) {

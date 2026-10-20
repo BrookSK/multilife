@@ -96,6 +96,19 @@ function classify_email_is_captation(OpenAiApi $api, string $subject, string $fr
     $bodySample = mb_strtolower(mb_substr(trim($content), 0, 1500));
     $haystack = $subjectLower . ' ' . $bodySample;
 
+    // 0) REGRAS APRENDIDAS (feedback da equipe): têm prioridade máxima. Se já houve
+    //    marcação para este remetente/domínio/assunto, segue a decisão aprendida.
+    if (function_exists('email_classification_lookup')) {
+        try {
+            $learned = email_classification_lookup($fromEmail, $subject);
+            if (!empty($learned['found'])) {
+                return ['is_captation' => (bool)$learned['is_captation'], 'reason' => (string)$learned['reason']];
+            }
+        } catch (Throwable $e) {
+            error_log('[EMAIL_EXTRACT] lookup aprendizado falhou: ' . $e->getMessage());
+        }
+    }
+
     // 1) REGRAS NEGATIVAS fortes: remetentes/assuntos que claramente NÃO são captação.
     $negativeFrom = ['no-reply', 'noreply', 'nao-responda', 'naoresponda', 'mailer-daemon', 'postmaster', 'newsletter', 'notificacao', 'notification'];
     foreach ($negativeFrom as $nf) {
@@ -110,6 +123,10 @@ function classify_email_is_captation(OpenAiApi $api, string $subject, string $fr
         'newsletter', 'promoção', 'promocao', 'marketing', 'convite para evento',
         'confirmação de recebimento', 'confirmacao de recebimento', 'leia-se',
         'relatório financeiro', 'relatorio financeiro', 'demonstrativo',
+        // Administrativos/operacionais que NÃO são pedido de atendimento novo:
+        'suspensão dos atendimentos', 'suspensao dos atendimentos', 'escala',
+        'folha de pagamento', 'férias', 'ferias', 'reembolso', 'protocolo de recebimento',
+        'pesquisa de satisfação', 'pesquisa de satisfacao',
     ];
     foreach ($negativeKeywords as $nk) {
         if (strpos($haystack, $nk) !== false) {
@@ -168,11 +185,14 @@ function classify_email_is_captation(OpenAiApi $api, string $subject, string $fr
         error_log('[EMAIL_EXTRACT] Classificador IA falhou: ' . $e->getMessage());
     }
 
-    // 4) Fallback sem IA: se houve sinais positivos, trata como captação (não perde
-    //    captação por indisponibilidade da IA). Caso contrário, deixa passar como
-    //    captação também (comportamento conservador — melhor um card a mais do que
-    //    perder uma solicitação real).
-    return ['is_captation' => true, 'reason' => $positiveHits > 0 ? 'sinais positivos de captação' : 'fallback conservador (IA indisponível)'];
+    // 4) Fallback sem IA (IA indisponível/sem resposta):
+    //    - COM sinais positivos claros -> trata como captação (não perde solicitação real).
+    //    - SEM sinais positivos -> NÃO cria card automaticamente; marca para revisão
+    //      humana (needs_review), evitando o excesso de cards que não são captação.
+    if ($positiveHits > 0) {
+        return ['is_captation' => true, 'reason' => 'sinais positivos de captação'];
+    }
+    return ['is_captation' => false, 'needs_review' => true, 'reason' => 'sem sinais de captação (revisar manualmente)'];
 }
 
 $db = db();
@@ -575,26 +595,31 @@ foreach ($emails as $e) {
     // 'demands.captation_filter_enabled' = '0'.
     // ============================================================
     $captationFilterEnabled = (string)admin_setting_get('demands.captation_filter_enabled', '1') !== '0';
+    require_once __DIR__ . '/../app/email_classification_helper.php';
     if ($captationFilterEnabled) {
         $classification = classify_email_is_captation($api, $subject, $fromEmail, $content);
         if ($classification['is_captation'] === false) {
             $reasonTxt = (string)($classification['reason'] ?? 'não é solicitação de atendimento');
-            error_log("[EMAIL_EXTRACT] E-mail #$id classificado como NÃO-CAPTAÇÃO ($reasonTxt). Não será criado card.");
+            // 'needs_review' = incerto (IA indisponível e sem sinais): separa para revisão
+            // humana, diferente de 'not_captation' (decisão com confiança).
+            $targetStatus = !empty($classification['needs_review']) ? 'needs_review' : 'not_captation';
+            error_log("[EMAIL_EXTRACT] E-mail #$id classificado como $targetStatus ($reasonTxt). Não será criado card.");
             // Marca com status dedicado para separar na inbox, sem gerar demanda.
             try {
                 $updNotCapt = $db->prepare(
-                    "UPDATE inbound_emails SET status = 'not_captation', processed_at = :pa, error_message = :msg WHERE id = :id"
+                    "UPDATE inbound_emails SET status = :ts, processed_at = :pa, error_message = :msg WHERE id = :id"
                 );
                 $updNotCapt->execute([
+                    'ts' => $targetStatus,
                     'pa' => date('Y-m-d H:i:s'),
-                    'msg' => mb_substr('Classificado como não-captação: ' . $reasonTxt, 0, 250),
+                    'msg' => mb_substr('Classificado como ' . $targetStatus . ': ' . $reasonTxt, 0, 250),
                     'id' => $id,
                 ]);
             } catch (Throwable $eNc) {
                 // Fallback se a coluna error_message não existir.
                 try {
-                    $db->prepare("UPDATE inbound_emails SET status = 'not_captation', processed_at = :pa WHERE id = :id")
-                        ->execute(['pa' => date('Y-m-d H:i:s'), 'id' => $id]);
+                    $db->prepare("UPDATE inbound_emails SET status = :ts, processed_at = :pa WHERE id = :id")
+                        ->execute(['ts' => $targetStatus, 'pa' => date('Y-m-d H:i:s'), 'id' => $id]);
                 } catch (Throwable $eNc2) {
                     error_log('[EMAIL_EXTRACT] Falha ao marcar not_captation: ' . $eNc2->getMessage());
                 }

@@ -24,7 +24,7 @@ $hasFromEmail = isset($cols['from_email']);
 $hasFromAddress = isset($cols['from_address']);
 $hasLinkedDemandId = isset($cols['linked_demand_id']);
 
-$allowed = ['', 'received', 'ai_pending', 'ai_processed', 'archived', 'processed', 'error', 'not_captation'];
+$allowed = ['', 'received', 'ai_pending', 'ai_processed', 'archived', 'processed', 'error', 'not_captation', 'needs_review'];
 if (!in_array($status, $allowed, true)) {
     $status = '';
 }
@@ -118,6 +118,7 @@ $opts = [
     'archived' => 'archived',
     'error' => 'error',
     'not_captation' => 'Não é captação',
+    'needs_review' => 'Revisar',
 ];
 foreach ($opts as $k => $label) {
     $sel = ($status === $k) ? ' selected' : '';
@@ -136,6 +137,7 @@ echo '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
 $tabs = [
     '' => 'Todos',
     'ai_processed' => '✅ Captação (viraram card)',
+    'needs_review' => '🟣 Revisar',
     'not_captation' => '🚫 Não é captação',
     'error' => '⚠️ Erros',
 ];
@@ -174,6 +176,9 @@ foreach ($rows as $r) {
     if ($stVal === 'not_captation') {
         $stBadgeStyle = 'background:hsl(0,84%,60%);color:#fff';
         $stLabel = 'não é captação';
+    } elseif ($stVal === 'needs_review') {
+        $stBadgeStyle = 'background:hsl(262,83%,58%);color:#fff';
+        $stLabel = 'revisar';
     } elseif ($stVal === 'ai_processed' || $stVal === 'processed') {
         $stBadgeStyle = 'background:hsl(142,76%,36%);color:#fff';
     } elseif ($stVal === 'error') {
@@ -193,6 +198,17 @@ foreach ($rows as $r) {
     }
     echo '</td>';
     echo '<td style="text-align:right;white-space:nowrap">';
+    // Botões rápidos de classificação (ensina o sistema sem abrir o e-mail).
+    echo '<form method="post" action="/inbound_emails_classify_post.php" style="display:inline" title="Marcar como captação">';
+    echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
+    echo '<input type="hidden" name="label" value="captation">';
+    echo '<button class="btn" type="submit" style="background:hsl(142,76%,36%);color:#fff;padding:5px 9px" title="É captação">✅</button>';
+    echo '</form> ';
+    echo '<form method="post" action="/inbound_emails_classify_post.php" style="display:inline" onsubmit="return confirm(\'Marcar como NÃO captação? O sistema vai aprender a ignorar e-mails parecidos.\');" title="Marcar como não-captação">';
+    echo '<input type="hidden" name="id" value="' . (int)$r['id'] . '">';
+    echo '<input type="hidden" name="label" value="not_captation">';
+    echo '<button class="btn" type="submit" style="background:hsl(0,84%,60%);color:#fff;padding:5px 9px" title="Não é captação">🚫</button>';
+    echo '</form> ';
     echo '<a class="btn" href="/inbound_emails_view.php?id=' . (int)$r['id'] . '">Ver</a> ';
     echo '<a class="btn" href="/inbound_emails_reprocess.php?id=' . (int)$r['id'] . '" style="background:#10b981;color:white" title="Reprocessar este e-mail">🔄 Reprocessar</a>';
     echo '</td>';

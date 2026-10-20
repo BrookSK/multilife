@@ -36,6 +36,25 @@ if (($e['linked_demand_id'] ?? null) !== null) {
 }
 echo '</div>';
 echo '</div>';
+
+// Feedback de classificação (aprendizado): a equipe ensina o sistema.
+echo '<div style="margin-top:14px;padding:12px 14px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:10px">';
+echo '<div style="font-weight:700;font-size:14px;margin-bottom:4px">Classificação deste e-mail</div>';
+echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:10px;line-height:1.5">Marque para ensinar o sistema. Ele passa a reconhecer e-mails parecidos (mesmo remetente/domínio) automaticamente.</div>';
+echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+echo '<form method="post" action="/inbound_emails_classify_post.php" style="display:inline">';
+echo '<input type="hidden" name="id" value="' . (int)$e['id'] . '">';
+echo '<input type="hidden" name="label" value="captation">';
+echo '<button class="btn" type="submit" style="background:hsl(142,76%,36%);color:#fff;font-weight:700">✅ É captação</button>';
+echo '</form>';
+echo '<form method="post" action="/inbound_emails_classify_post.php" style="display:inline" onsubmit="return confirm(\'Marcar como NÃO captação? Se houver card vinculado, ele será cancelado. O sistema vai aprender a ignorar e-mails parecidos.\');">';
+echo '<input type="hidden" name="id" value="' . (int)$e['id'] . '">';
+echo '<input type="hidden" name="label" value="not_captation">';
+echo '<button class="btn" type="submit" style="background:hsl(0,84%,60%);color:#fff;font-weight:700">🚫 Não é captação</button>';
+echo '</form>';
+echo '</div>';
+echo '</div>';
+
 echo '</section>';
 
 echo '<section class="card col12">';

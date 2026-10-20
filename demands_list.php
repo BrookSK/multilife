@@ -219,6 +219,21 @@ echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
+// PENDÊNCIA: e-mails incertos aguardando revisão humana (needs_review).
+// Mostra um aviso com contador e link direto para a fila de revisão na inbox.
+$needsReviewCount = 0;
+try {
+    $needsReviewCount = (int)db()->query("SELECT COUNT(*) FROM inbound_emails WHERE status = 'needs_review'")->fetchColumn();
+} catch (Throwable $e) {
+    $needsReviewCount = 0;
+}
+if ($needsReviewCount > 0) {
+    echo '<a href="/inbound_emails_list.php?status=needs_review" style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 14px;background:hsla(262,83%,58%,.10);border:1px solid hsl(262,83%,58%);border-radius:10px;text-decoration:none;color:inherit">';
+    echo '<span style="font-size:18px">🟣</span>';
+    echo '<span style="font-size:13px;line-height:1.4"><strong>' . (int)$needsReviewCount . ' e-mail(s) aguardando revisão</strong> — o sistema ficou em dúvida se são captação. Clique para revisar e ensinar o sistema (✅/🚫).</span>';
+    echo '</a>';
+}
+
 echo '<form method="get" action="/demands_list.php" style="margin-top:14px;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
 echo '<select name="status">';
 $opts = [
@@ -436,6 +451,16 @@ foreach ($columns as $col) {
             
             echo '</div>';
             echo '</div>';
+
+            // Feedback de classificação no próprio card (ensina o sistema).
+            // Botões via JS (o card é um <a>, não pode conter <form>). Não dispara a navegação do card.
+            if (!in_array($colId, ['admitido', 'concluido', 'cancelado'], true)) {
+                echo '<div class="cardClassify" style="display:flex;gap:6px;padding:8px 12px;border-top:1px solid hsl(var(--border));background:hsla(var(--muted)/.25)">';
+                echo '<button type="button" class="btn" onclick="classifyDemand(event, ' . (int)$r['id'] . ', \'captation\')" style="flex:1;background:hsl(142,76%,36%);color:#fff;font-weight:700;padding:5px 8px;font-size:12px" title="Confirmar que é captação/prospecção">✅ Captação</button>';
+                echo '<button type="button" class="btn" onclick="classifyDemand(event, ' . (int)$r['id'] . ', \'not_captation\')" style="flex:1;background:hsl(0,84%,60%);color:#fff;font-weight:700;padding:5px 8px;font-size:12px" title="Não é captação (cancela o card e ensina o sistema)">🚫 Não é</button>';
+                echo '</div>';
+            }
+
             echo '</a>';
         }
     }
@@ -519,6 +544,21 @@ echo '      console.log("Novos e-mails: " + newEmails + ". CRON vai processar em
 echo '    }';
 echo '  }).catch(function(e){ console.log("Sync emails:", e); });';
 echo '})();';
+echo '</script>';
+
+// Classificação pelo card (ensina o sistema). Form oculto + função JS.
+echo '<form id="classifyDemandForm" method="post" action="/demands_classify_post.php" style="display:none">';
+echo '<input type="hidden" name="id" id="classifyDemandId" value="">';
+echo '<input type="hidden" name="label" id="classifyDemandLabel" value="">';
+echo '</form>';
+echo '<script>';
+echo 'function classifyDemand(ev, id, label){';
+echo '  if(ev){ ev.preventDefault(); ev.stopPropagation(); }';
+echo '  if(label === "not_captation" && !confirm("Marcar como NÃO captação? O card será cancelado e o sistema vai aprender a ignorar e-mails parecidos.")) return;';
+echo '  document.getElementById("classifyDemandId").value = id;';
+echo '  document.getElementById("classifyDemandLabel").value = label;';
+echo '  document.getElementById("classifyDemandForm").submit();';
+echo '}';
 echo '</script>';
 
 // Ação em MASSA OCULTA: cancelar todos os cards de "Tratamento Manual".

@@ -166,13 +166,41 @@ if (!$imap) {
 
 $forceUid = isset($_GET['force_uid']) ? (int)$_GET['force_uid'] : 0;
 
+// ---------------------------------------------------------------------------
+// DATA DE CORTE: só capturar e-mails recebidos A PARTIR da ativação/conexão.
+// Evita puxar e-mails ANTIGOS (ex.: de 2025) que estejam não lidos na caixa.
+//
+// Fonte da data (ordem): setting 'smtp.in.since_date' (YYYY-MM-DD) definida
+// manualmente no painel. Se não existir, grava AUTOMATICAMENTE a data de hoje
+// na primeira execução e passa a usá-la — assim nunca pega nada anterior ao
+// momento em que o poll começou a rodar.
+// ---------------------------------------------------------------------------
+$sinceDateStr = trim((string)admin_setting_get('smtp.in.since_date', ''));
+if ($sinceDateStr === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $sinceDateStr)) {
+    $sinceDateStr = date('Y-m-d');
+    // Persistir para as próximas execuções (primeira ativação do corte).
+    // UPSERT direto (o cron não tem usuário logado).
+    try {
+        db()->prepare(
+            'INSERT INTO admin_settings (setting_key, setting_value) VALUES (:k, :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        )->execute(['k' => 'smtp.in.since_date', 'v' => $sinceDateStr]);
+    } catch (Throwable $e) {}
+    smtp_poll_debug("[SMTP_POLL] Data de corte não configurada; definida automaticamente para hoje: $sinceDateStr");
+}
+$sinceTs = strtotime($sinceDateStr . ' 00:00:00');
+// Formato que o IMAP entende no critério SINCE: "d-M-Y" em inglês (ex.: 05-Oct-2026).
+$imapSince = date('d-M-Y', $sinceTs ?: time());
+
 try {
     // Unseen emails (ou UID forçado para re-processamento)
     if ($forceUid > 0) {
         $ids = [$forceUid];
         smtp_poll_debug("[SMTP_POLL] Forçando re-processamento do UID $forceUid");
     } else {
-        $ids = imap_search($imap, 'UNSEEN', SE_UID);
+        // SINCE: o servidor IMAP só retorna mensagens recebidas a partir da data de corte.
+        $ids = imap_search($imap, 'UNSEEN SINCE "' . $imapSince . '"', SE_UID);
+        smtp_poll_debug("[SMTP_POLL] Busca: UNSEEN SINCE $imapSince");
     }
     if (!is_array($ids) || count($ids) === 0) {
         echo "OK: no unseen emails\n";
@@ -265,14 +293,30 @@ try {
         }
 
         $receivedAt = null;
+        $receivedTs = null;
         if ($dateRaw !== '') {
             $ts = strtotime($dateRaw);
             if ($ts !== false) {
                 $receivedAt = date('Y-m-d H:i:s', $ts);
+                $receivedTs = $ts;
             }
         }
         if ($receivedAt === null) {
             $receivedAt = date('Y-m-d H:i:s');
+        }
+
+        // PROTEÇÃO DE CORTE (defensiva): se a data real do e-mail for ANTERIOR à data
+        // de corte, não cria card. Cobre o caso de o servidor IMAP ignorar o SINCE.
+        // Marca como lido + arquiva para não reavaliar sempre.
+        if ($forceUid === 0 && $receivedTs !== null && $sinceTs !== false && $receivedTs < $sinceTs) {
+            smtp_poll_debug("[SMTP_POLL] UID $uid ignorado (data $receivedAt anterior ao corte $sinceDateStr).");
+            @imap_setflag_full($imap, (string)$uid, "\\Seen", ST_UID);
+            $seen++;
+            $skipped++;
+            if ($archiveMailbox !== '') {
+                @imap_mail_move($imap, (string)$uid, $archiveMailbox, CP_UID);
+            }
+            continue;
         }
 
         // Prevent duplicates when message_id exists

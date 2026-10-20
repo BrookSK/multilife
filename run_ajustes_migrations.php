@@ -29,6 +29,7 @@ $migrations = [
     'migrations/2026-10-03_0007_insurer_orientations.sql',
     'migrations/2026-10-03_0008_preadmission_orientation_placeholders.sql',
     'migrations/2026-10-03_0009_seed_insurer_orientations.sql',
+    'migrations/2026-10-03_0010_email_classification_feedback.sql',
 ];
 
 $pdo = db();
