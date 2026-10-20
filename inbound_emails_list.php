@@ -81,6 +81,14 @@ $rows = $stmt->fetchAll();
 
 view_header('Inbox - Demandas (E-mails)');
 
+// Quantos e-mails estão com erro (ou presos em processing) — para o botão de reprocessar em lote.
+$errorCount = 0;
+try {
+    $errorCount = (int)db()->query("SELECT COUNT(*) FROM inbound_emails WHERE status IN ('error','processing')")->fetchColumn();
+} catch (Throwable $e) {
+    $errorCount = 0;
+}
+
 echo '<div class="grid">';
 
 echo '<section class="card col12">';
@@ -90,6 +98,11 @@ echo '<div style="font-size:22px;font-weight:900">Inbox de E-mails (Demandas)</d
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Acompanha e-mails recebidos e processados pela IA.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+if ($errorCount > 0) {
+    echo '<a class="btn" href="/inbound_emails_reprocess_all.php" '
+        . 'onclick="return confirm(\'Reprocessar os ' . (int)$errorCount . ' e-mail(s) com erro? Eles serão reenviados para a IA.\');" '
+        . 'style="background:#f59e0b;color:#111;font-weight:700">🔄 Reprocessar todos com erro (' . (int)$errorCount . ')</a>';
+}
 echo '<a class="btn" href="/demands_list.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
