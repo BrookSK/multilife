@@ -764,6 +764,64 @@ foreach ($jobs as $j) {
             continue;
         }
 
+        // DISPARO COMPLETO DA CAPTAÇÃO EM BACKGROUND
+        // Executa todo o trabalho pesado (resolver instância, criar/achar grupo,
+        // sincronizar membros, enviar a mensagem) incluindo o próprio
+        // demands_dispatch_whatsapp_post.php em "modo worker". O progresso é
+        // reportado em demand_dispatch_runs (lido pelo popup da tela).
+        if ($provider === 'evolution' && $action === 'demand_dispatch_run') {
+            if (!is_array($payload)) {
+                throw new RuntimeException('Payload inválido (esperado JSON).');
+            }
+            $ddRunId = (int)($payload['run_id'] ?? 0);
+            if ($ddRunId <= 0) {
+                throw new RuntimeException('run_id ausente no payload.');
+            }
+
+            // Marca o run como processando (se ainda estava na fila).
+            try {
+                db()->prepare("UPDATE demand_dispatch_runs SET status = 'processing' WHERE id = ? AND status = 'queued'")
+                    ->execute([$ddRunId]);
+            } catch (Throwable $e) {}
+
+            // Aciona o executor em modo worker. O arquivo NÃO chama exit() no
+            // modo worker: ao terminar, lança DispatchWorkerDone (fluxo normal)
+            // ou atualiza o run e lança a mesma exceção via dispatch_stop().
+            $GLOBALS['__dispatch_worker'] = true;
+            $GLOBALS['__dispatch_run_id'] = $ddRunId;
+            $dispatchFatal = null;
+            try {
+                require __DIR__ . '/../demands_dispatch_whatsapp_post.php';
+            } catch (DispatchWorkerDone $done) {
+                // Encerramento esperado do disparo. O run já foi finalizado.
+            } catch (Throwable $e) {
+                // Falha inesperada no meio do disparo: registra no run para o
+                // popup e repropaga para a fila tratar retry/dead.
+                $dispatchFatal = $e;
+                if (function_exists('demand_dispatch_run_finish')) {
+                    demand_dispatch_run_finish($ddRunId, 'failed', 'Erro inesperado no disparo: ' . mb_strimwidth($e->getMessage(), 0, 300, ''));
+                }
+            } finally {
+                unset($GLOBALS['__dispatch_worker'], $GLOBALS['__dispatch_run_id']);
+            }
+
+            if ($dispatchFatal !== null) {
+                throw new RuntimeException('Disparo falhou: ' . $dispatchFatal->getMessage());
+            }
+
+            $updRun->execute([
+                'status' => 'success',
+                'attempts' => $attempts,
+                'last_error' => null,
+                'next_run_at' => null,
+                'last_run_at' => $runAt,
+                'id' => $id,
+            ]);
+            $success++;
+            integration_log($provider, 'job ' . $action, 'success', null, ['run_id' => $ddRunId], null, null, $attempts);
+            continue;
+        }
+
         if ($provider === 'evolution' && $action === 'professional_onboarding_credentials') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');

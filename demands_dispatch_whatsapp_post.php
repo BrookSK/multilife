@@ -4,8 +4,124 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
 
-auth_require_login();
-rbac_require_permission('demands.manage');
+// ============================================================================
+// DISPARO DE CAPTAÇÃO — DOIS MODOS DE EXECUÇÃO
+// ----------------------------------------------------------------------------
+// Este arquivo é ao mesmo tempo:
+//   1) ENFILEIRADOR (modo navegador): quando o atendente clica em "Realizar
+//      Captação", faz apenas as validações rápidas, cria um "run" de progresso,
+//      enfileira o trabalho pesado em background (integration_jobs) e responde
+//      JSON {ok, run_id} imediatamente — sem travar a tela nem estourar timeout.
+//   2) EXECUTOR (modo worker): o cron (cron/integration_jobs_run.php) inclui
+//      este arquivo definindo $GLOBALS['__dispatch_worker']=true e
+//      $GLOBALS['__dispatch_run_id']=<id>. Nesse modo, TODO o corpo pesado
+//      abaixo roda de fato (resolve instância, cria/acha grupo, sincroniza
+//      membros, envia a mensagem), reportando progresso no run.
+//
+// O corpo pesado é IDÊNTICO nos dois casos; só muda quem o aciona e como as
+// saídas de erro/sucesso são comunicadas (JSON/flash x atualização do run).
+// ============================================================================
+
+$DISPATCH_WORKER_MODE = !empty($GLOBALS['__dispatch_worker']);
+$DISPATCH_RUN_ID = (int)($GLOBALS['__dispatch_run_id'] ?? 0);
+
+/**
+ * Exceção de CONTROLE usada apenas no MODO WORKER para encerrar o disparo sem
+ * chamar exit(). Como este arquivo é incluído pelo cron (que processa vários
+ * jobs em sequência), um exit() mataria o loop do cron. O worker captura esta
+ * exceção e segue para o próximo job. NÃO indica erro por si só: o run já foi
+ * finalizado (completed/failed) antes de lançá-la.
+ */
+if (!class_exists('DispatchWorkerDone')) {
+    class DispatchWorkerDone extends RuntimeException {}
+}
+
+// As funções abaixo são protegidas com function_exists porque o cron pode
+// incluir este arquivo mais de uma vez na mesma execução (um require por job
+// demand_dispatch_run). As declarações só podem ocorrer uma vez; o CORPO
+// procedural (mais abaixo) reexecuta a cada include, como desejado.
+if (!function_exists('dispatch_stop')) {
+    /**
+     * Encerra o fluxo do disparo de forma apropriada ao modo:
+     * - Worker: lança DispatchWorkerDone (não mata o cron).
+     * - Navegador: exit() normal.
+     */
+    function dispatch_stop(): void
+    {
+        if (!empty($GLOBALS['__dispatch_worker'])) {
+            throw new DispatchWorkerDone('dispatch worker done');
+        }
+        exit;
+    }
+}
+
+if (!function_exists('dispatch_wants_json')) {
+    /**
+     * Detecta se a requisição do navegador espera JSON (chamada via fetch).
+     */
+    function dispatch_wants_json(): bool
+    {
+        $xrw = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+        if ($xrw === 'xmlhttprequest' || $xrw === 'fetch') {
+            return true;
+        }
+        $accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+        return strpos($accept, 'application/json') !== false;
+    }
+}
+
+if (!function_exists('dispatch_abort')) {
+    /**
+     * Encerra o disparo com ERRO.
+     * - Worker: marca o run como 'failed' com a mensagem e encerra (sem exit).
+     * - Navegador (fetch): responde JSON {ok:false,error}.
+     * - Navegador (form legado sem JS): flash + redirect (comportamento antigo).
+     */
+    function dispatch_abort(string $message): void
+    {
+        global $DISPATCH_WORKER_MODE, $DISPATCH_RUN_ID, $id;
+
+        if ($DISPATCH_WORKER_MODE) {
+            demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', $message);
+            dispatch_stop();
+        }
+
+        if (dispatch_wants_json()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => $message]);
+            exit;
+        }
+
+        flash_set('error', $message);
+        header('Location: /demands_view.php?id=' . (int)($id ?? 0));
+        exit;
+    }
+}
+
+if ($DISPATCH_WORKER_MODE) {
+    // ---- MODO WORKER (chamado pelo cron) ----
+    // Sem sessão HTTP: injeta o usuário do run para que auth_user_id() funcione
+    // nas gravações de autoria (assumed_by, status logs, dispatch logs).
+    $runRow = db()->prepare('SELECT demand_id, sub_request_id, created_by_user_id FROM demand_dispatch_runs WHERE id = :id');
+    $runRow->execute(['id' => $DISPATCH_RUN_ID]);
+    $runData = $runRow->fetch();
+    if (!$runData) {
+        // Nada a fazer: run inexistente.
+        return;
+    }
+    $id = (int)$runData['demand_id'];
+    $subRequestId = (int)($runData['sub_request_id'] ?? 0);
+    if (!empty($runData['created_by_user_id'])) {
+        $_SESSION['auth_user_id'] = (int)$runData['created_by_user_id'];
+    }
+} else {
+    // ---- MODO NAVEGADOR (clique do atendente) ----
+    auth_require_login();
+    rbac_require_permission('demands.manage');
+
+    $id = (int)($_POST['id'] ?? 0);
+    $subRequestId = (int)($_POST['sub_request_id'] ?? 0);
+}
 
 // MODO DE TESTE DA CAPTAÇÃO: quando ativo, só adiciona profissionais marcados como teste.
 // Garante a coluna (fallback) e define o filtro SQL adicional aplicado às queries de profissionais.
@@ -21,26 +137,19 @@ require_once __DIR__ . '/app/whatsapp_instances.php';
 $captadorInstance = whatsapp_get_user_instance(auth_user_id());
 $captadorInstanceName = $captadorInstance['instance_name'] ?? '';
 
-$id = (int)($_POST['id'] ?? 0);
-$subRequestId = (int)($_POST['sub_request_id'] ?? 0);
-
 $stmt = db()->prepare('SELECT * FROM demands WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $d = $stmt->fetch();
 
 if (!$d) {
-    flash_set('error', 'Demanda não encontrada.');
-    header('Location: /demands_list.php');
-    exit;
+    dispatch_abort('Demanda não encontrada.');
 }
 
 // SIGILO (Ajuste 8): se a demanda está em recaptação sigilosa, NÃO disparar em grupo
 // (o profissional atual poderia estar no grupo). A recaptação sigilosa usa mensagem
 // direta via demands_recaptar_sigiloso_post.php.
 if (array_key_exists('is_confidential', $d) && (int)$d['is_confidential'] === 1) {
-    flash_set('error', 'Esta captação é SIGILOSA e não pode ser disparada em grupo. Use "Recaptar sigiloso" (mensagem direta) na tela de substituição.');
-    header('Location: /demands_view.php?id=' . $id);
-    exit;
+    dispatch_abort('Esta captação é SIGILOSA e não pode ser disparada em grupo. Use "Recaptar sigiloso" (mensagem direta) na tela de substituição.');
 }
 
 // Se foi selecionada uma sub-solicitação, usar os dados dela
@@ -50,16 +159,45 @@ if ($subRequestId > 0) {
     $stmtSub->execute(['id' => $subRequestId, 'did' => $id]);
     $subRequest = $stmtSub->fetch();
     if (!$subRequest) {
-        flash_set('error', 'Sub-solicitação não encontrada.');
-        header('Location: /demands_view.php?id=' . $id);
-        exit;
+        dispatch_abort('Sub-solicitação não encontrada.');
     }
     if ($subRequest['status'] === 'em_captacao' || $subRequest['status'] === 'concluido') {
-        flash_set('error', 'Esta sub-solicitação já está em captação ou concluída.');
-        header('Location: /demands_view.php?id=' . $id);
-        exit;
+        dispatch_abort('Esta sub-solicitação já está em captação ou concluída.');
     }
 }
+
+// ============================================================================
+// BIFURCAÇÃO: no MODO NAVEGADOR, as validações rápidas acima já passaram.
+// Agora apenas ENFILEIRAMOS o trabalho pesado em background e respondemos na
+// hora. O corpo pesado (abaixo) só roda no MODO WORKER.
+// ============================================================================
+if (!$DISPATCH_WORKER_MODE) {
+    try {
+        $newRunId = demand_dispatch_enqueue_full((int)$id, (int)$subRequestId, auth_user_id());
+    } catch (Throwable $e) {
+        dispatch_abort('Falha ao enfileirar a captação: ' . $e->getMessage());
+    }
+
+    if (dispatch_wants_json()) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => true,
+            'run_id' => $newRunId,
+            'message' => 'Captação iniciada em segundo plano.',
+        ]);
+        exit;
+    }
+
+    // Fallback sem JS: volta para a tela com aviso.
+    flash_set('success', 'Captação iniciada em segundo plano. Acompanhe o progresso na tela.');
+    header('Location: /demands_view.php?id=' . (int)$id);
+    exit;
+}
+
+// ============================================================================
+// A PARTIR DAQUI: MODO WORKER — execução do trabalho pesado em background.
+// ============================================================================
+demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'starting', 'Iniciando disparo da captação...');
 
 // Usar dados da sub-solicitação se disponível, senão usar dados da demanda
 $city = (string)($subRequest ? ($subRequest['location_city'] ?? $d['location_city'] ?? '') : ($d['location_city'] ?? ''));
@@ -123,6 +261,7 @@ if (count($groups) === 0 && trim($specialty) !== '') {
 
 if (count($groups) === 0) {
     // NENHUM GRUPO ENCONTRADO — Criar automaticamente
+    demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', 'Nenhum grupo encontrado — resolvendo instância e criando grupo...');
     error_log("[DISPATCH] Nenhum grupo encontrado para spec='$specialty' city='$city' state='$state'. Criando automaticamente...");
     
     try {
@@ -237,15 +376,11 @@ if (count($groups) === 0) {
         
         // Se nenhuma instância está conectada, mostrar erro com orientação clara
         if ($instanceName === '') {
-            flash_set('error', 'Nenhuma instância WhatsApp está conectada. Vá em Configurações → WhatsApp Conexão → aba Instâncias e reconecte escaneando o QR Code.');
-            header('Location: /demands_view.php?id=' . $id);
-            exit;
+            dispatch_abort('Nenhuma instância WhatsApp está conectada. Vá em Configurações → WhatsApp Conexão → aba Instâncias e reconecte escaneando o QR Code.');
         }
         
         if ($baseUrl === '' || $apiKey === '') {
-            flash_set('error', 'Evolution API não configurada (base_url/api_key). Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
-            header('Location: /demands_view.php?id=' . $id);
-            exit;
+            dispatch_abort('Evolution API não configurada (base_url/api_key). Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
         }
         
         $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
@@ -352,9 +487,7 @@ if (count($groups) === 0) {
             // No modo de teste, NÃO usar o número da equipe/admin como fallback.
             // Se não há profissional de teste marcado, aborta a captação com aviso claro.
             if ($captacaoTestMode) {
-                flash_set('error', 'Modo de teste da captacao ligado, mas nenhum "profissional de teste" foi encontrado para esta especialidade. Marque ao menos um profissional como teste (ou desligue o modo de teste em Configuracoes > Funcionalidades).');
-                header('Location: /demands_view.php?id=' . $id);
-                exit;
+                dispatch_abort('Modo de teste da captacao ligado, mas nenhum "profissional de teste" foi encontrado para esta especialidade. Marque ao menos um profissional como teste (ou desligue o modo de teste em Configuracoes > Funcionalidades).');
             }
             $participants[] = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
         }
@@ -547,7 +680,36 @@ if (count($groups) === 0) {
                     'st' => $state,
                 ]);
                 $newGroupDbId = (int)db()->lastInsertId();
-                
+
+                // Com ON DUPLICATE KEY UPDATE o lastInsertId() pode voltar 0 quando o
+                // grupo já existia (foi só atualizado). Nesse caso, recupera o id pelo JID.
+                if ($newGroupDbId <= 0) {
+                    $stmtFindGroup = db()->prepare('SELECT id FROM whatsapp_groups WHERE evolution_group_jid = ? LIMIT 1');
+                    $stmtFindGroup->execute([$newGroupJid]);
+                    $newGroupDbId = (int)$stmtFindGroup->fetchColumn();
+                }
+
+                // CORREÇÃO: registrar o grupo recém-criado em $groups para que o fluxo
+                // de envio (inserção em demand_dispatch_logs + sendTextToGroup) rode.
+                // Sem isto, quando o grupo era criado automaticamente, $groups ficava
+                // vazio e a MENSAGEM DA CAPTAÇÃO NUNCA ERA ENVIADA (grupo criado sem msg).
+                if ($newGroupDbId > 0) {
+                    $alreadyInGroups = false;
+                    foreach ($groups as $gExisting) {
+                        if ((int)($gExisting['id'] ?? 0) === $newGroupDbId) {
+                            $alreadyInGroups = true;
+                            break;
+                        }
+                    }
+                    if (!$alreadyInGroups) {
+                        $groups[] = [
+                            'id' => $newGroupDbId,
+                            'name' => $groupName,
+                            'evolution_group_jid' => $newGroupJid,
+                        ];
+                    }
+                }
+
                 // Também salvar na chat_groups
                 try {
                     db()->prepare("INSERT IGNORE INTO chat_groups (group_jid, group_name, specialty, region, created_at) VALUES (?, ?, ?, ?, NOW())")
@@ -638,22 +800,16 @@ if (count($groups) === 0) {
                 // Pequeno delay para o grupo estabilizar antes de enviar mensagem
                 sleep(3);
             } else {
-                flash_set('error', 'Erro ao criar grupo automaticamente: API não retornou JID.');
-                header('Location: /demands_view.php?id=' . $id);
-                exit;
+                dispatch_abort('Erro ao criar grupo automaticamente: API não retornou JID.');
             }
         } else {
             $errorMsg = substr($createResponse, 0, 500);
             error_log("[DISPATCH] Erro ao criar grupo: HTTP $createHttpCode - $errorMsg");
             error_log("[DISPATCH] Grupo tentado: '$groupName' | Instância: '$instanceName'");
-            flash_set('error', 'Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
-            header('Location: /demands_view.php?id=' . $id);
-            exit;
+            dispatch_abort('Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
         }
     } catch (Exception $e) {
-        flash_set('error', 'Erro ao criar grupo: ' . $e->getMessage());
-        header('Location: /demands_view.php?id=' . $id);
-        exit;
+        dispatch_abort('Erro ao criar grupo: ' . $e->getMessage());
     }
 }
 
@@ -912,9 +1068,11 @@ $recentSql .= " LIMIT 1";
 $recentDispatch = db()->prepare($recentSql);
 $recentDispatch->execute($recentParams);
 if ($recentDispatch->fetch()) {
-    flash_set('error', 'Captação já foi disparada há menos de 1 minuto. Evite clicar duas vezes.');
-    header('Location: /demands_view.php?id=' . $id);
-    exit;
+    // Já houve um disparo há menos de 1 minuto. No background isto normalmente
+    // significa reprocessamento/retry do mesmo run — não é erro, apenas evita
+    // enviar a captação em duplicidade. Encerra marcando o run como concluído.
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed', 'Captação já havia sido disparada há instantes (envio duplicado evitado).');
+    dispatch_stop();
 }
 
 // ====================================================================
@@ -923,6 +1081,7 @@ if ($recentDispatch->fetch()) {
 // Isso garante que profissionais novos recebam a captação.
 // ====================================================================
 if (count($groups) > 0) {
+    demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'syncing_members', 'Sincronizando profissionais do grupo...');
     $targetGroup = $groups[0];
     $targetJid = (string)($targetGroup['evolution_group_jid'] ?? '');
     
@@ -1286,17 +1445,13 @@ try {
                 ->execute(['id' => $id]);
         }
         
-        flash_set('error', 'Nenhuma instância WhatsApp está conectada. Verifique em: Configurações → WhatsApp Conexão → aba Conexão.');
-        header('Location: /demands_view.php?id=' . $id);
-        exit;
+        dispatch_abort('Nenhuma instância WhatsApp está conectada. Verifique em: Configurações → WhatsApp Conexão → aba Conexão.');
     }
 } catch (Throwable $e) {
     // registra erro em todos
     $upd = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = :err WHERE demand_id = :did AND dispatch_status = \'queued\'');
     $upd->execute(['err' => 'Evolution API não configurada: ' . mb_strimwidth($e->getMessage(), 0, 220, ''), 'did' => $id]);
-    flash_set('error', 'WhatsApp não configurado. Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
-    header('Location: /demands_view.php?id=' . $id);
-    exit;
+    dispatch_abort('WhatsApp não configurado. Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
 }
 
 $selLogs = db()->prepare(
@@ -1373,6 +1528,8 @@ if ($api !== null) {
 }
 
 $updOne = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = :st, error_message = :err WHERE id = :id');
+
+demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'sending', 'Enviando a mensagem de captação ao(s) grupo(s)...');
 
 $sent = 0;
 $errCount = 0;
@@ -1468,19 +1625,19 @@ foreach ($toSend as $row) {
     }
 }
 
-if ($sent > 0 && $errCount === 0) {
-    flash_set('success', 'Captação enviada via WhatsApp.');
-} elseif ($sent > 0) {
-    flash_set('error', 'Captação enviada para alguns grupos, mas houve erros em outros.');
-} else {
-    flash_set('error', 'Falha ao enviar captação via WhatsApp. Verifique os logs.');
-}
-
 // Atualizar status da sub-solicitação somente se pelo menos um envio foi bem-sucedido
 if ($subRequest !== null && $sent > 0) {
     $updSub = db()->prepare('UPDATE demand_sub_requests SET status = \'em_captacao\', dispatched_at = NOW() WHERE id = :id');
     $updSub->execute(['id' => $subRequestId]);
 }
 
-header('Location: /demands_view.php?id=' . $id);
-exit;
+// Finaliza o run (background) com o resultado, lido pelo popup de progresso.
+if ($sent > 0 && $errCount === 0) {
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed', 'Captação enviada via WhatsApp.', $sent, $errCount);
+} elseif ($sent > 0) {
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed_with_errors', 'Captação enviada para alguns grupos, mas houve erros em outros.', $sent, $errCount);
+} else {
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', 'Falha ao enviar captação via WhatsApp. Verifique os logs.', $sent, $errCount);
+}
+
+dispatch_stop();

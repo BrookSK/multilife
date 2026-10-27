@@ -203,7 +203,7 @@ if ($hasMultiReqs === 1) {
     $subRequests = $stmtSub->fetchAll();
 }
 
-echo '<form method="post" action="/demands_dispatch_whatsapp_post.php" style="display:inline">';
+echo '<form method="post" action="/demands_dispatch_whatsapp_post.php" class="dispatch-form" style="display:inline">';
 echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
 if (count($subRequests) > 1) {
     echo '<button class="btn btnPrimary" type="button" onclick="document.getElementById(\'modalSubRequests\').style.display=\'flex\'">Realizar Captação</button>';
@@ -618,7 +618,7 @@ if (count($subRequests) > 1) {
         echo '</div>';
         echo '<div>';
         if (!$srDisabled) {
-            echo '<form method="post" action="/demands_dispatch_whatsapp_post.php" style="display:inline">';
+            echo '<form method="post" action="/demands_dispatch_whatsapp_post.php" class="dispatch-form" style="display:inline">';
             echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
             echo '<input type="hidden" name="sub_request_id" value="' . (int)$sr['id'] . '">';
             echo '<button class="btn btnPrimary" type="submit" style="white-space:nowrap">Captar esta</button>';
@@ -632,5 +632,142 @@ if (count($subRequests) > 1) {
     echo '</div>';
     echo '</div>';
 }
+
+// ============================================================================
+// POPUP DE PROGRESSO DO DISPARO (background, não-bloqueante)
+// ----------------------------------------------------------------------------
+// Intercepta o submit dos formulários de captação (.dispatch-form), dispara via
+// fetch (resposta imediata com run_id) e acompanha o progresso por polling em
+// demands_dispatch_status.php. O usuário pode minimizar/fechar o popup e
+// continuar usando o sistema enquanto a captação roda em segundo plano.
+// ============================================================================
+?>
+<div id="dispatchProgress" style="display:none;position:fixed;right:20px;bottom:20px;z-index:9999;width:360px;max-width:calc(100vw - 40px);background:#fff;border:1px solid hsl(var(--border));border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.18);overflow:hidden;font-family:inherit">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:hsl(var(--primary));color:#fff">
+    <strong id="dispatchProgressTitle" style="font-size:14px">Disparando captação…</strong>
+    <button type="button" id="dispatchProgressClose" aria-label="Fechar" style="background:transparent;border:0;color:#fff;font-size:18px;line-height:1;cursor:pointer">&times;</button>
+  </div>
+  <div style="padding:14px">
+    <div style="height:8px;background:hsl(var(--muted,210 40% 96%));border-radius:999px;overflow:hidden;margin-bottom:10px">
+      <div id="dispatchProgressBar" style="height:100%;width:10%;background:hsl(var(--primary));transition:width .4s ease"></div>
+    </div>
+    <div id="dispatchProgressMsg" style="font-size:13px;color:hsl(var(--muted-foreground,215 16% 47%));line-height:1.5">Iniciando…</div>
+    <div id="dispatchProgressActions" style="margin-top:12px;display:none;gap:8px">
+      <button type="button" class="btn btnPrimary" id="dispatchProgressReload" style="font-size:13px">Atualizar página</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var box   = document.getElementById('dispatchProgress');
+  if (!box) return;
+  var titleEl = document.getElementById('dispatchProgressTitle');
+  var barEl   = document.getElementById('dispatchProgressBar');
+  var msgEl   = document.getElementById('dispatchProgressMsg');
+  var closeEl = document.getElementById('dispatchProgressClose');
+  var actions = document.getElementById('dispatchProgressActions');
+  var reloadEl= document.getElementById('dispatchProgressReload');
+
+  var pollTimer = null;
+
+  function show(){ box.style.display = 'block'; }
+  function hide(){ box.style.display = 'none'; }
+
+  // Progresso "visual" por fase (não é percentual exato: dá sensação de avanço).
+  var phasePercent = {
+    'queued': 10, 'starting': 20, 'creating_group': 45,
+    'syncing_members': 65, 'sending': 85, 'done': 100
+  };
+
+  function setPhase(phase, message){
+    var pct = phasePercent[phase] || 15;
+    barEl.style.width = pct + '%';
+    if (message) msgEl.textContent = message;
+  }
+
+  function stopPolling(){ if (pollTimer){ clearInterval(pollTimer); pollTimer = null; } }
+
+  function finish(data){
+    stopPolling();
+    barEl.style.width = '100%';
+    if (data.success) {
+      titleEl.textContent = 'Captação enviada';
+      barEl.style.background = 'hsl(142 72% 42%)';
+    } else {
+      titleEl.textContent = 'Captação não concluída';
+      barEl.style.background = 'hsl(0 84% 60%)';
+    }
+    msgEl.textContent = data.result_message || (data.success ? 'Captação enviada com sucesso.' : 'O disparo não foi concluído.');
+    actions.style.display = 'flex';
+  }
+
+  function poll(runId){
+    fetch('/demands_dispatch_status.php?run_id=' + encodeURIComponent(runId), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (!data.ok) { msgEl.textContent = data.error || 'Falha ao consultar o progresso.'; return; }
+      setPhase(data.phase, data.phase_message);
+      if (data.done) finish(data);
+    })
+    .catch(function(){ /* mantém tentando no próximo ciclo */ });
+  }
+
+  function startTracking(runId){
+    show();
+    titleEl.textContent = 'Disparando captação…';
+    barEl.style.background = 'hsl(var(--primary))';
+    actions.style.display = 'none';
+    setPhase('queued', 'Captação na fila. Pode continuar usando o sistema — avisaremos aqui quando terminar.');
+    poll(runId);
+    stopPolling();
+    pollTimer = setInterval(function(){ poll(runId); }, 3000);
+  }
+
+  closeEl.addEventListener('click', function(){ stopPolling(); hide(); });
+  reloadEl.addEventListener('click', function(){ window.location.reload(); });
+
+  // Intercepta o envio de TODOS os formulários de captação.
+  document.querySelectorAll('form.dispatch-form').forEach(function(form){
+    form.addEventListener('submit', function(ev){
+      ev.preventDefault();
+
+      // Fecha o modal de sub-solicitações, se estiver aberto.
+      var modal = document.getElementById('modalSubRequests');
+      if (modal) modal.style.display = 'none';
+
+      // Desabilita o botão para evitar duplo clique.
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; setTimeout(function(){ btn.disabled = false; }, 4000); }
+
+      fetch(form.action, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form)
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data && data.ok && data.run_id) {
+          startTracking(data.run_id);
+        } else {
+          show();
+          stopPolling();
+          titleEl.textContent = 'Não foi possível iniciar';
+          barEl.style.width = '100%';
+          barEl.style.background = 'hsl(0 84% 60%)';
+          msgEl.textContent = (data && data.error) ? data.error : 'Falha ao iniciar a captação.';
+          actions.style.display = 'none';
+        }
+      })
+      .catch(function(){
+        // Fallback: se o fetch falhar (rede), envia o form normalmente.
+        form.submit();
+      });
+    });
+  });
+})();
+</script>
+<?php
 
 view_footer();

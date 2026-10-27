@@ -153,3 +153,119 @@ function demand_dispatch_enqueue_members(
 
     return ['run_id' => $runId, 'total' => count($pending), 'jobs' => $jobsCreated];
 }
+
+/* =====================================================================
+ * DISPARO COMPLETO EM BACKGROUND (criação/busca de grupo + envio)
+ * ---------------------------------------------------------------------
+ * Diferente de demand_dispatch_enqueue_members (que só adiciona membros em
+ * lote), as funções abaixo representam o DISPARO INTEIRO da captação como um
+ * "run" único, acompanhável por um popup de progresso. O trabalho pesado
+ * (resolver instância, criar/achar grupo, sincronizar membros, enviar a
+ * mensagem) roda no worker cron (ação 'demand_dispatch_run'), executando o
+ * corpo de demands_dispatch_whatsapp_post.php em modo worker.
+ * ===================================================================== */
+
+/**
+ * Garante as colunas extras de demand_dispatch_runs usadas pelo disparo
+ * completo (fallback, caso a migration 2026-10-27_0001 não tenha rodado).
+ */
+function demand_dispatch_ensure_run_columns(): void
+{
+    demand_dispatch_ensure_tables();
+    // Cada ADD é tentado isoladamente: versões sem "ADD COLUMN IF NOT EXISTS"
+    // simplesmente falham no try/catch sem abortar as demais.
+    $cols = [
+        "ALTER TABLE demand_dispatch_runs ADD COLUMN sub_request_id BIGINT UNSIGNED NULL AFTER demand_id",
+        "ALTER TABLE demand_dispatch_runs ADD COLUMN phase VARCHAR(40) NOT NULL DEFAULT 'queued' AFTER status",
+        "ALTER TABLE demand_dispatch_runs ADD COLUMN phase_message VARCHAR(255) NULL AFTER phase",
+        "ALTER TABLE demand_dispatch_runs ADD COLUMN sent_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER added_count",
+        "ALTER TABLE demand_dispatch_runs ADD COLUMN result_message VARCHAR(500) NULL AFTER error_count",
+    ];
+    foreach ($cols as $sql) {
+        try { db()->exec($sql); } catch (Throwable $e) { /* coluna já existe */ }
+    }
+    // Amplia o ENUM de status para incluir 'failed' (ignora se já estiver ok).
+    try {
+        db()->exec("ALTER TABLE demand_dispatch_runs MODIFY COLUMN status ENUM('queued','processing','completed','completed_with_errors','failed') NOT NULL DEFAULT 'queued'");
+    } catch (Throwable $e) { /* já ampliado */ }
+}
+
+/**
+ * Cria um "run" de disparo completo e enfileira o job que o executará no worker.
+ *
+ * @return int run_id criado
+ */
+function demand_dispatch_enqueue_full(int $demandId, int $subRequestId, ?int $userId): int
+{
+    demand_dispatch_ensure_run_columns();
+
+    $ins = db()->prepare(
+        "INSERT INTO demand_dispatch_runs
+            (demand_id, sub_request_id, group_jid, total_targets, status, phase, phase_message, created_by_user_id)
+         VALUES
+            (:did, :srid, '', 0, 'queued', 'queued', 'Na fila para iniciar...', :uid)"
+    );
+    $ins->execute([
+        'did' => $demandId,
+        'srid' => $subRequestId > 0 ? $subRequestId : null,
+        'uid' => $userId,
+    ]);
+    $runId = (int)db()->lastInsertId();
+
+    integration_job_enqueue('evolution', 'demand_dispatch_run', [
+        'run_id' => $runId,
+        'demand_id' => $demandId,
+        'sub_request_id' => $subRequestId,
+        'user_id' => $userId,
+    ]);
+
+    return $runId;
+}
+
+/**
+ * Atualiza a fase/mensagem de progresso de um run (mostrado no popup).
+ * Falhas são silenciosas para nunca interromper o disparo por causa do log.
+ */
+function demand_dispatch_run_set_phase(int $runId, string $phase, string $message = ''): void
+{
+    if ($runId <= 0) {
+        return;
+    }
+    try {
+        db()->prepare(
+            "UPDATE demand_dispatch_runs
+             SET phase = :ph, phase_message = :msg, status = IF(status = 'queued', 'processing', status)
+             WHERE id = :id"
+        )->execute(['ph' => $phase, 'msg' => mb_strimwidth($message, 0, 250, ''), 'id' => $runId]);
+    } catch (Throwable $e) { /* ignore */ }
+}
+
+/**
+ * Marca o run como concluído (ou falho) e grava a mensagem final.
+ *
+ * @param string $status 'completed' | 'completed_with_errors' | 'failed'
+ */
+function demand_dispatch_run_finish(int $runId, string $status, string $message, int $sent = 0, int $errors = 0): void
+{
+    if ($runId <= 0) {
+        return;
+    }
+    try {
+        db()->prepare(
+            "UPDATE demand_dispatch_runs
+             SET status = :st,
+                 phase = 'done',
+                 phase_message = :msg,
+                 result_message = :msg,
+                 sent_count = :sent,
+                 error_count = :err
+             WHERE id = :id"
+        )->execute([
+            'st' => $status,
+            'msg' => mb_strimwidth($message, 0, 490, ''),
+            'sent' => $sent,
+            'err' => $errors,
+            'id' => $runId,
+        ]);
+    } catch (Throwable $e) { /* ignore */ }
+}
