@@ -103,6 +103,72 @@ if (!function_exists('dispatch_evolution_error_text')) {
     }
 }
 
+if (!function_exists('dispatch_instance_state')) {
+    /** Estado normalizado da instância na Evolution ('open', 'close', 'connecting'...). */
+    function dispatch_instance_state(EvolutionApiV1 $api): string
+    {
+        $r = $api->connectionState();
+        $j = is_array($r['json'] ?? null) ? $r['json'] : [];
+        return strtolower(trim((string)($j['instance']['state'] ?? ($j['state'] ?? ''))));
+    }
+}
+
+if (!function_exists('dispatch_pick_sender_for_group')) {
+    /**
+     * Escolhe uma instância que REALMENTE consegue enviar para o grupo:
+     * estado 'open' + enxerga o grupo via findGroupInfos (que consulta o
+     * WhatsApp ao vivo, não o cache).
+     *
+     * Por que isso é necessário: o cache de metadados de grupo da Evolution é
+     * global (chave = JID do grupo, compartilhado entre instâncias). Uma
+     * instância desconectada/não autenticada passa pela checagem "Group not
+     * found" usando o cache populado por OUTRA instância e quebra dentro do
+     * Baileys em `authState.creds.me.id` -> "TypeError: Cannot read properties
+     * of undefined (reading 'id')" (HTTP 400).
+     *
+     * @return array{0: EvolutionApiV1, 1: string}|null
+     */
+    function dispatch_pick_sender_for_group(string $groupJid, ?string $preferred, array $instances, string $baseUrl, string $apiKey, array &$diag = []): ?array
+    {
+        $names = [];
+        if ($preferred !== null && $preferred !== '') {
+            $names[] = $preferred;
+        }
+        foreach ($instances as $i) {
+            $n = (string)($i['instance_name'] ?? '');
+            if ($n !== '') {
+                $names[] = $n;
+            }
+        }
+        $def = (string)admin_setting_get('evolution.instance', '');
+        if ($def !== '') {
+            $names[] = $def;
+        }
+        $names = array_values(array_unique($names));
+
+        foreach ($names as $name) {
+            try {
+                $candidate = new EvolutionApiV1($baseUrl, $apiKey, $name);
+                $state = dispatch_instance_state($candidate);
+                if (!in_array($state, ['open', 'connected'], true)) {
+                    $diag[] = "$name: estado '" . ($state !== '' ? $state : '?') . "'";
+                    continue;
+                }
+                $info = $candidate->findGroupByJid($groupJid);
+                $code = (int)($info['status'] ?? 0);
+                if ($code < 200 || $code >= 300) {
+                    $diag[] = "$name: conectada mas não está no grupo (HTTP $code)";
+                    continue;
+                }
+                return [$candidate, $name];
+            } catch (Throwable $e) {
+                $diag[] = "$name: " . $e->getMessage();
+            }
+        }
+        return null;
+    }
+}
+
 if (!function_exists('dispatch_abort')) {
     /**
      * Encerra o disparo com ERRO.
@@ -1551,6 +1617,30 @@ $selLogs->execute(['did' => $id]);
 $toSend = $selLogs->fetchAll();
 
 // ============================================================================
+// REMETENTE VERIFICADA: a instância escolhida acima pode ter vindo de um
+// fallback "sem verificação" (desconectada / não autenticada). Enviar por ela
+// gera "TypeError: Cannot read properties of undefined (reading 'id')" na
+// Evolution. Trocamos por uma instância 'open' que enxerga o grupo.
+// ============================================================================
+$firstGroupJid = '';
+foreach ($toSend as $tsRow) {
+    $gj = (string)($tsRow['evolution_group_jid'] ?? '');
+    if ($gj !== '') { $firstGroupJid = $gj; break; }
+}
+if ($firstGroupJid !== '') {
+    $pickDiag = [];
+    $picked = dispatch_pick_sender_for_group($firstGroupJid, $apiInstanceName, $instances ?? [], $baseUrl, $apiKey, $pickDiag);
+    if ($picked !== null) {
+        if ($picked[1] !== $apiInstanceName) {
+            error_log("[DISPATCH] Remetente trocada de '$apiInstanceName' para '{$picked[1]}' (verificada: conectada e membro de $firstGroupJid).");
+        }
+        [$api, $apiInstanceName] = $picked;
+    } else {
+        error_log("[DISPATCH] Nenhuma instância verificada para $firstGroupJid: " . implode('; ', $pickDiag));
+    }
+}
+
+// ============================================================================
 // GARANTIA DE MEMBROS EM GRUPO JÁ EXISTENTE
 // ----------------------------------------------------------------------------
 // A criação de grupo (mais acima) só roda quando NÃO existe grupo. Quando o
@@ -1687,7 +1777,30 @@ foreach ($toSend as $row) {
     }
 
     try {
-        $res = $api->sendTextToGroup($jid, $msgRow);
+        // Só envia por instância conectada E membro deste grupo (ver
+        // dispatch_pick_sender_for_group). Sem isso a Evolution responde
+        // "TypeError ... reading 'id'" quando a instância não está autenticada.
+        $sendDiag = [];
+        $pickedRow = dispatch_pick_sender_for_group($jid, $apiInstanceName, $instances ?? [], $baseUrl, $apiKey, $sendDiag);
+        if ($pickedRow === null) {
+            $errText = 'Nenhuma instância conectada e membro do grupo. ' . implode('; ', $sendDiag);
+            $lastDispatchError = $errText;
+            error_log("[DISPATCH] $jid: $errText");
+            $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($errText, 0, 255, '...'), 'id' => $logId]);
+            $errCount++;
+            continue;
+        }
+        [$sendApi, $sendInstName] = $pickedRow;
+        if ($sendInstName !== $apiInstanceName) {
+            error_log("[DISPATCH] $jid será enviado pela instância '$sendInstName' (membro do grupo).");
+        }
+        // Registra a dona verificada para os próximos disparos priorizarem ela.
+        try {
+            db()->prepare('UPDATE whatsapp_groups SET instance_name = ? WHERE evolution_group_jid = ?')
+                ->execute([$sendInstName, $jid]);
+        } catch (Throwable $e) {}
+
+        $res = $sendApi->sendTextToGroup($jid, $msgRow);
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         
         // Se falhou e o JID não tem hífen (possível LID), tentar buscar JID real
@@ -1701,7 +1814,7 @@ foreach ($toSend as $row) {
                 $grpName = $grpNameRow ? $grpNameRow['name'] : '';
                 
                 if ($grpName !== '') {
-                    $allGroupsRes = $api->fetchAllGroups(false);
+                    $allGroupsRes = $sendApi->fetchAllGroups(false);
                     $allGroupsCode = (int)($allGroupsRes['status'] ?? 0);
                     if ($allGroupsCode >= 200 && $allGroupsCode < 300) {
                         $groupsList = $allGroupsRes['json'] ?? [];
@@ -1715,7 +1828,7 @@ foreach ($toSend as $row) {
                                     ->execute([$grpId, $jid]);
                                 // Tentar enviar com o JID correto
                                 usleep(500000);
-                                $res = $api->sendTextToGroup($grpId, $msgRow);
+                                $res = $sendApi->sendTextToGroup($grpId, $msgRow);
                                 $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
                                 if ($ok) {
                                     $jid = $grpId; // Usar JID correto para salvar em chat_messages
@@ -1730,48 +1843,6 @@ foreach ($toSend as $row) {
             }
         }
 
-        // FALLBACK MULTI-INSTÂNCIA: a Evolution devolve HTTP 400 quando a
-        // instância remetente NÃO é membro do grupo (erro do Baileys embrulhado).
-        // Isso acontece quando o grupo reusado pertence a outra instância
-        // (grupos legados sem instance_name, ou reuso via fallback sem filtro).
-        // Tentamos as demais instâncias conectadas que de fato estão no grupo.
-        if (!$ok) {
-            $firstErrText = dispatch_evolution_error_text($res);
-            error_log("[DISPATCH] Envio para '$jid' via '$apiInstanceName' falhou ($firstErrText). Tentando outras instâncias...");
-            foreach (($instances ?? []) as $altInst) {
-                $altName = (string)($altInst['instance_name'] ?? '');
-                if ($altName === '' || $altName === $apiInstanceName) continue;
-                try {
-                    $altApi = new EvolutionApiV1($baseUrl, $apiKey, $altName);
-
-                    $altConn = $altApi->connectionState();
-                    $altJson = $altConn['json'] ?? [];
-                    $altState = strtolower(trim((string)($altJson['instance']['state'] ?? ($altJson['state'] ?? ''))));
-                    if (!in_array($altState, ['open', 'connected'], true)) continue;
-
-                    // Só tenta se a instância enxerga o grupo (é membro).
-                    $altInfo = $altApi->findGroupByJid($jid);
-                    $altInfoCode = (int)($altInfo['status'] ?? 0);
-                    if ($altInfoCode < 200 || $altInfoCode >= 300) continue;
-
-                    $altRes = $altApi->sendText($jid, $msgRow);
-                    $altCode = (int)($altRes['status'] ?? 0);
-                    if ($altCode >= 200 && $altCode < 300) {
-                        $res = $altRes;
-                        $ok = true;
-                        // Registra a instância dona para os próximos disparos priorizarem ela.
-                        db()->prepare('UPDATE whatsapp_groups SET instance_name = ? WHERE evolution_group_jid = ?')
-                            ->execute([$altName, $jid]);
-                        error_log("[DISPATCH] ✅ Enviado para '$jid' via instância alternativa '$altName' (membro do grupo).");
-                        break;
-                    }
-                    error_log("[DISPATCH] Instância alternativa '$altName' também falhou: " . dispatch_evolution_error_text($altRes));
-                } catch (Throwable $altErr) {
-                    error_log("[DISPATCH] Erro na instância alternativa '$altName': " . $altErr->getMessage());
-                }
-            }
-        }
-        
         if ($ok) {
             // Extrair o message_id retornado pela API (para vincular reações futuras)
             $externalMsgId = null;
@@ -1800,9 +1871,9 @@ foreach ($toSend as $row) {
                 error_log('[DISPATCH] Erro ao salvar em chat_messages: ' . $chatErr->getMessage());
             }
         } else {
-            $errText = dispatch_evolution_error_text($res);
+            $errText = "[instância '$sendInstName'] " . dispatch_evolution_error_text($res);
             $lastDispatchError = $errText;
-            error_log("[DISPATCH] Falha definitiva ao enviar para '$jid' (instância '$apiInstanceName'): $errText");
+            error_log("[DISPATCH] Falha definitiva ao enviar para '$jid': $errText");
             $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($errText, 0, 255, '...'), 'id' => $logId]);
             $errCount++;
         }
