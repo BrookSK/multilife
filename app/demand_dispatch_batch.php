@@ -18,6 +18,55 @@ declare(strict_types=1);
 const DEMAND_DISPATCH_BATCH_SIZE = 50;
 
 /**
+ * Chave canônica de um número/JID para comparar membros de grupo.
+ * Remove sufixo de device/servidor e normaliza o 9º dígito de celular BR
+ * (o WhatsApp costuma usar 55+DDD+8 dígitos no JID).
+ */
+function dispatch_member_key(string $jidOrPhone): string
+{
+    $d = preg_replace('/\D+/', '', (string)preg_replace('/[:@].*$/', '', $jidOrPhone));
+    if (strlen($d) === 13 && strncmp($d, '55', 2) === 0 && $d[4] === '9') {
+        $d = substr($d, 0, 4) . substr($d, 5);
+    }
+    return $d;
+}
+
+/**
+ * Membros atuais do grupo: [chave => é_admin]. null se não foi possível ler.
+ *
+ * Usado para NUNCA re-adicionar quem já está no grupo: chamadas de "add" com
+ * membros existentes (ou o próprio número da instância) derrubam a sessão do
+ * WhatsApp na Evolution (instância vai para 'close').
+ */
+function dispatch_group_member_keys(EvolutionApiV1 $api, string $groupJid): ?array
+{
+    $r = $api->findGroupMembers($groupJid);
+    $code = (int)($r['status'] ?? 0);
+    if ($code < 200 || $code >= 300 || !is_array($r['json'] ?? null)) {
+        return null;
+    }
+    $j = $r['json'];
+    $list = $j['participants'] ?? (isset($j[0]) ? $j : null);
+    if (!is_array($list)) {
+        return null;
+    }
+    $keys = [];
+    foreach ($list as $p) {
+        if (!is_array($p)) continue;
+        $isAdmin = !empty($p['admin']);
+        foreach (['id', 'jid', 'phoneNumber'] as $f) {
+            if (!empty($p[$f]) && is_string($p[$f])) {
+                $k = dispatch_member_key($p[$f]);
+                if ($k !== '') {
+                    $keys[$k] = $isAdmin || !empty($keys[$k]);
+                }
+            }
+        }
+    }
+    return $keys;
+}
+
+/**
  * Garante as tabelas de dispatch em lote (fallback caso a migration não tenha rodado).
  */
 function demand_dispatch_ensure_tables(): void

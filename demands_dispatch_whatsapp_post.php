@@ -169,6 +169,53 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
     }
 }
 
+// dispatch_member_key() e dispatch_group_member_keys() ficam em
+// app/demand_dispatch_batch.php (usadas também pelo cron de adição em lote).
+
+if (!function_exists('dispatch_instance_number')) {
+    /** Número (só dígitos) do WhatsApp conectado na instância, se cadastrado. */
+    function dispatch_instance_number(?string $instanceName): string
+    {
+        if ($instanceName === null || $instanceName === '') return '';
+        try {
+            $st = db()->prepare('SELECT owner_number, owner_phone_formatted FROM whatsapp_instances WHERE instance_name = ? LIMIT 1');
+            $st->execute([$instanceName]);
+            $row = $st->fetch();
+            if (!$row) return '';
+            $n = trim((string)($row['owner_phone_formatted'] ?? ''));
+            if ($n === '') $n = (string)($row['owner_number'] ?? '');
+            return preg_replace('/\D+/', '', $n);
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+}
+
+if (!function_exists('dispatch_missing_members')) {
+    /**
+     * Filtra $jids deixando só quem AINDA NÃO está no grupo (e nunca o próprio
+     * número da instância). Re-adicionar membros existentes / o próprio número
+     * derruba a sessão do WhatsApp na Evolution — por isso, se não der para ler
+     * a lista de membros, retorna [] (não adiciona ninguém).
+     */
+    function dispatch_missing_members(EvolutionApiV1 $api, string $groupJid, array $jids, string $selfNumber = ''): array
+    {
+        $present = dispatch_group_member_keys($api, $groupJid);
+        if ($present === null) {
+            error_log("[DISPATCH] Não foi possível ler membros de $groupJid — adição ignorada por segurança.");
+            return [];
+        }
+        $self = $selfNumber !== '' ? dispatch_member_key($selfNumber) : '';
+        $out = [];
+        foreach ($jids as $j) {
+            $k = dispatch_member_key((string)$j);
+            if ($k === '' || $k === $self || isset($present[$k])) continue;
+            $out[$k] = (string)$j;
+        }
+        return array_values($out);
+    }
+}
+
 if (!function_exists('dispatch_abort')) {
     /**
      * Encerra o disparo com ERRO.
@@ -309,6 +356,12 @@ demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'starting', 'Iniciando disparo d
 $city = (string)($subRequest ? ($subRequest['location_city'] ?? $d['location_city'] ?? '') : ($d['location_city'] ?? ''));
 $state = (string)($subRequest ? ($subRequest['location_state'] ?? $d['location_state'] ?? '') : ($d['location_state'] ?? ''));
 $specialty = (string)($subRequest ? ($subRequest['specialty'] ?? '') : ($d['specialty'] ?? ''));
+
+// Adições de membros em GRUPO EXISTENTE ficam para DEPOIS do envio da mensagem
+// (jid do grupo => lista de JIDs). Adicionar participantes derruba a sessão do
+// WhatsApp na Evolution em alguns casos; se isso acontecer antes do envio, a
+// captação falha com a instância 'close'. Ver bloco "ADIÇÕES ADIADAS" no fim.
+$deferredMemberAdds = [];
 
 // Buscar grupos compatíveis - tentar match progressivo
 $groups = [];
@@ -875,16 +928,13 @@ if (count($groups) === 0) {
                             );
                             error_log("[DISPATCH] Participantes do novo grupo enfileirados em lote: run #{$enqC['run_id']}, {$enqC['total']} em {$enqC['jobs']} jobs.");
                         } catch (Throwable $eqErr2) {
-                            error_log("[DISPATCH] Falha ao enfileirar (novo grupo), adição síncrona: " . $eqErr2->getMessage());
-                            $api->updateGroupMembers($newGroupJid, 'add', $participantsFormatted);
+                            error_log("[DISPATCH] Falha ao enfileirar (novo grupo), adição adiada para após o envio: " . $eqErr2->getMessage());
+                            $deferredMemberAdds[$newGroupJid] = array_merge($deferredMemberAdds[$newGroupJid] ?? [], $participantsFormatted);
                         }
                     } else {
-                        $addResult = $api->updateGroupMembers($newGroupJid, 'add', $participantsFormatted);
-                        $addCode = (int)($addResult['status'] ?? 0);
-                        error_log("[DISPATCH] Adição explícita de participantes ao grupo: HTTP $addCode (" . count($participantsFormatted) . " números)");
-                        if ($addCode < 200 || $addCode >= 300) {
-                            error_log("[DISPATCH] ⚠️ Resposta da adição: " . json_encode($addResult['json'] ?? $addResult['body_raw'] ?? ''));
-                        }
+                        // Adiado para depois do envio e filtrado por quem falta
+                        // (o groupCreate normalmente já incluiu todos).
+                        $deferredMemberAdds[$newGroupJid] = array_merge($deferredMemberAdds[$newGroupJid] ?? [], $participantsFormatted);
                     }
                 } catch (Exception $e) {
                     error_log("[DISPATCH] Erro ao adicionar participantes explicitamente: " . $e->getMessage());
@@ -922,6 +972,16 @@ if (count($groups) === 0) {
                         }
                     }
                     $promoteList = array_values(array_unique($promoteList));
+
+                    // Só promove quem JÁ é membro e ainda não é admin, nunca o
+                    // próprio número (o criador já é admin). Operações de grupo
+                    // com números fora do grupo / o próprio número derrubam a sessão.
+                    $currentMembers = dispatch_group_member_keys($api, $newGroupJid);
+                    $selfKeyNew = dispatch_member_key(dispatch_instance_number($usedInstanceName ?? $instanceName));
+                    $promoteList = $currentMembers === null ? [] : array_values(array_filter($promoteList, function ($pj) use ($currentMembers, $selfKeyNew) {
+                        $k = dispatch_member_key($pj);
+                        return $k !== '' && $k !== $selfKeyNew && isset($currentMembers[$k]) && empty($currentMembers[$k]);
+                    }));
                     
                     if (!empty($promoteList)) {
                         $api3 = $api;
@@ -1370,14 +1430,14 @@ if (count($groups) > 0) {
                         );
                         error_log("[DISPATCH] Adição em lote enfileirada: run #{$enq['run_id']}, {$enq['total']} profissionais em {$enq['jobs']} jobs de background.");
                     } catch (Throwable $eqErr) {
-                        error_log("[DISPATCH] Falha ao enfileirar lote, tentando adição síncrona: " . $eqErr->getMessage());
-                        $syncApi->updateGroupMembers($targetJid, 'add', $phonesToAdd);
+                        error_log("[DISPATCH] Falha ao enfileirar lote, adição adiada para depois do envio: " . $eqErr->getMessage());
+                        $deferredMemberAdds[$targetJid] = array_merge($deferredMemberAdds[$targetJid] ?? [], $phonesToAdd);
                     }
                 } else {
-                    // Volume pequeno: adicionar direto (a API ignora quem já é membro)
-                    $syncApi->updateGroupMembers($targetJid, 'add', $phonesToAdd);
-                    error_log("[DISPATCH] Sincronização de membros: adicionados " . count($phonesToAdd) . " números ao grupo $targetJid");
-                    usleep(500000); // 500ms
+                    // Volume pequeno: adiado para DEPOIS do envio, e só de quem
+                    // ainda não é membro (re-adicionar derruba a sessão).
+                    $deferredMemberAdds[$targetJid] = array_merge($deferredMemberAdds[$targetJid] ?? [], $phonesToAdd);
+                    error_log("[DISPATCH] Sincronização de membros: " . count($phonesToAdd) . " números avaliados após o envio em $targetJid");
                 }
             }
         } catch (Exception $e) {
@@ -1691,13 +1751,9 @@ if ($api !== null) {
                 }
             }
             foreach ($guardJids as $gj) {
-                try {
-                    $addRes = $api->updateGroupMembers($gj, 'add', $guardParticipants);
-                    $addCode = (int)($addRes['status'] ?? 0);
-                    error_log("[DISPATCH] Garantia de membros no grupo existente '$gj': HTTP $addCode (" . count($guardParticipants) . " números, testMode=" . ($captacaoTestMode ? '1' : '0') . ")");
-                } catch (Throwable $gErr) {
-                    error_log("[DISPATCH] Falha ao garantir membros em '$gj': " . $gErr->getMessage());
-                }
+                // Adiado para depois do envio (ver "ADIÇÕES ADIADAS").
+                $deferredMemberAdds[$gj] = array_merge($deferredMemberAdds[$gj] ?? [], $guardParticipants);
+                error_log("[DISPATCH] Garantia de membros em '$gj': " . count($guardParticipants) . " números avaliados após o envio (testMode=" . ($captacaoTestMode ? '1' : '0') . ")");
             }
         } elseif ($captacaoTestMode) {
             error_log("[DISPATCH] Modo de teste ligado e nenhum profissional de teste encontrado para '$specialty' — nenhum membro adicionado ao grupo existente.");
@@ -1744,13 +1800,17 @@ if ($api !== null && $apiInstanceName !== null && $apiInstanceName !== '') {
                 $gj = (string)($tsRow['evolution_group_jid'] ?? '');
                 if ($gj === '') continue;
                 try {
-                    // Garante que o remetente é membro (idempotente) e o promove a admin.
-                    $api->updateGroupMembers($gj, 'add', [$senderJid]);
-                    $promoteSelf = $api->updateGroupMembers($gj, 'promote', [$senderJid]);
-                    $pc = (int)($promoteSelf['status'] ?? 0);
-                    error_log("[DISPATCH] Remetente '$apiInstanceName' ($senderPhone) promovido a admin em '$gj': HTTP $pc");
+                    // SOMENTE LEITURA. Antes este bloco fazia add + promote do
+                    // PRÓPRIO número da instância: além de inútil (ninguém se
+                    // promove sem já ser admin), isso derrubava a sessão do
+                    // WhatsApp e a instância ia para 'close' antes do envio.
+                    $members = dispatch_group_member_keys($api, $gj);
+                    $selfKey = dispatch_member_key($senderPhone);
+                    if ($members !== null && empty($members[$selfKey])) {
+                        error_log("[DISPATCH] ⚠️ Remetente '$apiInstanceName' ($senderPhone) NÃO é admin de '$gj'. Em grupo 'somente admins' a mensagem pode ser descartada — promova este número pelo celular de um admin.");
+                    }
                 } catch (Throwable $pErr) {
-                    error_log("[DISPATCH] Falha ao promover remetente em '$gj': " . $pErr->getMessage());
+                    error_log("[DISPATCH] Falha ao checar admin do remetente em '$gj': " . $pErr->getMessage());
                 }
             }
         } else {
@@ -1882,6 +1942,33 @@ foreach ($toSend as $row) {
         $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($e->getMessage(), 0, 255, ''), 'id' => $logId]);
         $errCount++;
         continue;
+    }
+}
+
+// ============================================================================
+// ADIÇÕES ADIADAS: só depois de a mensagem sair, adiciona ao grupo quem AINDA
+// NÃO é membro (nunca o próprio número da instância). Se ninguém faltar, não
+// faz nenhuma chamada de adição — que é o que derrubava a sessão.
+// ============================================================================
+foreach ($deferredMemberAdds as $addJid => $addList) {
+    try {
+        $addList = array_values(array_unique($addList));
+        if (empty($addList)) continue;
+        $addPicked = dispatch_pick_sender_for_group((string)$addJid, $apiInstanceName, $instances ?? [], $baseUrl, $apiKey);
+        if ($addPicked === null) {
+            error_log("[DISPATCH] Adição adiada em $addJid ignorada: nenhuma instância conectada no grupo.");
+            continue;
+        }
+        [$addApi, $addInstName] = $addPicked;
+        $missing = dispatch_missing_members($addApi, (string)$addJid, $addList, dispatch_instance_number($addInstName));
+        if (empty($missing)) {
+            error_log("[DISPATCH] $addJid: todos os " . count($addList) . " números já são membros — nenhuma adição feita.");
+            continue;
+        }
+        $addRes = $addApi->updateGroupMembers((string)$addJid, 'add', $missing);
+        error_log("[DISPATCH] $addJid: adicionados " . count($missing) . " novos membros via '$addInstName': HTTP " . (int)($addRes['status'] ?? 0));
+    } catch (Throwable $addErr) {
+        error_log("[DISPATCH] Erro na adição adiada em $addJid: " . $addErr->getMessage());
     }
 }
 

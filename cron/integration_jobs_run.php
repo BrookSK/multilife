@@ -718,11 +718,23 @@ foreach ($jobs as $j) {
                 $addOk = false;
                 $addErrMsg = null;
                 try {
-                    $addRes = $api->updateGroupMembers($groupJid, 'add', $jids);
-                    $addCode = (int)($addRes['status'] ?? 0);
-                    $addOk = $addCode >= 200 && $addCode < 300;
-                    if (!$addOk) {
-                        $addErrMsg = 'HTTP ' . $addCode;
+                    // Só adiciona quem AINDA NÃO é membro: re-adicionar membros
+                    // existentes (ou o próprio número) derruba a sessão do
+                    // WhatsApp na Evolution. Sem conseguir ler os membros, não adiciona.
+                    $present = dispatch_group_member_keys($api, $groupJid);
+                    if ($present === null) {
+                        throw new RuntimeException('Não foi possível ler os membros do grupo (instância desconectada?) — adição não realizada.');
+                    }
+                    $jids = array_values(array_filter($jids, fn($j) => !isset($present[dispatch_member_key($j)])));
+                    if (empty($jids)) {
+                        $addOk = true; // todos já são membros
+                    } else {
+                        $addRes = $api->updateGroupMembers($groupJid, 'add', $jids);
+                        $addCode = (int)($addRes['status'] ?? 0);
+                        $addOk = $addCode >= 200 && $addCode < 300;
+                        if (!$addOk) {
+                            $addErrMsg = 'HTTP ' . $addCode;
+                        }
                     }
                 } catch (Throwable $e) {
                     $addErrMsg = mb_strimwidth($e->getMessage(), 0, 200, '');
