@@ -13,6 +13,25 @@ $now = (new DateTime('now'))->format('Y-m-d H:i:s');
 
 $db = db();
 
+// Recuperação de jobs ÓRFÃOS: se o worker morreu no meio (timeout do PHP/cron),
+// o job fica preso em 'running' e nunca mais é reprocessado. Após 10 minutos sem
+// conclusão, devolve para 'error' (dentro do limite de tentativas) para que seja
+// retentado. A janela é folgada de propósito: um disparo legítimo (com eventuais
+// reconexões de instância) termina bem antes disso, evitando reprocesso enquanto
+// ainda executa. O disparo também é idempotente, então reprocessar é seguro.
+try {
+    $db->prepare(
+        "UPDATE integration_jobs
+         SET status = 'error',
+             last_error = 'Reprocessado: job ficou preso em running (worker interrompido).',
+             next_run_at = NULL
+         WHERE status = 'running'
+           AND attempts < max_attempts
+           AND last_run_at IS NOT NULL
+           AND last_run_at < DATE_SUB(:now_orphan, INTERVAL 10 MINUTE)"
+    )->execute(['now_orphan' => $now]);
+} catch (Throwable $e) { /* best-effort */ }
+
 $stmt = $db->prepare(
     "SELECT *
      FROM integration_jobs

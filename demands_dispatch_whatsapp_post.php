@@ -100,6 +100,13 @@ if (!function_exists('dispatch_abort')) {
 
 if ($DISPATCH_WORKER_MODE) {
     // ---- MODO WORKER (chamado pelo cron) ----
+    // O disparo é longo (chamadas HTTP à Evolution + eventuais reconexões).
+    // Sem isto, o PHP é morto por max_execution_time e o cron fetch-url do Plesk
+    // derruba o processo ao desconectar — deixando o job preso em 'running' e o
+    // run preso em 'sending'. Garante tempo e continuidade mesmo sem o cliente.
+    @set_time_limit(0);
+    @ignore_user_abort(true);
+
     // Sem sessão HTTP: injeta o usuário do run para que auth_user_id() funcione
     // nas gravações de autoria (assumed_by, status logs, dispatch logs).
     $runRow = db()->prepare('SELECT demand_id, sub_request_id, created_by_user_id FROM demand_dispatch_runs WHERE id = :id');
@@ -1528,6 +1535,58 @@ if ($api !== null) {
 }
 
 $updOne = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = :st, error_message = :err WHERE id = :id');
+
+// ============================================================================
+// GARANTIR QUE A INSTÂNCIA REMETENTE SEJA ADMIN DO GRUPO
+// ----------------------------------------------------------------------------
+// Os grupos de captação são configurados como "announcement" (somente admins
+// publicam). Se a instância que vai ENVIAR não for admin do grupo, a Evolution
+// aceita a requisição (HTTP 2xx) mas o WhatsApp DESCARTA a mensagem em silêncio
+// — foi exatamente o sintoma: "enviado" sem erro, mas nada chega no grupo.
+// Aqui garantimos que o número da instância remetente ($apiInstanceName) seja
+// membro e admin de cada grupo deste disparo, ANTES de enviar.
+// ============================================================================
+if ($api !== null && $apiInstanceName !== null && $apiInstanceName !== '') {
+    try {
+        // Descobrir o número (JID) da instância remetente.
+        $stmtSenderNum = db()->prepare("SELECT owner_number, owner_phone_formatted FROM whatsapp_instances WHERE instance_name = ? LIMIT 1");
+        $stmtSenderNum->execute([$apiInstanceName]);
+        $senderRow = $stmtSenderNum->fetch();
+        $senderPhone = '';
+        if ($senderRow) {
+            $senderPhone = trim((string)($senderRow['owner_phone_formatted'] ?? ''));
+            if ($senderPhone === '') {
+                $senderPhone = preg_replace('/\D+/', '', (string)($senderRow['owner_number'] ?? ''));
+            } else {
+                $senderPhone = preg_replace('/\D+/', '', $senderPhone);
+            }
+            if (strlen($senderPhone) === 10 || strlen($senderPhone) === 11) {
+                $senderPhone = '55' . $senderPhone;
+            }
+        }
+
+        if (strlen($senderPhone) >= 12) {
+            $senderJid = $senderPhone . '@s.whatsapp.net';
+            foreach ($toSend as $tsRow) {
+                $gj = (string)($tsRow['evolution_group_jid'] ?? '');
+                if ($gj === '') continue;
+                try {
+                    // Garante que o remetente é membro (idempotente) e o promove a admin.
+                    $api->updateGroupMembers($gj, 'add', [$senderJid]);
+                    $promoteSelf = $api->updateGroupMembers($gj, 'promote', [$senderJid]);
+                    $pc = (int)($promoteSelf['status'] ?? 0);
+                    error_log("[DISPATCH] Remetente '$apiInstanceName' ($senderPhone) promovido a admin em '$gj': HTTP $pc");
+                } catch (Throwable $pErr) {
+                    error_log("[DISPATCH] Falha ao promover remetente em '$gj': " . $pErr->getMessage());
+                }
+            }
+        } else {
+            error_log("[DISPATCH] Não foi possível resolver o número da instância remetente '$apiInstanceName' para promover a admin.");
+        }
+    } catch (Throwable $sErr) {
+        error_log("[DISPATCH] Erro ao garantir remetente admin: " . $sErr->getMessage());
+    }
+}
 
 demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'sending', 'Enviando a mensagem de captação ao(s) grupo(s)...');
 
