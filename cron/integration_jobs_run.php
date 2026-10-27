@@ -809,6 +809,10 @@ foreach ($jobs as $j) {
             $GLOBALS['__dispatch_worker'] = true;
             $GLOBALS['__dispatch_run_id'] = $ddRunId;
             $dispatchFatal = null;
+            // O arquivo incluído roda no MESMO escopo deste loop e redefine $id
+            // (passa a ser o id da demanda). Guardamos o id do job para que o
+            // UPDATE de status abaixo atualize o job correto.
+            $ddJobId = $id;
             try {
                 require __DIR__ . '/../demands_dispatch_whatsapp_post.php';
             } catch (DispatchWorkerDone $done) {
@@ -822,6 +826,7 @@ foreach ($jobs as $j) {
                 }
             } finally {
                 unset($GLOBALS['__dispatch_worker'], $GLOBALS['__dispatch_run_id']);
+                $id = $ddJobId;
             }
 
             if ($dispatchFatal !== null) {

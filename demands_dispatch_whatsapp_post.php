@@ -70,6 +70,39 @@ if (!function_exists('dispatch_wants_json')) {
     }
 }
 
+if (!function_exists('dispatch_evolution_error_text')) {
+    /**
+     * Extrai a mensagem de erro REAL devolvida pela Evolution API.
+     * A Evolution embrulha erros do Baileys (ex.: instância não é membro do
+     * grupo, "forbidden", "item-not-found", "exists:false") em HTTP 400 — sem
+     * isto o log do disparo mostrava só "HTTP 400", sem o motivo.
+     */
+    function dispatch_evolution_error_text(array $res): string
+    {
+        $status = (int)($res['status'] ?? 0);
+        $json = $res['json'] ?? null;
+        $detail = '';
+        if (is_array($json)) {
+            $m = $json['response']['message'] ?? ($json['message'] ?? ($json['error'] ?? null));
+            if (is_array($m)) {
+                $parts = [];
+                foreach ($m as $item) {
+                    $parts[] = is_scalar($item) ? (string)$item : json_encode($item, JSON_UNESCAPED_UNICODE);
+                }
+                $detail = implode('; ', $parts);
+            } elseif (is_scalar($m)) {
+                $detail = (string)$m;
+            }
+            if ($detail === '') {
+                $detail = (string)json_encode($json, JSON_UNESCAPED_UNICODE);
+            }
+        } else {
+            $detail = trim((string)($res['body_raw'] ?? ''));
+        }
+        return 'HTTP ' . $status . ($detail !== '' ? ': ' . $detail : '');
+    }
+}
+
 if (!function_exists('dispatch_abort')) {
     /**
      * Encerra o disparo com ERRO.
@@ -1642,6 +1675,7 @@ demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'sending', 'Enviando a mensagem 
 
 $sent = 0;
 $errCount = 0;
+$lastDispatchError = '';
 foreach ($toSend as $row) {
     $logId = (int)$row['id'];
     $jid = (string)($row['evolution_group_jid'] ?? '');
@@ -1695,6 +1729,48 @@ foreach ($toSend as $row) {
                 error_log("[DISPATCH] Erro ao buscar JID real: " . $lookupErr->getMessage());
             }
         }
+
+        // FALLBACK MULTI-INSTÂNCIA: a Evolution devolve HTTP 400 quando a
+        // instância remetente NÃO é membro do grupo (erro do Baileys embrulhado).
+        // Isso acontece quando o grupo reusado pertence a outra instância
+        // (grupos legados sem instance_name, ou reuso via fallback sem filtro).
+        // Tentamos as demais instâncias conectadas que de fato estão no grupo.
+        if (!$ok) {
+            $firstErrText = dispatch_evolution_error_text($res);
+            error_log("[DISPATCH] Envio para '$jid' via '$apiInstanceName' falhou ($firstErrText). Tentando outras instâncias...");
+            foreach (($instances ?? []) as $altInst) {
+                $altName = (string)($altInst['instance_name'] ?? '');
+                if ($altName === '' || $altName === $apiInstanceName) continue;
+                try {
+                    $altApi = new EvolutionApiV1($baseUrl, $apiKey, $altName);
+
+                    $altConn = $altApi->connectionState();
+                    $altJson = $altConn['json'] ?? [];
+                    $altState = strtolower(trim((string)($altJson['instance']['state'] ?? ($altJson['state'] ?? ''))));
+                    if (!in_array($altState, ['open', 'connected'], true)) continue;
+
+                    // Só tenta se a instância enxerga o grupo (é membro).
+                    $altInfo = $altApi->findGroupByJid($jid);
+                    $altInfoCode = (int)($altInfo['status'] ?? 0);
+                    if ($altInfoCode < 200 || $altInfoCode >= 300) continue;
+
+                    $altRes = $altApi->sendText($jid, $msgRow);
+                    $altCode = (int)($altRes['status'] ?? 0);
+                    if ($altCode >= 200 && $altCode < 300) {
+                        $res = $altRes;
+                        $ok = true;
+                        // Registra a instância dona para os próximos disparos priorizarem ela.
+                        db()->prepare('UPDATE whatsapp_groups SET instance_name = ? WHERE evolution_group_jid = ?')
+                            ->execute([$altName, $jid]);
+                        error_log("[DISPATCH] ✅ Enviado para '$jid' via instância alternativa '$altName' (membro do grupo).");
+                        break;
+                    }
+                    error_log("[DISPATCH] Instância alternativa '$altName' também falhou: " . dispatch_evolution_error_text($altRes));
+                } catch (Throwable $altErr) {
+                    error_log("[DISPATCH] Erro na instância alternativa '$altName': " . $altErr->getMessage());
+                }
+            }
+        }
         
         if ($ok) {
             // Extrair o message_id retornado pela API (para vincular reações futuras)
@@ -1724,10 +1800,14 @@ foreach ($toSend as $row) {
                 error_log('[DISPATCH] Erro ao salvar em chat_messages: ' . $chatErr->getMessage());
             }
         } else {
-            $updOne->execute(['st' => 'error', 'err' => 'HTTP ' . (string)($res['status'] ?? ''), 'id' => $logId]);
+            $errText = dispatch_evolution_error_text($res);
+            $lastDispatchError = $errText;
+            error_log("[DISPATCH] Falha definitiva ao enviar para '$jid' (instância '$apiInstanceName'): $errText");
+            $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($errText, 0, 255, '...'), 'id' => $logId]);
             $errCount++;
         }
     } catch (Throwable $e) {
+        $lastDispatchError = $e->getMessage();
         $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($e->getMessage(), 0, 255, ''), 'id' => $logId]);
         $errCount++;
         continue;
@@ -1746,7 +1826,10 @@ if ($sent > 0 && $errCount === 0) {
 } elseif ($sent > 0) {
     demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed_with_errors', 'Captação enviada para alguns grupos, mas houve erros em outros.', $sent, $errCount);
 } else {
-    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', 'Falha ao enviar captação via WhatsApp. Verifique os logs.', $sent, $errCount);
+    $failMsg = 'Falha ao enviar captação via WhatsApp'
+        . ($apiInstanceName ? " (instância '$apiInstanceName')" : '')
+        . ($lastDispatchError !== '' ? ': ' . mb_strimwidth($lastDispatchError, 0, 300, '...') : '. Verifique os logs.');
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', $failMsg, $sent, $errCount);
 }
 
 dispatch_stop();
