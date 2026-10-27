@@ -2,137 +2,151 @@
 
 declare(strict_types=1);
 
+/**
+ * Diagnóstico ISOLADO de envio para grupo (sem o fluxo de captação).
+ * Executa, com cronômetro, cada chamada que o envio depende e mostra a
+ * resposta crua da Evolution — para saber exatamente onde trava/falha.
+ */
+
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
 
+@set_time_limit(400);
 header('Content-Type: text/html; charset=utf-8');
 
-$groupJid = trim($_GET['jid'] ?? '120363408796989466@g.us');
+$baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
+$apiKey = (string)admin_setting_get('evolution.api_key', '');
 
-echo '<h2>Diagnóstico de Grupo - Sessão</h2><pre>';
-echo "Grupo JID: $groupJid\n\n";
+$groupsList = db()->query("SELECT name, evolution_group_jid, instance_name FROM whatsapp_groups WHERE status = 'active' AND evolution_group_jid LIKE '%@g.us' ORDER BY id DESC LIMIT 200")->fetchAll();
+$instList = db()->query("SELECT instance_name, owner_phone_formatted, owner_number FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC")->fetchAll();
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
+$jid = trim((string)($_POST['jid'] ?? ''));
+$inst = trim((string)($_POST['instance'] ?? ''));
+$privNumber = preg_replace('/\D+/', '', (string)($_POST['private_number'] ?? ''));
+$sendGroup = !empty($_POST['send_group']);
 
-// 1. Verificar se o grupo existe na Evolution
-echo "=== 1. BUSCAR GRUPO NA EVOLUTION ===\n";
-$url = $baseUrl . '/group/findGroupInfos/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
-$ch = curl_init($url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-$resp = curl_exec($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-echo "HTTP: $code\n";
-if ($code === 200) {
-    $data = json_decode($resp, true);
-    echo "Nome: " . ($data['subject'] ?? $data['name'] ?? '?') . "\n";
-    echo "Participantes: " . (isset($data['participants']) ? count($data['participants']) : '?') . "\n";
-    echo "Criado em: " . ($data['creation'] ?? '?') . "\n";
-    if (isset($data['participants'])) {
-        echo "Lista de participantes:\n";
-        foreach ($data['participants'] as $p) {
-            echo "  - " . ($p['id'] ?? '?') . " (admin: " . ($p['admin'] ?? 'no') . ")\n";
-        }
+/** Chamada crua com cronômetro. */
+function dbg_call(string $method, string $url, string $apiKey, $body = null, int $timeout = 30): array
+{
+    $t0 = microtime(true);
+    try {
+        $r = http_json_request($method, $url, ['apikey' => $apiKey], $body, $timeout);
+        $r['error'] = null;
+    } catch (Throwable $e) {
+        $r = ['status' => 0, 'body_raw' => '', 'json' => null, 'error' => $e->getMessage()];
     }
-} else {
-    echo "❌ Grupo não encontrado! Resposta: " . substr($resp, 0, 300) . "\n";
+    $r['secs'] = round(microtime(true) - $t0, 2);
+    return $r;
 }
 
-// 2. Verificar status da conexão
-echo "\n=== 2. STATUS DA CONEXÃO ===\n";
-$url2 = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
-$ch2 = curl_init($url2);
-curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch2, CURLOPT_TIMEOUT, 10);
-$resp2 = curl_exec($ch2);
-$code2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-curl_close($ch2);
-echo "HTTP: $code2\n";
-$stateData = json_decode($resp2, true);
-$state = $stateData['state'] ?? $stateData['instance']['state'] ?? '?';
-echo "Estado: $state\n";
+function dbg_print(string $title, array $r, int $maxBody = 1500): void
+{
+    $ok = $r['status'] >= 200 && $r['status'] < 300;
+    echo '<h3>' . h($title) . '</h3><pre>';
+    echo ($ok ? '✅' : '❌') . ' HTTP ' . (int)$r['status'] . ' em ' . $r['secs'] . "s\n";
+    if ($r['error']) {
+        echo 'ERRO: ' . h((string)$r['error']) . "\n";
+    }
+    $body = (string)($r['body_raw'] ?? '');
+    if ($body !== '') {
+        echo h(mb_strimwidth($body, 0, $maxBody, '...')) . "\n";
+    }
+    echo '</pre>';
+    @ob_flush(); @flush();
+}
+?>
+<h2>Diagnóstico de envio para grupo</h2>
+<form method="post">
+    <p>
+        <label>Grupo:
+            <select name="jid" required>
+                <?php foreach ($groupsList as $g): ?>
+                    <option value="<?= h((string)$g['evolution_group_jid']) ?>" <?= $jid === $g['evolution_group_jid'] ? 'selected' : '' ?>>
+                        <?= h((string)$g['name']) ?> (<?= h((string)$g['evolution_group_jid']) ?>) [<?= h((string)($g['instance_name'] ?? '-')) ?>]
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+    </p>
+    <p>
+        <label>Instância:
+            <select name="instance" required>
+                <?php foreach ($instList as $i): ?>
+                    <option value="<?= h((string)$i['instance_name']) ?>" <?= $inst === $i['instance_name'] ? 'selected' : '' ?>>
+                        <?= h((string)$i['instance_name']) ?> (<?= h((string)($i['owner_phone_formatted'] ?: $i['owner_number'] ?: '-')) ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+    </p>
+    <p><label>Número para teste no privado (opcional, ex. 5511999999999): <input name="private_number" value="<?= h($privNumber) ?>"></label></p>
+    <p><label><input type="checkbox" name="send_group" value="1" <?= $sendGroup ? 'checked' : '' ?>> Enviar mensagem de teste NO GRUPO</label></p>
+    <button type="submit">Rodar diagnóstico</button>
+</form>
+<?php
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $jid === '' || $inst === '') {
+    exit;
+}
+if ($baseUrl === '' || $apiKey === '') {
+    echo '<p>Evolution não configurada (base_url/api_key).</p>';
+    exit;
+}
 
-// 3. Tentar enviar mensagem diretamente (sem wrapper)
-echo "\n=== 3. TESTE ENVIO DIRETO (curl raw) ===\n";
-$sendUrl = $baseUrl . '/message/sendText/' . urlencode($instanceName);
-$payload = json_encode([
-    'number' => $groupJid,
-    'text' => 'Teste de sessão - ' . date('H:i:s'),
-]);
-echo "URL: $sendUrl\n";
-echo "Payload: $payload\n\n";
+$ei = urlencode($inst);
+echo '<hr><p>Instância: <b>' . h($inst) . '</b> | Grupo: <b>' . h($jid) . '</b></p>';
 
-$ch3 = curl_init($sendUrl);
-curl_setopt($ch3, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch3, CURLOPT_POST, true);
-curl_setopt($ch3, CURLOPT_POSTFIELDS, $payload);
-curl_setopt($ch3, CURLOPT_HTTPHEADER, [
-    'apikey: ' . $apiKey,
-    'Content-Type: application/json'
-]);
-curl_setopt($ch3, CURLOPT_SSL_VERIFYPEER, false);
-curl_setopt($ch3, CURLOPT_TIMEOUT, 15);
-$resp3 = curl_exec($ch3);
-$code3 = curl_getinfo($ch3, CURLINFO_HTTP_CODE);
-curl_close($ch3);
-echo "HTTP: $code3\n";
-echo "Resposta: $resp3\n";
+// 1. Estado da conexão
+dbg_print('1. connectionState', dbg_call('GET', "$baseUrl/instance/connectionState/$ei", $apiKey));
 
-if ($code3 === 200 || $code3 === 201) {
-    echo "\n✅ ENVIO FUNCIONOU!\n";
-} else {
-    echo "\n❌ ENVIO FALHOU\n";
-    
-    // 4. Verificar se o grupo está na lista de grupos da instância
-    echo "\n=== 4. VERIFICAR SE GRUPO ESTÁ NA LISTA ===\n";
-    $url4 = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName);
-    $ch4 = curl_init($url4);
-    curl_setopt($ch4, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch4, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch4, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch4, CURLOPT_TIMEOUT, 15);
-    $resp4 = curl_exec($ch4);
-    $code4 = curl_getinfo($ch4, CURLINFO_HTTP_CODE);
-    curl_close($ch4);
-    
-    if ($code4 === 200) {
-        $allGroups = json_decode($resp4, true);
-        $found = false;
-        if (is_array($allGroups)) {
-            foreach ($allGroups as $g) {
-                if (($g['id'] ?? '') === $groupJid) {
-                    $found = true;
-                    echo "✅ Grupo encontrado na lista!\n";
-                    echo "  Nome: " . ($g['subject'] ?? '?') . "\n";
-                    echo "  Participantes: " . (isset($g['participants']) ? count($g['participants']) : '?') . "\n";
-                    break;
-                }
-            }
-            if (!$found) {
-                echo "❌ Grupo NÃO encontrado na lista de grupos da instância!\n";
-                echo "Total de grupos na instância: " . count($allGroups) . "\n";
-                echo "Isso explica o erro 'No sessions' - a instância não reconhece este grupo.\n";
-                echo "\nPossíveis causas:\n";
-                echo "- O grupo foi criado por outra instância\n";
-                echo "- A instância precisa ser reconectada (QR Code)\n";
-                echo "- O número conectado não é membro deste grupo\n";
+// 2. Dados da instância (ownerJid vazio = sessão sem login, gera o TypeError 'id')
+$fi = dbg_call('GET', "$baseUrl/instance/fetchInstances?instanceName=$ei", $apiKey);
+dbg_print('2. fetchInstances (procure ownerJid / connectionStatus)', $fi, 1200);
+
+// 3. Metadados do grupo ao vivo
+$gi = dbg_call('GET', "$baseUrl/group/findGroupInfos/$ei?groupJid=" . urlencode($jid), $apiKey, null, 60);
+dbg_print('3. findGroupInfos', $gi, 600);
+if (is_array($gi['json'] ?? null)) {
+    $parts = is_array($gi['json']['participants'] ?? null) ? $gi['json']['participants'] : [];
+    $admins = array_filter($parts, fn($p) => !empty($p['admin']));
+    echo '<pre>Participantes: ' . count($parts) . ' | Admins: ' . count($admins)
+        . ' | addressingMode: ' . h((string)($gi['json']['addressingMode'] ?? '?'))
+        . ' | announce: ' . h(var_export($gi['json']['announce'] ?? null, true)) . "\n";
+    $selfDigits = '';
+    foreach ($instList as $i) {
+        if ($i['instance_name'] === $inst) {
+            $selfDigits = preg_replace('/\D+/', '', (string)($i['owner_phone_formatted'] ?: $i['owner_number']));
+        }
+    }
+    $selfKey = $selfDigits !== '' ? dispatch_member_key($selfDigits) : '';
+    $selfAdmin = null;
+    foreach ($parts as $p) {
+        foreach (['id', 'jid', 'phoneNumber'] as $f) {
+            if (!empty($p[$f]) && is_string($p[$f]) && dispatch_member_key($p[$f]) === $selfKey) {
+                $selfAdmin = (string)($p['admin'] ?? '');
             }
         }
     }
+    echo 'Número da instância no grupo: ' . ($selfAdmin === null ? 'NÃO ENCONTRADO' : ('sim, admin=' . ($selfAdmin !== '' ? $selfAdmin : 'não'))) . "</pre>";
 }
 
-echo "\n=== CONCLUSÃO ===\n";
-echo "Se o grupo não está na lista da instância, o número conectado não é membro dele.\n";
-echo "Verifique no WhatsApp (celular) se o número LRV Web está realmente no grupo.\n";
+// 4. Envio no privado (isola: problema é do grupo ou da sessão?)
+if ($privNumber !== '') {
+    dbg_print('4. sendText PRIVADO', dbg_call('POST', "$baseUrl/message/sendText/$ei", $apiKey, [
+        'number' => $privNumber,
+        'text' => 'Teste diagnóstico (privado) ' . date('H:i:s'),
+    ], 180));
+}
 
-echo '</pre>';
+// 5. Envio no grupo (corpo mínimo, timeout longo para medir o tempo real)
+if ($sendGroup) {
+    dbg_print('5. sendText GRUPO', dbg_call('POST', "$baseUrl/message/sendText/$ei", $apiKey, [
+        'number' => $jid,
+        'text' => 'Teste diagnóstico (grupo) ' . date('H:i:s'),
+    ], 300));
+    // Estado depois do envio (detecta se o envio derrubou a sessão)
+    dbg_print('6. connectionState após envio', dbg_call('GET', "$baseUrl/instance/connectionState/$ei", $apiKey));
+}
+
 echo '<br><a href="/chat_web.php?type=grupos">Voltar ao Chat</a>';
