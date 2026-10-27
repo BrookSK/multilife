@@ -266,6 +266,33 @@ if (count($groups) === 0 && trim($specialty) !== '') {
     $groups = $stmt3->fetchAll();
 }
 
+// Tentativa 4 (FALLBACK): reusar grupo existente IGNORANDO o filtro de instância.
+// Motivo: o filtro por instância do captador pode excluir um grupo válido quando
+// quem clica (captador) tem uma instância diferente da que criou o grupo — o que
+// fazia o sistema CRIAR UM GRUPO DUPLICADO em vez de reusar o que já existe.
+// É seguro: na etapa de envio o sistema escolhe uma instância conectada (e a
+// promove a admin), tipicamente a própria dona do grupo.
+if (count($groups) === 0 && trim($specialty) !== '') {
+    $sql4 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter;
+    $cond4 = ['(LOWER(specialty) = LOWER(:sp) OR specialty LIKE :sp_like OR name LIKE :name_like)'];
+    $params4 = ['sp' => $specialty, 'sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%'];
+    if (trim($state) !== '') {
+        $cond4[] = '(state IS NULL OR state = \'\' OR LOWER(state) = LOWER(:st))';
+        $params4['st'] = $state;
+    }
+    if (trim($city) !== '') {
+        $cond4[] = '(city IS NULL OR city = \'\' OR LOWER(city) = LOWER(:city))';
+        $params4['city'] = $city;
+    }
+    $sql4 .= ' AND ' . implode(' AND ', $cond4) . ' ORDER BY id DESC LIMIT 1';
+    $stmt4 = db()->prepare($sql4);
+    $stmt4->execute($params4);
+    $groups = $stmt4->fetchAll();
+    if (count($groups) > 0) {
+        error_log("[DISPATCH] Grupo reusado via fallback sem filtro de instância (grupo de outra instância). JID: " . ($groups[0]['evolution_group_jid'] ?? ''));
+    }
+}
+
 if (count($groups) === 0) {
     // NENHUM GRUPO ENCONTRADO — Criar automaticamente
     demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', 'Nenhum grupo encontrado — resolvendo instância e criando grupo...');
@@ -1306,19 +1333,38 @@ try {
 $api = null;
 $apiInstanceName = null;
 try {
-    // Buscar todas as instâncias ativas. Prioriza a instância do captador para
-    // que a mensagem saia do WhatsApp de quem prospecta.
+    // Descobrir a instância DONA do grupo alvo. Ela é quem realmente está dentro
+    // do grupo no WhatsApp (e normalmente admin), então deve ter PRIORIDADE no
+    // envio — senão outra instância, que nem é membro, "envia" para um grupo em
+    // modo announcement e a mensagem é descartada silenciosamente.
+    $ownerInstanceName = '';
+    try {
+        $firstJid = '';
+        foreach ($groups as $g0) {
+            $firstJid = (string)($g0['evolution_group_jid'] ?? '');
+            if ($firstJid !== '') break;
+        }
+        if ($firstJid !== '') {
+            $stmtOwner = db()->prepare("SELECT instance_name FROM whatsapp_groups WHERE evolution_group_jid = ? AND instance_name IS NOT NULL AND instance_name <> '' LIMIT 1");
+            $stmtOwner->execute([$firstJid]);
+            $ownerInstanceName = (string)($stmtOwner->fetchColumn() ?: '');
+        }
+    } catch (Throwable $ownErr) { $ownerInstanceName = ''; }
+
+    // Buscar todas as instâncias ativas. Prioriza: (1) a DONA do grupo,
+    // (2) a instância do captador, (3) conectadas, (4) padrão.
     $allInstances = db()->prepare("
         SELECT instance_name, token, is_default, connection_status 
         FROM whatsapp_instances 
         WHERE status = 'active' 
         ORDER BY 
+            CASE WHEN instance_name = :owner THEN 0 ELSE 1 END ASC,
             CASE WHEN instance_name = :captador THEN 0 ELSE 1 END ASC,
             CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC,
             is_default DESC, 
             id ASC
     ");
-    $allInstances->execute(['captador' => $captadorInstanceName]);
+    $allInstances->execute(['owner' => $ownerInstanceName, 'captador' => $captadorInstanceName]);
     $instances = $allInstances->fetchAll();
     
     $baseUrl = (string)admin_setting_get('evolution.base_url', '');
