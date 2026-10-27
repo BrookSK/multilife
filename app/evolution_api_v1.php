@@ -37,7 +37,7 @@ final class EvolutionApiV1
         return $i;
     }
 
-    private function request(string $method, string $path, array $query = [], $body = null): array
+    private function request(string $method, string $path, array $query = [], $body = null, int $timeoutSeconds = 30): array
     {
         $url = $this->url($path);
         if (count($query) > 0) {
@@ -48,7 +48,13 @@ final class EvolutionApiV1
             'apikey' => $this->apiKey,
         ];
 
-        $res = http_json_request($method, $url, $headers, $body);
+        try {
+            $res = http_json_request($method, $url, $headers, $body, $timeoutSeconds);
+        } catch (Throwable $e) {
+            // Registra o timeout/erro de rede no log de integrações (antes sumia).
+            integration_log('evolution', $method . ' ' . $path, 'error', null, ['query' => $query, 'body' => $body], null, mb_strimwidth($e->getMessage(), 0, 250, ''), 1);
+            throw $e;
+        }
 
         $ok = $res['status'] >= 200 && $res['status'] < 300;
         integration_log(
@@ -255,8 +261,12 @@ final class EvolutionApiV1
      * tenta cada formato isolado: primeiro o da doc oficial (textMessage.text),
      * depois o legado (text na raiz). O JID do grupo é sempre o completo (@g.us).
      */
-    public function sendTextToGroup(string $groupJid, string $text): array
+    public function sendTextToGroup(string $groupJid, string $text, int $timeoutSeconds = 150): array
     {
+        // Timeout maior que o padrão (30s): em grupo, o Baileys precisa abrir
+        // sessão de criptografia com CADA aparelho de CADA participante. Logo
+        // após reconectar a instância (QR novo) isso leva bem mais de 30s em
+        // grupos grandes, e o cURL desistia ("timed out") no meio do envio.
         $path = '/message/sendText/' . urlencode($this->inst());
         $bodies = [
             'compat' => $this->textBody($groupJid, $text),
@@ -266,7 +276,7 @@ final class EvolutionApiV1
 
         $first = null;
         foreach ($bodies as $label => $body) {
-            $res = $this->request('POST', $path, [], $body);
+            $res = $this->request('POST', $path, [], $body, $timeoutSeconds);
             $httpCode = (int)($res['status'] ?? 0);
             if ($httpCode >= 200 && $httpCode < 300) {
                 return $res;

@@ -216,6 +216,34 @@ if (!function_exists('dispatch_missing_members')) {
     }
 }
 
+if (!function_exists('dispatch_find_sent_by_token')) {
+    /**
+     * Procura no histórico do grupo (Evolution) a mensagem com o token da
+     * captação (#CAP...). Usado quando o envio deu timeout do nosso lado: a
+     * Evolution continua processando e a mensagem pode ter saído normalmente.
+     * Retorna o id da mensagem (key.id) se encontrada, '' se encontrada sem id,
+     * ou null se não encontrada.
+     */
+    function dispatch_find_sent_by_token(EvolutionApiV1 $api, string $groupJid, string $token): ?string
+    {
+        if ($token === '') return null;
+        $r = $api->findMessages($groupJid);
+        $j = $r['json'] ?? null;
+        if (!is_array($j)) return null;
+        $records = $j['messages']['records'] ?? ($j['records'] ?? (isset($j[0]) ? $j : []));
+        if (!is_array($records)) return null;
+        foreach ($records as $m) {
+            if (!is_array($m)) continue;
+            $msg = $m['message'] ?? [];
+            $txt = (string)($msg['conversation'] ?? ($msg['extendedTextMessage']['text'] ?? ''));
+            if ($txt !== '' && strpos($txt, $token) !== false) {
+                return (string)($m['key']['id'] ?? '');
+            }
+        }
+        return null;
+    }
+}
+
 if (!function_exists('dispatch_abort')) {
     /**
      * Encerra o disparo com ERRO.
@@ -1860,7 +1888,28 @@ foreach ($toSend as $row) {
                 ->execute([$sendInstName, $jid]);
         } catch (Throwable $e) {}
 
-        $res = $sendApi->sendTextToGroup($jid, $msgRow);
+        try {
+            $res = $sendApi->sendTextToGroup($jid, $msgRow);
+        } catch (Throwable $sendErr) {
+            // Timeout/erro de rede: a Evolution pode ter enviado mesmo assim.
+            // NÃO reenvia (duplicaria); confere pelo token no histórico do grupo.
+            error_log("[DISPATCH] Envio para $jid via '$sendInstName' sem resposta: " . $sendErr->getMessage() . " — verificando se a mensagem chegou...");
+            $capToken = preg_match('/#CAP\d+-[A-F0-9]+/', $msgRow, $tm) ? $tm[0] : '';
+            $foundId = null;
+            for ($chk = 0; $chk < 4 && $foundId === null; $chk++) {
+                sleep(10);
+                try {
+                    $foundId = dispatch_find_sent_by_token($sendApi, $jid, $capToken);
+                } catch (Throwable $chkErr) {
+                    error_log("[DISPATCH] Falha ao verificar envio em $jid: " . $chkErr->getMessage());
+                }
+            }
+            if ($foundId === null) {
+                throw $sendErr; // não chegou: trata como erro (catch externo)
+            }
+            error_log("[DISPATCH] ✅ Mensagem confirmada no grupo $jid apesar do timeout (id=" . ($foundId !== '' ? $foundId : '?') . ").");
+            $res = ['status' => 201, 'json' => $foundId !== '' ? ['key' => ['id' => $foundId]] : null];
+        }
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         
         // Se falhou e o JID não tem hífen (possível LID), tentar buscar JID real
