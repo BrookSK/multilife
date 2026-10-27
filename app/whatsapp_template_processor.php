@@ -171,9 +171,12 @@ function evolution_send_text(string $phone, string $message): array
     
     $url = rtrim($baseUrl, '/') . '/message/sendText/' . $instance;
     
+    // "textMessage.text" é o formato da doc oficial (v2.3.7); "text" na raiz
+    // mantém compatibilidade com builds anteriores.
     $payload = [
         'number' => $phone,
-        'text' => $message
+        'text' => $message,
+        'textMessage' => ['text' => $message],
     ];
     
     $ch = curl_init($url);

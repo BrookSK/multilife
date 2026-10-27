@@ -28,9 +28,12 @@ if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
 }
 
 try {
+    // "textMessage.text" é o formato da doc oficial (v2.3.7); "text" na raiz
+    // mantém compatibilidade com builds anteriores.
     $payload = [
         'number' => $chatId,
-        'text' => $message
+        'text' => $message,
+        'textMessage' => ['text' => $message],
     ];
     
     $ch = curl_init($baseUrl . '/message/sendText/' . urlencode($instanceName));

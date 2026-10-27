@@ -211,12 +211,24 @@ final class EvolutionApiV1
     // Message Controller (conversas privadas + grupos)
     // --------------------
 
-    public function sendText(string $number, string $text, array $options = []): array
+    /**
+     * Corpo base do sendText. A documentação oficial da Evolution (v2.3.7,
+     * docs.evolutionfoundation.com.br) exige o texto em "textMessage.text";
+     * builds anteriores liam "text" na raiz. Enviamos os dois para funcionar
+     * em ambos — o schema não rejeita propriedades extras.
+     */
+    private function textBody(string $number, string $text): array
     {
-        $body = [
+        return [
             'number' => $number,
             'text' => $text,
+            'textMessage' => ['text' => $text],
         ];
+    }
+
+    public function sendText(string $number, string $text, array $options = []): array
+    {
+        $body = $this->textBody($number, $text);
 
         // Na Evolution API v2, campos como delay/linkPreview/quoted vão na RAIZ do body
         // (não dentro de "options", formato antigo). Promovemos esses campos conhecidos
@@ -238,87 +250,45 @@ final class EvolutionApiV1
     }
 
     /**
-     * Enviar texto para grupo usando formato alternativo.
-     * A Evolution API às vezes falha com sendText para grupos retornando "exists: false".
-     * Este método tenta múltiplos formatos do JID.
+     * Enviar texto para grupo.
+     * Tenta o corpo compatível (text + textMessage.text). Se a Evolution rejeitar,
+     * tenta cada formato isolado: primeiro o da doc oficial (textMessage.text),
+     * depois o legado (text na raiz). O JID do grupo é sempre o completo (@g.us).
      */
     public function sendTextToGroup(string $groupJid, string $text): array
     {
-        // Formato 1: JID completo (padrão)
-        $body = [
-            'number' => $groupJid,
-            'text' => $text,
+        $path = '/message/sendText/' . urlencode($this->inst());
+        $bodies = [
+            'compat' => $this->textBody($groupJid, $text),
+            'textMessage' => ['number' => $groupJid, 'textMessage' => ['text' => $text]],
+            'legacy' => ['number' => $groupJid, 'text' => $text],
         ];
-        $res = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body);
-        
-        $httpCode = (int)($res['status'] ?? 0);
-        if ($httpCode >= 200 && $httpCode < 300) {
-            return $res;
-        }
-        
-        error_log("[EVOLUTION] sendTextToGroup: Formato 1 (number=$groupJid) falhou ($httpCode) - body: " . json_encode($res['json'] ?? $res['body_raw'] ?? ''));
-        
-        // Formato 2: Apenas o ID numérico sem @g.us
-        // Algumas versões da API fazem append automático de @g.us
-        $groupId = str_replace('@g.us', '', $groupJid);
-        $body2 = [
-            'number' => $groupId,
-            'text' => $text,
-        ];
-        
-        // Delay antes de tentar novamente
-        usleep(500000); // 500ms
-        
-        $res2 = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body2);
-        
-        $httpCode2 = (int)($res2['status'] ?? 0);
-        if ($httpCode2 >= 200 && $httpCode2 < 300) {
-            return $res2;
-        }
-        
-        error_log("[EVOLUTION] sendTextToGroup: Formato 2 (number=$groupId) falhou ($httpCode2)");
-        
-        // Formato 3: Usando campo "options" com "delay" pode forçar novo lookup
-        $body3 = [
-            'number' => $groupJid,
-            'text' => $text,
-            'options' => (object)['delay' => 2000],
-        ];
-        
-        usleep(500000); // 500ms
-        
-        $res3 = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body3);
-        
-        $httpCode3 = (int)($res3['status'] ?? 0);
-        if ($httpCode3 >= 200 && $httpCode3 < 300) {
-            return $res3;
-        }
-        
-        error_log("[EVOLUTION] sendTextToGroup: Formato 3 (number=$groupJid + delay) falhou ($httpCode3)");
 
-        // Formato 4: Tentar com @lid (Linked ID) caso o JID seja nesse formato
-        $groupIdOnly = str_replace(['@g.us', '@lid'], '', $groupJid);
-        $lidJid = $groupIdOnly . '@lid';
-        $body4 = [
-            'number' => $lidJid,
-            'text' => $text,
-        ];
-        
-        usleep(500000); // 500ms
-        
-        $res4 = $this->request('POST', '/message/sendText/' . urlencode($this->inst()), [], $body4);
-        
-        $httpCode4 = (int)($res4['status'] ?? 0);
-        if ($httpCode4 >= 200 && $httpCode4 < 300) {
-            return $res4;
+        $first = null;
+        foreach ($bodies as $label => $body) {
+            $res = $this->request('POST', $path, [], $body);
+            $httpCode = (int)($res['status'] ?? 0);
+            if ($httpCode >= 200 && $httpCode < 300) {
+                return $res;
+            }
+            if ($first === null) {
+                $first = $res;
+            }
+            error_log("[EVOLUTION] sendTextToGroup: formato '$label' falhou para $groupJid ($httpCode) - body: " . json_encode($res['json'] ?? $res['body_raw'] ?? ''));
+            // Só troca de formato se o 400 for de VALIDAÇÃO do corpo (schema).
+            // Erros de execução (ex.: TypeError do Baileys) podem ocorrer DEPOIS
+            // de a mensagem já ter saído — reenviar duplicaria a mensagem no grupo.
+            $rawErr = is_string($res['body_raw'] ?? null) ? $res['body_raw'] : '';
+            $isSchemaError = $httpCode === 400
+                && preg_match('/requires property|additional propert|is not allowed|is not of a type|must be/i', $rawErr) === 1;
+            if (!$isSchemaError) {
+                break;
+            }
+            usleep(500000);
         }
-        
-        error_log("[EVOLUTION] sendTextToGroup: Formato 4 (number=$lidJid) falhou ($httpCode4)");
-        
-        error_log("[EVOLUTION] sendTextToGroup: TODOS OS FORMATOS FALHARAM para $groupJid");
-        
-        // Retornar o primeiro resultado (mais relevante)
-        return $res;
+
+        // Retorna o primeiro resultado (o mais relevante para diagnóstico)
+        return $first;
     }
 
     public function sendMedia(string $number, string $mediaType, string $fileName, string $media, ?string $caption = null, array $options = [], ?string $mimeType = null): array
