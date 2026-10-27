@@ -323,7 +323,10 @@ if (count($groups) === 0) {
                 }
                 
                 // Se estado é 'close', tentar reconectar via /instance/connect (sem QR, apenas restart de sessão)
-                if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
+                // No MODO WORKER evitamos a reconexão com sleep (até 10s POR instância):
+                // com várias instâncias desconectadas isso estoura o tempo e trava a
+                // fase 'creating_group'. Apenas pulamos instâncias não conectadas.
+                if (!$DISPATCH_WORKER_MODE && ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed')) {
                     error_log("[DISPATCH] Instância '$instCandidate' com estado '$connInstanceState' — tentando reconectar...");
                     try {
                         // Tentar connect (reconecta sessão existente se ainda válida)
@@ -1352,8 +1355,9 @@ try {
                 break;
             }
             
-            // Se estado é 'close', tentar reconectar
-            if ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed') {
+            // Se estado é 'close', tentar reconectar (apenas fora do modo worker —
+            // no worker a reconexão com sleep trava o disparo; pulamos a instância).
+            if (!$DISPATCH_WORKER_MODE && ($connInstanceStateLower === 'close' || $connInstanceStateLower === 'closed')) {
                 error_log("[DISPATCH-SEND] Instância '$instName' com estado '$connInstanceState' — tentando reconectar...");
                 try {
                     $connectRes = $tryApi->connectInstance($instName);
