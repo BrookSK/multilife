@@ -369,3 +369,162 @@ function location_users_ensure_schema(): void
         try { db()->exec($sql); } catch (Throwable $e) { /* já existe / tabela ausente */ }
     }
 }
+
+/**
+ * Separa um endereço colado em UMA linha nos campos do card.
+ * Os e-mails não seguem um padrão, então a função tenta, nesta ordem:
+ *  1) rótulos explícitos ("Bairro: X", "Cidade: Y", "CEP: ...");
+ *  2) CEP (00000-000) e UF (sigla válida, preferindo o final do texto);
+ *  3) partes separadas por vírgula, " - ", "/", ";" ou quebra de linha:
+ *     logradouro (1ª parte), número, complemento, bairro e cidade (últimas partes).
+ * Campos não reconhecidos voltam vazios — o captador confere antes de salvar.
+ *
+ * @return array{location_zip:string,location_street:string,location_number:string,location_complement:string,location_neighborhood:string,location_city:string,location_state:string}
+ */
+function location_parse_address(string $text): array
+{
+    $out = ['location_zip' => '', 'location_street' => '', 'location_number' => '', 'location_complement' => '',
+        'location_neighborhood' => '', 'location_city' => '', 'location_state' => ''];
+    $ufs = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+    $s = trim(preg_replace('/\s+/u', ' ', str_replace(["\r", "\n", "\t"], ', ', $text)) ?? '');
+    if ($s === '') {
+        return $out;
+    }
+    $s = preg_replace('/^\s*(endere[cç]o( completo)?|local( do atendimento)?|logradouro)\s*[:\-]\s*/iu', '', $s) ?? $s;
+    // "Rua: Bahia" -> "Rua Bahia"; "Logradouro: ..." -> "..."
+    $s = preg_replace('/\b(rua|avenida|av|travessa|alameda|estrada|rodovia|pra[cç]a)\s*:\s*/iu', '$1 ', $s) ?? $s;
+    $s = preg_replace('/\blogradouro\s*:\s*/iu', '', $s) ?? $s;
+    // Protege "s/n" (sem número) antes de separar por "/".
+    $s = preg_replace('/\bs\s*\/\s*n[º°o]?\b/iu', 's.n', $s) ?? $s;
+
+    // 1) Rótulos explícitos.
+    $labels = [
+        'location_zip' => 'cep',
+        'location_neighborhood' => 'bairro',
+        'location_city' => 'cidade|munic[ií]pio',
+        'location_state' => 'uf|estado',
+        'location_complement' => 'complemento|compl\.?',
+        'location_number' => 'n[uú]mero|n[º°o]\.?',
+    ];
+    foreach ($labels as $field => $re) {
+        if (preg_match('/(?:^|[,;\-\s])(?:' . $re . ')\s*[:\-]\s*([^,;]+?)(?=\s*(?:[,;]|\s-\s|$|\b(?:cep|bairro|cidade|uf|estado|complemento|n[uú]mero)\s*:))/iu', $s, $m)) {
+            $out[$field] = trim($m[1], " .-");
+            $s = str_replace($m[0], ',', $s);
+        }
+    }
+
+    // 2) CEP e UF.
+    if ($out['location_zip'] === '' && preg_match('/\b(\d{5})-?\s?(\d{3})\b/', $s, $m)) {
+        $out['location_zip'] = $m[1] . $m[2];
+        $s = str_replace($m[0], ',', $s);
+    }
+    $out['location_zip'] = preg_replace('/\D+/', '', $out['location_zip']) ?? '';
+    $s = preg_replace('/\bcep\b\s*:?/iu', ',', $s) ?? $s;
+    if ($out['location_state'] === '') {
+        // Sigla isolada (ex.: "Mirassol/SP", "Mirassol - SP", "Mirassol SP"), preferindo a última.
+        if (preg_match_all('/(?:^|[\s,\/\-\(])([A-Z]{2})(?=$|[\s,\.\/\-\)])/u', $s, $mm, PREG_OFFSET_CAPTURE)) {
+            for ($i = count($mm[1]) - 1; $i >= 0; $i--) {
+                if (in_array($mm[1][$i][0], $ufs, true)) {
+                    $out['location_state'] = $mm[1][$i][0];
+                    $s = substr($s, 0, $mm[1][$i][1]) . ',' . substr($s, $mm[1][$i][1] + 2);
+                    break;
+                }
+            }
+        }
+    } else {
+        $out['location_state'] = strtoupper(substr($out['location_state'], 0, 2));
+    }
+
+    // 3) Partes.
+    $parts = preg_split('/\s*(?:,|;|\s[-–]\s|\/|\|)\s*/u', $s) ?: [];
+    $parts = array_values(array_filter(array_map(static fn($p) => trim($p, " .-–"), $parts), static fn($p) => $p !== ''));
+    $streetRe = '/^(rua|r\.|r |avenida|av\.?|av |travessa|tv\.?|alameda|al\.?|estrada|est\.|rodovia|rod\.?|pra[cç]a|p[cç]a\.?|largo|lgo\.?|viela|vila|via|rua projetada|servid[aã]o)\b/iu';
+    $complementRe = '/^(apto?\.?|apartamento|ap\.?|casa|cs\.?|bloco|bl\.?|sala|sl\.?|conjunto|cj\.?|lote|lt\.?|quadra|qd\.?|fundos|frente|andar|torre|edif[ií]cio|ed\.?|condom[ií]nio|cond\.?|km)\b/iu';
+    $numberRe = '/^(?:n[º°o.]?\s*)?(\d{1,6}[a-z]?|s\.?n|sem n[uú]mero)$/iu';
+
+    // Tudo numa parte só, sem separadores ("Avenida Brasil 2000 Copacabana Rio de Janeiro"):
+    // corta no número; o que vem depois é bairro (e cidade, se for uma cidade conhecida).
+    if (count($parts) === 1 && preg_match('/^(.*?\p{L}.*?)\s+(?:n[º°o.]?\s*)?(\d{1,6}[a-z]?)\s+(.+)$/iu', $parts[0], $m)) {
+        $parts = [$m[1] . ' ' . $m[2]];
+        $tail = trim($m[3]);
+        foreach (['São Paulo', 'Rio de Janeiro'] as $knownCity) {
+            if (preg_match('/^(.*?)\s*' . preg_quote($knownCity, '/') . '$/iu', $tail, $mc)) {
+                $out['location_city'] = $out['location_city'] !== '' ? $out['location_city'] : $knownCity;
+                $tail = trim($mc[1]);
+                break;
+            }
+        }
+        if ($tail !== '') {
+            $parts[] = $tail;
+            if ($out['location_city'] === '') {
+                // Sem como saber onde termina o bairro e começa a cidade: deixa no bairro
+                // (o card marca "Cidade" como pendente para o captador conferir).
+                $out['location_neighborhood'] = $tail;
+                array_pop($parts);
+            }
+        }
+    }
+
+    $rest = [];
+    $numberFromStreet = false;
+    foreach ($parts as $idx => $p) {
+        if ($out['location_street'] === '' && ($idx === 0 || preg_match($streetRe, $p))) {
+            // "Rua das Flores 123" ou "Rua das Flores, nº 123"
+            if (preg_match('/^(.*\D)\s+(?:n[º°o.]?\s*)?(\d{1,6}[a-z]?)$/iu', $p, $m) && preg_match('/\p{L}/u', $m[1])) {
+                $out['location_street'] = trim($m[1], " ,");
+                if ($out['location_number'] === '') {
+                    $out['location_number'] = $m[2];
+                    $numberFromStreet = true;
+                }
+            } else {
+                $out['location_street'] = $p;
+            }
+            continue;
+        }
+        // "455 apto 32" -> número 455 + complemento "apto 32"
+        if (preg_match('/^(?:n[º°o.]?\s*)?(\d{1,6}[a-z]?)\s+(.+)$/iu', $p, $m) && preg_match($complementRe, $m[2])) {
+            if ($out['location_number'] === '' || $numberFromStreet) {
+                if ($numberFromStreet) {
+                    $out['location_street'] .= ' ' . $out['location_number'];
+                    $numberFromStreet = false;
+                }
+                $out['location_number'] = $m[1];
+                $p = $m[2];
+            }
+        }
+        if (preg_match($numberRe, $p, $m) && ($out['location_number'] === '' || $numberFromStreet)) {
+            // Número explícito depois da rua: o número "grudado" na rua era parte do nome
+            // (ex.: "Rua Projetada 5, s/n").
+            if ($numberFromStreet) {
+                $out['location_street'] .= ' ' . $out['location_number'];
+                $numberFromStreet = false;
+            }
+            $out['location_number'] = stripos($m[1], 's') === 0 ? 's/n' : $m[1];
+            continue;
+        }
+        if (preg_match($complementRe, $p)) {
+            $out['location_complement'] = trim($out['location_complement'] . ($out['location_complement'] !== '' ? ' - ' : '') . $p);
+            continue;
+        }
+        if (preg_match('/^(brasil)$/iu', $p)) {
+            continue;
+        }
+        $rest[] = preg_replace('/^(bairro|b\.)\s+/iu', '', $p) ?? $p;
+    }
+
+    // Últimas partes: ... bairro, cidade.
+    if ($out['location_city'] === '' && $rest) {
+        $out['location_city'] = (string)array_pop($rest);
+    }
+    if ($out['location_neighborhood'] === '' && $rest) {
+        $out['location_neighborhood'] = (string)array_pop($rest);
+    }
+    if ($rest) {
+        // Sobrou algo (ex.: ponto de referência): vai para o complemento.
+        $out['location_complement'] = trim($out['location_complement'] . ($out['location_complement'] !== '' ? ' - ' : '') . implode(' - ', $rest));
+    }
+    foreach ($out as $k => $v) {
+        $out[$k] = trim((string)$v);
+    }
+    return $out;
+}

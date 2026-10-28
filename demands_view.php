@@ -389,17 +389,29 @@ if (count($groupMessages) === 0) {
         $sender = (string)$m['sender_phone'];
         $senderDigits = preg_replace('/\D+/', '', $sender);
 
-        $stmt2 = db()->prepare(
-            "SELECT u.id, u.name\n"
-            . "FROM users u\n"
-            . "INNER JOIN user_roles ur ON ur.user_id = u.id\n"
-            . "INNER JOIN roles r ON r.id = ur.role_id\n"
-            . "WHERE u.status='active' AND r.slug='profissional'\n"
-            . "  AND REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(u.phone,''),' ',''),'-',''),'(',''),')','') LIKE :p\n"
-            . "LIMIT 1"
-        );
-        $stmt2->execute(['p' => '%' . $senderDigits . '%']);
-        $prof = $stmt2->fetch();
+        // Antes: 1 consulta com LIKE '%...%' (varredura da tabela users) POR mensagem,
+        // até 200 por card. Agora os telefones dos profissionais são carregados uma vez.
+        if (!isset($profByPhoneKey)) {
+            $profByPhoneKey = [];
+            $profRows = db()->query(
+                "SELECT u.id, u.name, u.phone FROM users u
+                 INNER JOIN user_roles ur ON ur.user_id = u.id
+                 INNER JOIN roles r ON r.id = ur.role_id
+                 WHERE u.status = 'active' AND r.slug = 'profissional' AND u.phone IS NOT NULL AND u.phone <> ''"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($profRows as $pr) {
+                $k = dispatch_member_key((string)$pr['phone']);
+                if ($k !== '' && !isset($profByPhoneKey[$k])) {
+                    $profByPhoneKey[$k] = ['id' => $pr['id'], 'name' => $pr['name']];
+                }
+                // Cadastros sem DDI 55: indexa também com o prefixo.
+                $k55 = dispatch_member_key('55' . preg_replace('/\D+/', '', (string)$pr['phone']));
+                if ($k55 !== '' && !isset($profByPhoneKey[$k55])) {
+                    $profByPhoneKey[$k55] = ['id' => $pr['id'], 'name' => $pr['name']];
+                }
+            }
+        }
+        $prof = $profByPhoneKey[dispatch_member_key($senderDigits)] ?? null;
 
         $when = $m['received_at'] ? (string)$m['received_at'] : (string)$m['created_at'];
         $gname = $m['group_name'] ? (string)$m['group_name'] : '-';

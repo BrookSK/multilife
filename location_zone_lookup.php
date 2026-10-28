@@ -15,6 +15,7 @@ if (auth_user_id() === null) {
     echo json_encode(['ok' => false, 'error' => 'Sessão expirada.']);
     exit;
 }
+session_release();
 
 $city = (string)($_GET['city'] ?? '');
 $state = (string)($_GET['state'] ?? '');

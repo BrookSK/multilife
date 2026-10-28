@@ -49,9 +49,30 @@ function auth_user(): ?array
         return null;
     }
 
+    static $cache = [];
+    if (array_key_exists($id, $cache)) {
+        return $cache[$id];
+    }
     $stmt = db()->prepare('SELECT id, name, email, status FROM users WHERE id = :id');
     $stmt->execute(['id' => $id]);
     $row = $stmt->fetch();
 
-    return $row ?: null;
+    return $cache[$id] = ($row ?: null);
+}
+
+/**
+ * Libera o arquivo da sessão PHP para as outras requisições do mesmo usuário.
+ *
+ * O PHP trava a sessão do início ao fim de cada requisição. Uma chamada lenta em
+ * segundo plano (ex.: busca de e-mails por IMAP ao abrir o kanban, polling do
+ * chat) fazia TODAS as outras telas do usuário esperarem por ela — abrir um card
+ * levava 10–15 s. Chame depois das checagens de login/permissão em endpoints que
+ * só LEEM a sessão (não usam flash_set nem gravam em $_SESSION). Os dados já
+ * lidos continuam disponíveis em $_SESSION.
+ */
+function session_release(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
 }

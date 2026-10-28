@@ -80,6 +80,7 @@ function demand_form_field_labels(): array
         'urgency' => 'Urgência',
         'procedure_value' => 'Valor do procedimento',
         'origin_email' => 'E-mail de origem',
+        'location_raw' => 'Endereço completo',
         'location_zip' => 'CEP',
         'location_street' => 'Rua',
         'location_number' => 'Número',
@@ -176,6 +177,7 @@ function demand_form_from_post(array $p): array
         'urgency' => $t('urgency', 20),
         'procedure_value' => null,
         'origin_email' => $t('origin_email', 190),
+        'location_raw' => $t('location_raw', 500),
         'location_zip' => preg_replace('/\D+/', '', $t('location_zip')) ?? '',
         'location_street' => $t('location_street', 200),
         'location_number' => $t('location_number', 20),
@@ -188,6 +190,16 @@ function demand_form_from_post(array $p): array
         'captation_note' => $t('captation_note'),
         'description' => $t('description'),
     ];
+
+    // Colou o endereço em uma linha mas os campos ficaram vazios (ex.: JavaScript não
+    // rodou): separa no servidor e preenche só o que estiver vazio.
+    if ($data['location_raw'] !== '' && ($data['location_street'] === '' || $data['location_city'] === '')) {
+        foreach (location_parse_address($data['location_raw']) as $k => $val) {
+            if ($val !== '' && ($data[$k] ?? '') === '') {
+                $data[$k] = $k === 'location_state' ? strtoupper($val) : $val;
+            }
+        }
+    }
 
     if ($data['location_state'] !== '' && !preg_match('/^[A-Z]{2}$/', $data['location_state'])) {
         $errors[] = 'UF inválida (use 2 letras, ex.: SP).';
@@ -329,7 +341,8 @@ function demand_form_render(array $d, string $action, array $opts = []): void
     echo '[data-missing="recommended"] input,[data-missing="recommended"] select,[data-missing="recommended"] textarea{border:2px solid hsl(36,90%,55%)!important}';
     echo '.dfHint{font-size:12px;color:hsl(var(--muted-foreground))}';
     echo '#qrModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200;align-items:center;justify-content:center}';
-    echo '#qrModal .card{width:460px;max-width:92vw}';
+    echo '#qrModal .card{width:520px;max-width:92vw;max-height:90vh;overflow:auto}';
+    echo '#qrModal [hidden]{display:none!important}';
     echo '</style>';
 
     // Resumo do que falta (edição).
@@ -446,11 +459,16 @@ function demand_form_render(array $d, string $action, array $opts = []): void
     }
     echo '<div class="dfSection"><h3>Local do atendimento</h3>';
     echo '<div class="dfHint">Cidade e UF definem o grupo de WhatsApp. Em São Paulo e Rio de Janeiro o grupo também é separado por zona (deduzida do bairro).</div>';
+    // Endereço em UMA linha (como vem no e-mail): o sistema separa nos campos abaixo.
+    echo '<div style="display:grid;gap:6px">';
+    echo '<label>Endereço completo (cole em uma linha)<textarea name="location_raw" id="df_address_full" rows="2" maxlength="500" placeholder="Ex.: Rua das Flores, 123 - Apto 4 - Centro - Mirassol/SP - CEP 15130-000">' . h($v('location_raw')) . '</textarea></label>';
+    echo '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="df_address_split">Separar endereço</button><span class="dfHint" id="df_address_msg">Ao colar, os campos abaixo são preenchidos automaticamente. Confira antes de salvar.</span></div>';
+    echo '</div>';
     echo '<div class="grid">';
     echo '<div class="col3"><label>CEP<input name="location_zip" id="df_zip" maxlength="9" inputmode="numeric" value="' . h($v('location_zip')) . '" placeholder="00000-000"></label></div>';
     echo '<div class="col6"' . $miss('location_street') . '><label>Rua<input name="location_street" id="df_street" maxlength="200" value="' . h($v('location_street')) . '"></label></div>';
-    echo '<div class="col3"><label>Número<input name="location_number" maxlength="20" value="' . h($v('location_number')) . '"></label></div>';
-    echo '<div class="col4"><label>Complemento<input name="location_complement" maxlength="120" value="' . h($v('location_complement')) . '"></label></div>';
+    echo '<div class="col3"><label>Número<input name="location_number" id="df_number" maxlength="20" value="' . h($v('location_number')) . '"></label></div>';
+    echo '<div class="col4"><label>Complemento<input name="location_complement" id="df_complement" maxlength="120" value="' . h($v('location_complement')) . '"></label></div>';
     echo '<div class="col4"' . $miss('location_neighborhood') . '><label>Bairro<input name="location_neighborhood" id="df_neighborhood" maxlength="120" value="' . h($v('location_neighborhood')) . '"></label></div>';
     echo '<div class="col4"' . $miss('location_city') . '><label>Cidade *<input name="location_city" id="df_city" required maxlength="120" value="' . h($v('location_city')) . '" placeholder="Ex: Mirassol"></label></div>';
     echo '<div class="col3"' . $miss('location_state') . '><label>UF *<input name="location_state" id="df_state" required maxlength="2" value="' . h($v('location_state')) . '" placeholder="SP" style="text-transform:uppercase"></label></div>';
@@ -461,9 +479,6 @@ function demand_form_render(array $d, string $action, array $opts = []): void
     }
     echo '</select></label><div class="dfHint" id="df_zone_hint"></div></div>';
     echo '</div>';
-    if ($v('location_raw') !== '') {
-        echo '<div class="dfHint"><strong>Endereço como veio no e-mail:</strong> ' . h($v('location_raw')) . '</div>';
-    }
     echo '</div>';
 
     // ------------------------------------------------------- Mensagem
@@ -484,15 +499,31 @@ function demand_form_render(array $d, string $action, array $opts = []): void
         echo '<div id="qrModal"><section class="card">';
         echo '<div style="display:flex;justify-content:space-between;align-items:center"><strong id="qrTitle">Cadastro rápido</strong><button type="button" class="btn" id="qrClose">Fechar</button></div>';
         echo '<div style="height:10px"></div>';
-        echo '<div style="display:grid;gap:10px">';
-        echo '<label>Nome *<input id="qrName" maxlength="200"></label>';
-        echo '<label data-qr-only="client health_insurer">E-mail de contato<input id="qrEmail" type="email" maxlength="190"></label>';
-        echo '<label data-qr-only="client health_insurer">Domínio de e-mail (para reconhecer os e-mails automaticamente)<input id="qrDomain" maxlength="190" placeholder="operadora.com.br"></label>';
-        echo '<label data-qr-only="health_insurer">Cliente (contratante)<select id="qrClient"><option value="">— Nenhum —</option>';
+        // Cada cadastro mostra SÓ os campos dele (especialidade não tem e-mail/cliente).
+        echo '<div style="display:grid;gap:10px" id="qrFields">';
+        echo '<label><span id="qrNameLabel">Nome *</span><input id="qrName" maxlength="200"></label>';
+        // Especialidade
+        echo '<div data-qr-group="specialty" hidden style="display:grid;gap:10px">';
+        echo '<label>Valor mínimo por sessão (R$)<input id="qrMinValue" inputmode="decimal" placeholder="Ex: 80,00"></label>';
+        echo '<div class="dfHint">Os serviços e valores da especialidade podem ser detalhados depois em Especialidades.</div>';
+        echo '</div>';
+        // Operadora: a qual cliente pertence
+        echo '<div data-qr-group="health_insurer" hidden>';
+        echo '<label>Cliente (contratante)<select id="qrClient"><option value="">— Nenhum —</option>';
         foreach ($clients as $cl) {
             echo '<option value="' . (int)$cl['id'] . '">' . h((string)$cl['name']) . '</option>';
         }
         echo '</select></label>';
+        echo '</div>';
+        // Cliente e Operadora: dados de contato/faturamento
+        echo '<div data-qr-group="client health_insurer" hidden style="display:grid;gap:10px">';
+        echo '<div class="grid"><div class="col6"><label>CNPJ<input id="qrCnpj" maxlength="18" placeholder="00.000.000/0000-00"></label></div>';
+        echo '<div class="col6"><label>Telefone<input id="qrContactPhone" maxlength="20"></label></div></div>';
+        echo '<label>E-mail de contato<input id="qrEmail" type="email" maxlength="190"></label>';
+        echo '<label>E-mail de faturamento<input id="qrBillingEmail" type="email" maxlength="190"></label>';
+        echo '<div class="grid"><div class="col8"><label>Domínio dos e-mails (reconhece os e-mails automaticamente)<input id="qrDomain" maxlength="190" placeholder="operadora.com.br"></label></div>';
+        echo '<div class="col4"><label>Dia de fechamento<input id="qrClosingDay" type="number" min="1" max="31"></label></div></div>';
+        echo '</div>';
         echo '<div id="qrMsg" class="dfHint"></div>';
         echo '<div style="display:flex;justify-content:flex-end"><button type="button" class="btn btnPrimary" id="qrSave">Cadastrar e selecionar</button></div>';
         echo '</div></section></div>';
@@ -534,7 +565,7 @@ function demand_form_render(array $d, string $action, array $opts = []): void
 
   // CEP -> endereço (ViaCEP). Só preenche campos vazios.
   var zipEl = document.getElementById('df_zip');
-  zipEl.addEventListener('blur', function(){
+  function lookupCep(){
     var cep = zipEl.value.replace(/\D/g,'');
     if (cep.length !== 8) return;
     fetch('https://viacep.com.br/ws/' + cep + '/json/').then(function(r){ return r.json(); }).then(function(j){
@@ -543,7 +574,38 @@ function demand_form_render(array $d, string $action, array $opts = []): void
       set('df_street', j.logradouro); set('df_neighborhood', j.bairro); set('df_city', j.localidade); set('df_state', j.uf);
       refreshZone();
     }).catch(function(){});
-  });
+  }
+  zipEl.addEventListener('blur', lookupCep);
+
+  // Endereço em uma linha -> campos separados.
+  var addrEl = document.getElementById('df_address_full'), addrMsg = document.getElementById('df_address_msg');
+  var addrMap = {location_zip:'df_zip', location_street:'df_street', location_number:'df_number', location_complement:'df_complement',
+                 location_neighborhood:'df_neighborhood', location_city:'df_city', location_state:'df_state', location_zone:'df_zone'};
+  function splitAddress(){
+    var txt = addrEl.value.trim();
+    if (txt.length < 5) { addrMsg.textContent = 'Cole o endereço completo para separar.'; return; }
+    addrMsg.textContent = 'Separando…';
+    var fd = new FormData(); fd.append('text', txt);
+    fetch('/location_parse_address.php', {method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j || !j.ok) { addrMsg.textContent = (j && j.error) ? j.error : 'Não foi possível separar.'; return; }
+        var filled = [], missing = [];
+        var names = {location_street:'rua', location_number:'número', location_neighborhood:'bairro', location_city:'cidade', location_state:'UF'};
+        Object.keys(addrMap).forEach(function(k){
+          var el = document.getElementById(addrMap[k]); if (!el) return;
+          var val = (j.fields || {})[k] || '';
+          if (val) { el.value = val; filled.push(k); }
+          else if (names[k]) { missing.push(names[k]); }
+        });
+        refreshZone();
+        if ((j.fields || {}).location_zip && (!document.getElementById('df_city').value || !document.getElementById('df_neighborhood').value)) lookupCep();
+        addrMsg.textContent = filled.length + ' campo(s) preenchido(s).' + (missing.length ? ' Confira/complete: ' + missing.join(', ') + '.' : ' Confira antes de salvar.');
+      })
+      .catch(function(){ addrMsg.textContent = 'Falha ao separar o endereço.'; });
+  }
+  document.getElementById('df_address_split').addEventListener('click', splitAddress);
+  addrEl.addEventListener('paste', function(){ setTimeout(splitAddress, 50); });
 
   // Preencher com IA.
   var aiBtn = document.getElementById('dfAiBtn'), aiMsg = document.getElementById('dfAiMsg');
@@ -585,8 +647,10 @@ function demand_form_render(array $d, string $action, array $opts = []): void
       btn.addEventListener('click', function(){
         qrType = btn.getAttribute('data-qr');
         document.getElementById('qrTitle').textContent = titles[qrType];
-        modal.querySelectorAll('[data-qr-only]').forEach(function(el){ el.style.display = el.getAttribute('data-qr-only').split(' ').indexOf(qrType) >= 0 ? '' : 'none'; });
-        ['qrName','qrEmail','qrDomain'].forEach(function(id){ document.getElementById(id).value = ''; });
+        document.getElementById('qrNameLabel').textContent = {client:'Nome do cliente *', health_insurer:'Nome da operadora *', specialty:'Nome da especialidade *'}[qrType];
+        modal.querySelectorAll('[data-qr-group]').forEach(function(el){ el.hidden = el.getAttribute('data-qr-group').split(' ').indexOf(qrType) < 0; });
+        ['qrName','qrEmail','qrDomain','qrMinValue','qrCnpj','qrContactPhone','qrBillingEmail','qrClosingDay'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+        document.getElementById('qrClient').value = '';
         document.getElementById('qrMsg').textContent = '';
         modal.style.display = 'flex';
         document.getElementById('qrName').focus();
@@ -597,9 +661,13 @@ function demand_form_render(array $d, string $action, array $opts = []): void
       var fd = new FormData();
       fd.append('type', qrType);
       fd.append('name', document.getElementById('qrName').value);
-      fd.append('contact_email', document.getElementById('qrEmail').value);
-      fd.append('email_domain', document.getElementById('qrDomain').value);
-      fd.append('client_id', document.getElementById('qrClient').value);
+      // Envia só os campos do tipo escolhido.
+      var byType = {
+        specialty: {minimum_value: 'qrMinValue'},
+        client: {cnpj: 'qrCnpj', contact_phone: 'qrContactPhone', contact_email: 'qrEmail', billing_email: 'qrBillingEmail', email_domain: 'qrDomain', closing_day: 'qrClosingDay'},
+        health_insurer: {client_id: 'qrClient', cnpj: 'qrCnpj', contact_phone: 'qrContactPhone', contact_email: 'qrEmail', billing_email: 'qrBillingEmail', email_domain: 'qrDomain', closing_day: 'qrClosingDay'}
+      };
+      Object.keys(byType[qrType] || {}).forEach(function(k){ fd.append(k, document.getElementById(byType[qrType][k]).value); });
       var msg = document.getElementById('qrMsg'); msg.textContent = 'Salvando…';
       fetch('/quick_register_post.php', {method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'}})
         .then(function(r){ return r.json(); })

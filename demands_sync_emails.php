@@ -17,10 +17,23 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('demands.manage');
+// Esta chamada roda em segundo plano ao abrir o kanban e o IMAP pode levar vários
+// segundos: sem liberar a sessão, abrir um card ficava esperando ela terminar.
+session_release();
 
 header('Content-Type: application/json');
 
 @set_time_limit(60);
+
+// Evita várias conexões IMAP seguidas (cada abertura do kanban disparava uma):
+// no máximo uma busca a cada 60 s; o cron de e-mails continua rodando normalmente.
+$forceModeEarly = isset($_GET['force']) && $_GET['force'] === '1';
+$throttleFile = sys_get_temp_dir() . '/multilife_imap_poll_' . md5(__DIR__) . '.ts';
+if (!$forceModeEarly && is_file($throttleFile) && (time() - (int)@filemtime($throttleFile)) < 60) {
+    echo json_encode(['imap' => ['skipped' => 'recent_poll'], 'extraction' => null]);
+    exit;
+}
+@touch($throttleFile);
 
 $results = ['imap' => null, 'extraction' => null];
 $forceMode = isset($_GET['force']) && $_GET['force'] === '1';

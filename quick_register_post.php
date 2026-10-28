@@ -34,9 +34,29 @@ $email = trim((string)($_POST['contact_email'] ?? ''));
 $domain = strtolower(trim((string)($_POST['email_domain'] ?? '')));
 $domain = ltrim(preg_replace('/^https?:\/\//', '', $domain) ?? $domain, '@');
 $clientId = (int)($_POST['client_id'] ?? 0);
+$cnpj = mb_substr(trim((string)($_POST['cnpj'] ?? '')), 0, 18);
+$contactPhone = mb_substr(preg_replace('/[^\d()+\- ]+/', '', (string)($_POST['contact_phone'] ?? '')) ?? '', 0, 20);
+$billingEmail = trim((string)($_POST['billing_email'] ?? ''));
+$closingDay = (int)($_POST['closing_day'] ?? 0);
+$closingDay = ($closingDay >= 1 && $closingDay <= 31) ? $closingDay : null;
+$minValueRaw = trim((string)($_POST['minimum_value'] ?? ''));
 
 if ($name === '') {
     qr_json(['ok' => false, 'error' => 'Informe o nome.']);
+}
+if ($billingEmail !== '' && !filter_var($billingEmail, FILTER_VALIDATE_EMAIL)) {
+    qr_json(['ok' => false, 'error' => 'E-mail de faturamento inválido.']);
+}
+if ($cnpj !== '' && strlen(preg_replace('/\D+/', '', $cnpj) ?? '') !== 14) {
+    qr_json(['ok' => false, 'error' => 'CNPJ inválido (14 dígitos).']);
+}
+$minValue = 0.0;
+if ($minValueRaw !== '') {
+    $mv = strpos($minValueRaw, ',') !== false ? str_replace(['.', ','], ['', '.'], $minValueRaw) : $minValueRaw;
+    if (!is_numeric($mv) || (float)$mv < 0) {
+        qr_json(['ok' => false, 'error' => 'Valor mínimo inválido.']);
+    }
+    $minValue = round((float)$mv, 2);
 }
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     qr_json(['ok' => false, 'error' => 'E-mail inválido.']);
@@ -60,7 +80,8 @@ try {
             }
             qr_json(['ok' => true, 'id' => (int)$row['id'], 'name' => (string)$row['name'], 'existing' => true]);
         }
-        $db->prepare("INSERT INTO specialties (name, status) VALUES (:n, 'active')")->execute(['n' => mb_substr($name, 0, 120)]);
+        $db->prepare("INSERT INTO specialties (name, minimum_value, status) VALUES (:n, :mv, 'active')")
+            ->execute(['n' => mb_substr($name, 0, 120), 'mv' => $minValue]);
         $newId = (int)$db->lastInsertId();
         audit_log('create', 'specialties', (string)$newId, null, ['name' => $name, 'via' => 'cadastro_rapido']);
         qr_json(['ok' => true, 'id' => $newId, 'name' => $name]);
@@ -73,8 +94,17 @@ try {
         if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
             qr_json(['ok' => true, 'id' => (int)$row['id'], 'name' => (string)$row['name'], 'existing' => true]);
         }
-        $db->prepare('INSERT INTO clients (name, contact_email, email_domain, is_active) VALUES (:n, :e, :d, 1)')
-            ->execute(['n' => $name, 'e' => $email !== '' ? $email : null, 'd' => $domain !== '' ? $domain : null]);
+        $db->prepare('INSERT INTO clients (name, cnpj, contact_phone, contact_email, billing_email, email_domain, closing_day, is_active)
+                      VALUES (:n, :cnpj, :ph, :e, :be, :d, :cd, 1)')
+            ->execute([
+                'n' => $name,
+                'cnpj' => $cnpj !== '' ? $cnpj : null,
+                'ph' => $contactPhone !== '' ? $contactPhone : null,
+                'e' => $email !== '' ? $email : null,
+                'be' => $billingEmail !== '' ? $billingEmail : null,
+                'd' => $domain !== '' ? $domain : null,
+                'cd' => $closingDay,
+            ]);
         $newId = (int)$db->lastInsertId();
         audit_log('create', 'clients', (string)$newId, null, ['name' => $name, 'via' => 'cadastro_rapido']);
         qr_json(['ok' => true, 'id' => $newId, 'name' => $name]);
@@ -88,12 +118,17 @@ try {
         if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
             qr_json(['ok' => true, 'id' => (int)$row['id'], 'name' => (string)$row['name'], 'existing' => true]);
         }
-        $db->prepare('INSERT INTO health_insurers (name, client_id, contact_email, email_domain, is_active) VALUES (:n, :c, :e, :d, 1)')
+        $db->prepare('INSERT INTO health_insurers (name, client_id, cnpj, contact_phone, contact_email, billing_email, email_domain, closing_day, is_active)
+                      VALUES (:n, :c, :cnpj, :ph, :e, :be, :d, :cd, 1)')
             ->execute([
                 'n' => $name,
                 'c' => $clientId > 0 ? $clientId : null,
+                'cnpj' => $cnpj !== '' ? $cnpj : null,
+                'ph' => $contactPhone !== '' ? $contactPhone : null,
                 'e' => $email !== '' ? $email : null,
+                'be' => $billingEmail !== '' ? $billingEmail : null,
                 'd' => $domain !== '' ? $domain : null,
+                'cd' => $closingDay,
             ]);
         $newId = (int)$db->lastInsertId();
         audit_log('create', 'health_insurers', (string)$newId, null, ['name' => $name, 'via' => 'cadastro_rapido']);

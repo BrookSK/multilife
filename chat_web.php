@@ -1094,6 +1094,7 @@ if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($in
 }
 
 view_header('Chat ao Vivo');
+session_release(); // tela pesada: não travar as outras abas do usuário
 
 // Emitir logs de debug no console do navegador (gerados antes do HTML)
 if (!empty($debugConsole)) {

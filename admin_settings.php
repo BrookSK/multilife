@@ -16,6 +16,9 @@ foreach ($rows as $r) {
 }
 
 view_header('Configurações');
+// Esta tela consulta a Evolution para cada instância (pode levar vários segundos);
+// libera a sessão para não travar as outras abas do usuário enquanto carrega.
+session_release();
 
 echo '<div class="grid">';
 

@@ -6,6 +6,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('chat.manage');
+session_release(); // polling: não pode travar as outras telas do usuário
 
 header('Content-Type: application/json');
 

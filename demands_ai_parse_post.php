@@ -24,6 +24,8 @@ if (auth_user_id() === null) {
 if (!rbac_user_can((int)auth_user_id(), 'demands.manage')) {
     aip_json(['ok' => false, 'error' => 'Sem permissão.']);
 }
+// A IA pode levar vários segundos: não travar as outras telas do usuário.
+session_release();
 
 $text = trim((string)($_POST['text'] ?? ''));
 if (mb_strlen($text) < 20) {

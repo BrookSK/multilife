@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
+session_release(); // polling a cada 30 s em todas as telas
 
 header('Content-Type: application/json');
 

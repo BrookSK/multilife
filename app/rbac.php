@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 function rbac_user_roles(int $userId): array
 {
+    // Cache por requisição: menu, permissões e widgets consultavam isto várias vezes por página.
+    static $cache = [];
+    if (isset($cache[$userId])) {
+        return $cache[$userId];
+    }
     $stmt = db()->prepare(
         'SELECT r.slug FROM roles r INNER JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = :uid'
     );
@@ -12,7 +17,7 @@ function rbac_user_roles(int $userId): array
     foreach ($stmt->fetchAll() as $row) {
         $roles[] = (string)$row['slug'];
     }
-    return $roles;
+    return $cache[$userId] = $roles;
 }
 
 function rbac_user_has_role(int $userId, string $roleSlug): bool
@@ -27,6 +32,11 @@ function rbac_user_has_role(int $userId, string $roleSlug): bool
 
 function rbac_user_permissions(int $userId): array
 {
+    // Cache por requisição (antes: 1 consulta a cada rbac_user_can/menu/widget).
+    static $cache = [];
+    if (isset($cache[$userId])) {
+        return $cache[$userId];
+    }
     $stmt = db()->prepare(
         'SELECT DISTINCT p.slug
          FROM permissions p
@@ -40,7 +50,7 @@ function rbac_user_permissions(int $userId): array
     foreach ($stmt->fetchAll() as $row) {
         $perms[] = (string)$row['slug'];
     }
-    return $perms;
+    return $cache[$userId] = $perms;
 }
 
 function rbac_user_can(int $userId, string $permissionSlug): bool

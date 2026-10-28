@@ -219,8 +219,15 @@ function whatsapp_health_is_blocking(string $level): bool
 function whatsapp_health_problems(): array
 {
     $out = [];
+    whatsapp_health_ensure_schema();
     try {
-        $names = db()->query("SELECT instance_name FROM whatsapp_instances WHERE status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
+        // Uma consulta só: avalia apenas instâncias ativas que tiveram eventos na janela
+        // (roda em toda tela; sem eventos recentes não há o que alertar).
+        $st = db()->prepare("SELECT DISTINCT e.instance_name FROM whatsapp_instance_events e
+            INNER JOIN whatsapp_instances wi ON wi.instance_name = e.instance_name AND wi.status = 'active'
+            WHERE e.created_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)");
+        $st->execute([WHATSAPP_HEALTH_WINDOW_MIN]);
+        $names = $st->fetchAll(PDO::FETCH_COLUMN);
     } catch (Throwable $e) {
         return [];
     }

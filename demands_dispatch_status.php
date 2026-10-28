@@ -6,6 +6,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('demands.manage');
+session_release(); // polling a cada 3 s do acompanhamento da captação
 
 header('Content-Type: application/json; charset=utf-8');
 
