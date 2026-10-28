@@ -38,6 +38,26 @@ function dds_check_stale(array $run): array
     $idle = time() - (int)strtotime((string)$run['updated_at']);
     $phase = (string)($run['phase'] ?? '');
     $msg = null;
+
+    // A mensagem já saiu (log marcado como enviado) mas o processo não finalizou:
+    // encerra como concluída em vez de deixar "Enviando..." para sempre.
+    if ($phase === 'sending' && $idle > 20 && !empty($run['created_at'])) {
+        try {
+            $sentStmt = db()->prepare("SELECT COUNT(*) FROM demand_dispatch_logs
+                WHERE demand_id = :d AND dispatch_status = 'sent' AND created_at >= :c");
+            $sentStmt->execute(['d' => (int)$run['demand_id'], 'c' => (string)$run['created_at']]);
+            if ((int)$sentStmt->fetchColumn() > 0) {
+                $ok = 'Captação enviada via WhatsApp.';
+                db()->prepare("UPDATE demand_dispatch_runs SET status = 'completed', phase = 'done', phase_message = :m, result_message = :m2,
+                               sent_count = GREATEST(sent_count, 1) WHERE id = :id AND status IN ('queued','processing')")
+                    ->execute(['m' => $ok, 'm2' => $ok, 'id' => (int)$run['id']]);
+                $run['status'] = 'completed';
+                $run['phase'] = 'done';
+                $run['result_message'] = $ok;
+                return $run;
+            }
+        } catch (Throwable $e) {}
+    }
     if ($status === 'queued' && $idle > 180) {
         $msg = 'A captação ficou 3 minutos na fila sem começar: o processamento em segundo plano não está rodando. '
             . 'Verifique o cron "integration_jobs_run" e o token do cron em Configurações e tente novamente.';
@@ -84,7 +104,7 @@ try {
     demand_dispatch_ensure_run_columns();
 
     $select = 'SELECT r.id, r.demand_id, r.sub_request_id, r.status, r.phase, r.phase_message,
-                      r.added_count, r.sent_count, r.error_count, r.result_message, r.created_by_user_id, r.updated_at,
+                      r.added_count, r.sent_count, r.error_count, r.result_message, r.created_by_user_id, r.updated_at, r.created_at,
                       d.title AS demand_title
                FROM demand_dispatch_runs r
                LEFT JOIN demands d ON d.id = r.demand_id';

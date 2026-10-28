@@ -365,18 +365,27 @@ function demand_dispatch_run_finish(int $runId, string $status, string $message,
              SET status = :st,
                  phase = 'done',
                  phase_message = :msg,
-                 result_message = :msg,
-                 sent_count = :sent,
+                 result_message = :msg2,
+                 sent_count = GREATEST(sent_count, :sent),
                  error_count = :err
-             WHERE id = :id"
+             WHERE id = :id
+               -- não rebaixa para 'failed' um run que o webhook já confirmou como enviado
+               AND NOT (status = 'completed' AND :st2 = 'failed')"
         )->execute([
             'st' => $status,
-            'msg' => mb_strimwidth($message, 0, 490, ''),
+            'st2' => $status,
+            // phase_message é VARCHAR(255); result_message, VARCHAR(500).
+            'msg' => mb_strimwidth($message, 0, 250, '…'),
+            'msg2' => mb_strimwidth($message, 0, 490, '…'),
             'sent' => $sent,
             'err' => $errors,
             'id' => $runId,
         ]);
-    } catch (Throwable $e) { /* ignore */ }
+    } catch (Throwable $e) {
+        // Antes era engolido em silêncio: o run nunca era finalizado e o acompanhamento
+        // ficava "Enviando a mensagem..." para sempre, mesmo com a mensagem enviada.
+        error_log('[DISPATCH] Falha ao finalizar run #' . $runId . ': ' . $e->getMessage());
+    }
 }
 
 /**
@@ -399,5 +408,61 @@ function authorization_requests_ensure_frequency_column(): void
         }
     } catch (Throwable $e) {
         error_log('[AUTH_FREQUENCY] ' . $e->getMessage());
+    }
+}
+
+/**
+ * CONFIRMAÇÃO DO ENVIO PELO WEBHOOK.
+ *
+ * Em grupo, a Evolution às vezes entrega a mensagem mas demora (ou nunca
+ * responde) à chamada de envio — o disparo ficava parado em "Enviando a
+ * mensagem..." mesmo com a mensagem já no grupo. Quando o WhatsApp avisa pelo
+ * webhook que a NOSSA mensagem (fromMe) com o token #CAP... chegou no grupo,
+ * marcamos o envio como feito e encerramos o acompanhamento.
+ */
+function demand_dispatch_confirm_from_webhook(string $event, array $data): void
+{
+    if (!in_array($event, ['messages.upsert', 'send.message'], true)) {
+        return;
+    }
+    $msg = $data['data'] ?? null;
+    if (is_array($msg) && isset($msg[0]) && is_array($msg[0])) {
+        $msg = $msg[0]; // alguns formatos mandam uma lista
+    }
+    if (!is_array($msg)) {
+        return;
+    }
+    $key = is_array($msg['key'] ?? null) ? $msg['key'] : [];
+    $remoteJid = (string)($key['remoteJid'] ?? '');
+    if (empty($key['fromMe']) || substr($remoteJid, -5) !== '@g.us') {
+        return;
+    }
+    $m = is_array($msg['message'] ?? null) ? $msg['message'] : [];
+    $text = (string)($m['conversation'] ?? ($m['extendedTextMessage']['text'] ?? ''));
+    if ($text === '' || !preg_match('/#CAP(\d+)-[A-F0-9]+/', $text, $tm)) {
+        return;
+    }
+    $token = $tm[0];
+    $demandId = (int)$tm[1];
+    $externalId = (string)($key['id'] ?? '');
+    try {
+        $upd = db()->prepare("UPDATE demand_dispatch_logs
+            SET dispatch_status = 'sent', error_message = NULL,
+                external_message_id = COALESCE(NULLIF(external_message_id, ''), :eid)
+            WHERE capture_token = :tk AND dispatch_status IN ('queued','error')");
+        $upd->execute(['eid' => $externalId !== '' ? $externalId : null, 'tk' => $token]);
+        if ($upd->rowCount() === 0) {
+            return; // já estava confirmado
+        }
+        // Encerra o acompanhamento que ainda estiver esperando a resposta do envio.
+        db()->prepare("UPDATE demand_dispatch_runs
+            SET status = 'completed', phase = 'done',
+                phase_message = 'Captação enviada (confirmada pelo WhatsApp).',
+                result_message = 'Captação enviada (confirmada pelo WhatsApp).',
+                sent_count = GREATEST(sent_count, 1)
+            WHERE demand_id = :d AND group_jid = '' AND status IN ('queued','processing')")
+            ->execute(['d' => $demandId]);
+    } catch (Throwable $e) {
+        error_log('[DISPATCH_CONFIRM] ' . $e->getMessage());
     }
 }

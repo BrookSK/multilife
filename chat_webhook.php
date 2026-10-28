@@ -34,6 +34,12 @@ if (function_exists('whatsapp_health_handle_webhook')
     exit;
 }
 
+// Confirma a mensagem de captação enviada ao grupo (o envio pela API pode demorar
+// a responder mesmo depois de a mensagem já ter saído). Não interrompe o fluxo.
+if (function_exists('demand_dispatch_confirm_from_webhook')) {
+    try { demand_dispatch_confirm_from_webhook($event, $data); } catch (Throwable $e) {}
+}
+
 // Ignorar eventos que não precisam de processamento
 $ignoredEvents = [
     'connection.update',
