@@ -32,6 +32,7 @@ $payload = json_encode([
         'CONTACTS_UPSERT',
         'CONTACTS_UPDATE',
         'CONNECTION_UPDATE',
+        'QRCODE_UPDATED',
     ]
 ]);
 
@@ -58,7 +59,8 @@ if ($httpCode === 200 || $httpCode === 201) {
     $payload2 = json_encode([
         'webhook' => [
             'url' => $webhookUrl,
-            'events' => ['MESSAGES_UPSERT', 'SEND_MESSAGE'],
+            // CONNECTION_UPDATE/QRCODE_UPDATED alimentam a detecção de conexão em loop.
+            'events' => ['MESSAGES_UPSERT', 'SEND_MESSAGE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
             'webhook_by_events' => false,
             'webhook_base64' => true,
         ]

@@ -181,7 +181,8 @@ if (!$forceMode) {
         if ($openaiUrl === '' || $openaiKey === '') {
             $results['extraction'] = ['error' => 'OpenAI not configured'];
         } else {
-            $pendingStmt = db()->prepare("SELECT * FROM inbound_emails ORDER BY id ASC LIMIT 5");
+            // Só e-mails ainda não processados (antes pegava QUALQUER e-mail e duplicava cards).
+            $pendingStmt = db()->prepare("SELECT * FROM inbound_emails WHERE status IN ('received', 'ai_pending', 'pending') ORDER BY id ASC LIMIT 5");
             $pendingStmt->execute();
             $pendingEmails = $pendingStmt->fetchAll();
 
@@ -252,11 +253,19 @@ if (!$forceMode) {
                     if (!empty($parsed['patient_phone'])) $patientInfo .= "Telefone: " . $parsed['patient_phone'] . "\n";
                     if ($patientInfo !== '') $description = $patientInfo . "\n" . $description;
 
+                    // Mesma regra do formulário: incompleto vai para Tratamento Manual.
+                    $syncMissing = demand_missing_fields([
+                        'specialty' => (string)($parsed['specialty'] ?? ''),
+                        'location_city' => (string)($parsed['location_city'] ?? ''),
+                        'location_state' => strtoupper((string)($parsed['location_state'] ?? '')),
+                        'location_neighborhood' => (string)($parsed['location_neighborhood'] ?? ''),
+                    ]);
                     $insertDemand = db()->prepare(
                         "INSERT INTO demands (title, status, origin_email, specialty, location_city, location_state, location_street, location_neighborhood, location_number, frequency, description) "
-                        . "VALUES (:title, 'aguardando_captacao', :origin, :spec, :city, :state, :street, :neighborhood, :number, :freq, :desc)"
+                        . "VALUES (:title, :st, :origin, :spec, :city, :state, :street, :neighborhood, :number, :freq, :desc)"
                     );
                     $insertDemand->execute([
+                        'st' => $syncMissing['blocking'] ? 'tratamento_manual' : 'aguardando_captacao',
                         'title' => $title,
                         'origin' => $fromEmail,
                         'spec' => (string)($parsed['specialty'] ?? ''),

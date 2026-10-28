@@ -109,6 +109,11 @@ if (!in_array($frequency, $allowedFreq, true)) {
 
 $db = db();
 
+// authorization_requests.frequency era ENUM('single','daily','weekly',...) e não aceitava
+// os códigos do sistema ('3x_semana', 'quinzenal'...): o INSERT falhava ou gravava vazio.
+// DDL fora da transação (commit implícito no MySQL).
+authorization_requests_ensure_frequency_column();
+
 // ============================================================================
 // VALIDAÇÃO CRÍTICA: PATIENT_ID
 // ============================================================================
@@ -457,7 +462,10 @@ try {
         'biweekly' => 'Quinzenal',
         'monthly' => 'Mensal',
         'custom' => 'Personalizado',
-        default => 'Semanal'
+        // Códigos do sistema (1x_semana ... mensal): rótulo da tabela de frequências.
+        default => (function_exists('frequency_get_label') && frequency_get_label($frequency) !== '')
+            ? frequency_get_label($frequency)
+            : 'Semanal'
     };
     
     $professionalCouncilFull = '';

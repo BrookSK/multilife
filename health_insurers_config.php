@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
-rbac_require_permission('admin.settings.manage');
+rbac_require_any_permission(['admin.settings.manage', 'cadastros.manage']);
 
 $db = db();
 

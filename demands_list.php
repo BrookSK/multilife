@@ -7,6 +7,9 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('demands.manage');
 
+// Colunas usadas para mostrar "o que falta" nos cards de Tratamento Manual.
+demand_form_ensure_schema();
+
 // Buscar especialidades
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
 $specialties = $specialtiesStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -133,6 +136,7 @@ $sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state,
         d.assumed_by_user_id, d.created_at, d.updated_at, d.ai_summary, d.procedure_value, d.urgency, u.name AS assumed_by_name,
         pa.completed_at,
         d.origin_email,
+        d.patient_name, d.location_street, d.location_neighborhood, d.location_zone, d.frequency,
         COALESCE(cli.name, cli_hi.name, cli_dom.name) AS client_name,
         COALESCE(hi.name, hi_dom.name) AS insurer_name
         FROM demands d
@@ -219,20 +223,8 @@ echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
 echo '</div>';
 
-// PENDÊNCIA: e-mails incertos aguardando revisão humana (needs_review).
-// Mostra um aviso com contador e link direto para a fila de revisão na inbox.
-$needsReviewCount = 0;
-try {
-    $needsReviewCount = (int)db()->query("SELECT COUNT(*) FROM inbound_emails WHERE status = 'needs_review'")->fetchColumn();
-} catch (Throwable $e) {
-    $needsReviewCount = 0;
-}
-if ($needsReviewCount > 0) {
-    echo '<a href="/inbound_emails_list.php?status=needs_review" style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 14px;background:hsla(262,83%,58%,.10);border:1px solid hsl(262,83%,58%);border-radius:10px;text-decoration:none;color:inherit">';
-    echo '<span style="font-size:18px">🟣</span>';
-    echo '<span style="font-size:13px;line-height:1.4"><strong>' . (int)$needsReviewCount . ' e-mail(s) aguardando revisão</strong> — o sistema ficou em dúvida se são captação. Clique para revisar e ensinar o sistema (✅/🚫).</span>';
-    echo '</a>';
-}
+// (Removido: aviso de "e-mails aguardando revisão". A caixa de captação agora
+// recebe só e-mails de captação, então não há mais triagem captação/não-captação.)
 
 echo '<form method="get" action="/demands_list.php" style="margin-top:14px;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
 echo '<select name="status">';
@@ -450,16 +442,17 @@ foreach ($columns as $col) {
             }
             
             echo '</div>';
-            echo '</div>';
 
-            // Feedback de classificação no próprio card (ensina o sistema).
-            // Botões via JS (o card é um <a>, não pode conter <form>). Não dispara a navegação do card.
-            if (!in_array($colId, ['admitido', 'concluido', 'cancelado'], true)) {
-                echo '<div class="cardClassify" style="display:flex;gap:6px;padding:8px 12px;border-top:1px solid hsl(var(--border));background:hsla(var(--muted)/.25)">';
-                echo '<button type="button" class="btn" onclick="classifyDemand(event, ' . (int)$r['id'] . ', \'captation\')" style="flex:1;background:hsl(142,76%,36%);color:#fff;font-weight:700;padding:5px 8px;font-size:12px" title="Confirmar que é captação/prospecção">✅ Captação</button>';
-                echo '<button type="button" class="btn" onclick="classifyDemand(event, ' . (int)$r['id'] . ', \'not_captation\')" style="flex:1;background:hsl(0,84%,60%);color:#fff;font-weight:700;padding:5px 8px;font-size:12px" title="Não é captação (cancela o card e ensina o sistema)">🚫 Não é</button>';
-                echo '</div>';
+            // O QUE FALTA (Tratamento Manual): mostra exatamente o campo pendente.
+            if ($colId === 'tratamento_manual' || $colId === 'aguardando_captacao') {
+                $missingTxt = demand_missing_summary($r);
+                if ($missingTxt !== '') {
+                    echo '<div style="margin-top:8px;padding:8px;border-radius:6px;background:hsla(0,84%,60%,.10);border:1px solid hsla(0,84%,60%,.4);font-size:12px;line-height:1.4">';
+                    echo '⚠️ <strong>Falta:</strong> ' . h($missingTxt) . ' <span style="color:hsl(var(--muted-foreground))">— clique para completar</span>';
+                    echo '</div>';
+                }
             }
+            echo '</div>';
 
             echo '</a>';
         }
@@ -475,53 +468,9 @@ echo '</section>';
 
 echo '</div>';
 
-echo '<button class="fab" type="button" id="newDemandFab" aria-label="Novo card">+</button>';
-
-echo '<div id="newDemandOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.24);z-index:70"></div>';
-echo '<div id="newDemandModal" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-width:92vw;z-index:80">';
-echo '<section class="card" style="box-shadow:var(--shadow-elevated)">';
-echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
-echo '<div>';
-echo '<div style="font-size:16px;font-weight:900">Nova Captação</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:13px;line-height:1.5">Crie um novo card para o fluxo de captação.</div>';
-echo '</div>';
-echo '<button class="btn" type="button" id="newDemandClose" style="height:34px">Fechar</button>';
-echo '</div>';
-
-echo '<div style="height:12px"></div>';
-
-echo '<form method="post" action="/demands_create_post.php" style="display:grid;gap:12px">';
-echo '<label>Nome do paciente / Título<input name="title" required maxlength="200" placeholder="Nome completo"></label>';
-echo '<div class="grid">';
-echo '<div class="col6"><label>Empresa/Convênio (origem e-mail)<input name="origin_email" maxlength="190" placeholder="ex: contato@empresa.com"></label></div>';
-echo '<div class="col6"><label>Tipo / Especialidade<select name="specialty">';
-echo '<option value="">Selecione...</option>';
-foreach ($specialties as $spec) {
-    $specName = isset($spec['name']) ? (string)$spec['name'] : '';
-    if ($specName !== '') {
-        echo '<option value="' . h($specName) . '">' . h($specName) . '</option>';
-    }
-}
-echo '</select></label></div>';
-echo '<div class="col6"><label>Cidade<input name="location_city" maxlength="120" placeholder="Ex: São Paulo"></label></div>';
-echo '<div class="col6"><label>UF<input name="location_state" maxlength="2" placeholder="SP" style="text-transform:uppercase"></label></div>';
-echo '</div>';
-echo '<label>Observações<textarea name="description" rows="3" placeholder="Observações adicionais..."></textarea></label>';
-
-echo '<input type="hidden" name="status" value="aguardando_captacao">';
-
-echo '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">';
-echo '<button class="btn" type="button" id="newDemandCancel">Cancelar</button>';
-echo '<button class="btn btnPrimary" type="submit">Salvar</button>';
-echo '</div>';
-echo '</form>';
-
-echo '</section>';
-echo '</div>';
-
-echo '<script>';
-echo '(function(){var fab=document.getElementById("newDemandFab");var ov=document.getElementById("newDemandOverlay");var m=document.getElementById("newDemandModal");var close=document.getElementById("newDemandClose");var cancel=document.getElementById("newDemandCancel");if(!fab||!ov||!m)return;var open=function(){ov.style.display="block";m.style.display="block";try{var i=m.querySelector("input[name=title]");if(i)i.focus();}catch(e){}};var shut=function(){ov.style.display="none";m.style.display="none";};fab.addEventListener("click",open);if(close)close.addEventListener("click",shut);if(cancel)cancel.addEventListener("click",shut);ov.addEventListener("click",shut);document.addEventListener("keydown",function(e){if(e.key==="Escape")shut();});})();';
-echo '</script>';
+// Botão flutuante abre o formulário COMPLETO do novo card (o modal reduzido
+// antigo gravava só título/cidade e o card saía sem endereço na notificação).
+echo '<a class="fab" href="/demands_create.php" id="newDemandFab" aria-label="Novo card" style="display:flex;align-items:center;justify-content:center;text-decoration:none">+</a>';
 
 echo '<style>';
 echo '.kanbanColHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}';
@@ -544,21 +493,6 @@ echo '      console.log("Novos e-mails: " + newEmails + ". CRON vai processar em
 echo '    }';
 echo '  }).catch(function(e){ console.log("Sync emails:", e); });';
 echo '})();';
-echo '</script>';
-
-// Classificação pelo card (ensina o sistema). Form oculto + função JS.
-echo '<form id="classifyDemandForm" method="post" action="/demands_classify_post.php" style="display:none">';
-echo '<input type="hidden" name="id" id="classifyDemandId" value="">';
-echo '<input type="hidden" name="label" id="classifyDemandLabel" value="">';
-echo '</form>';
-echo '<script>';
-echo 'function classifyDemand(ev, id, label){';
-echo '  if(ev){ ev.preventDefault(); ev.stopPropagation(); }';
-echo '  if(label === "not_captation" && !confirm("Marcar como NÃO captação? O card será cancelado e o sistema vai aprender a ignorar e-mails parecidos.")) return;';
-echo '  document.getElementById("classifyDemandId").value = id;';
-echo '  document.getElementById("classifyDemandLabel").value = label;';
-echo '  document.getElementById("classifyDemandForm").submit();';
-echo '}';
 echo '</script>';
 
 // Ação em MASSA OCULTA: cancelar todos os cards de "Tratamento Manual".

@@ -5,7 +5,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('professionals.manage');
+// 'professionals.manage' nunca foi criada nas migrations; aceitar users.manage evita
+// que a página fique inacessível para todos (inclusive admin).
+rbac_require_any_permission(['users.manage', 'professionals.manage']);
 
 // Capturar telefone se vier do chat
 $phoneFromChat = isset($_GET['phone']) ? trim((string)$_GET['phone']) : '';

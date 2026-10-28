@@ -25,6 +25,15 @@ error_log("[WEBHOOK] event:'$event' instance:'" . ($data['instance'] ?? '') . "'
 // Guardar o nome da instância globalmente para uso nas funções de save
 $GLOBALS['_webhookInstanceName'] = $data['instance'] ?? null;
 
+// Saúde da instância: registra quedas/reconexões/QR para detectar sessão em LOOP
+// (antes connection.update era simplesmente ignorado).
+if (function_exists('whatsapp_health_handle_webhook')
+    && whatsapp_health_handle_webhook($event, (string)($data['instance'] ?? ''), $data)) {
+    http_response_code(200);
+    echo json_encode(['status' => 'ok']);
+    exit;
+}
+
 // Ignorar eventos que não precisam de processamento
 $ignoredEvents = [
     'connection.update',

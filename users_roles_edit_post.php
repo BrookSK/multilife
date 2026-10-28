@@ -26,6 +26,9 @@ if (!$user) {
     exit;
 }
 
+// Sem 'roles.manage' (ex.: captador), só gerencia profissionais/pacientes.
+rbac_require_manage_target_user($id);
+
 $stmt = db()->prepare('SELECT r.slug FROM roles r INNER JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = :uid');
 $stmt->execute(['uid' => $id]);
 $oldRoles = [];
@@ -36,9 +39,14 @@ foreach ($stmt->fetchAll() as $r) {
 $valid = [];
 if (count($roleIds) > 0) {
     $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
-    $stmt = db()->prepare('SELECT id FROM roles WHERE id IN (' . $placeholders . ')');
+    $stmt = db()->prepare('SELECT id, slug FROM roles WHERE id IN (' . $placeholders . ')');
     $stmt->execute(array_map('intval', $roleIds));
     foreach ($stmt->fetchAll() as $r) {
+        if (!rbac_can_assign_role((string)$r['slug'])) {
+            flash_set('error', 'Você não tem permissão para atribuir o perfil "' . (string)$r['slug'] . '".');
+            header('Location: /users_roles_edit.php?id=' . $id);
+            exit;
+        }
         $valid[] = (int)$r['id'];
     }
 }

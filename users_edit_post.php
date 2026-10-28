@@ -8,6 +8,8 @@ auth_require_login();
 rbac_require_permission('users.manage');
 
 $id = (int)($_POST['id'] ?? 0);
+// Sem 'roles.manage' (ex.: captador), só edita profissionais/pacientes.
+rbac_require_manage_target_user($id);
 $name = trim((string)($_POST['name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
 $phoneRaw = trim((string)($_POST['phone'] ?? ''));
@@ -23,6 +25,7 @@ if (!in_array($professionalType, ['new', 'legacy'], true)) {
 // Garantir coluna (fallback)
 try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 try { db()->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
+location_users_ensure_schema(); // fora da transação (DDL)
 
 $phone = null;
 if ($phoneRaw !== '') {
@@ -90,6 +93,25 @@ try {
     } else {
         $stmt = db()->prepare('UPDATE users SET name = :name, email = :email, phone = :phone, specialty = :specialty, status = :status, is_test_professional = :is_test, professional_type = :prof_type WHERE id = :id');
         $stmt->execute(['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty !== '' ? $specialty : null, 'status' => $status, 'is_test' => $isTestProfessional, 'prof_type' => $professionalType, 'id' => $id]);
+    }
+
+    // Localização de atendimento (grupos de captação por cidade/zona).
+    if (array_key_exists('city', $_POST)) {
+        $locCity = mb_substr(trim((string)$_POST['city']), 0, 120);
+        $locState = strtoupper(trim((string)($_POST['state'] ?? '')));
+        if (!preg_match('/^[A-Z]{2}$/', $locState)) {
+            $locState = '';
+        }
+        $locNb = mb_substr(trim((string)($_POST['neighborhood'] ?? '')), 0, 120);
+        $locZone = location_normalize_zone((string)($_POST['zone'] ?? ''), $locCity, $locState)
+            ?? location_zone_for($locCity, $locState, $locNb);
+        db()->prepare('UPDATE users SET city = :c, state = :s, neighborhood = :n, zone = :z WHERE id = :id')->execute([
+            'c' => $locCity !== '' ? $locCity : null,
+            's' => $locState !== '' ? $locState : null,
+            'n' => $locNb !== '' ? $locNb : null,
+            'z' => $locZone,
+            'id' => $id,
+        ]);
     }
 
     $new = ['name' => $name, 'email' => $email, 'phone' => $phone, 'specialty' => $specialty, 'status' => $status, 'professional_type' => $professionalType];

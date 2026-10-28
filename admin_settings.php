@@ -1588,6 +1588,7 @@ WAJS;
                             $liConnRes['json']['instance']['state'] 
                             ?? ($liConnRes['json']['state'] ?? '')
                         )));
+                        whatsapp_health_record($liName, 'probe', whatsapp_health_normalize_state($liRealState));
                         
                         if (in_array($liRealState, ['open', 'connected'], true)) {
                             if ($liConnStatus !== 'connected') {
@@ -1614,6 +1615,11 @@ WAJS;
                     $statusBadge = '<span style="color:#f59e0b;font-weight:600">● Conectando</span>';
                 } else {
                     $statusBadge = '<span style="color:#ef4444;font-weight:600">● Desconectado</span>';
+                }
+                // Saúde real (quedas/reconexões/falhas de envio): "Conectado" pode estar em loop.
+                $liHealth = whatsapp_health_status($liName);
+                if (!in_array($liHealth['level'], ['ok', 'unknown'], true)) {
+                    $statusBadge .= '<div style="margin-top:4px;font-size:11px;font-weight:700;color:' . (whatsapp_health_is_blocking($liHealth['level']) ? '#ef4444' : '#f59e0b') . '" title="' . h($liHealth['message'] . ' ' . implode(' ', $liHealth['actions'])) . '">⚠️ ' . h($liHealth['title']) . '</div>';
                 }
                 
                 $liDisplayName = (string)($li['display_name'] ?? '');

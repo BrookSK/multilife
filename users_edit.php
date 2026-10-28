@@ -18,7 +18,8 @@ try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) N
 // Garantir coluna professional_type (antigo/novo) - fallback
 try { db()->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
 
-$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status, is_test_professional, professional_type FROM users WHERE id = :id');
+location_users_ensure_schema();
+$stmt = db()->prepare('SELECT id, name, email, phone, specialty, status, is_test_professional, professional_type, city, state, neighborhood, zone FROM users WHERE id = :id');
 $stmt->execute(['id' => $id]);
 $user = $stmt->fetch();
 
@@ -27,6 +28,7 @@ if (!$user) {
     header('Location: /users_list.php');
     exit;
 }
+rbac_require_manage_target_user((int)$user['id']);
 
 // Verificar se o usuario editado e profissional para ajustar link de volta
 $_editUserRoles = [];
@@ -106,6 +108,18 @@ foreach ($specialties as $spec) {
     echo '<option value="' . h((string)$spec['name']) . '"' . $selected . '>' . h((string)$spec['name']) . '</option>';
 }
 echo '</select></label>';
+// Localização de atendimento do profissional: define em quais grupos de captação
+// (cidade/zona) ele entra. Sem cidade, vale a UF do DDD do telefone.
+echo '<div class="grid">';
+echo '<div class="col6"><label>Cidade de atendimento<input name="city" maxlength="120" value="' . h((string)($user['city'] ?? '')) . '" placeholder="Ex: Mirassol"></label></div>';
+echo '<div class="col3"><label>UF<input name="state" maxlength="2" value="' . h((string)($user['state'] ?? '')) . '" placeholder="SP" style="text-transform:uppercase"></label></div>';
+echo '<div class="col6"><label>Bairro<input name="neighborhood" maxlength="120" value="' . h((string)($user['neighborhood'] ?? '')) . '"></label></div>';
+echo '<div class="col6"><label>Zona (São Paulo/Rio)<select name="zone"><option value="">Automática (pelo bairro)</option>';
+foreach (['Centro', 'Zona Norte', 'Zona Sul', 'Zona Leste', 'Zona Oeste'] as $z) {
+    echo '<option value="' . h($z) . '"' . ((string)($user['zone'] ?? '') === $z ? ' selected' : '') . '>' . h($z) . '</option>';
+}
+echo '</select></label></div>';
+echo '</div>';
 echo '<label>Nova senha (opcional)<input type="password" name="password" minlength="8" placeholder="Deixe em branco para manter"></label>';
 echo '<label>Status<select name="status">';
 $st = (string)$user['status'];

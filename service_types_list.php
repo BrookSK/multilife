@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
-rbac_require_permission('admin.settings.manage');
+rbac_require_any_permission(['admin.settings.manage', 'cadastros.manage']);
 
 // Buscar todos os tipos de serviço
 $stmt = db()->query("SELECT * FROM service_types ORDER BY display_order, name ASC");

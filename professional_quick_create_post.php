@@ -58,6 +58,13 @@ $emailRaw = trim((string)($_POST['email'] ?? ''));
 $phoneRaw = trim((string)($_POST['phone'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
 $city = trim((string)($_POST['city'] ?? ''));
+$stateUf = strtoupper(trim((string)($_POST['state'] ?? '')));
+if ($stateUf !== '' && !preg_match('/^[A-Z]{2}$/', $stateUf)) {
+    $stateUf = '';
+}
+$neighborhood = trim((string)($_POST['neighborhood'] ?? ''));
+// Vínculo opcional com o contato importado que originou o pré-cadastro.
+$importedContactId = (int)($_POST['imported_contact_id'] ?? 0);
 
 // Validações mínimas (pré-cadastro): nome e telefone são obrigatórios.
 if ($name === '') {
@@ -84,6 +91,9 @@ $db = db();
 try { $db->exec("ALTER TABLE users ADD COLUMN is_pre_registration TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE users ADD COLUMN city VARCHAR(120) NULL"); } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE users ADD COLUMN professional_type VARCHAR(20) NOT NULL DEFAULT 'new'"); } catch (Throwable $e) {}
+// UF/bairro/zona do profissional e vínculo do contato importado (DDL fora da transação).
+location_users_ensure_schema();
+try { $db->exec("ALTER TABLE imported_contacts ADD COLUMN user_id INT UNSIGNED NULL"); } catch (Throwable $e) {}
 
 // "force=1" pula a verificação de duplicados (a pessoa confirmou "cadastrar mesmo assim").
 $force = (string)($_POST['force'] ?? '') === '1';
@@ -139,8 +149,12 @@ if (!$force) {
         // 2) Nome parecido: um nome contém o outro (case-insensitive).
         //    Usa placeholders DISTINTOS (o PDO sem emulação não permite reusar o mesmo).
         $nameNorm = mb_strtolower($name);
+        // Colunas qualificadas com "u." (roles também tem id/name: sem o prefixo a
+        // query falhava por coluna ambígua e a checagem de duplicados nunca rodava).
+        $selSpecialtyU = $hasSpecialty ? 'u.specialty' : "'' AS specialty";
+        $selCityU = $hasCity ? 'u.city' : "'' AS city";
         $stmtN = $db->prepare("
-            SELECT id, name, phone, {$selSpecialty}, {$selCity}
+            SELECT u.id, u.name, u.phone, {$selSpecialtyU}, {$selCityU}
             FROM users u
             INNER JOIN user_roles ur ON ur.user_id = u.id
             INNER JOIN roles r ON r.id = ur.role_id AND r.slug = 'profissional'
@@ -213,6 +227,29 @@ try {
         'ptype' => 'new',
     ]);
     $newId = (int)$db->lastInsertId();
+
+    // Localização detalhada (UF/bairro/zona) usada para montar os grupos de captação.
+    // (o schema já foi garantido ANTES da transação: DDL faz commit implícito no MySQL)
+    if (function_exists('location_zone_for')) {
+        $zone = location_zone_for($city, $stateUf, $neighborhood);
+        try {
+            $db->prepare('UPDATE users SET state = :st, neighborhood = :nb, zone = :zn WHERE id = :id')->execute([
+                'st' => $stateUf !== '' ? $stateUf : null,
+                'nb' => $neighborhood !== '' ? $neighborhood : null,
+                'zn' => $zone,
+                'id' => $newId,
+            ]);
+        } catch (Throwable $e) {
+            error_log('[QUICK_PROF_CREATE] Falha ao gravar localização: ' . $e->getMessage());
+        }
+    }
+    if ($importedContactId > 0) {
+        try {
+            $db->prepare('UPDATE imported_contacts SET user_id = :uid WHERE id = :id')->execute(['uid' => $newId, 'id' => $importedContactId]);
+        } catch (Throwable $e) {
+            error_log('[QUICK_PROF_CREATE] Falha ao vincular contato: ' . $e->getMessage());
+        }
+    }
 
     // Atribuir a role 'profissional'
     $roleStmt = $db->prepare("SELECT id FROM roles WHERE slug = 'profissional' LIMIT 1");

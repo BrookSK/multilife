@@ -73,7 +73,11 @@ try {
 
     $db->beginTransaction();
 
-    $agreedPerSession = $totalSessions > 0 ? ($agreedValue / $totalSessions) : $agreedValue;
+    // agreed_value (chat) JÁ É POR SESSÃO ("valor que o profissional receberá por sessão").
+    // Antes era dividido pelo nº de sessões aqui e multiplicado na despesa — valor errado.
+    // O nº real de sessões só é definido na pré-admissão, que recalcula o valor autorizado
+    // por sessão e a despesa (ver pre_admissao_approve.php).
+    $agreedPerSession = $agreedValue;
     $proposalPerSession = $totalSessions > 0 ? ($proposalValue / $totalSessions) : $proposalValue;
 
     // Criar patient_assignment (confirmado)

@@ -322,8 +322,16 @@ $demandCols4 = $db->prepare("SHOW COLUMNS FROM demands LIKE 'health_insurer_id'"
 $demandCols4->execute();
 $hasHealthInsurerId = (bool)$demandCols4->fetch();
 
+// Zona (São Paulo/Rio) e complemento: garante as colunas fora de transação.
+location_users_ensure_schema();
+$hasLocationZone = (bool)$db->query("SHOW COLUMNS FROM demands LIKE 'location_zone'")->fetch();
+
 $insDemandCols = 'title, location_city, location_state, location_street, location_neighborhood, location_number, specialty, description, origin_email, status, procedure_value, ai_summary, urgency, frequency, has_multiple_requests';
 $insDemandVals = ':t,:c,:s,:street,:neighborhood,:number,:sp,:d,:o,:st,:pv,:as,:urg,:freq,:hmr';
+if ($hasLocationZone) {
+    $insDemandCols .= ', location_zone';
+    $insDemandVals .= ',:zone';
+}
 
 if ($hasPatientName) {
     $insDemandCols = 'title, patient_name, ' . substr($insDemandCols, 7); // Insere patient_name após title
@@ -594,7 +602,10 @@ foreach ($emails as $e) {
     // como 'not_captation' e NÃO geram demanda. Pode ser desligado via setting
     // 'demands.captation_filter_enabled' = '0'.
     // ============================================================
-    $captationFilterEnabled = (string)admin_setting_get('demands.captation_filter_enabled', '1') !== '0';
+    // PADRÃO DESLIGADO: a caixa de captação agora recebe SOMENTE e-mails de captação,
+    // então a triagem captação/não-captação (e a fila "aguardando revisão") não é mais
+    // usada. Para religar em uma caixa mista, grave o setting com '1'.
+    $captationFilterEnabled = (string)admin_setting_get('demands.captation_filter_enabled', '0') === '1';
     require_once __DIR__ . '/../app/email_classification_helper.php';
     if ($captationFilterEnabled) {
         $classification = classify_email_is_captation($api, $subject, $fromEmail, $content);
@@ -1206,24 +1217,26 @@ foreach ($emails as $e) {
                     $state = '';
                 }
 
-                // Determinar status
-                $hasSpecialty = ($specialty !== '');
-                $hasLocation = ($city !== '' && $state !== '');
+                // Zona (só em cidades divididas por zona, ex.: São Paulo/Rio), pelo bairro.
+                $zone = location_zone_for($city, $state, $neighborhood) ?? '';
+
+                // Determinar status com a MESMA regra do formulário do card: vai para
+                // Tratamento Manual quando falta algo que impede o disparo
+                // (especialidade, cidade, UF, zona em SP/RJ) — e registra o que falta.
                 $forceManual = !empty($client['_force_manual']);
-                
-                $status = 'aguardando_captacao';
-                if ($forceManual || !$hasSpecialty || (!$hasLocation && $city === '' && $state === '')) {
-                    $status = 'tratamento_manual';
-                    $needsManual = true;
-                } else {
-                    $needsManual = false;
-                }
-                // Urgente com especialidade vai direto p/ captação — exceto quando o
-                // card veio do fallback (sem extração), que precisa de tratamento manual.
-                if (!$forceManual && $urgency === 'urgente' && $hasSpecialty) {
-                    $status = 'aguardando_captacao';
-                    $needsManual = false;
-                }
+                $missingInfo = demand_missing_fields([
+                    'patient_name' => $patientName,
+                    'specialty' => $specialty,
+                    'location_city' => $city,
+                    'location_state' => $state,
+                    'location_street' => $street,
+                    'location_neighborhood' => $neighborhood,
+                    'location_zone' => $zone,
+                    'frequency' => $frequency,
+                    'ai_summary' => $clientAiSummary,
+                ]);
+                $needsManual = $forceManual || count($missingInfo['blocking']) > 0;
+                $status = $needsManual ? 'tratamento_manual' : 'aguardando_captacao';
 
                 // Inserir demand
                 $demandParams = [
@@ -1243,6 +1256,9 @@ foreach ($emails as $e) {
                     'freq' => $frequency !== '' ? $frequency : null,
                     'hmr' => $hasMultipleRequests ? 1 : 0,
                 ];
+                if ($hasLocationZone) {
+                    $demandParams['zone'] = $zone !== '' ? $zone : null;
+                }
                 if ($hasPatientName) {
                     $demandParams['pname'] = $patientName !== '' ? $patientName : null;
                 }
@@ -1321,21 +1337,17 @@ foreach ($emails as $e) {
                 if ($isMultiClient) {
                     $note .= ' (multi-client: ' . ($clientIdx + 1) . '/' . count($clients) . ')';
                 }
+                // Registro explícito do que falta (aparece no card e na edição).
                 if ($needsManual) {
-                    $missing = [];
-                    if ($specialty === '') $missing[] = 'especialidade';
-                    if ($city === '' && $state === '') $missing[] = 'localização completa';
-                    if (count($missing) > 0) {
-                        $note .= ' (tratamento_manual: faltando ' . implode(', ', $missing) . ')';
+                    $missingLabels = array_values($missingInfo['blocking']);
+                    if ($forceManual) {
+                        array_unshift($missingLabels, 'a IA não conseguiu ler os dados do e-mail');
                     }
-                } else {
-                    $partial = [];
-                    if ($city === '') $partial[] = 'cidade';
-                    if ($state === '') $partial[] = 'UF';
-                    if (count($partial) > 0) {
-                        $note .= ' (dados parciais: faltando ' . implode(', ', $partial) . ')';
-                    }
+                    $note .= ' (tratamento_manual: faltando ' . implode(', ', $missingLabels) . ')';
+                } elseif ($missingInfo['recommended']) {
+                    $note .= ' (recomendado completar: ' . implode(', ', array_values($missingInfo['recommended'])) . ')';
                 }
+                $note = mb_strimwidth($note, 0, 255, '…');
 
                 $insDemandLog->execute([
                     'did' => $demandId,

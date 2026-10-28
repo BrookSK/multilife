@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_bootstrap.php';
 
+// Pode ser acionado por HTTP "dispare e esqueça" (ex.: a captação chama o worker
+// na hora, para um job específico) — o cliente desconecta e o job precisa seguir.
+@ignore_user_abort(true);
+@set_time_limit(0);
+
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 if ($limit <= 0 || $limit > 200) {
     $limit = 20;
 }
+// ?job_id=N processa somente esse job (acionamento imediato da captação).
+$onlyJobId = isset($_GET['job_id']) ? (int)$_GET['job_id'] : 0;
 
 $now = (new DateTime('now'))->format('Y-m-d H:i:s');
 
@@ -32,17 +39,33 @@ try {
     )->execute(['now_orphan' => $now]);
 } catch (Throwable $e) { /* best-effort */ }
 
-$stmt = $db->prepare(
-    "SELECT *
-     FROM integration_jobs
-     WHERE status IN ('pending','error')
-       AND (next_run_at IS NULL OR next_run_at <= :now)
-       AND attempts < max_attempts
-     ORDER BY COALESCE(next_run_at, created_at) ASC, id ASC
-     LIMIT $limit"
-);
-$stmt->execute(['now' => $now]);
+if ($onlyJobId > 0) {
+    $stmt = $db->prepare(
+        "SELECT * FROM integration_jobs
+         WHERE id = :jid AND status IN ('pending','error') AND attempts < max_attempts
+         LIMIT 1"
+    );
+    $stmt->execute(['jid' => $onlyJobId]);
+} else {
+    $stmt = $db->prepare(
+        "SELECT *
+         FROM integration_jobs
+         WHERE status IN ('pending','error')
+           AND (next_run_at IS NULL OR next_run_at <= :now)
+           AND attempts < max_attempts
+         ORDER BY COALESCE(next_run_at, created_at) ASC, id ASC
+         LIMIT $limit"
+    );
+    $stmt->execute(['now' => $now]);
+}
 $jobs = $stmt->fetchAll();
+
+// "Reserva" atômica de cada job: o cron normal e o acionamento imediato podem
+// rodar ao mesmo tempo; só quem conseguir mudar o status para 'running' processa.
+$claimJob = $db->prepare(
+    "UPDATE integration_jobs SET status = 'running', last_run_at = :ra
+     WHERE id = :id AND status IN ('pending','error')"
+);
 
 if (count($jobs) === 0) {
     echo "OK: no jobs\n";
@@ -82,6 +105,11 @@ foreach ($jobs as $j) {
 
     $attempts = (int)$j['attempts'];
     $maxAttempts = (int)$j['max_attempts'];
+
+    $claimJob->execute(['ra' => $runAt, 'id' => $id]);
+    if ($claimJob->rowCount() === 0) {
+        continue; // outro worker já pegou este job
+    }
 
     $payloadRaw = $j['payload'];
     $payload = null;

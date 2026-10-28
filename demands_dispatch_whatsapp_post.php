@@ -109,7 +109,12 @@ if (!function_exists('dispatch_instance_state')) {
     {
         $r = $api->connectionState();
         $j = is_array($r['json'] ?? null) ? $r['json'] : [];
-        return strtolower(trim((string)($j['instance']['state'] ?? ($j['state'] ?? ''))));
+        $state = strtolower(trim((string)($j['instance']['state'] ?? ($j['state'] ?? ''))));
+        // Histórico de estados (detecção de conexão em loop).
+        if (function_exists('whatsapp_health_record') && method_exists($api, 'getInstance')) {
+            whatsapp_health_record((string)$api->getInstance(), 'probe', whatsapp_health_normalize_state($state));
+        }
+        return $state;
     }
 }
 
@@ -148,6 +153,14 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
 
         foreach ($names as $name) {
             try {
+                // Instância em LOOP / conflito / deslogada: mesmo dizendo "open", não envia.
+                if (function_exists('whatsapp_health_status')) {
+                    $health = whatsapp_health_status($name);
+                    if (whatsapp_health_is_blocking($health['level'])) {
+                        $diag[] = "$name: " . $health['title'] . ' — ' . $health['message'] . ' O que fazer: ' . implode(' ', $health['actions']);
+                        continue;
+                    }
+                }
                 $candidate = new EvolutionApiV1($baseUrl, $apiKey, $name);
                 $state = dispatch_instance_state($candidate);
                 if (!in_array($state, ['open', 'connected'], true)) {
@@ -353,6 +366,36 @@ if ($subRequestId > 0) {
 // hora. O corpo pesado (abaixo) só roda no MODO WORKER.
 // ============================================================================
 if (!$DISPATCH_WORKER_MODE) {
+    // Validação RÁPIDA antes de enfileirar: sem especialidade/cidade/UF (e zona em
+    // SP/RJ) não há como escolher o grupo certo. Avisa na hora, sem esperar a fila.
+    $checkData = $d;
+    if ($subRequest) {
+        foreach (['specialty', 'location_city', 'location_state', 'location_street', 'location_neighborhood'] as $k) {
+            if (trim((string)($subRequest[$k] ?? '')) !== '') {
+                $checkData[$k] = $subRequest[$k];
+            }
+        }
+    }
+    $missingCheck = demand_missing_fields($checkData);
+    if ($missingCheck['blocking']) {
+        dispatch_abort('Complete o card antes de captar. Falta: ' . implode(', ', $missingCheck['blocking']) . '.');
+    }
+
+    // Evita dois disparos simultâneos do mesmo card (duplo clique / duas abas).
+    try {
+        demand_dispatch_ensure_run_columns();
+        $dupStmt = db()->prepare("SELECT id FROM demand_dispatch_runs WHERE demand_id = :d AND COALESCE(sub_request_id, 0) = :s
+            AND group_jid = '' AND status IN ('queued','processing') AND updated_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+            ORDER BY id DESC LIMIT 1");
+        $dupStmt->execute(['d' => (int)$id, 's' => (int)$subRequestId]);
+        $runningId = (int)($dupStmt->fetchColumn() ?: 0);
+        if ($runningId > 0 && dispatch_wants_json()) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true, 'run_id' => $runningId, 'message' => 'Esta captação já está em andamento.']);
+            exit;
+        }
+    } catch (Throwable $e) { /* segue */ }
+
     try {
         $newRunId = demand_dispatch_enqueue_full((int)$id, (int)$subRequestId, auth_user_id());
     } catch (Throwable $e) {
@@ -380,97 +423,54 @@ if (!$DISPATCH_WORKER_MODE) {
 // ============================================================================
 demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'starting', 'Iniciando disparo da captação...');
 
-// Usar dados da sub-solicitação se disponível, senão usar dados da demanda
-$city = (string)($subRequest ? ($subRequest['location_city'] ?? $d['location_city'] ?? '') : ($d['location_city'] ?? ''));
-$state = (string)($subRequest ? ($subRequest['location_state'] ?? $d['location_state'] ?? '') : ($d['location_state'] ?? ''));
-$specialty = (string)($subRequest ? ($subRequest['specialty'] ?? '') : ($d['specialty'] ?? ''));
+// Colunas de zona/localização (fora de transação: DDL faz commit implícito).
+location_users_ensure_schema();
 
-// Adições de membros em GRUPO EXISTENTE ficam para DEPOIS do envio da mensagem
-// (jid do grupo => lista de JIDs). Adicionar participantes derruba a sessão do
-// WhatsApp na Evolution em alguns casos; se isso acontecer antes do envio, a
-// captação falha com a instância 'close'. Ver bloco "ADIÇÕES ADIADAS" no fim.
-$deferredMemberAdds = [];
+// Usar dados da sub-solicitação se disponível, senão usar dados da demanda.
+// (trim + fallback quando a coluna da sub-solicitação está vazia)
+$pickLoc = static function (string $col) use ($subRequest, $d): string {
+    $sv = $subRequest ? trim((string)($subRequest[$col] ?? '')) : '';
+    return $sv !== '' ? $sv : trim((string)($d[$col] ?? ''));
+};
+$city = $pickLoc('location_city');
+$state = strtoupper($pickLoc('location_state'));
+$specialty = $subRequest ? trim((string)($subRequest['specialty'] ?? '')) : trim((string)($d['specialty'] ?? ''));
+$neighborhoodForZone = $pickLoc('location_neighborhood');
 
-// Buscar grupos compatíveis - tentar match progressivo
+// ZONA: em cidades divididas por zona (São Paulo, Rio de Janeiro) o grupo é por zona.
+$zone = null;
+if (location_city_has_zones($city, $state)) {
+    $zone = location_normalize_zone((string)($d['location_zone'] ?? ''), $city, $state)
+        ?? location_zone_for($city, $state, $neighborhoodForZone);
+}
+
+// Sem especialidade/cidade/UF (ou zona em SP/RJ) não dá para escolher o grupo certo.
+// Antes o sistema caía no primeiro grupo da especialidade (ex.: "São Paulo") para
+// qualquer cidade; agora interrompe com o motivo.
+$missingWorker = [];
+if ($specialty === '') $missingWorker[] = 'especialidade';
+if ($city === '') $missingWorker[] = 'cidade';
+if (!preg_match('/^[A-Z]{2}$/', $state)) $missingWorker[] = 'UF';
+if (location_city_has_zones($city, $state) && $zone === null) $missingWorker[] = 'zona (informe o bairro ou escolha a zona)';
+if ($missingWorker) {
+    dispatch_abort('Card incompleto para captação. Falta: ' . implode(', ', $missingWorker) . '.');
+}
+
+$locationLabel = dispatch_group_location_label($city, $state, $zone);
+
+// Membros que devem estar no grupo ANTES do envio (jid do grupo => lista de JIDs).
+// O envio só acontece depois de adicionar quem falta, para que os profissionais
+// novos também recebam a mensagem da captação.
+$memberTargets = [];
+$memberStats = ['users' => 0, 'contacts' => 0, 'skipped_location' => 0, 'unknown_location' => 0];
+
+// Buscar grupo compatível: especialidade + cidade + UF (+ zona). Nunca reaproveita
+// grupo de outra cidade.
 $groups = [];
-$jidFilter = ' AND evolution_group_jid LIKE \'%@g.us\'';
-
-// Só reusar grupos que pertencem à instância do captador (ou grupos legados sem
-// instância registrada). Grupos de OUTRA instância não devem ser reusados, senão
-// o captador (ex.: Grace) enviaria para um grupo que não existe no WhatsApp dele.
-$instanceGroupFilter = '';
-$instanceGroupParams = [];
-if ($captadorInstanceName !== '') {
-    $instanceGroupFilter = ' AND (instance_name = :inst OR instance_name IS NULL OR instance_name = \'\')';
-    $instanceGroupParams['inst'] = $captadorInstanceName;
-}
-
-// Tentativa 1: Match exato por especialidade + estado + cidade (case-insensitive)
-if (trim($specialty) !== '' && count($groups) === 0) {
-    $sql = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter;
-    $conditions = [];
-    $params = [];
-    
-    $conditions[] = '(LOWER(specialty) = LOWER(:sp))';
-    $params['sp'] = $specialty;
-    
-    if (trim($state) !== '') {
-        $conditions[] = '(state IS NULL OR state = \'\' OR LOWER(state) = LOWER(:st))';
-        $params['st'] = $state;
-    }
-    
-    if (trim($city) !== '') {
-        $conditions[] = '(city IS NULL OR city = \'\' OR LOWER(city) = LOWER(:city))';
-        $params['city'] = $city;
-    }
-    
-    $sql .= ' AND ' . implode(' AND ', $conditions) . $instanceGroupFilter . ' ORDER BY id DESC LIMIT 1';
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params + $instanceGroupParams);
-    $groups = $stmt->fetchAll();
-}
-
-// Tentativa 2: Só por especialidade (ignorar localização, case-insensitive)
-if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql2 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND LOWER(specialty) = LOWER(:sp)' . $instanceGroupFilter . ' ORDER BY id DESC LIMIT 1';
-    $stmt2 = db()->prepare($sql2);
-    $stmt2->execute(['sp' => $specialty] + $instanceGroupParams);
-    $groups = $stmt2->fetchAll();
-}
-
-// Tentativa 3: Especialidade com LIKE (caso tenha diferença de acentuação)
-if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql3 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter . ' AND (specialty LIKE :sp_like OR name LIKE :name_like)' . $instanceGroupFilter . ' ORDER BY id DESC LIMIT 1';
-    $stmt3 = db()->prepare($sql3);
-    $stmt3->execute(['sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%'] + $instanceGroupParams);
-    $groups = $stmt3->fetchAll();
-}
-
-// Tentativa 4 (FALLBACK): reusar grupo existente IGNORANDO o filtro de instância.
-// Motivo: o filtro por instância do captador pode excluir um grupo válido quando
-// quem clica (captador) tem uma instância diferente da que criou o grupo — o que
-// fazia o sistema CRIAR UM GRUPO DUPLICADO em vez de reusar o que já existe.
-// É seguro: na etapa de envio o sistema escolhe uma instância conectada (e a
-// promove a admin), tipicamente a própria dona do grupo.
-if (count($groups) === 0 && trim($specialty) !== '') {
-    $sql4 = 'SELECT id, name, evolution_group_jid FROM whatsapp_groups WHERE status = \'active\' AND evolution_group_jid IS NOT NULL AND evolution_group_jid <> \'\'' . $jidFilter;
-    $cond4 = ['(LOWER(specialty) = LOWER(:sp) OR specialty LIKE :sp_like OR name LIKE :name_like)'];
-    $params4 = ['sp' => $specialty, 'sp_like' => '%' . $specialty . '%', 'name_like' => '%' . $specialty . '%'];
-    if (trim($state) !== '') {
-        $cond4[] = '(state IS NULL OR state = \'\' OR LOWER(state) = LOWER(:st))';
-        $params4['st'] = $state;
-    }
-    if (trim($city) !== '') {
-        $cond4[] = '(city IS NULL OR city = \'\' OR LOWER(city) = LOWER(:city))';
-        $params4['city'] = $city;
-    }
-    $sql4 .= ' AND ' . implode(' AND ', $cond4) . ' ORDER BY id DESC LIMIT 1';
-    $stmt4 = db()->prepare($sql4);
-    $stmt4->execute($params4);
-    $groups = $stmt4->fetchAll();
-    if (count($groups) > 0) {
-        error_log("[DISPATCH] Grupo reusado via fallback sem filtro de instância (grupo de outra instância). JID: " . ($groups[0]['evolution_group_jid'] ?? ''));
-    }
+$foundGroup = dispatch_find_group($specialty, $city, $state, $zone, $captadorInstanceName);
+if ($foundGroup !== null) {
+    $groups = [$foundGroup];
+    error_log("[DISPATCH] Grupo encontrado para '$specialty' em '$locationLabel': " . $foundGroup['name'] . ' (' . $foundGroup['evolution_group_jid'] . ')');
 }
 
 if (count($groups) === 0) {
@@ -602,104 +602,25 @@ if (count($groups) === 0) {
         
         $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
         
-        // Gerar nome do grupo: Especialidade - Cidade/UF - N
-        $location = trim($city !== '' ? ($city . ($state !== '' ? '/' . $state : '')) : $state);
-        if ($location === '') $location = 'Geral';
-        
-        // Contar grupos existentes para gerar número sequencial
-        $countStmt = db()->prepare('SELECT COUNT(*) FROM whatsapp_groups WHERE specialty = ?');
-        $countStmt->execute([$specialty]);
+        // Gerar nome do grupo: Especialidade - Cidade/UF[ - Zona] - N
+        $location = $locationLabel;
+
+        // Número sequencial entre os grupos da MESMA especialidade e cidade.
+        $countStmt = db()->prepare('SELECT COUNT(*) FROM whatsapp_groups WHERE specialty = ? AND city = ? AND state = ?');
+        $countStmt->execute([$specialty, $city, $state]);
         $groupNumber = (int)$countStmt->fetchColumn() + 1;
-        
+
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
-        // Buscar profissionais da especialidade para adicionar ao grupo
-        // Match progressivo e flexível:
-        // 1. Match exato (u.specialty = 'Fisioterapia Domiciliar')
-        // 2. Especialidade contém o termo buscado (u.specialty LIKE '%Fisioterapia Domiciliar%')
-        // 3. Match inverso: o termo buscado contém a especialidade do profissional
-        //    ('Fisioterapia Domiciliar' LIKE '%Fisioterapia%') → pega profissionais com specialty 'Fisioterapia'
-        // 4. Primeira palavra da especialidade (u.specialty LIKE 'Fisioterapia%')
-        //    → pega 'Fisioterapia Geral', 'Fisioterapia Esportiva', 'Fisioterapia do Trabalho', etc.
-        $firstWord = explode(' ', trim($specialty))[0];
-        $profsStmt = db()->prepare("
-            SELECT DISTINCT u.phone FROM users u
-            INNER JOIN user_roles ur ON ur.user_id = u.id
-            INNER JOIN roles r ON r.id = ur.role_id
-            WHERE u.status = 'active' AND r.slug = 'profissional'
-            AND (
-                u.specialty = ? 
-                OR u.specialty LIKE ? 
-                OR ? LIKE CONCAT('%', u.specialty, '%')
-                OR u.specialty LIKE ?
-                OR LOWER(u.specialty) LIKE LOWER(?)
-            )
-            AND u.phone IS NOT NULL AND u.phone != ''" . $testModeSqlFilter . "
-        ");
-        // Ex: specialty='Fisioterapia Domiciliar' → busca exato, LIKE '%Fisioterapia Domiciliar%', 
-        // 'Fisioterapia Domiciliar' LIKE '%Fisioterapia%' (match inverso), LIKE 'Fisioterapia%' (primeira palavra),
-        // e LIKE '%fisioterapia%' (case-insensitive por palavra-chave principal)
-        $profsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
-        $profPhones = $profsStmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        error_log("[DISPATCH] Busca de profissionais para '$specialty' (firstWord='$firstWord'): encontrados " . count($profPhones) . " telefones");
-        
-        // Limpar telefones (apenas dígitos) e remover duplicados
-        $participants = [];
-        foreach ($profPhones as $phone) {
-            $clean = preg_replace('/\D+/', '', $phone);
-            if (strlen($clean) >= 10) {
-                if (strlen($clean) === 10 || strlen($clean) === 11) {
-                    $clean = '55' . $clean;
-                }
-                $participants[] = $clean;
-            }
-        }
-        
-        // MODO DE TESTE: quando ligado, NÃO adiciona equipe MultiLife (instâncias, usuário logado, admins/captadores).
-        // Só entram no grupo os profissionais marcados como teste (já filtrados acima).
-        if (!$captacaoTestMode) {
-            // Adicionar números de instâncias conectadas
-            $connectedNumbers = whatsapp_get_all_connected_numbers();
-            foreach ($connectedNumbers as $connNum) {
-                if (!in_array($connNum, $participants, true)) {
-                    $participants[] = $connNum;
-                }
-            }
-
-            // Adicionar telefone do usuário logado
-            $stmtCurUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
-            $stmtCurUser->execute([auth_user_id()]);
-            $curUserRow = $stmtCurUser->fetch();
-            if ($curUserRow && !empty($curUserRow['phone'])) {
-                $curPhone = preg_replace('/\D+/', '', (string)$curUserRow['phone']);
-                if (strlen($curPhone) === 10 || strlen($curPhone) === 11) $curPhone = '55' . $curPhone;
-                if (strlen($curPhone) >= 12 && !in_array($curPhone, $participants, true)) {
-                    $participants[] = $curPhone;
-                }
-            }
-
-            // Adicionar telefones de usuários com permissão demands.manage
-            $stmtAdmins = db()->prepare("
-                SELECT DISTINCT u.phone FROM users u
-                INNER JOIN user_roles ur ON ur.user_id = u.id
-                INNER JOIN roles r ON r.id = ur.role_id
-                INNER JOIN role_permissions rp ON rp.role_id = r.id
-                INNER JOIN permissions p ON p.id = rp.permission_id
-                WHERE u.status = 'active' AND p.slug = 'demands.manage'
-                AND u.phone IS NOT NULL AND u.phone != ''
-            ");
-            $stmtAdmins->execute();
-            foreach ($stmtAdmins->fetchAll(PDO::FETCH_COLUMN) as $aPhone) {
-                $cleanA = preg_replace('/\D+/', '', (string)$aPhone);
-                if (strlen($cleanA) === 10 || strlen($cleanA) === 11) $cleanA = '55' . $cleanA;
-                if (strlen($cleanA) >= 12 && !in_array($cleanA, $participants, true)) {
-                    $participants[] = $cleanA;
-                }
-            }
-        }
-        
-        $participants = array_values(array_unique($participants));
+        // Profissionais da especialidade NA CIDADE/ZONA do card (cadastro + contatos)
+        // + equipe MultiLife. Ver app/dispatch_targets.php.
+        $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
+        $memberStats = $collected['stats'];
+        $participants = array_values(array_unique(array_merge(
+            $collected['phones'],
+            dispatch_team_phones($captacaoTestMode, auth_user_id())
+        )));
+        error_log("[DISPATCH] Participantes para '$specialty' em '$locationLabel': " . json_encode($memberStats));
         if (empty($participants)) {
             // No modo de teste, NÃO usar o número da equipe/admin como fallback.
             // Se não há profissional de teste marcado, aborta a captação com aviso claro.
@@ -885,7 +806,7 @@ if (count($groups) === 0) {
             if (!empty($newGroupJid)) {
                 // Salvar grupo no banco
                 $stmtNewGroup = db()->prepare(
-                    'INSERT INTO whatsapp_groups (name, evolution_group_jid, instance_name, contacts_count, specialty, city, state, status) VALUES (:n, :jid, :inst, :cnt, :sp, :city, :st, \'active\') ON DUPLICATE KEY UPDATE name = VALUES(name), instance_name = VALUES(instance_name)'
+                    'INSERT INTO whatsapp_groups (name, evolution_group_jid, instance_name, contacts_count, specialty, city, state, zone, status) VALUES (:n, :jid, :inst, :cnt, :sp, :city, :st, :zone, \'active\') ON DUPLICATE KEY UPDATE name = VALUES(name), instance_name = VALUES(instance_name), city = VALUES(city), state = VALUES(state), zone = VALUES(zone)'
                 );
                 $stmtNewGroup->execute([
                     'n' => $groupName,
@@ -895,6 +816,7 @@ if (count($groups) === 0) {
                     'sp' => $specialty,
                     'city' => $city,
                     'st' => $state,
+                    'zone' => $zone,
                 ]);
                 $newGroupDbId = (int)db()->lastInsertId();
 
@@ -938,35 +860,10 @@ if (count($groups) === 0) {
                 
                 error_log("[DISPATCH] ✅ Grupo criado automaticamente: '$groupName' (JID: $newGroupJid) com " . count($participants) . " participantes");
                 
-                // GARANTIA: Adicionar explicitamente os participantes ao grupo após criação
-                // Algumas versões da Evolution API ignoram o array 'participants' na criação do grupo.
-                // ITEM 17: Para volumes grandes, enfileirar em lotes de background (evita timeout).
-                try {
-                    usleep(1500000); // 1.5s delay para o grupo estabilizar
-                    if (count($participantsFormatted) > DEMAND_DISPATCH_BATCH_SIZE) {
-                        $rawPartPhones = array_map(fn($j) => preg_replace('/@.*/', '', (string)$j), $participantsFormatted);
-                        try {
-                            $enqC = demand_dispatch_enqueue_members(
-                                (int)$id,
-                                $newGroupJid,
-                                isset($newGroupDbId) ? (int)$newGroupDbId : null,
-                                $rawPartPhones,
-                                $usedInstanceName ?? (string)admin_setting_get('evolution.instance', ''),
-                                auth_user_id()
-                            );
-                            error_log("[DISPATCH] Participantes do novo grupo enfileirados em lote: run #{$enqC['run_id']}, {$enqC['total']} em {$enqC['jobs']} jobs.");
-                        } catch (Throwable $eqErr2) {
-                            error_log("[DISPATCH] Falha ao enfileirar (novo grupo), adição adiada para após o envio: " . $eqErr2->getMessage());
-                            $deferredMemberAdds[$newGroupJid] = array_merge($deferredMemberAdds[$newGroupJid] ?? [], $participantsFormatted);
-                        }
-                    } else {
-                        // Adiado para depois do envio e filtrado por quem falta
-                        // (o groupCreate normalmente já incluiu todos).
-                        $deferredMemberAdds[$newGroupJid] = array_merge($deferredMemberAdds[$newGroupJid] ?? [], $participantsFormatted);
-                    }
-                } catch (Exception $e) {
-                    error_log("[DISPATCH] Erro ao adicionar participantes explicitamente: " . $e->getMessage());
-                }
+                // GARANTIA: algumas versões da Evolution ignoram 'participants' na
+                // criação. Quem faltar é adicionado no bloco "ADICIONAR MEMBROS ANTES
+                // DO ENVIO" (mais abaixo), antes de a mensagem sair.
+                $memberTargets[$newGroupJid] = $participantsFormatted;
                 
                 // Configurar grupo para apenas admins enviarem mensagens
                 try {
@@ -1305,172 +1202,23 @@ if ($recentDispatch->fetch()) {
 // Isso garante que profissionais novos recebam a captação.
 // ====================================================================
 if (count($groups) > 0) {
-    demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'syncing_members', 'Sincronizando profissionais do grupo...');
-    $targetGroup = $groups[0];
-    $targetJid = (string)($targetGroup['evolution_group_jid'] ?? '');
-    
-    if ($targetJid !== '') {
+    demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'syncing_members', 'Verificando os profissionais de ' . $locationLabel . '...');
+    $targetJid = (string)($groups[0]['evolution_group_jid'] ?? '');
+    if ($targetJid !== '' && !isset($memberTargets[$targetJid])) {
+        // Grupo JÁ EXISTENTE: quem deve estar nele = profissionais da especialidade
+        // na cidade/zona do card (cadastro + contatos) + equipe. Quem faltar é
+        // adicionado ANTES do envio (bloco "ADICIONAR MEMBROS ANTES DO ENVIO").
         try {
-            // Usar a primeira instância conectada disponível para sincronizar membros
-            $syncApi = null;
-            $syncInstRows = db()->prepare("
-                SELECT instance_name, connection_status FROM whatsapp_instances 
-                WHERE status = 'active' 
-                ORDER BY CASE WHEN connection_status = 'connected' THEN 0 ELSE 1 END ASC, is_default DESC, id ASC
-            ");
-            $syncInstRows->execute();
-            $syncInstList = $syncInstRows->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($syncInstList as $syncInstRow) {
-                $syncInstName = (string)($syncInstRow['instance_name'] ?? '');
-                if ($syncInstName === '') continue;
-                try {
-                    $trySyncApi = new EvolutionApiV1(
-                        rtrim((string)admin_setting_get('evolution.base_url', ''), '/'),
-                        (string)admin_setting_get('evolution.api_key', ''),
-                        $syncInstName
-                    );
-                    $syncConn = $trySyncApi->connectionState();
-                    $syncConnJson = $syncConn['json'] ?? [];
-                    $syncState = (string)($syncConnJson['instance']['state'] ?? ($syncConnJson['state'] ?? ''));
-                    if (in_array(strtolower(trim($syncState)), ['open', 'connected'], true)) {
-                        $syncApi = $trySyncApi;
-                        break;
-                    }
-                } catch (Throwable $e) { continue; }
-            }
-            // Fallback: usar instância marcada como connected no banco
-            if ($syncApi === null) {
-                foreach ($syncInstList as $syncInstRow) {
-                    if (($syncInstRow['connection_status'] ?? '') === 'connected' && ($syncInstRow['instance_name'] ?? '') !== '') {
-                        try {
-                            $syncApi = new EvolutionApiV1(
-                                rtrim((string)admin_setting_get('evolution.base_url', ''), '/'),
-                                (string)admin_setting_get('evolution.api_key', ''),
-                                (string)$syncInstRow['instance_name']
-                            );
-                            break;
-                        } catch (Throwable $e) { /* skip */ }
-                    }
-                }
-            }
-            if ($syncApi === null) {
-                $syncApi = new EvolutionApiV1(); // último fallback
-            }
-            
-            // Buscar profissionais compatíveis com a especialidade (mesmo match progressivo e flexível)
-            $firstWord = explode(' ', trim($specialty))[0];
-            $syncProfsStmt = db()->prepare("
-                SELECT DISTINCT u.phone FROM users u
-                INNER JOIN user_roles ur ON ur.user_id = u.id
-                INNER JOIN roles r ON r.id = ur.role_id
-                WHERE u.status = 'active' AND r.slug = 'profissional'
-                AND (
-                    u.specialty = ? 
-                    OR u.specialty LIKE ? 
-                    OR ? LIKE CONCAT('%', u.specialty, '%')
-                    OR u.specialty LIKE ?
-                    OR LOWER(u.specialty) LIKE LOWER(?)
-                )
-                AND u.phone IS NOT NULL AND u.phone != ''" . $testModeSqlFilter . "
-            ");
-            $syncProfsStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWord . '%', '%' . $firstWord . '%']);
-            $syncProfPhones = $syncProfsStmt->fetchAll(PDO::FETCH_COLUMN);
-            
-            $phonesToAdd = [];
-            foreach ($syncProfPhones as $phone) {
-                $clean = preg_replace('/\D+/', '', $phone);
-                if (strlen($clean) >= 10) {
-                    if (strlen($clean) === 10 || strlen($clean) === 11) {
-                        $clean = '55' . $clean;
-                    }
-                    $phonesToAdd[] = $clean . '@s.whatsapp.net';
-                }
-            }
-            
-            // MODO DE TESTE: quando ligado, NÃO adiciona equipe MultiLife (instâncias, usuário logado, admins/captadores).
-            // Só entram no grupo os profissionais marcados como teste (já filtrados acima).
-            if (!$captacaoTestMode) {
-                // Adicionar números de instâncias conectadas também
-                $instanceNumbers = whatsapp_get_all_connected_numbers();
-                foreach ($instanceNumbers as $num) {
-                    $phonesToAdd[] = $num . '@s.whatsapp.net';
-                }
-
-                // Adicionar o telefone do usuário que está realizando a captação
-                $stmtSyncUser = db()->prepare("SELECT phone FROM users WHERE id = ?");
-                $stmtSyncUser->execute([auth_user_id()]);
-                $syncUserRow = $stmtSyncUser->fetch();
-                if ($syncUserRow && !empty($syncUserRow['phone'])) {
-                    $syncUserPhone = preg_replace('/\D+/', '', (string)$syncUserRow['phone']);
-                    if (strlen($syncUserPhone) === 10 || strlen($syncUserPhone) === 11) {
-                        $syncUserPhone = '55' . $syncUserPhone;
-                    }
-                    if (strlen($syncUserPhone) >= 12) {
-                        $phonesToAdd[] = $syncUserPhone . '@s.whatsapp.net';
-                    }
-                }
-
-                // Adicionar telefones de usuários com permissão de gerenciar captação
-                $stmtSyncAdmins = db()->prepare("
-                    SELECT DISTINCT u.phone FROM users u
-                    INNER JOIN user_roles ur ON ur.user_id = u.id
-                    INNER JOIN roles r ON r.id = ur.role_id
-                    INNER JOIN role_permissions rp ON rp.role_id = r.id
-                    INNER JOIN permissions p ON p.id = rp.permission_id
-                    WHERE u.status = 'active' 
-                    AND p.slug = 'demands.manage'
-                    AND u.phone IS NOT NULL AND u.phone != ''
-                ");
-                $stmtSyncAdmins->execute();
-                foreach ($stmtSyncAdmins->fetchAll(PDO::FETCH_COLUMN) as $adminPh) {
-                    $cleanAdmin = preg_replace('/\D+/', '', (string)$adminPh);
-                    if (strlen($cleanAdmin) === 10 || strlen($cleanAdmin) === 11) {
-                        $cleanAdmin = '55' . $cleanAdmin;
-                    }
-                    if (strlen($cleanAdmin) >= 12) {
-                        $phonesToAdd[] = $cleanAdmin . '@s.whatsapp.net';
-                    }
-                }
-            }
-            
-            $phonesToAdd = array_values(array_unique($phonesToAdd));
-            
-            if (!empty($phonesToAdd)) {
-                // ITEM 17: Processamento em lotes/background.
-                // Para grandes volumes, adicionar todos de forma síncrona causa timeout.
-                // Se houver muitos profissionais, enfileiramos a adição em lotes de background.
-                // Extrair só os dígitos (o helper normaliza) a partir dos JIDs.
-                $rawPhones = array_map(function ($jid) {
-                    return preg_replace('/@.*/', '', (string)$jid);
-                }, $phonesToAdd);
-
-                if (count($rawPhones) > DEMAND_DISPATCH_BATCH_SIZE) {
-                    // Volume alto: enfileirar em background (não bloqueia a requisição)
-                    $syncInstanceName = method_exists($syncApi, 'getInstance') ? $syncApi->getInstance() : (string)admin_setting_get('evolution.instance', '');
-                    try {
-                        $enq = demand_dispatch_enqueue_members(
-                            (int)$id,
-                            $targetJid,
-                            isset($targetGroup['id']) ? (int)$targetGroup['id'] : null,
-                            $rawPhones,
-                            $syncInstanceName,
-                            auth_user_id()
-                        );
-                        error_log("[DISPATCH] Adição em lote enfileirada: run #{$enq['run_id']}, {$enq['total']} profissionais em {$enq['jobs']} jobs de background.");
-                    } catch (Throwable $eqErr) {
-                        error_log("[DISPATCH] Falha ao enfileirar lote, adição adiada para depois do envio: " . $eqErr->getMessage());
-                        $deferredMemberAdds[$targetJid] = array_merge($deferredMemberAdds[$targetJid] ?? [], $phonesToAdd);
-                    }
-                } else {
-                    // Volume pequeno: adiado para DEPOIS do envio, e só de quem
-                    // ainda não é membro (re-adicionar derruba a sessão).
-                    $deferredMemberAdds[$targetJid] = array_merge($deferredMemberAdds[$targetJid] ?? [], $phonesToAdd);
-                    error_log("[DISPATCH] Sincronização de membros: " . count($phonesToAdd) . " números avaliados após o envio em $targetJid");
-                }
-            }
-        } catch (Exception $e) {
-            error_log("[DISPATCH] Erro ao sincronizar membros do grupo: " . $e->getMessage());
-            // Não bloquear o dispatch por causa disso
+            $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
+            $memberStats = $collected['stats'];
+            $all = array_values(array_unique(array_merge(
+                $collected['phones'],
+                dispatch_team_phones($captacaoTestMode, auth_user_id())
+            )));
+            $memberTargets[$targetJid] = array_map(static fn($p) => $p . '@s.whatsapp.net', $all);
+            error_log("[DISPATCH] Membros esperados em $targetJid: " . count($all) . ' ' . json_encode($memberStats));
+        } catch (Throwable $e) {
+            error_log("[DISPATCH] Erro ao montar lista de membros: " . $e->getMessage());
         }
     }
 }
@@ -1729,67 +1477,60 @@ if ($firstGroupJid !== '') {
 }
 
 // ============================================================================
-// GARANTIA DE MEMBROS EM GRUPO JÁ EXISTENTE
+// ADICIONAR MEMBROS ANTES DO ENVIO
 // ----------------------------------------------------------------------------
-// A criação de grupo (mais acima) só roda quando NÃO existe grupo. Quando o
-// grupo já existe (reenvio para a mesma especialidade/local), o fluxo antigo
-// apenas enviava a mensagem e NUNCA adicionava os profissionais — por isso, no
-// modo de teste, o profissional de teste nunca entrava no grupo existente.
-// Aqui garantimos a adição dos profissionais da especialidade (respeitando o
-// modo de teste) em TODOS os grupos deste disparo, antes de enviar a mensagem.
+// Ordem correta: (1) adiciona ao grupo quem ainda não está, (2) depois envia a
+// mensagem. Antes a mensagem saía primeiro e quem entrava depois não a recebia.
+// Só adiciona quem AINDA NÃO é membro (re-adicionar membros existentes ou o
+// próprio número derruba a sessão na Evolution). Lotes de 50 com pausa curta,
+// no mesmo job (sem fila extra) — o worker não tem limite de tempo.
 // ============================================================================
-if ($api !== null) {
+$addedTotal = 0;
+$addErrors = 0;
+foreach ($memberTargets as $addJid => $addList) {
+    $addList = array_values(array_unique($addList));
+    if (empty($addList)) {
+        continue;
+    }
     try {
-        $firstWordGuard = explode(' ', trim($specialty))[0];
-        $profsGuardStmt = db()->prepare("
-            SELECT DISTINCT u.phone FROM users u
-            INNER JOIN user_roles ur ON ur.user_id = u.id
-            INNER JOIN roles r ON r.id = ur.role_id
-            WHERE u.status = 'active' AND r.slug = 'profissional'
-            AND (
-                u.specialty = ?
-                OR u.specialty LIKE ?
-                OR ? LIKE CONCAT('%', u.specialty, '%')
-                OR u.specialty LIKE ?
-                OR LOWER(u.specialty) LIKE LOWER(?)
-            )
-            AND u.phone IS NOT NULL AND u.phone != ''" . $testModeSqlFilter . "
-        ");
-        $profsGuardStmt->execute([$specialty, '%' . $specialty . '%', $specialty, $firstWordGuard . '%', '%' . $firstWordGuard . '%']);
-        $guardPhones = $profsGuardStmt->fetchAll(PDO::FETCH_COLUMN);
-
-        $guardParticipants = [];
-        foreach ($guardPhones as $gp) {
-            $clean = preg_replace('/\D+/', '', (string)$gp);
-            if (strlen($clean) === 10 || strlen($clean) === 11) {
-                $clean = '55' . $clean;
+        $addPicked = dispatch_pick_sender_for_group((string)$addJid, $apiInstanceName, $instances ?? [], $baseUrl, $apiKey);
+        if ($addPicked === null) {
+            error_log("[DISPATCH] $addJid: nenhuma instância conectada no grupo para adicionar membros.");
+            continue;
+        }
+        [$addApi, $addInstName] = $addPicked;
+        $missing = dispatch_missing_members($addApi, (string)$addJid, $addList, dispatch_instance_number($addInstName));
+        if (empty($missing)) {
+            error_log("[DISPATCH] $addJid: todos os " . count($addList) . " números já são membros.");
+            continue;
+        }
+        demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'adding_members', 'Adicionando ' . count($missing) . ' profissional(is) ao grupo antes de enviar...');
+        foreach (array_chunk($missing, DEMAND_DISPATCH_BATCH_SIZE) as $chunkIdx => $chunk) {
+            if ($chunkIdx > 0) {
+                sleep(2); // respiro entre lotes para não derrubar a sessão
             }
-            if (strlen($clean) >= 12) {
-                $guardParticipants[] = $clean . '@s.whatsapp.net';
+            $addRes = $addApi->updateGroupMembers((string)$addJid, 'add', $chunk);
+            $addCode = (int)($addRes['status'] ?? 0);
+            if ($addCode >= 200 && $addCode < 300) {
+                $addedTotal += count($chunk);
+            } else {
+                $addErrors += count($chunk);
+                error_log("[DISPATCH] $addJid: falha ao adicionar lote via '$addInstName': " . dispatch_evolution_error_text($addRes));
             }
         }
-        $guardParticipants = array_values(array_unique($guardParticipants));
-
-        if (!empty($guardParticipants)) {
-            $guardJids = [];
-            foreach ($toSend as $tsRow) {
-                $gj = (string)($tsRow['evolution_group_jid'] ?? '');
-                if ($gj !== '' && !in_array($gj, $guardJids, true)) {
-                    $guardJids[] = $gj;
-                }
-            }
-            foreach ($guardJids as $gj) {
-                // Adiado para depois do envio (ver "ADIÇÕES ADIADAS").
-                $deferredMemberAdds[$gj] = array_merge($deferredMemberAdds[$gj] ?? [], $guardParticipants);
-                error_log("[DISPATCH] Garantia de membros em '$gj': " . count($guardParticipants) . " números avaliados após o envio (testMode=" . ($captacaoTestMode ? '1' : '0') . ")");
-            }
-        } elseif ($captacaoTestMode) {
-            error_log("[DISPATCH] Modo de teste ligado e nenhum profissional de teste encontrado para '$specialty' — nenhum membro adicionado ao grupo existente.");
-        }
-    } catch (Throwable $guardErr) {
-        error_log("[DISPATCH] Erro no bloco de garantia de membros: " . $guardErr->getMessage());
+        error_log("[DISPATCH] $addJid: $addedTotal novo(s) membro(s) adicionados antes do envio via '$addInstName'.");
+    } catch (Throwable $addErr) {
+        error_log("[DISPATCH] Erro ao adicionar membros em $addJid: " . $addErr->getMessage());
     }
 }
+if ($addedTotal > 0) {
+    // Tempo para o WhatsApp distribuir as chaves do grupo aos novos membros;
+    // sem isso a mensagem pode não ser entregue a quem acabou de entrar.
+    sleep(3);
+}
+try {
+    db()->prepare('UPDATE demand_dispatch_runs SET added_count = :a WHERE id = :id')->execute(['a' => $addedTotal, 'id' => $DISPATCH_RUN_ID]);
+} catch (Throwable $e) {}
 
 $updOne = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = :st, error_message = :err WHERE id = :id');
 
@@ -1969,6 +1710,7 @@ foreach ($toSend as $row) {
             }
             
             $sent++;
+            whatsapp_health_record((string)$sendInstName, 'send_ok', 'open', null);
             
             // Salvar na chat_messages para aparecer no chat
             try {
@@ -1985,9 +1727,13 @@ foreach ($toSend as $row) {
             error_log("[DISPATCH] Falha definitiva ao enviar para '$jid': $errText");
             $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($errText, 0, 255, '...'), 'id' => $logId]);
             $errCount++;
+            whatsapp_health_record((string)$sendInstName, 'send_error', null, $errText);
         }
     } catch (Throwable $e) {
         $lastDispatchError = $e->getMessage();
+        if (isset($sendInstName) && $sendInstName !== '') {
+            whatsapp_health_record((string)$sendInstName, 'send_error', null, $e->getMessage());
+        }
         $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($e->getMessage(), 0, 255, ''), 'id' => $logId]);
         $errCount++;
         continue;
@@ -1999,27 +1745,8 @@ foreach ($toSend as $row) {
 // NÃO é membro (nunca o próprio número da instância). Se ninguém faltar, não
 // faz nenhuma chamada de adição — que é o que derrubava a sessão.
 // ============================================================================
-foreach ($deferredMemberAdds as $addJid => $addList) {
-    try {
-        $addList = array_values(array_unique($addList));
-        if (empty($addList)) continue;
-        $addPicked = dispatch_pick_sender_for_group((string)$addJid, $apiInstanceName, $instances ?? [], $baseUrl, $apiKey);
-        if ($addPicked === null) {
-            error_log("[DISPATCH] Adição adiada em $addJid ignorada: nenhuma instância conectada no grupo.");
-            continue;
-        }
-        [$addApi, $addInstName] = $addPicked;
-        $missing = dispatch_missing_members($addApi, (string)$addJid, $addList, dispatch_instance_number($addInstName));
-        if (empty($missing)) {
-            error_log("[DISPATCH] $addJid: todos os " . count($addList) . " números já são membros — nenhuma adição feita.");
-            continue;
-        }
-        $addRes = $addApi->updateGroupMembers((string)$addJid, 'add', $missing);
-        error_log("[DISPATCH] $addJid: adicionados " . count($missing) . " novos membros via '$addInstName': HTTP " . (int)($addRes['status'] ?? 0));
-    } catch (Throwable $addErr) {
-        error_log("[DISPATCH] Erro na adição adiada em $addJid: " . $addErr->getMessage());
-    }
-}
+// (As adições de membros agora acontecem ANTES do envio — ver bloco
+// "ADICIONAR MEMBROS ANTES DO ENVIO". Não há mais adição depois da mensagem.)
 
 // Atualizar status da sub-solicitação somente se pelo menos um envio foi bem-sucedido
 if ($subRequest !== null && $sent > 0) {
@@ -2027,11 +1754,15 @@ if ($subRequest !== null && $sent > 0) {
     $updSub->execute(['id' => $subRequestId]);
 }
 
-// Finaliza o run (background) com o resultado, lido pelo popup de progresso.
+// Finaliza o run (background) com o resultado, lido pelo acompanhamento de progresso.
+$groupNames = implode(', ', array_map(static fn($g) => (string)($g['name'] ?? ''), $groups));
+$summary = ' Grupo: ' . $groupNames . '.'
+    . ($addedTotal > 0 ? ' ' . $addedTotal . ' profissional(is) adicionado(s) antes do envio.' : '')
+    . ($addErrors > 0 ? ' ' . $addErrors . ' não puderam ser adicionados.' : '');
 if ($sent > 0 && $errCount === 0) {
-    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed', 'Captação enviada via WhatsApp.', $sent, $errCount);
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed', 'Captação enviada via WhatsApp.' . $summary, $sent, $errCount);
 } elseif ($sent > 0) {
-    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed_with_errors', 'Captação enviada para alguns grupos, mas houve erros em outros.', $sent, $errCount);
+    demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed_with_errors', 'Captação enviada para alguns grupos, mas houve erros em outros.' . $summary, $sent, $errCount);
 } else {
     $failMsg = 'Falha ao enviar captação via WhatsApp'
         . ($apiInstanceName ? " (instância '$apiInstanceName')" : '')

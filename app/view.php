@@ -85,7 +85,12 @@ function view_header(string $title): void
             ['title' => 'RH', 'path' => '/hr_dashboard.php', 'perm' => 'hr.manage'],
             ['title' => 'Usuários', 'path' => '/users_list.php', 'perm' => 'users.manage'],
             ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php', 'perm' => 'chat.manage'],
-            ['title' => 'Contatos', 'path' => '/imported_contacts_list.php', 'perm' => 'chat.manage'],
+            ['title' => 'Contatos', 'path' => '/imported_contacts_list.php', 'perm' => ['chat.manage', 'demands.manage']],
+            // Cadastros básicos usados na captação (captador tem 'cadastros.manage').
+            ['title' => 'Especialidades', 'path' => '/specialties_list.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
+            ['title' => 'Tipos de Serviço', 'path' => '/service_types_list.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
+            ['title' => 'Operadoras', 'path' => '/health_insurers_config.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
+            ['title' => 'Clientes', 'path' => '/clients_config.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
             ['title' => 'Pendências', 'path' => '/pending_items_list.php', 'perm' => null],
             ['title' => 'WhatsApp', 'path' => '/my_whatsapp.php', 'perm' => null],
             ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php', 'perm' => 'admin.settings.manage'],
@@ -492,6 +497,12 @@ function view_header(string $title): void
     if ($flashSuccess !== '') {
         echo '<div class="alert alertSuccess" role="alert">' . h($flashSuccess) . '</div>';
     }
+
+    // Alerta explícito quando uma instância do WhatsApp está em loop/instável,
+    // com o passo a passo do que fazer (ver app/whatsapp_health.php).
+    if ($user && function_exists('whatsapp_health_banner_html')) {
+        try { echo whatsapp_health_banner_html(); } catch (Throwable $e) { error_log('[WHATSAPP_HEALTH] banner: ' . $e->getMessage()); }
+    }
 }
 
 function view_footer(): void
@@ -639,6 +650,11 @@ function view_footer(): void
         echo '});';
         
         echo '</script>';
+
+        // Acompanhamento global das captações em andamento (sobrevive a recarregar/trocar de página).
+        if (function_exists('dispatch_tracker_render')) {
+            try { dispatch_tracker_render(); } catch (Throwable $e) { error_log('[DISPATCH_TRACKER] ' . $e->getMessage()); }
+        }
     }
     
     // Modal de histórico de página

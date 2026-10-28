@@ -36,5 +36,9 @@ return [
         'base_url' => $env('APP_BASE_URL', ''),
         'session_name' => $env('APP_SESSION_NAME', 'multilife_session') ?? 'multilife_session',
         'session_lifetime_seconds' => $envInt('APP_SESSION_LIFETIME_SECONDS', 60 * 60),
+        // Chave da criptografia de dados sensíveis (ex.: senha do sistema externo do
+        // profissional). Fica versionada junto com o código para NUNCA se perder.
+        // NÃO altere este valor: as senhas já gravadas deixariam de abrir.
+        'secret_key' => $env('MULTILIFE_SECRET_KEY', '6iw/4e1+IzJbaHl0mvvBDL6J7FjWfT0+S+fq8nb0s/0='),
     ],
 ];

@@ -7,6 +7,17 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('users.manage');
 
+// Sem 'roles.manage' (ex.: captador), só pode criar Profissional/Paciente.
+// Validado ANTES de inserir para não deixar usuário criado sem perfil.
+foreach ([(string)($_POST['role'] ?? ''), (string)($_POST['auto_role'] ?? ''), (string)(($_POST['roles'] ?? [])[0] ?? '')] as $reqRole) {
+    $reqRole = trim($reqRole);
+    if ($reqRole !== '' && !rbac_can_assign_role($reqRole)) {
+        flash_set('error', 'Você não tem permissão para criar usuários com o perfil "' . $reqRole . '".');
+        header('Location: /users_create.php');
+        exit;
+    }
+}
+
 $name = trim((string)($_POST['name'] ?? ''));
 $email = trim((string)($_POST['email'] ?? ''));
 $phoneRaw = trim((string)($_POST['phone'] ?? ''));

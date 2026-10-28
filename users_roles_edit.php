@@ -18,6 +18,7 @@ if (!$user) {
     header('Location: /users_list.php');
     exit;
 }
+rbac_require_manage_target_user((int)$user['id']);
 
 // Verificar se o usuario e profissional para ajustar link de volta
 $_editUserRoles2 = [];

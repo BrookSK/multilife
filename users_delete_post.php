@@ -19,6 +19,8 @@ if (!$old) {
     exit;
 }
 
+rbac_require_manage_target_user((int)$old['id']);
+
 if (auth_user_id() === (int)$old['id']) {
     flash_set('error', 'Você não pode excluir seu próprio usuário.');
     header('Location: /users_list.php');

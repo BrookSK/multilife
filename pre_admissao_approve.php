@@ -45,6 +45,22 @@ $db = db();
 try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN external_login VARCHAR(190) NULL"); } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN external_password VARCHAR(190) NULL"); } catch (Throwable $e) {}
 try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN orientation_id BIGINT UNSIGNED NULL"); } catch (Throwable $e) {}
+// A senha externa passa a ser gravada CRIPTOGRAFADA (texto maior que o original).
+try { $db->exec("ALTER TABLE patient_assignments MODIFY COLUMN external_password VARCHAR(500) NULL"); } catch (Throwable $e) {}
+// Criptografa senhas antigas que ainda estão em texto puro (uma vez; idempotente).
+try {
+    $legacy = $db->query("SELECT id, external_password FROM patient_assignments
+        WHERE external_password IS NOT NULL AND external_password <> '' AND external_password NOT LIKE 'enc:v1:%' LIMIT 500")->fetchAll(PDO::FETCH_ASSOC);
+    $updLegacy = $db->prepare('UPDATE patient_assignments SET external_password = ? WHERE id = ?');
+    foreach ($legacy as $lg) {
+        $enc = secure_encrypt((string)$lg['external_password']);
+        if ($enc !== null && strncmp($enc, SECURE_STORE_PREFIX, strlen(SECURE_STORE_PREFIX)) === 0) {
+            $updLegacy->execute([$enc, (int)$lg['id']]);
+        }
+    }
+} catch (Throwable $e) { error_log('[PRE_ADMISSAO] Criptografia de senhas antigas: ' . $e->getMessage()); }
+// frequency era ENUM e rejeitava '3x_semana' etc. (o UPDATE da autorização falhava calado).
+authorization_requests_ensure_frequency_column();
 
 try {
     $db->beginTransaction();
@@ -54,7 +70,7 @@ try {
         SELECT pa.id, pa.patient_id, pa.professional_user_id, pa.specialty, pa.service_type, 
                pa.session_quantity, pa.session_frequency, 
                COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
-               pa.agreed_value, pa.authorized_value,
+               pa.agreed_value, pa.authorized_value, pa.notes,
                p.full_name as patient_name, u.name as professional_name
         FROM patient_assignments pa
         INNER JOIN patients p ON p.id = pa.patient_id
@@ -88,7 +104,7 @@ try {
         $weekdaysJson,
         $healthInsurerId,
         $externalLogin !== '' ? $externalLogin : null,
-        $externalPassword !== '' ? $externalPassword : null,
+        $externalPassword !== '' ? secure_encrypt($externalPassword) : null, // gravada criptografada
         $orientationId > 0 ? $orientationId : null,
         $assignmentId,
     ]);
@@ -196,6 +212,10 @@ try {
         }
         
         $totalSessions = $formIsIndefinite ? count($sessionDates) : $formTotalSessions;
+        // Mantém o registro do prontuário/WhatsApp com os valores NOVOS (antes usava os
+        // lidos do banco antes da atualização, mostrando quantidade/frequência antigas).
+        $assignment['session_quantity'] = $formIsIndefinite ? 0 : $formTotalSessions; // 0 = tempo indefinido
+        $assignment['session_frequency'] = $formFrequency;
         error_log("DEBUG APROVAÇÃO: Usando dados do formulário - freq='$formFrequency' start='$formStartDate' total=$formTotalSessions sessões geradas=" . count($sessionDates));
     }
     
@@ -284,6 +304,38 @@ try {
     }
     
     error_log("DEBUG APROVAÇÃO: Criadas " . $assignment['session_quantity'] . " pendências de documentos");
+
+    // VALORES com o nº REAL de sessões (só conhecido agora). Na autorização o total
+    // de sessões ainda era 1 (padrão), então o valor autorizado por sessão e a despesa
+    // do profissional ficavam errados. Tempo indefinido: mantém os valores por sessão.
+    if (!$formIsIndefinite && $totalSessions > 0) {
+        try {
+            $arStmt = $db->prepare("SELECT proposal_value FROM authorization_requests
+                WHERE demand_id = ? AND patient_id = ? AND status = 'autorizacao_aprovada'
+                ORDER BY id DESC LIMIT 1");
+            $arStmt->execute([$demandId, $assignment['patient_id']]);
+            $authorizedTotal = (float)($arStmt->fetchColumn() ?: 0);
+            $agreedPerSessionPa = (float)($assignment['agreed_value'] ?? $assignment['payment_value'] ?? 0);
+            if ($authorizedTotal > 0) {
+                $db->prepare('UPDATE patient_assignments SET authorized_value = ? WHERE id = ?')
+                    ->execute([round($authorizedTotal / $totalSessions, 2), $assignmentId]);
+            }
+            if ($agreedPerSessionPa > 0) {
+                $db->prepare("UPDATE financial_entries SET amount = ?, description = ?
+                    WHERE assignment_id = ? AND entry_type = 'expense' AND status = 'pending'")
+                    ->execute([
+                        round($agreedPerSessionPa * $totalSessions, 2),
+                        'Despesa - Atendimento #' . $assignmentId . ' - ' . $totalSessions . ' sessões',
+                        $assignmentId,
+                    ]);
+                $db->prepare("UPDATE financial_entries SET description = ?
+                    WHERE assignment_id = ? AND entry_type = 'income' AND status = 'pending'")
+                    ->execute(['Receita - Atendimento #' . $assignmentId . ' - ' . $totalSessions . ' sessões', $assignmentId]);
+            }
+        } catch (Throwable $e) {
+            error_log('DEBUG APROVAÇÃO: Falha ao recalcular valores: ' . $e->getMessage());
+        }
+    }
     
     // Registrar no prontuário do paciente (usando tabela existente)
     $currentUser = auth_user();

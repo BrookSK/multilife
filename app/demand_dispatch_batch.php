@@ -220,6 +220,20 @@ function demand_dispatch_enqueue_members(
  */
 function demand_dispatch_ensure_run_columns(): void
 {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    // Atalho: o endpoint de progresso chama isto a cada poucos segundos; se a
+    // última coluna e o status 'failed' já existem, não roda DDL.
+    try {
+        $col = db()->query("SHOW COLUMNS FROM demand_dispatch_runs LIKE 'status'")->fetch(PDO::FETCH_ASSOC);
+        $hasResult = (bool)db()->query("SHOW COLUMNS FROM demand_dispatch_runs LIKE 'result_message'")->fetch();
+        if ($col && $hasResult && strpos((string)$col['Type'], 'failed') !== false) {
+            return;
+        }
+    } catch (Throwable $e) { /* tabela ausente: cria abaixo */ }
     demand_dispatch_ensure_tables();
     // Cada ADD é tentado isoladamente: versões sem "ADD COLUMN IF NOT EXISTS"
     // simplesmente falham no try/catch sem abortar as demais.
@@ -261,14 +275,55 @@ function demand_dispatch_enqueue_full(int $demandId, int $subRequestId, ?int $us
     ]);
     $runId = (int)db()->lastInsertId();
 
-    integration_job_enqueue('evolution', 'demand_dispatch_run', [
+    $jobId = integration_job_enqueue('evolution', 'demand_dispatch_run', [
         'run_id' => $runId,
         'demand_id' => $demandId,
         'sub_request_id' => $subRequestId,
         'user_id' => $userId,
     ]);
 
+    // Não espera o próximo ciclo do cron: aciona o worker AGORA só para este job.
+    demand_dispatch_kick_worker($jobId);
+
     return $runId;
+}
+
+/**
+ * Dispara o worker (cron/integration_jobs_run.php) em background para UM job,
+ * sem esperar a resposta. Antes a captação ficava parada na fila até o próximo
+ * ciclo do cron (e atrás de outros jobs). Se falhar, o cron normal processa.
+ */
+function demand_dispatch_kick_worker(int $jobId): void
+{
+    if ($jobId <= 0 || !function_exists('curl_init')) {
+        return;
+    }
+    $cronToken = trim((string)admin_setting_get('cron.token', ''));
+    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+    if ($cronToken === '' || $host === '') {
+        return;
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $url = $scheme . '://' . $host . '/cron/integration_jobs_run.php?' . http_build_query([
+        'token' => $cronToken,
+        'job_id' => $jobId,
+    ]);
+    try {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_CONNECTTIMEOUT => 2,
+            // Só precisa entregar a requisição; o worker usa ignore_user_abort.
+            CURLOPT_TIMEOUT_MS => 800,
+            CURLOPT_NOSIGNAL => true,
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
+    } catch (Throwable $e) {
+        error_log('[DISPATCH] Falha ao acionar worker imediato: ' . $e->getMessage());
+    }
 }
 
 /**
@@ -317,4 +372,27 @@ function demand_dispatch_run_finish(int $runId, string $status, string $message,
             'id' => $runId,
         ]);
     } catch (Throwable $e) { /* ignore */ }
+}
+
+/**
+ * authorization_requests.frequency nasceu como ENUM('single','daily','weekly',
+ * 'biweekly','monthly','custom'), mas o chat e a pré-admissão gravam os códigos do
+ * sistema ('3x_semana', 'quinzenal'...). Converte para VARCHAR (idempotente).
+ * Chamar FORA de transação (DDL faz commit implícito no MySQL).
+ */
+function authorization_requests_ensure_frequency_column(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    try {
+        $col = db()->query("SHOW COLUMNS FROM authorization_requests LIKE 'frequency'")->fetch(PDO::FETCH_ASSOC);
+        if ($col && stripos((string)$col['Type'], 'enum') === 0) {
+            db()->exec("ALTER TABLE authorization_requests MODIFY COLUMN frequency VARCHAR(30) NOT NULL DEFAULT 'weekly'");
+        }
+    } catch (Throwable $e) {
+        error_log('[AUTH_FREQUENCY] ' . $e->getMessage());
+    }
 }

@@ -226,8 +226,8 @@ function process_single_authorization(int $authId, int $emailId): array
                 VALUES (:did, :pid, :puid, :abuid, :spec, :stype, :sq, :sfreq, :pv, :av, :authv, :notes, 'confirmed', NOW())"
             );
             
-            // Valores por sessão
-            $agreedPerSession = $totalSessions > 0 ? ($agreedValue / $totalSessions) : $agreedValue;
+            // Valores por sessão (agreed_value do chat já é POR SESSÃO; não dividir).
+            $agreedPerSession = $agreedValue;
             $proposalPerSession = $totalSessions > 0 ? ($proposalValue / $totalSessions) : $proposalValue;
             
             $insAssignment->execute([

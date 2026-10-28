@@ -7,6 +7,8 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('demands.manage');
 
+demand_form_ensure_schema();
+
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 $stmt = db()->prepare(
@@ -123,6 +125,8 @@ if ($street !== '') {
 }
 if ($neighborhood !== '') $locParts[] = $neighborhood;
 $cityState = $loc !== '' ? ($loc . ($uf !== '' ? '/' . $uf : '')) : ($uf !== '' ? $uf : '');
+$zoneTxt = trim((string)($d['location_zone'] ?? ''));
+if ($cityState !== '' && $zoneTxt !== '') $cityState .= ' (' . $zoneTxt . ')';
 if ($cityState !== '') $locParts[] = $cityState;
 // Fallback: endereço informado como campo único no card manual (ainda não separado pela IA).
 $locationRaw = trim((string)($d['location_raw'] ?? ''));
@@ -170,6 +174,23 @@ echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Lo
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-')) . '</span>';
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Responsável:</strong> ' . h($assumedBy) . '</span>';
 echo '</div>';
+
+// O QUE FALTA no card (explícito): bloqueia a captação ou deixa a mensagem incompleta.
+if (in_array($st, ['tratamento_manual', 'aguardando_captacao', 'em_captacao'], true)) {
+    $missingNow = demand_missing_fields($d);
+    if ($missingNow['blocking'] || $missingNow['recommended']) {
+        $isBlocking = (bool)$missingNow['blocking'];
+        echo '<div style="margin-top:12px;padding:12px 14px;border-radius:8px;border:1px solid ' . ($isBlocking ? 'hsl(0,84%,60%)' : 'hsl(36,90%,55%)') . ';background:' . ($isBlocking ? 'hsla(0,84%,60%,.08)' : 'hsla(36,90%,55%,.08)') . ';font-size:13px;line-height:1.5">';
+        if ($isBlocking) {
+            echo '<div><strong>⚠️ Captação bloqueada — falta:</strong> ' . h(implode(', ', $missingNow['blocking'])) . '</div>';
+        }
+        if ($missingNow['recommended']) {
+            echo '<div><strong>Recomendado completar (a mensagem sai incompleta):</strong> ' . h(implode(', ', $missingNow['recommended'])) . '</div>';
+        }
+        echo '<a class="btn btnPrimary" style="margin-top:8px;display:inline-block" href="/demands_edit.php?id=' . (int)$d['id'] . '">Completar dados do card</a>';
+        echo '</div>';
+    }
+}
 
 // Faixa verde quando demanda assumida
 if ($d['assumed_by_user_id'] && $d['assumed_by_name']) {
@@ -642,93 +663,16 @@ if (count($subRequests) > 1) {
 // continuar usando o sistema enquanto a captação roda em segundo plano.
 // ============================================================================
 ?>
-<div id="dispatchProgress" style="display:none;position:fixed;right:20px;bottom:20px;z-index:9999;width:360px;max-width:calc(100vw - 40px);background:#fff;border:1px solid hsl(var(--border));border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.18);overflow:hidden;font-family:inherit">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:hsl(var(--primary));color:#fff">
-    <strong id="dispatchProgressTitle" style="font-size:14px">Disparando captação…</strong>
-    <button type="button" id="dispatchProgressClose" aria-label="Fechar" style="background:transparent;border:0;color:#fff;font-size:18px;line-height:1;cursor:pointer">&times;</button>
-  </div>
-  <div style="padding:14px">
-    <div style="height:8px;background:hsl(var(--muted,210 40% 96%));border-radius:999px;overflow:hidden;margin-bottom:10px">
-      <div id="dispatchProgressBar" style="height:100%;width:10%;background:hsl(var(--primary));transition:width .4s ease"></div>
-    </div>
-    <div id="dispatchProgressMsg" style="font-size:13px;color:hsl(var(--muted-foreground,215 16% 47%));line-height:1.5">Iniciando…</div>
-    <div id="dispatchProgressActions" style="margin-top:12px;display:none;gap:8px">
-      <button type="button" class="btn btnPrimary" id="dispatchProgressReload" style="font-size:13px">Atualizar página</button>
-    </div>
-  </div>
-</div>
 <script>
 (function(){
-  var box   = document.getElementById('dispatchProgress');
-  if (!box) return;
-  var titleEl = document.getElementById('dispatchProgressTitle');
-  var barEl   = document.getElementById('dispatchProgressBar');
-  var msgEl   = document.getElementById('dispatchProgressMsg');
-  var closeEl = document.getElementById('dispatchProgressClose');
-  var actions = document.getElementById('dispatchProgressActions');
-  var reloadEl= document.getElementById('dispatchProgressReload');
+  // O acompanhamento do progresso é GLOBAL (app/dispatch_tracker_widget.php):
+  // continua aparecendo ao recarregar ou trocar de página e some sozinho ao terminar.
+  var cardTitle = <?= json_encode('#' . (int)$d['id'] . ' — ' . (string)$d['title'], JSON_UNESCAPED_UNICODE) ?>;
 
-  var pollTimer = null;
-
-  function show(){ box.style.display = 'block'; }
-  function hide(){ box.style.display = 'none'; }
-
-  // Progresso "visual" por fase (não é percentual exato: dá sensação de avanço).
-  var phasePercent = {
-    'queued': 10, 'starting': 20, 'creating_group': 45,
-    'syncing_members': 65, 'sending': 85, 'done': 100
-  };
-
-  function setPhase(phase, message){
-    var pct = phasePercent[phase] || 15;
-    barEl.style.width = pct + '%';
-    if (message) msgEl.textContent = message;
+  function showError(message){
+    alert(message || 'Falha ao iniciar a captação.');
   }
 
-  function stopPolling(){ if (pollTimer){ clearInterval(pollTimer); pollTimer = null; } }
-
-  function finish(data){
-    stopPolling();
-    barEl.style.width = '100%';
-    if (data.success) {
-      titleEl.textContent = 'Captação enviada';
-      barEl.style.background = 'hsl(142 72% 42%)';
-    } else {
-      titleEl.textContent = 'Captação não concluída';
-      barEl.style.background = 'hsl(0 84% 60%)';
-    }
-    msgEl.textContent = data.result_message || (data.success ? 'Captação enviada com sucesso.' : 'O disparo não foi concluído.');
-    actions.style.display = 'flex';
-  }
-
-  function poll(runId){
-    fetch('/demands_dispatch_status.php?run_id=' + encodeURIComponent(runId), {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (!data.ok) { msgEl.textContent = data.error || 'Falha ao consultar o progresso.'; return; }
-      setPhase(data.phase, data.phase_message);
-      if (data.done) finish(data);
-    })
-    .catch(function(){ /* mantém tentando no próximo ciclo */ });
-  }
-
-  function startTracking(runId){
-    show();
-    titleEl.textContent = 'Disparando captação…';
-    barEl.style.background = 'hsl(var(--primary))';
-    actions.style.display = 'none';
-    setPhase('queued', 'Captação na fila. Pode continuar usando o sistema — avisaremos aqui quando terminar.');
-    poll(runId);
-    stopPolling();
-    pollTimer = setInterval(function(){ poll(runId); }, 3000);
-  }
-
-  closeEl.addEventListener('click', function(){ stopPolling(); hide(); });
-  reloadEl.addEventListener('click', function(){ window.location.reload(); });
-
-  // Intercepta o envio de TODOS os formulários de captação.
   document.querySelectorAll('form.dispatch-form').forEach(function(form){
     form.addEventListener('submit', function(ev){
       ev.preventDefault();
@@ -749,15 +693,9 @@ if (count($subRequests) > 1) {
       .then(function(r){ return r.json(); })
       .then(function(data){
         if (data && data.ok && data.run_id) {
-          startTracking(data.run_id);
+          if (window.mlDispatchTracker) window.mlDispatchTracker.start(data.run_id, cardTitle);
         } else {
-          show();
-          stopPolling();
-          titleEl.textContent = 'Não foi possível iniciar';
-          barEl.style.width = '100%';
-          barEl.style.background = 'hsl(0 84% 60%)';
-          msgEl.textContent = (data && data.error) ? data.error : 'Falha ao iniciar a captação.';
-          actions.style.display = 'none';
+          showError(data && data.error);
         }
       })
       .catch(function(){
@@ -765,6 +703,14 @@ if (count($subRequests) > 1) {
         form.submit();
       });
     });
+  });
+
+  // Ao terminar a captação DESTE card, atualiza a tela (status e logs de disparo).
+  document.addEventListener('ml-dispatch-done', function(ev){
+    var run = ev.detail || {};
+    if (String(run.demand_id) === <?= json_encode((string)(int)$d['id']) ?> && run.success) {
+      setTimeout(function(){ window.location.reload(); }, 5000);
+    }
   });
 })();
 </script>

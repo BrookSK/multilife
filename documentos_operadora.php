@@ -161,7 +161,7 @@ try {
         $daysHtml = attendance_days_table_html($freqCode);
         $bodyText = insurer_orientation_render((string)$ori['body'], [
             'external_login' => (string)($oa['external_login'] ?? ''),
-            'external_password' => (string)($oa['external_password'] ?? ''),
+            'external_password' => secure_decrypt((string)($oa['external_password'] ?? '')),
             'patient_name' => (string)($oa['patient_name'] ?? ''),
             'specialty' => (string)($oa['specialty'] ?? ''),
             'attendance_days_table' => '', // a tabela é renderizada à parte, em HTML

@@ -10,6 +10,22 @@ if (!rbac_user_can((int)auth_user_id(), 'chat.manage') && !rbac_user_can((int)au
 }
 
 require_once __DIR__ . '/app/imported_contacts_helper.php';
+imported_contacts_ensure_schema();
+location_users_ensure_schema(); // colunas user_id/specialty/city/state/neighborhood
+
+// Especialidades cadastradas, indexadas pela chave canônica (para sugerir a do contato).
+$specialtyOptions = [];
+$specialtyByKey = [];
+try {
+    foreach (db()->query("SELECT name FROM specialties WHERE status = 'active' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN) as $sn) {
+        $specialtyOptions[] = (string)$sn;
+        $k = specialty_key((string)$sn);
+        if ($k !== '' && !isset($specialtyByKey[$k])) {
+            $specialtyByKey[$k] = (string)$sn;
+        }
+    }
+} catch (Throwable $e) {}
+$canPreRegister = rbac_user_can((int)auth_user_id(), 'users.manage') || rbac_user_can((int)auth_user_id(), 'demands.manage');
 
 $seed = imported_contacts_seed_bundled(false);
 if (!empty($seed['ran'])) {
@@ -116,6 +132,29 @@ foreach ($rows as $r) {
     if ($phone !== '') {
         echo '<a class="btn btnPrimary" href="/chat_open_imported_contact.php?id=' . (int)$r['id'] . '">Abrir conversa</a>';
     }
+    // Profissional da agenda: pré-cadastro rápido no sistema (entra nos grupos de captação
+    // da especialidade/cidade). Contatos ainda não cadastrados já entram nos grupos pela
+    // especialidade deduzida do nome.
+    if ($cat === 'profissional' && $phone !== '') {
+        if (!empty($r['user_id'])) {
+            echo ' <a class="badge" style="background:hsl(142,76%,36%);color:#fff;font-size:11px" href="/users_edit.php?id=' . (int)$r['user_id'] . '">Pré-cadastrado</a>';
+        } elseif ($canPreRegister) {
+            $suggested = trim((string)($r['specialty'] ?? ''));
+            if ($suggested === '') {
+                $suggested = $specialtyByKey[specialty_key((string)$r['name'])] ?? '';
+            }
+            $payload = [
+                'id' => (int)$r['id'],
+                'name' => (string)$r['name'],
+                'phone' => $phone,
+                'specialty' => $suggested,
+                'city' => (string)($r['city'] ?? ''),
+                'state' => (string)($r['state'] ?? '') !== '' ? (string)$r['state'] : (string)(location_ddd_state($phone) ?? ''),
+                'neighborhood' => (string)($r['neighborhood'] ?? ''),
+            ];
+            echo ' <button type="button" class="btn" onclick=\'icPreRegister(' . h(json_encode($payload, JSON_UNESCAPED_UNICODE)) . ')\'>Pré-cadastrar</button>';
+        }
+    }
     echo '</td>';
     echo '</tr>';
 }
@@ -139,5 +178,69 @@ if ($pages > 1) {
 }
 echo '</section>';
 echo '</div>';
+
+if ($canPreRegister) {
+    echo '<div id="icModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200;align-items:center;justify-content:center">';
+    echo '<section class="card" style="width:480px;max-width:92vw">';
+    echo '<div style="display:flex;justify-content:space-between;align-items:center"><strong>Pré-cadastrar profissional</strong><button type="button" class="btn" onclick="document.getElementById(\'icModal\').style.display=\'none\'">Fechar</button></div>';
+    echo '<div style="height:10px"></div><div style="display:grid;gap:10px">';
+    echo '<input type="hidden" id="icId">';
+    echo '<label>Nome *<input id="icName" maxlength="200"></label>';
+    echo '<label>Telefone<input id="icPhone" readonly></label>';
+    echo '<label>Especialidade<select id="icSpecialty"><option value="">— Selecione —</option>';
+    foreach ($specialtyOptions as $sn) {
+        echo '<option value="' . h($sn) . '">' . h($sn) . '</option>';
+    }
+    echo '</select></label>';
+    echo '<div class="grid"><div class="col8"><label>Cidade<input id="icCity" maxlength="120"></label></div><div class="col4"><label>UF<input id="icState" maxlength="2" style="text-transform:uppercase"></label></div></div>';
+    echo '<label>Bairro (define a zona em São Paulo/Rio)<input id="icNeighborhood" maxlength="120"></label>';
+    echo '<div id="icMsg" style="font-size:13px;color:hsl(var(--muted-foreground))"></div>';
+    echo '<div style="display:flex;justify-content:flex-end;gap:8px"><button type="button" class="btn" id="icForce" style="display:none">Cadastrar mesmo assim</button><button type="button" class="btn btnPrimary" id="icSave">Pré-cadastrar</button></div>';
+    echo '</div></section></div>';
+    ?>
+<script>
+function icPreRegister(c){
+  document.getElementById('icId').value = c.id;
+  document.getElementById('icName').value = c.name || '';
+  document.getElementById('icPhone').value = c.phone || '';
+  document.getElementById('icSpecialty').value = c.specialty || '';
+  document.getElementById('icCity').value = c.city || '';
+  document.getElementById('icState').value = c.state || '';
+  document.getElementById('icNeighborhood').value = c.neighborhood || '';
+  document.getElementById('icMsg').textContent = '';
+  document.getElementById('icForce').style.display = 'none';
+  document.getElementById('icModal').style.display = 'flex';
+}
+(function(){
+  function send(force){
+    var fd = new FormData();
+    fd.append('imported_contact_id', document.getElementById('icId').value);
+    fd.append('name', document.getElementById('icName').value);
+    fd.append('phone', document.getElementById('icPhone').value);
+    fd.append('specialty', document.getElementById('icSpecialty').value);
+    fd.append('city', document.getElementById('icCity').value);
+    fd.append('state', document.getElementById('icState').value);
+    fd.append('neighborhood', document.getElementById('icNeighborhood').value);
+    if (force) fd.append('force', '1');
+    var msg = document.getElementById('icMsg'); msg.textContent = 'Salvando…';
+    fetch('/professional_quick_create_post.php', { method: 'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j && j.ok) { msg.textContent = 'Pré-cadastrado.'; setTimeout(function(){ location.reload(); }, 600); return; }
+        if (j && j.needs_confirmation) {
+          msg.textContent = (j.message || 'Parecidos encontrados:') + ' ' + (j.duplicates || []).map(function(d){ return d.name + ' (' + d.phone + ')'; }).join('; ');
+          document.getElementById('icForce').style.display = '';
+          return;
+        }
+        msg.textContent = (j && j.message) ? j.message : 'Erro ao pré-cadastrar.';
+      })
+      .catch(function(){ msg.textContent = 'Falha de conexão.'; });
+  }
+  document.getElementById('icSave').addEventListener('click', function(){ send(false); });
+  document.getElementById('icForce').addEventListener('click', function(){ send(true); });
+})();
+</script>
+<?php
+}
 
 view_footer();
