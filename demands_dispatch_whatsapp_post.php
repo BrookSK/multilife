@@ -490,6 +490,8 @@ $locationLabel = dispatch_group_location_label($city, $state, $zone);
 // novos também recebam a mensagem da captação.
 $memberTargets = [];
 $memberStats = ['users' => 0, 'contacts' => 0, 'skipped_location' => 0, 'unknown_location' => 0];
+// Profissionais (não equipe) deste disparo: nunca devem ser admin do grupo.
+$professionalPhones = [];
 
 // Buscar grupo compatível: especialidade + cidade + UF (+ zona). Nunca reaproveita
 // grupo de outra cidade.
@@ -662,6 +664,7 @@ if (count($groups) === 0) {
         $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
         $memberStats = $collected['stats'];
         $teamPhones = dispatch_team_phones($captacaoTestMode, auth_user_id());
+        $professionalPhones = array_values(array_diff($collected['phones'], $teamPhones));
         $allParticipants = array_values(array_unique(array_merge($collected['phones'], $teamPhones)));
         // O grupo é CRIADO com poucos participantes (equipe + até 20 profissionais):
         // criar com centenas de números deixa a Evolution/WhatsApp muito lento e pode
@@ -948,8 +951,10 @@ if (count($groups) === 0) {
                     foreach ($instanceNumbers as $num) {
                         $promoteList[] = $num . '@s.whatsapp.net';
                     }
-                    // Também promover o usuário logado e admins de captação
-                    foreach ($participants as $pNum) {
+                    // Também promover SÓ a equipe (usuário que disparou e quem gerencia
+                    // captação). Antes promovia todos os participantes — inclusive os
+                    // PROFISSIONAIS, que viravam admin e podiam escrever no grupo.
+                    foreach ($teamPhones as $pNum) {
                         $pJid = strpos($pNum, '@') === false ? $pNum . '@s.whatsapp.net' : $pNum;
                         if (!in_array($pJid, $promoteList, true)) {
                             $promoteList[] = $pJid;
@@ -1271,10 +1276,9 @@ if (count($groups) > 0) {
         try {
             $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
             $memberStats = $collected['stats'];
-            $all = array_values(array_unique(array_merge(
-                $collected['phones'],
-                dispatch_team_phones($captacaoTestMode, auth_user_id())
-            )));
+            $syncTeam = dispatch_team_phones($captacaoTestMode, auth_user_id());
+            $professionalPhones = array_values(array_diff($collected['phones'], $syncTeam));
+            $all = array_values(array_unique(array_merge($collected['phones'], $syncTeam)));
             $memberTargets[$targetJid] = array_map(static fn($p) => $p . '@s.whatsapp.net', $all);
             error_log("[DISPATCH] Membros esperados em $targetJid: " . count($all) . ' ' . json_encode($memberStats));
         } catch (Throwable $e) {
@@ -1563,6 +1567,38 @@ foreach ($memberTargets as $addJid => $addList) {
             continue;
         }
         [$addApi, $addInstName] = $addPicked;
+
+        // PROFISSIONAL NÃO É ADMIN: rebaixa quem foi promovido por engano (versão
+        // anterior promovia todos os participantes). Nunca mexe na equipe nem no
+        // próprio número da instância.
+        if ($professionalPhones) {
+            try {
+                $adminMap = dispatch_group_member_keys($addApi, (string)$addJid);
+                if ($adminMap !== null) {
+                    $selfKeyD = dispatch_member_key(dispatch_instance_number($addInstName));
+                    $teamKeys = [];
+                    // No modo de teste a equipe não participa do grupo: só os números das
+                    // instâncias ficam como admin.
+                    foreach (array_merge(whatsapp_get_all_connected_numbers(), dispatch_team_phones($captacaoTestMode, auth_user_id())) as $tp) {
+                        $teamKeys[dispatch_member_key((string)$tp)] = true;
+                    }
+                    $toDemote = [];
+                    foreach ($professionalPhones as $pp) {
+                        $k = dispatch_member_key((string)$pp);
+                        if ($k !== '' && $k !== $selfKeyD && !isset($teamKeys[$k]) && !empty($adminMap[$k])) {
+                            $toDemote[] = $pp . '@s.whatsapp.net';
+                        }
+                    }
+                    if ($toDemote) {
+                        $demRes = $addApi->updateGroupMembers((string)$addJid, 'demote', $toDemote);
+                        error_log("[DISPATCH] $addJid: " . count($toDemote) . " profissional(is) rebaixado(s) de admin: HTTP " . (int)($demRes['status'] ?? 0));
+                    }
+                }
+            } catch (Throwable $demErr) {
+                error_log("[DISPATCH] Erro ao rebaixar profissionais admin em $addJid: " . $demErr->getMessage());
+            }
+        }
+
         $missing = dispatch_missing_members($addApi, (string)$addJid, $addList, dispatch_instance_number($addInstName));
         if (empty($missing)) {
             error_log("[DISPATCH] $addJid: todos os " . count($addList) . " números já são membros.");
