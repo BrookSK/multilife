@@ -148,13 +148,16 @@ function dispatch_collect_professionals(string $specialty, string $city, string 
             if (!$match) {
                 continue;
             }
-            [$ok] = location_professional_compatible($target, [
+            [$ok, $level] = location_professional_compatible($target, [
                 'city' => (string)($c['city'] ?? ''),
                 'state' => (string)($c['state'] ?? ''),
                 'neighborhood' => (string)($c['neighborhood'] ?? ''),
                 'phone' => (string)$c['phone'],
             ]);
-            if (!$ok) {
+            // Contato da agenda só entra com CIDADE informada e compatível. Só pelo DDD
+            // (estado inteiro) colocava centenas de contatos em cada grupo novo, o que
+            // deixava a criação do grupo lenta/instável no WhatsApp.
+            if (!$ok || !in_array($level, ['city', 'zone'], true)) {
                 $stats['skipped_location']++;
                 continue;
             }

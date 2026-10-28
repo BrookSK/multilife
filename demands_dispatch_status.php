@@ -24,8 +24,44 @@ header('Content-Type: application/json; charset=utf-8');
  * Saída (run_ids/active): { ok, runs: [ ...mesmos campos... ] }
  */
 
+/**
+ * Captação PARADA: sem nenhuma atualização de fase há muito tempo, o processo
+ * morreu (servidor interrompeu a execução) ou a Evolution não respondeu. Antes o
+ * acompanhamento ficava "em andamento" para sempre; agora encerra com o motivo.
+ */
+function dds_check_stale(array $run): array
+{
+    $status = (string)$run['status'];
+    if (!in_array($status, ['queued', 'processing'], true) || empty($run['updated_at'])) {
+        return $run;
+    }
+    $idle = time() - (int)strtotime((string)$run['updated_at']);
+    $phase = (string)($run['phase'] ?? '');
+    $msg = null;
+    if ($status === 'queued' && $idle > 180) {
+        $msg = 'A captação ficou 3 minutos na fila sem começar: o processamento em segundo plano não está rodando. '
+            . 'Verifique o cron "integration_jobs_run" e o token do cron em Configurações e tente novamente.';
+    } elseif ($status === 'processing' && $idle > 300) {
+        $where = $phase === 'creating_group' ? 'ao criar o grupo' : ($phase === 'adding_members' ? 'ao adicionar os profissionais' : ($phase === 'sending' ? 'ao enviar a mensagem' : 'no processamento'));
+        $msg = 'A captação parou ' . $where . ' (5 minutos sem resposta). Normalmente é o WhatsApp/Evolution travado ou em loop: '
+            . 'veja o aviso de WhatsApp no topo da tela e, se preciso, desconecte os aparelhos no celular, faça logout da instância e leia um QR novo. Depois clique em "Realizar Captação" de novo.';
+    }
+    if ($msg !== null) {
+        try {
+            db()->prepare("UPDATE demand_dispatch_runs SET status = 'failed', phase = 'done', phase_message = :m, result_message = :m2
+                           WHERE id = :id AND status IN ('queued','processing')")
+                ->execute(['m' => mb_strimwidth($msg, 0, 250, '…'), 'm2' => mb_strimwidth($msg, 0, 490, '…'), 'id' => (int)$run['id']]);
+        } catch (Throwable $e) {}
+        $run['status'] = 'failed';
+        $run['phase'] = 'done';
+        $run['result_message'] = $msg;
+    }
+    return $run;
+}
+
 function dds_format(array $run): array
 {
+    $run = dds_check_stale($run);
     $status = (string)$run['status'];
     return [
         'run_id' => (int)$run['id'],
@@ -48,7 +84,7 @@ try {
     demand_dispatch_ensure_run_columns();
 
     $select = 'SELECT r.id, r.demand_id, r.sub_request_id, r.status, r.phase, r.phase_message,
-                      r.added_count, r.sent_count, r.error_count, r.result_message, r.created_by_user_id,
+                      r.added_count, r.sent_count, r.error_count, r.result_message, r.created_by_user_id, r.updated_at,
                       d.title AS demand_title
                FROM demand_dispatch_runs r
                LEFT JOIN demands d ON d.id = r.demand_id';

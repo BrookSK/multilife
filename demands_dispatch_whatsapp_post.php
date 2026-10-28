@@ -107,9 +107,28 @@ if (!function_exists('dispatch_instance_state')) {
     /** Estado normalizado da instância na Evolution ('open', 'close', 'connecting'...). */
     function dispatch_instance_state(EvolutionApiV1 $api): string
     {
-        $r = $api->connectionState();
+        // Cache curto por instância: o disparo verificava o estado da MESMA instância
+        // várias vezes (escolha do remetente, cada envio, cada adição) — com a
+        // Evolution lenta, isso somava minutos.
+        static $cache = [];
+        $instKey = method_exists($api, 'getInstance') ? (string)$api->getInstance() : '';
+        if ($instKey !== '' && isset($cache[$instKey]) && (time() - $cache[$instKey][1]) < 20) {
+            return $cache[$instKey][0];
+        }
+        try {
+            $r = $api->connectionState();
+        } catch (Throwable $e) {
+            // Sem resposta no tempo limite = trata como indisponível (não trava o disparo).
+            $r = ['json' => ['state' => 'timeout']];
+            if (function_exists('whatsapp_health_record') && $instKey !== '') {
+                whatsapp_health_record($instKey, 'send_error', null, 'connectionState sem resposta: ' . $e->getMessage());
+            }
+        }
         $j = is_array($r['json'] ?? null) ? $r['json'] : [];
         $state = strtolower(trim((string)($j['instance']['state'] ?? ($j['state'] ?? ''))));
+        if ($instKey !== '') {
+            $cache[$instKey] = [$state, time()];
+        }
         // Histórico de estados (detecção de conexão em loop).
         if (function_exists('whatsapp_health_record') && method_exists($api, 'getInstance')) {
             whatsapp_health_record((string)$api->getInstance(), 'probe', whatsapp_health_normalize_state($state));
@@ -135,6 +154,13 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
      */
     function dispatch_pick_sender_for_group(string $groupJid, ?string $preferred, array $instances, string $baseUrl, string $apiKey, array &$diag = []): ?array
     {
+        // A mesma escolha é pedida várias vezes no disparo (remetente, adição de
+        // membros, cada envio): reaproveita por 60 s em vez de consultar tudo de novo.
+        static $picked = [];
+        if (isset($picked[$groupJid]) && (time() - $picked[$groupJid][1]) < 60) {
+            $cachedName = $picked[$groupJid][0];
+            return [new EvolutionApiV1($baseUrl, $apiKey, $cachedName), $cachedName];
+        }
         $names = [];
         if ($preferred !== null && $preferred !== '') {
             $names[] = $preferred;
@@ -173,6 +199,7 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
                     $diag[] = "$name: conectada mas não está no grupo (HTTP $code)";
                     continue;
                 }
+                $picked[$groupJid] = [$name, time()];
                 return [$candidate, $name];
             } catch (Throwable $e) {
                 $diag[] = "$name: " . $e->getMessage();
@@ -385,7 +412,7 @@ if (!$DISPATCH_WORKER_MODE) {
     try {
         demand_dispatch_ensure_run_columns();
         $dupStmt = db()->prepare("SELECT id FROM demand_dispatch_runs WHERE demand_id = :d AND COALESCE(sub_request_id, 0) = :s
-            AND group_jid = '' AND status IN ('queued','processing') AND updated_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+            AND group_jid = '' AND status IN ('queued','processing') AND updated_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
             ORDER BY id DESC LIMIT 1");
         $dupStmt->execute(['d' => (int)$id, 's' => (int)$subRequestId]);
         $runningId = (int)($dupStmt->fetchColumn() ?: 0);
@@ -498,13 +525,29 @@ if (count($groups) === 0) {
         ");
         $allInstForGroup->execute(['captador' => $captadorInstanceName]);
         $instRows = $allInstForGroup->fetchAll(PDO::FETCH_ASSOC);
+        $skippedUnhealthy = [];
         
         foreach ($instRows as $instRow) {
             $instCandidate = (string)($instRow['instance_name'] ?? '');
             if ($instCandidate === '') continue;
+            // Instância em loop/conflito/deslogada: nem tenta (era onde o disparo travava).
+            $candHealth = whatsapp_health_status($instCandidate);
+            if (whatsapp_health_is_blocking($candHealth['level'])) {
+                error_log("[DISPATCH] Instância '$instCandidate' ignorada: " . $candHealth['title']);
+                $skippedUnhealthy[] = "$instCandidate: " . $candHealth['title'];
+                continue;
+            }
+            demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', "Nenhum grupo para $locationLabel — verificando o WhatsApp '$instCandidate'...");
             try {
                 $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
-                $connStateRes = $tryApi->connectionState();
+                try {
+                    $connStateRes = $tryApi->connectionState();
+                } catch (Throwable $csErr) {
+                    error_log("[DISPATCH] Instância '$instCandidate' não respondeu ao connectionState: " . $csErr->getMessage());
+                    whatsapp_health_record($instCandidate, 'send_error', null, 'connectionState sem resposta: ' . $csErr->getMessage());
+                    $skippedUnhealthy[] = "$instCandidate: não respondeu (Evolution travada?)";
+                    continue;
+                }
                 $connJson = $connStateRes['json'] ?? [];
                 $connHttpCode = (int)($connStateRes['status'] ?? 0);
                 
@@ -593,7 +636,9 @@ if (count($groups) === 0) {
         
         // Se nenhuma instância está conectada, mostrar erro com orientação clara
         if ($instanceName === '') {
-            dispatch_abort('Nenhuma instância WhatsApp está conectada. Vá em Configurações → WhatsApp Conexão → aba Instâncias e reconecte escaneando o QR Code.');
+            dispatch_abort('Nenhuma instância WhatsApp disponível para criar o grupo'
+                . ($skippedUnhealthy ? ' (' . implode('; ', $skippedUnhealthy) . ')' : '')
+                . '. Vá em Configurações → WhatsApp: se aparecer "Conexão em loop", desconecte os aparelhos no celular, faça logout da instância e leia um QR novo; senão, reconecte escaneando o QR Code.');
         }
         
         if ($baseUrl === '' || $apiKey === '') {
@@ -616,11 +661,16 @@ if (count($groups) === 0) {
         // + equipe MultiLife. Ver app/dispatch_targets.php.
         $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
         $memberStats = $collected['stats'];
+        $teamPhones = dispatch_team_phones($captacaoTestMode, auth_user_id());
+        $allParticipants = array_values(array_unique(array_merge($collected['phones'], $teamPhones)));
+        // O grupo é CRIADO com poucos participantes (equipe + até 20 profissionais):
+        // criar com centenas de números deixa a Evolution/WhatsApp muito lento e pode
+        // falhar. O restante entra em lotes logo depois, ANTES do envio da mensagem.
         $participants = array_values(array_unique(array_merge(
-            $collected['phones'],
-            dispatch_team_phones($captacaoTestMode, auth_user_id())
+            $teamPhones,
+            array_slice($collected['phones'], 0, 20)
         )));
-        error_log("[DISPATCH] Participantes para '$specialty' em '$locationLabel': " . json_encode($memberStats));
+        error_log("[DISPATCH] Participantes para '$specialty' em '$locationLabel': " . json_encode($memberStats) . ' — total ' . count($allParticipants) . ', na criação ' . count($participants));
         if (empty($participants)) {
             // No modo de teste, NÃO usar o número da equipe/admin como fallback.
             // Se não há profissional de teste marcado, aborta a captação com aviso claro.
@@ -642,19 +692,25 @@ if (count($groups) === 0) {
 
         // MULTI-INSTÂNCIA: ordem de tentativa — instância do captador primeiro,
         // depois a já escolhida, depois as demais ativas.
-        $instancesToTry = [];
-        foreach ([$captadorInstanceName, $instanceName] as $prefInst) {
-            if ($prefInst !== '' && !in_array($prefInst, $instancesToTry, true)) {
-                $instancesToTry[] = $prefInst;
-            }
-        }
-        $stmtAllInst = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC");
-        $stmtAllInst->execute();
+        // A primeira é a instância JÁ VERIFICADA como conectada acima; as demais só
+        // entram se estiverem conectadas e sem problema de saúde (antes tentava todas,
+        // inclusive desconectadas, com até 30 s de espera em cada).
+        $instancesToTry = [$instanceName];
+        $stmtAllInst = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' ORDER BY CASE WHEN instance_name = ? THEN 0 ELSE 1 END, is_default DESC, id ASC");
+        $stmtAllInst->execute([$captadorInstanceName]);
         foreach ($stmtAllInst->fetchAll(PDO::FETCH_COLUMN) as $otherInst) {
-            if ($otherInst !== '' && !in_array($otherInst, $instancesToTry, true)) {
-                $instancesToTry[] = $otherInst;
+            if ($otherInst === '' || in_array($otherInst, $instancesToTry, true)) {
+                continue;
             }
+            if (whatsapp_health_is_blocking(whatsapp_health_status((string)$otherInst)['level'])) {
+                continue;
+            }
+            if (!in_array(dispatch_instance_state(new EvolutionApiV1($baseUrl, $apiKey, (string)$otherInst)), ['open', 'connected'], true)) {
+                continue;
+            }
+            $instancesToTry[] = $otherInst;
         }
+        demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', "Procurando grupo de $locationLabel já existente no WhatsApp '$instanceName'...");
         
         $createHttpCode = 0;
         $createResponse = '';
@@ -698,6 +754,7 @@ if (count($groups) === 0) {
             $createHttpCode = 200;
         } else {
             // Criar grupo novo usando a instância conectada encontrada
+            demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', "Criando o grupo \"$groupName\" pelo WhatsApp '$usedInstanceName' (" . count($participants) . " participantes)...");
             $createUrl = $baseUrl . '/group/create/' . urlencode($usedInstanceName);
             $createPayload = json_encode([
                 'subject' => $groupName,
@@ -863,9 +920,11 @@ if (count($groups) === 0) {
                 // GARANTIA: algumas versões da Evolution ignoram 'participants' na
                 // criação. Quem faltar é adicionado no bloco "ADICIONAR MEMBROS ANTES
                 // DO ENVIO" (mais abaixo), antes de a mensagem sair.
-                $memberTargets[$newGroupJid] = $participantsFormatted;
+                // Lista COMPLETA (a criação levou só uma parte).
+                $memberTargets[$newGroupJid] = array_map(static fn($num) => strpos($num, '@') === false ? $num . '@s.whatsapp.net' : $num, $allParticipants ?: $participants);
                 
                 // Configurar grupo para apenas admins enviarem mensagens
+                demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', "Grupo \"$groupName\" criado — configurando como 'somente admins enviam'...");
                 try {
                     $api2 = $api;
                     $settingsResult = $api2->updateGroupSetting($newGroupJid, 'announcement');
@@ -909,6 +968,7 @@ if (count($groups) === 0) {
                     }));
                     
                     if (!empty($promoteList)) {
+                        demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', "Grupo \"$groupName\" criado — tornando a equipe administradora...");
                         $api3 = $api;
                         $promoteResult = $api3->updateGroupMembers($newGroupJid, 'promote', $promoteList);
                         $promoteCode = $promoteResult['status'] ?? 0;
@@ -1309,6 +1369,10 @@ try {
     foreach ($instances as $inst) {
         $instName = (string)($inst['instance_name'] ?? '');
         if ($instName === '') continue;
+        if (whatsapp_health_is_blocking(whatsapp_health_status($instName)['level'])) {
+            error_log("[DISPATCH] Instância '$instName' ignorada no envio (conexão em loop/conflito/deslogada).");
+            continue;
+        }
         
         try {
             $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
@@ -1332,7 +1396,7 @@ try {
             if (in_array($connInstanceStateLower, ['open', 'connected'], true)) {
                 $api = $tryApi;
                 $apiInstanceName = $instName;
-                error_log("[DISPATCH] Instância conectada encontrada: $instName (state=$state)");
+                error_log("[DISPATCH] Instância conectada encontrada: $instName (state=$connInstanceStateLower)");
                 break;
             }
             

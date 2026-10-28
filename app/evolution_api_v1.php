@@ -103,9 +103,14 @@ final class EvolutionApiV1
         return $this->request('GET', '/instance/connect/' . urlencode($this->inst($instanceName)), $query);
     }
 
-    public function connectionState(?string $instanceName = null): array
+    /**
+     * Estado da conexão. Timeout CURTO (10 s): é uma consulta leve; com a
+     * Evolution travada/em loop, os 30 s padrão por consulta somavam minutos
+     * no disparo (várias instâncias × várias verificações).
+     */
+    public function connectionState(?string $instanceName = null, int $timeoutSeconds = 10): array
     {
-        return $this->request('GET', '/instance/connectionState/' . urlencode($this->inst($instanceName)));
+        return $this->request('GET', '/instance/connectionState/' . urlencode($this->inst($instanceName)), [], null, $timeoutSeconds);
     }
 
     public function getConnectionStatus(?string $instanceName = null): array
@@ -400,30 +405,36 @@ final class EvolutionApiV1
     // Group Controller
     // --------------------
 
-    public function fetchAllGroups(bool $getMembers = false): array
+    public function fetchAllGroups(bool $getMembers = false, int $timeoutSeconds = 25): array
     {
         return $this->request(
             'GET',
             '/group/fetchAllGroups/' . urlencode($this->inst()),
-            ['getMembers' => $getMembers ? 'true' : 'false']
+            ['getMembers' => $getMembers ? 'true' : 'false'],
+            null,
+            $timeoutSeconds
         );
     }
 
-    public function findGroupByJid(string $groupJid): array
+    public function findGroupByJid(string $groupJid, int $timeoutSeconds = 15): array
     {
         return $this->request(
             'GET',
             '/group/findGroupInfos/' . urlencode($this->inst()),
-            ['groupJid' => $groupJid]
+            ['groupJid' => $groupJid],
+            null,
+            $timeoutSeconds
         );
     }
 
-    public function findGroupMembers(string $groupJid): array
+    public function findGroupMembers(string $groupJid, int $timeoutSeconds = 20): array
     {
         return $this->request(
             'GET',
             '/group/participants/' . urlencode($this->inst()),
-            ['groupJid' => $groupJid]
+            ['groupJid' => $groupJid],
+            null,
+            $timeoutSeconds
         );
     }
 
@@ -461,7 +472,8 @@ final class EvolutionApiV1
             'PUT',
             '/group/updateSetting/' . urlencode($this->inst()),
             [],
-            ['groupJid' => $groupJid, 'action' => $action]
+            ['groupJid' => $groupJid, 'action' => $action],
+            15 // 4 formatos × 30 s padrão podiam somar 2 min só nesta etapa
         );
         
         $httpCode = (int)($result['status'] ?? 0);
@@ -476,7 +488,8 @@ final class EvolutionApiV1
             'PUT',
             '/group/updateSetting/' . urlencode($this->inst()),
             ['groupJid' => $groupJid],
-            ['action' => $action]
+            ['action' => $action],
+            15
         );
         
         $httpCode2 = (int)($result2['status'] ?? 0);
@@ -491,7 +504,8 @@ final class EvolutionApiV1
             'POST',
             '/group/updateSetting/' . urlencode($this->inst()),
             [],
-            ['groupJid' => $groupJid, 'action' => $action]
+            ['groupJid' => $groupJid, 'action' => $action],
+            15
         );
         
         $httpCode3 = (int)($result3['status'] ?? 0);
@@ -506,7 +520,8 @@ final class EvolutionApiV1
             'PUT',
             '/group/setting/' . urlencode($this->inst()),
             [],
-            ['groupJid' => $groupJid, 'action' => $action]
+            ['groupJid' => $groupJid, 'action' => $action],
+            15
         );
         
         $httpCode4 = (int)($result4['status'] ?? 0);

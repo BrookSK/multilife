@@ -298,6 +298,11 @@ function demand_dispatch_kick_worker(int $jobId): void
     if ($jobId <= 0 || !function_exists('curl_init')) {
         return;
     }
+    // Interruptor: grave 'demands.dispatch_kick_worker' = '0' para voltar a depender
+    // só do cron (comportamento anterior), caso o servidor corte requisições em segundo plano.
+    if ((string)admin_setting_get('demands.dispatch_kick_worker', '1') === '0') {
+        return;
+    }
     $cronToken = trim((string)admin_setting_get('cron.token', ''));
     $host = (string)($_SERVER['HTTP_HOST'] ?? '');
     if ($cronToken === '' || $host === '') {
