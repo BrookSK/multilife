@@ -1538,11 +1538,14 @@ WAJS;
         echo '  var formData = new FormData();';
         echo '  formData.append("instance_id", instanceId);';
         echo '  formData.append("display_name", inp.value);';
-        echo '  fetch("/admin_whatsapp_instance_rename_post.php", {method:"POST", body: formData, headers:{"X-Requested-With":"XMLHttpRequest"}})';
-        echo '  .then(function(r){ return r.json(); })';
-        echo '  .then(function(d){ if(d.success){ alert("Apelido salvo!"); } else { alert("Erro: " + (d.error||"desconhecido")); } })';
+        echo '  fetch("/admin_whatsapp_instance_rename_post.php", {method:"POST", body: formData, headers:{"X-Requested-With":"XMLHttpRequest"}, credentials:"same-origin"})';
+        // Lê como texto: se o servidor devolver HTML (sessão expirada/sem permissão), mostra isso em vez de "sumir".
+        echo '  .then(function(r){ return r.text().then(function(t){ try { return JSON.parse(t); } catch(e){ return {success:false, error:"Resposta inesperada do servidor (HTTP " + r.status + "). Recarregue a página e tente de novo."}; } }); })';
+        echo '  .then(function(d){ if(d.success){ inp.value = d.display_name || ""; inp.defaultValue = inp.value; alert("Apelido salvo: " + (inp.value || "(vazio)")); } else { alert("Erro ao salvar apelido: " + (d.error||"desconhecido")); } })';
         echo '  .catch(function(e){ alert("Erro ao salvar apelido: " + e.message); });';
         echo '};';
+        // Enter no campo de apelido salva (não envia o formulário da página, que recarregava e "apagava" o texto).
+        echo 'document.addEventListener("keydown", function(ev){ var t = ev.target; if (ev.key === "Enter" && t && t.id && t.id.indexOf("waAlias_") === 0) { ev.preventDefault(); window.waInstSaveAlias(parseInt(t.id.substring(8), 10)); } });';
         echo '';
         // Limpar conversas SOMENTE desta instância (escopo isolado). Só habilitado para desconectadas.
         echo 'window.waInstClearConversations = function(instanceName){';

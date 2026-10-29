@@ -88,9 +88,26 @@ echo '<span class="helpText">Espaçamento aplicado quando vários formulários c
 echo '</label>';
 
 // Instância preferida
+// Lista das instâncias ativas (escolha direta, sem depender de digitar o termo certo).
+$zbInstances = [];
+try { $zbInstances = whatsapp_list_all_instances(); } catch (Throwable $e) { $zbInstances = []; }
+$zbCurrent = zoho_billing_financeiro_instance();
+$zbSelected = $zbCurrent['instance_name'] ?? '';
 echo '<label>Instância de envio (Financeiro)';
-echo '<input type="text" name="preferred_instance" value="' . h($preferredInstance) . '" placeholder="financeiro">';
-echo '<span class="helpText">Termo do apelido/nome da instância WhatsApp usada para enviar (ex.: <code>financeiro</code>). Os avisos são enviados <strong>somente</strong> por ela — não há troca para outra instância. Se estiver desconectada, os usuários vinculados são notificados no sistema.</span>';
+echo '<select name="preferred_instance">';
+if ($zbSelected === '') {
+    echo '<option value="' . h($preferredInstance) . '" selected>— Selecione (atual: "' . h($preferredInstance) . '" não encontrada) —</option>';
+}
+foreach ($zbInstances as $zi) {
+    $ziName = (string)($zi['instance_name'] ?? '');
+    if ($ziName === '') continue;
+    $ziAlias = trim((string)($zi['display_name'] ?? ''));
+    $ziConn = (string)($zi['connection_status'] ?? '') === 'connected' ? 'conectada' : 'desconectada';
+    $ziLabel = ($ziAlias !== '' ? $ziAlias . ' — ' : '') . $ziName . ' (' . $ziConn . ')';
+    echo '<option value="' . h($ziName) . '"' . ($ziName === $zbSelected ? ' selected' : '') . '>' . h($ziLabel) . '</option>';
+}
+echo '</select>';
+echo '<span class="helpText">Instância WhatsApp usada para enviar os avisos. Os avisos são enviados <strong>somente</strong> por ela — não há troca para outra instância. Se estiver desconectada, os usuários vinculados são notificados no sistema.</span>';
 echo '</label>';
 
 // Template
@@ -121,7 +138,7 @@ echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;margin-botto
 
 $financeiro = zoho_billing_financeiro_instance();
 if ($financeiro === null) {
-    echo '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:14px">Instância "financeiro" não encontrada. Verifique se existe uma instância ativa cujo apelido ou nome contenha o termo configurado no campo <strong>Instância preferida</strong> acima.</div>';
+    echo '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:14px">Instância "' . h($preferredInstance) . '" não encontrada entre as instâncias ativas. Escolha a instância no campo <strong>Instância de envio</strong> acima e clique em Salvar Configurações.</div>';
 } else {
     $instName = $financeiro['instance_name'];
     $label = $financeiro['display_name'] !== '' ? $financeiro['display_name'] : $instName;

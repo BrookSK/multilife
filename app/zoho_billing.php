@@ -550,21 +550,45 @@ function zoho_billing_financeiro_instance(): ?array
         return null;
     }
 
+    // Busca em PHP (sem depender de LIKE/colunas no SQL): antes, se a coluna
+    // display_name não existisse ou houvesse erro na consulta, a função devolvia
+    // "não encontrada" em silêncio. Compara sem acento/caixa/espaços/hífens.
+    try { db()->exec("ALTER TABLE whatsapp_instances ADD COLUMN display_name VARCHAR(120) NULL"); } catch (Throwable $e) {}
     try {
-        $stmt = db()->prepare(
-            "SELECT id, instance_name, display_name, connection_status
-             FROM whatsapp_instances
-             WHERE status = 'active'
-               AND instance_name IS NOT NULL AND instance_name != ''
-               AND (LOWER(display_name) LIKE :needle OR LOWER(instance_name) LIKE :needle2)
-             ORDER BY (connection_status = 'connected') DESC, is_default DESC, id ASC
-             LIMIT 1"
-        );
-        $like = '%' . mb_strtolower($preferred) . '%';
-        $stmt->execute(['needle' => $like, 'needle2' => $like]);
-        $row = $stmt->fetch();
+        $rows = db()->query(
+            "SELECT * FROM whatsapp_instances
+             WHERE status = 'active' AND instance_name IS NOT NULL AND instance_name <> ''
+             ORDER BY (connection_status = 'connected') DESC, is_default DESC, id ASC"
+        )->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
-        $row = false;
+        error_log('[ZOHO_BILLING] Falha ao listar instâncias: ' . $e->getMessage());
+        $rows = [];
+    }
+
+    $norm = static function (?string $s): string {
+        $s = function_exists('location_normalize') ? location_normalize((string)$s) : mb_strtolower(trim((string)$s));
+        return str_replace(' ', '', $s); // "ML - Tânia" == "ml-tania" == "mltania"
+    };
+    $needle = $norm($preferred);
+    $row = null;
+    // 1) Nome técnico exato (valor escolhido na lista da tela).
+    foreach ($rows as $r) {
+        if ($norm($r['instance_name']) === $needle) { $row = $r; break; }
+    }
+    // 2) Apelido exato.
+    if ($row === null) {
+        foreach ($rows as $r) {
+            if ($needle !== '' && $norm($r['display_name'] ?? '') === $needle) { $row = $r; break; }
+        }
+    }
+    // 3) Contém o termo (apelido ou nome).
+    if ($row === null && $needle !== '') {
+        foreach ($rows as $r) {
+            if (strpos($norm($r['display_name'] ?? ''), $needle) !== false || strpos($norm($r['instance_name']), $needle) !== false) {
+                $row = $r;
+                break;
+            }
+        }
     }
 
     if (!$row) {

@@ -35,9 +35,18 @@ try {
     $stmt = db()->prepare("UPDATE whatsapp_instances SET display_name = :dn WHERE id = :id");
     $stmt->execute(['dn' => $displayName !== '' ? $displayName : null, 'id' => $instanceId]);
 
+    // Confirma lendo do banco (devolve o que REALMENTE ficou gravado).
+    $chk = db()->prepare("SELECT display_name FROM whatsapp_instances WHERE id = :id");
+    $chk->execute(['id' => $instanceId]);
+    $saved = $chk->fetchColumn();
+    if ($saved === false) {
+        echo json_encode(['success' => false, 'error' => 'Instância #' . $instanceId . ' não encontrada no banco.']);
+        exit;
+    }
+
     audit_log('update', 'whatsapp_instances', (string)$instanceId, null, ['display_name' => $displayName]);
 
-    echo json_encode(['success' => true, 'display_name' => $displayName]);
+    echo json_encode(['success' => true, 'display_name' => (string)($saved ?? '')]);
 } catch (Throwable $e) {
     error_log('[WA_INSTANCE_RENAME] ' . $e->getMessage());
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
