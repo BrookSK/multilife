@@ -54,6 +54,8 @@ require_once __DIR__ . '/location_zones.php';
 require_once __DIR__ . '/demand_form.php';
 require_once __DIR__ . '/dispatch_targets.php';
 require_once __DIR__ . '/dispatch_tracker_widget.php';
+require_once __DIR__ . '/markdown_lite.php';
+require_once __DIR__ . '/company_docs.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/rbac.php';
 require_once __DIR__ . '/view.php';

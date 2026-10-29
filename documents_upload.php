@@ -49,14 +49,14 @@ echo '<label>Tipo de entidade<select name="entity_type" required>';
 $selPatient = ($prefEntityType === 'patient') ? ' selected' : '';
 $selProf = ($prefEntityType === 'professional') ? ' selected' : '';
 $selCompany = ($prefEntityType === 'company') ? ' selected' : '';
-echo '<option value="patient"' . $selPatient . '>patient</option>';
-echo '<option value="professional"' . $selProf . '>professional</option>';
-echo '<option value="company"' . $selCompany . '>company</option>';
+echo '<option value="patient"' . $selPatient . '>Paciente</option>';
+echo '<option value="professional"' . $selProf . '>Profissional</option>';
+echo '<option value="company"' . $selCompany . '>Empresa / Funcionário</option>';
 echo '</select></label>';
 echo '</div>';
 
 echo '<div class="col6">';
-echo '<label>ID da entidade (vazio para company)<input name="entity_id" placeholder="Ex: 123" value="' . h($prefEntityId) . '"></label>';
+echo '<label>ID da entidade (vazio para documento da empresa)<input name="entity_id" placeholder="Ex: 123" value="' . h($prefEntityId) . '"></label>';
 echo '</div>';
 
 echo '<div class="col6">';

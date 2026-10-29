@@ -11,9 +11,115 @@ $tab = isset($_GET['tab']) ? (string)$_GET['tab'] : 'patients';
 $searchQuery = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $selectedEntityId = isset($_GET['entity_id']) ? (int)$_GET['entity_id'] : 0;
 
-$allowedTabs = ['patients', 'professionals', 'employees', 'sent'];
+$allowedTabs = ['patients', 'professionals', 'employees', 'company', 'sent'];
 if (!in_array($tab, $allowedTabs, true)) {
     $tab = 'patients';
+}
+
+// Ícones/rótulos das abas (compartilhados com a aba Empresa, que é renderizada à parte).
+$docTabsNav = [
+    'patients' => 'Pacientes',
+    'professionals' => 'Profissionais',
+    'employees' => 'Funcionários',
+    'company' => 'Empresa',
+    'sent' => 'Enviados',
+];
+
+// ============================================================================
+// ABA "EMPRESA": documentos institucionais (sem pessoa vinculada) + documentação
+// interna do sistema (docs/*.md: técnica de entrega e processos).
+// ============================================================================
+if ($tab === 'company') {
+    $companyDocs = [];
+    try {
+        $st = db()->prepare("
+            SELECT d.id, d.title, d.category, d.created_at,
+                   (SELECT v.id FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) AS version_id,
+                   (SELECT MAX(v.version_no) FROM document_versions v WHERE v.document_id = d.id) AS last_version,
+                   (SELECT v.valid_until FROM document_versions v WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) AS valid_until,
+                   (SELECT u.name FROM document_versions v LEFT JOIN users u ON u.id = v.uploaded_by_user_id WHERE v.document_id = d.id ORDER BY v.version_no DESC LIMIT 1) AS uploaded_by_name
+            FROM documents d
+            WHERE d.entity_type = 'company' AND d.entity_id IS NULL AND d.status = 'active'
+              AND (:q = '' OR d.title LIKE :q1 OR d.category LIKE :q2)
+            ORDER BY d.category ASC, d.created_at DESC
+        ");
+        $st->execute(['q' => $searchQuery, 'q1' => '%' . $searchQuery . '%', 'q2' => '%' . $searchQuery . '%']);
+        $companyDocs = $st->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('[DOCS_COMPANY] ' . $e->getMessage());
+    }
+
+    view_header('Gestão Documental — Empresa');
+    echo '<div class="grid">';
+    echo '<section class="card col12">';
+    echo '<div style="font-size:22px;font-weight:900">Gestão Documental</div>';
+    echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Documentos da empresa e documentação interna do sistema</div>';
+    echo '<div style="margin-top:20px;border-bottom:2px solid #e5e7eb"><div style="display:flex;gap:4px;flex-wrap:wrap">';
+    foreach ($docTabsNav as $k => $lbl) {
+        $act = $k === 'company';
+        $st = $act ? 'background:hsl(var(--primary));color:white;border-color:hsl(var(--primary))' : 'background:white;color:#667781;border-color:transparent';
+        echo '<a href="/documents_list.php?tab=' . $k . '" style="padding:12px 24px;text-decoration:none;font-weight:600;border:2px solid;border-bottom:none;border-radius:8px 8px 0 0;' . $st . '">' . h($lbl) . '</a>';
+    }
+    echo '</div></div>';
+    echo '</section>';
+
+    // Documentação do sistema
+    echo '<section class="card col12">';
+    echo '<div style="font-size:16px;font-weight:800;margin-bottom:4px">📘 Documentação do sistema</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:12px">Documentação técnica de entrega e fluxos internos. Abra para ler, imprimir/salvar em PDF ou baixar o arquivo.</div>';
+    echo '<div style="display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">';
+    foreach (company_system_docs() as $key => $meta) {
+        $p = company_system_doc_path($key);
+        if ($p === null) {
+            continue;
+        }
+        echo '<div style="border:1px solid hsl(var(--border));border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px">';
+        echo '<div style="font-weight:800">' . h($meta['title']) . '</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));flex:1">' . h($meta['description']) . '</div>';
+        echo '<div style="font-size:12px;color:hsl(var(--muted-foreground))">Atualizado em ' . h(date('d/m/Y', (int)filemtime($p))) . '</div>';
+        echo '<div style="display:flex;gap:8px"><a class="btn btnPrimary" href="/docs_view.php?doc=' . urlencode($key) . '">Abrir</a>';
+        echo '<a class="btn" href="/docs_view.php?doc=' . urlencode($key) . '&download=1">Baixar</a></div>';
+        echo '</div>';
+    }
+    echo '</div>';
+    echo '</section>';
+
+    // Documentos institucionais enviados
+    echo '<section class="card col12">';
+    echo '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">';
+    echo '<div><div style="font-size:16px;font-weight:800">🏢 Documentos da empresa</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Contrato social, alvarás, certidões, contratos com operadoras e demais documentos institucionais.</div></div>';
+    echo '<a class="btn btnPrimary" href="/documents_upload.php?entity_type=company&return_to=' . urlencode('/documents_list.php?tab=company') . '">Upload</a>';
+    echo '</div>';
+    echo '<form method="get" action="/documents_list.php" style="display:flex;gap:10px;margin-bottom:12px"><input type="hidden" name="tab" value="company">';
+    echo '<input name="q" value="' . h($searchQuery) . '" placeholder="Buscar por título ou categoria" style="flex:1"><button class="btn" type="submit">Buscar</button></form>';
+    if (!$companyDocs) {
+        echo '<div style="padding:30px;text-align:center;color:#667781">Nenhum documento da empresa cadastrado.</div>';
+    } else {
+        echo '<div style="overflow:auto"><table><thead><tr><th>Título</th><th>Categoria</th><th>Versão</th><th>Validade</th><th>Enviado por</th><th>Data</th><th style="text-align:right">Ações</th></tr></thead><tbody>';
+        foreach ($companyDocs as $cd) {
+            $valid = !empty($cd['valid_until']) ? date('d/m/Y', strtotime((string)$cd['valid_until'])) : '-';
+            $expired = !empty($cd['valid_until']) && strtotime((string)$cd['valid_until']) < strtotime('today');
+            echo '<tr>';
+            echo '<td style="font-weight:600">' . h((string)($cd['title'] ?? 'Sem título')) . '</td>';
+            echo '<td>' . h((string)($cd['category'] ?? '-')) . '</td>';
+            echo '<td>' . ($cd['last_version'] ? 'v' . (int)$cd['last_version'] : '-') . '</td>';
+            echo '<td' . ($expired ? ' style="color:hsl(0,84%,50%);font-weight:700"' : '') . '>' . h($valid) . ($expired ? ' (vencido)' : '') . '</td>';
+            echo '<td>' . h((string)($cd['uploaded_by_name'] ?? '-')) . '</td>';
+            echo '<td>' . h(date('d/m/Y', strtotime((string)$cd['created_at']))) . '</td>';
+            echo '<td style="text-align:right;white-space:nowrap">';
+            if (!empty($cd['version_id'])) {
+                echo '<a class="btn" href="/document_download.php?version_id=' . (int)$cd['version_id'] . '" target="_blank">Download</a> ';
+            }
+            echo '<a class="btn" href="/documents_view.php?id=' . (int)$cd['id'] . '">Ver</a>';
+            echo '</td></tr>';
+        }
+        echo '</tbody></table></div>';
+    }
+    echo '</section>';
+    echo '</div>';
+    view_footer();
+    exit;
 }
 
 // Se for aba "sent", tratar separadamente
@@ -459,6 +565,7 @@ $tabs = [
     'patients' => '<svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Pacientes',
     'professionals' => '<svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Profissionais',
     'employees' => '<svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM10 4h4v2h-4V4zm10 16H4V8h16v12z"/></svg>Funcionários',
+    'company' => '<svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/></svg>Empresa',
     'sent' => '<svg style="width:16px;height:16px;margin-right:6px;vertical-align:middle" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>Enviados'
 ];
 
