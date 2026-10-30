@@ -685,6 +685,67 @@ if (count($subRequests) > 1) {
     alert(message || 'Falha ao iniciar a captação.');
   }
 
+  // Aviso "sem profissionais no local": a captação NÃO foi enviada. Se houver
+  // profissionais no estado, mostra o botão para confirmar e ampliar.
+  function showNoProfessionals(data, onExpand){
+    var old = document.getElementById('mlNoProsModal');
+    if (old) old.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'mlNoProsModal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:10px;max-width:520px;width:100%;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:14px;line-height:1.5';
+    var h = document.createElement('div');
+    h.style.cssText = 'font-weight:700;font-size:16px;margin-bottom:8px;color:#b45309';
+    h.textContent = 'Captação não enviada';
+    var p = document.createElement('div');
+    p.textContent = data.error || 'Nenhum profissional encontrado para o local do card.';
+    var actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap';
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn';
+    cancel.textContent = data.can_expand ? 'Cancelar' : 'Fechar';
+    cancel.onclick = function(){ wrap.remove(); };
+    actions.appendChild(cancel);
+    if (data.can_expand) {
+      var go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'btn btnPrimary';
+      go.textContent = 'Ampliar para o estado e captar (' + (data.state_count || 0) + ' profissional(is))';
+      go.onclick = function(){ go.disabled = true; wrap.remove(); onExpand(); };
+      actions.appendChild(go);
+    }
+    box.appendChild(h); box.appendChild(p); box.appendChild(actions);
+    wrap.appendChild(box);
+    wrap.addEventListener('click', function(e){ if (e.target === wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+  }
+
+  function sendDispatch(form, expandState){
+    var fd = new FormData(form);
+    if (expandState) fd.append('expand_scope', 'state');
+    fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: fd
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data && data.ok && data.run_id) {
+        if (window.mlDispatchTracker) window.mlDispatchTracker.start(data.run_id, cardTitle);
+      } else if (data && data.no_professionals) {
+        showNoProfessionals(data, function(){ sendDispatch(form, true); });
+      } else {
+        showError(data && data.error);
+      }
+    })
+    .catch(function(){
+      // Fallback: se o fetch falhar (rede), envia o form normalmente.
+      form.submit();
+    });
+  }
+
   document.querySelectorAll('form.dispatch-form').forEach(function(form){
     form.addEventListener('submit', function(ev){
       ev.preventDefault();
@@ -697,23 +758,7 @@ if (count($subRequests) > 1) {
       var btn = form.querySelector('button[type="submit"]');
       if (btn) { btn.disabled = true; setTimeout(function(){ btn.disabled = false; }, 4000); }
 
-      fetch(form.action, {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        body: new FormData(form)
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        if (data && data.ok && data.run_id) {
-          if (window.mlDispatchTracker) window.mlDispatchTracker.start(data.run_id, cardTitle);
-        } else {
-          showError(data && data.error);
-        }
-      })
-      .catch(function(){
-        // Fallback: se o fetch falhar (rede), envia o form normalmente.
-        form.submit();
-      });
+      sendDispatch(form, false);
     });
   });
 

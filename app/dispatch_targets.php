@@ -41,10 +41,20 @@ function dispatch_specialty_matches(string $profSpecialty, string $demandSpecial
  *
  * @return array{phones:string[], stats:array<string,int>}
  */
-function dispatch_collect_professionals(string $specialty, string $city, string $state, ?string $zone, bool $testMode): array
+function dispatch_collect_professionals(string $specialty, string $city, string $state, ?string $zone, bool $testMode, string $scope = 'city'): array
 {
     location_users_ensure_schema();
     $target = ['city' => $city, 'state' => $state, 'zone' => $zone];
+    // scope 'state' (captação AMPLIADA, confirmada pelo captador): vale qualquer
+    // profissional da mesma UF (cadastro, candidatura ou DDD), ignorando cidade/zona.
+    $stateScope = $scope === 'state';
+    $stateCompatible = static function (array $loc) use ($state): bool {
+        $uf = strtoupper(trim((string)($loc['state'] ?? '')));
+        if ($uf === '') {
+            $uf = (string)(location_ddd_state($loc['phone'] ?? '') ?? '');
+        }
+        return $uf === '' || $uf === strtoupper($state);
+    };
     $stats = ['users' => 0, 'contacts' => 0, 'skipped_location' => 0, 'unknown_location' => 0];
     $phones = [];
     $seenKeys = [];
@@ -106,7 +116,12 @@ function dispatch_collect_professionals(string $specialty, string $city, string 
             $loc['state'] = $loc['state'] !== '' ? $loc['state'] : (string)($appAddr[$uid]['address_state'] ?? '');
             $loc['neighborhood'] = $loc['neighborhood'] !== '' ? $loc['neighborhood'] : (string)($appAddr[$uid]['address_neighborhood'] ?? '');
         }
-        [$ok, $level] = location_professional_compatible($target, $loc);
+        if ($stateScope) {
+            $ok = $stateCompatible($loc);
+            $level = 'state';
+        } else {
+            [$ok, $level] = location_professional_compatible($target, $loc);
+        }
         if (!$ok) {
             $stats['skipped_location']++;
             continue;
@@ -157,7 +172,13 @@ function dispatch_collect_professionals(string $specialty, string $city, string 
             // Contato da agenda só entra com CIDADE informada e compatível. Só pelo DDD
             // (estado inteiro) colocava centenas de contatos em cada grupo novo, o que
             // deixava a criação do grupo lenta/instável no WhatsApp.
-            if (!$ok || !in_array($level, ['city', 'zone'], true)) {
+            if ($stateScope) {
+                // Ampliado: contato com UF informada igual à do card (DDD não basta).
+                $ok = strtoupper(trim((string)($c['state'] ?? ''))) === strtoupper($state)
+                    || ($ok && in_array($level, ['city', 'zone'], true));
+                $level = 'state';
+            }
+            if (!$ok || !in_array($level, ['city', 'zone', 'state'], true) || (!$stateScope && $level === 'state')) {
                 $stats['skipped_location']++;
                 continue;
             }
@@ -306,4 +327,51 @@ function dispatch_find_group(string $specialty, string $city, string $state, ?st
         return null;
     }
     return ['id' => (int)$best['id'], 'name' => (string)$best['name'], 'evolution_group_jid' => (string)$best['evolution_group_jid']];
+}
+
+/**
+ * Especialidade, cidade, UF e zona usadas na captação (sub-solicitação tem prioridade).
+ *
+ * @return array{specialty:string, city:string, state:string, zone:?string}
+ */
+function dispatch_resolve_location(array $d, ?array $subRequest): array
+{
+    $pick = static function (string $col) use ($subRequest, $d): string {
+        $sv = $subRequest ? trim((string)($subRequest[$col] ?? '')) : '';
+        return $sv !== '' ? $sv : trim((string)($d[$col] ?? ''));
+    };
+    $city = $pick('location_city');
+    $state = strtoupper($pick('location_state'));
+    $specialty = $subRequest ? trim((string)($subRequest['specialty'] ?? '')) : trim((string)($d['specialty'] ?? ''));
+    $zone = null;
+    if (location_city_has_zones($city, $state)) {
+        $zone = location_normalize_zone((string)($d['location_zone'] ?? ''), $city, $state)
+            ?? location_zone_for($city, $state, $pick('location_neighborhood'));
+    }
+    return ['specialty' => $specialty, 'city' => $city, 'state' => $state, 'zone' => $zone];
+}
+
+/**
+ * Checagem antes de captar: há profissional da especialidade para o local do card?
+ * Se não houver, a captação NÃO é enviada — o captador recebe o aviso e pode
+ * confirmar a ampliação para o estado (se houver alguém no estado).
+ *
+ * @return array{ok:bool, city_count:int, state_count:int, message:string}
+ */
+function dispatch_precheck_professionals(array $loc, bool $testMode): array
+{
+    $cityCount = count(dispatch_collect_professionals($loc['specialty'], $loc['city'], $loc['state'], $loc['zone'], $testMode, 'city')['phones']);
+    if ($cityCount > 0) {
+        return ['ok' => true, 'city_count' => $cityCount, 'state_count' => 0, 'message' => ''];
+    }
+    $stateCount = count(dispatch_collect_professionals($loc['specialty'], $loc['city'], $loc['state'], $loc['zone'], $testMode, 'state')['phones']);
+    $where = dispatch_group_location_label($loc['city'], $loc['state'], $loc['zone']);
+    $who = $testMode ? 'profissional de TESTE' : 'profissional';
+    $msg = 'Nenhum ' . $who . ' de ' . $loc['specialty'] . ' cadastrado para ' . $where . '. A captação NÃO foi enviada.';
+    if ($stateCount > 0) {
+        $msg .= ' Existem ' . $stateCount . ' no estado ' . $loc['state'] . '.';
+    } else {
+        $msg .= ' Também não há nenhum no estado ' . $loc['state'] . ' — cadastre profissionais (com cidade/UF) antes de captar.';
+    }
+    return ['ok' => false, 'city_count' => 0, 'state_count' => $stateCount, 'message' => $msg];
 }

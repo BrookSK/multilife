@@ -229,7 +229,7 @@ function demand_dispatch_ensure_run_columns(): void
     // última coluna e o status 'failed' já existem, não roda DDL.
     try {
         $col = db()->query("SHOW COLUMNS FROM demand_dispatch_runs LIKE 'status'")->fetch(PDO::FETCH_ASSOC);
-        $hasResult = (bool)db()->query("SHOW COLUMNS FROM demand_dispatch_runs LIKE 'result_message'")->fetch();
+        $hasResult = (bool)db()->query("SHOW COLUMNS FROM demand_dispatch_runs LIKE 'dispatch_scope'")->fetch();
         if ($col && $hasResult && strpos((string)$col['Type'], 'failed') !== false) {
             return;
         }
@@ -243,6 +243,8 @@ function demand_dispatch_ensure_run_columns(): void
         "ALTER TABLE demand_dispatch_runs ADD COLUMN phase_message VARCHAR(255) NULL AFTER phase",
         "ALTER TABLE demand_dispatch_runs ADD COLUMN sent_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER added_count",
         "ALTER TABLE demand_dispatch_runs ADD COLUMN result_message VARCHAR(500) NULL AFTER error_count",
+        // 'city' (padrão) ou 'state' (ampliação confirmada pelo captador).
+        "ALTER TABLE demand_dispatch_runs ADD COLUMN dispatch_scope VARCHAR(10) NOT NULL DEFAULT 'city'",
     ];
     foreach ($cols as $sql) {
         try { db()->exec($sql); } catch (Throwable $e) { /* coluna já existe */ }
@@ -258,20 +260,21 @@ function demand_dispatch_ensure_run_columns(): void
  *
  * @return int run_id criado
  */
-function demand_dispatch_enqueue_full(int $demandId, int $subRequestId, ?int $userId): int
+function demand_dispatch_enqueue_full(int $demandId, int $subRequestId, ?int $userId, string $scope = 'city'): int
 {
     demand_dispatch_ensure_run_columns();
 
     $ins = db()->prepare(
         "INSERT INTO demand_dispatch_runs
-            (demand_id, sub_request_id, group_jid, total_targets, status, phase, phase_message, created_by_user_id)
+            (demand_id, sub_request_id, group_jid, total_targets, status, phase, phase_message, created_by_user_id, dispatch_scope)
          VALUES
-            (:did, :srid, '', 0, 'queued', 'queued', 'Na fila para iniciar...', :uid)"
+            (:did, :srid, '', 0, 'queued', 'queued', 'Na fila para iniciar...', :uid, :scope)"
     );
     $ins->execute([
         'did' => $demandId,
         'srid' => $subRequestId > 0 ? $subRequestId : null,
         'uid' => $userId,
+        'scope' => $scope === 'state' ? 'state' : 'city',
     ]);
     $runId = (int)db()->lastInsertId();
 

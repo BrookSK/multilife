@@ -329,13 +329,15 @@ if ($DISPATCH_WORKER_MODE) {
 
     // Sem sessão HTTP: injeta o usuário do run para que auth_user_id() funcione
     // nas gravações de autoria (assumed_by, status logs, dispatch logs).
-    $runRow = db()->prepare('SELECT demand_id, sub_request_id, created_by_user_id FROM demand_dispatch_runs WHERE id = :id');
+    demand_dispatch_ensure_run_columns();
+    $runRow = db()->prepare('SELECT demand_id, sub_request_id, created_by_user_id, dispatch_scope FROM demand_dispatch_runs WHERE id = :id');
     $runRow->execute(['id' => $DISPATCH_RUN_ID]);
     $runData = $runRow->fetch();
     if (!$runData) {
         // Nada a fazer: run inexistente.
         return;
     }
+    $dispatchScope = (string)($runData['dispatch_scope'] ?? 'city') === 'state' ? 'state' : 'city';
     $id = (int)$runData['demand_id'];
     $subRequestId = (int)($runData['sub_request_id'] ?? 0);
     if (!empty($runData['created_by_user_id'])) {
@@ -348,6 +350,8 @@ if ($DISPATCH_WORKER_MODE) {
 
     $id = (int)($_POST['id'] ?? 0);
     $subRequestId = (int)($_POST['sub_request_id'] ?? 0);
+    // 'state' = o captador CONFIRMOU ampliar para os profissionais do estado.
+    $dispatchScope = (string)($_POST['expand_scope'] ?? '') === 'state' ? 'state' : 'city';
 }
 
 // MODO DE TESTE DA CAPTAÇÃO: quando ativo, só adiciona profissionais marcados como teste.
@@ -414,6 +418,31 @@ if (!$DISPATCH_WORKER_MODE) {
         dispatch_abort('Complete o card antes de captar. Falta: ' . implode(', ', $missingCheck['blocking']) . '.');
     }
 
+    // Sem profissional para o local: NÃO envia. Avisa e, se houver profissionais no
+    // estado, oferece "ampliar para o estado" (o captador confirma e reenvia).
+    if ($dispatchScope === 'city') {
+        try {
+            $pre = dispatch_precheck_professionals(dispatch_resolve_location($d, $subRequest ?: null), $captacaoTestMode);
+        } catch (Throwable $e) {
+            error_log('[DISPATCH] precheck: ' . $e->getMessage());
+            $pre = ['ok' => true];
+        }
+        if (empty($pre['ok'])) {
+            if (dispatch_wants_json()) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => false,
+                    'no_professionals' => true,
+                    'can_expand' => (int)$pre['state_count'] > 0,
+                    'state_count' => (int)$pre['state_count'],
+                    'error' => $pre['message'],
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            dispatch_abort($pre['message']);
+        }
+    }
+
     // Evita dois disparos simultâneos do mesmo card (duplo clique / duas abas).
     try {
         demand_dispatch_ensure_run_columns();
@@ -430,7 +459,7 @@ if (!$DISPATCH_WORKER_MODE) {
     } catch (Throwable $e) { /* segue */ }
 
     try {
-        $newRunId = demand_dispatch_enqueue_full((int)$id, (int)$subRequestId, auth_user_id());
+        $newRunId = demand_dispatch_enqueue_full((int)$id, (int)$subRequestId, auth_user_id(), $dispatchScope);
     } catch (Throwable $e) {
         dispatch_abort('Falha ao enfileirar a captação: ' . $e->getMessage());
     }
@@ -490,6 +519,17 @@ if ($missingWorker) {
 }
 
 $locationLabel = dispatch_group_location_label($city, $state, $zone);
+
+// Profissionais do card (uma vez só). Sem ninguém: NÃO envia (o grupo ficaria só
+// com a equipe). Com ampliação confirmada, usa os profissionais do estado, mas o
+// grupo continua sendo o da cidade do card.
+$collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode, $dispatchScope);
+if (count($collected['phones']) === 0) {
+    $preW = dispatch_precheck_professionals(['specialty' => $specialty, 'city' => $city, 'state' => $state, 'zone' => $zone], $captacaoTestMode);
+    dispatch_abort($dispatchScope === 'state'
+        ? 'Nenhum profissional de ' . $specialty . ' no estado ' . $state . '. A captação NÃO foi enviada.'
+        : $preW['message'] . ($preW['state_count'] > 0 ? ' Clique em "Realizar Captação" e confirme a ampliação para o estado.' : ''));
+}
 
 // Membros que devem estar no grupo ANTES do envio (jid do grupo => lista de JIDs).
 // O envio só acontece depois de adicionar quem falta, para que os profissionais
@@ -666,8 +706,8 @@ if (count($groups) === 0) {
         $groupName = $specialty . ' - ' . $location . ' - ' . $groupNumber;
         
         // Profissionais da especialidade NA CIDADE/ZONA do card (cadastro + contatos)
-        // + equipe MultiLife. Ver app/dispatch_targets.php.
-        $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
+        // + equipe MultiLife. Ver app/dispatch_targets.php. ($collected já foi
+        // calculado acima, respeitando a ampliação para o estado.)
         $memberStats = $collected['stats'];
         $teamPhones = dispatch_team_phones($captacaoTestMode, auth_user_id());
         $professionalPhones = array_values(array_diff($collected['phones'], $teamPhones));
@@ -1286,7 +1326,7 @@ if (count($groups) > 0) {
         // na cidade/zona do card (cadastro + contatos) + equipe. Quem faltar é
         // adicionado ANTES do envio (bloco "ADICIONAR MEMBROS ANTES DO ENVIO").
         try {
-            $collected = dispatch_collect_professionals($specialty, $city, $state, $zone, $captacaoTestMode);
+            // $collected já calculado acima (cidade/zona ou estado, se ampliado).
             $memberStats = $collected['stats'];
             $syncTeam = dispatch_team_phones($captacaoTestMode, auth_user_id());
             $professionalPhones = array_values(array_diff($collected['phones'], $syncTeam));
@@ -1872,6 +1912,7 @@ if ($subRequest !== null && $sent > 0) {
 // Finaliza o run (background) com o resultado, lido pelo acompanhamento de progresso.
 $groupNames = implode(', ', array_map(static fn($g) => (string)($g['name'] ?? ''), $groups));
 $summary = ' Grupo: ' . $groupNames . '.'
+    . ($dispatchScope === 'state' ? ' Ampliada para os profissionais do estado ' . $state . '.' : '')
     . ($addedTotal > 0 ? ' ' . $addedTotal . ' profissional(is) adicionado(s) antes do envio.' : '')
     . ($addErrors > 0 ? ' ' . $addErrors . ' não puderam ser adicionados.' : '');
 if ($sent > 0 && $errCount === 0) {
