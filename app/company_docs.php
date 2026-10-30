@@ -15,6 +15,11 @@ function company_system_docs(): array
             'title' => 'Documentação técnica de entrega',
             'description' => 'Fluxos internos, regras automáticas, rotinas, configurações e diagnóstico.',
         ],
+        'manual' => [
+            'file' => 'MANUAL_DO_USUARIO.md',
+            'title' => 'Manual de uso por equipe',
+            'description' => 'Passo a passo de cada equipe (Captação, Monitoramento, Faturamento, Financeiro): quais telas usar e onde clicar.',
+        ],
         'processos' => [
             'file' => 'MultiLife_Care_Processos_v1.0.md',
             'title' => 'Processos operacionais',
