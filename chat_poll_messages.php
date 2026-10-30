@@ -24,6 +24,10 @@ if (empty($chatId)) {
 }
 
 try {
+    // Só mensagens dos WhatsApps do usuário logado (não mistura com outro número).
+    [$instSql, $instParams] = whatsapp_messages_instance_filter(
+        (int)(auth_user_id() ?? 0), $chatId, trim((string)($_GET['instance'] ?? ''))
+    );
     // Buscar mensagens novas desde o último cursor (timestamp + id).
     // Condição: timestamp estritamente maior, OU mesmo timestamp porém id maior.
     $stmt = db()->prepare("
@@ -51,11 +55,11 @@ try {
           AND (
                 message_timestamp > ?
                 OR (message_timestamp = ? AND id > ?)
-          )
+          )" . $instSql . "
         ORDER BY message_timestamp ASC, id ASC
         LIMIT 50
     ");
-    $stmt->execute([$chatId, $since, $since, $lastId]);
+    $stmt->execute(array_merge([$chatId, $since, $since, $lastId], $instParams));
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Converter URLs relativas para absolutas

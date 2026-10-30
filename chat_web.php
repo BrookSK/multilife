@@ -31,7 +31,8 @@ $instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_g
 // FILTRO POR WHATSAPP: mostrar apenas as instâncias vinculadas ao usuário logado
 $availableInstances = [];
 try {
-    $availableInstances = whatsapp_list_user_instances($currentUserId);
+    // Admin vê as conversas de TODOS os WhatsApps; os demais, só os vinculados a ele.
+    $availableInstances = whatsapp_chat_instances_for_user($currentUserId);
 } catch (Throwable $e) {
     error_log('[CHAT] Erro ao listar instancias de WhatsApp: ' . $e->getMessage());
     $availableInstances = [];
@@ -161,8 +162,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // 1) Se há filtro de WhatsApp específico ativo, usa essa instância.
                 // 2) Caso contrário, usa a instância do usuário logado (a conectada),
                 //    e só cai na instância padrão global se o usuário não tiver nenhuma.
-                if ($instanceFilter !== '') {
-                    $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceFilter);
+                // Sempre um WhatsApp DO USUÁRIO (o filtro, o da conversa ou o dele).
+                $sendInstance = whatsapp_chat_instance_for_user($currentUserId, $remoteJid, $instanceFilter);
+                if ($sendInstance !== '') {
+                    $api = new EvolutionApiV1($baseUrl, $apiKey, $sendInstance);
                 } else {
                     $api = whatsapp_get_api_for_user($currentUserId);
                 }
@@ -647,26 +650,29 @@ try {
         // - Se o usuário escolheu um WhatsApp específico no filtro, usa essa instância.
         // - Caso contrário ("Todos WhatsApp"), mostra as conversas de TODAS as
         //   instâncias vinculadas ao usuário logado (nunca do sistema inteiro).
+        //
+        // O contato aparece na lista de CADA WhatsApp com que ele conversou (há
+        // mensagem dele gravada com aquela instância), e não só no último que falou
+        // com ele. Assim o mesmo profissional aparece para a Captação e para o
+        // Financeiro, cada um com o seu histórico. Admin vê todos os WhatsApps.
         if ($instanceFilter !== '') {
-            $whereClauses[] = "cc.instance_name = ?";
-            $params[] = $instanceFilter;
+            $listInstanceNames = [$instanceFilter];
         } else {
-            // Nomes das instâncias do usuário logado
-            $userInstanceNames = array_values(array_filter(array_map(
+            $listInstanceNames = array_values(array_filter(array_map(
                 static fn($i) => (string)($i['instance_name'] ?? ''),
                 $availableInstances
             ), static fn($n) => $n !== ''));
-
-            if (!empty($userInstanceNames)) {
-                $placeholders = implode(',', array_fill(0, count($userInstanceNames), '?'));
-                $whereClauses[] = "cc.instance_name IN ($placeholders)";
-                foreach ($userInstanceNames as $uin) {
-                    $params[] = $uin;
-                }
-            } else {
+            if (empty($listInstanceNames)) {
                 // Usuário sem instância vinculada: fallback para a instância padrão dele
-                $whereClauses[] = "cc.instance_name = ?";
-                $params[] = $instanceName;
+                $listInstanceNames = [$instanceName];
+            }
+        }
+        $listInstPh = implode(',', array_fill(0, count($listInstanceNames), '?'));
+        $whereClauses[] = "(cc.instance_name IN ($listInstPh)
+            OR EXISTS (SELECT 1 FROM chat_messages cmx WHERE cmx.remote_jid = cc.remote_jid AND cmx.instance_name IN ($listInstPh)))";
+        foreach ([1, 2] as $_rep) {
+            foreach ($listInstanceNames as $uin) {
+                $params[] = $uin;
             }
         }
         
@@ -716,10 +722,16 @@ try {
                     cc.is_group,
                     cc.status,
                     COALESCE(
-                        (SELECT MAX(cm2.message_timestamp) FROM chat_messages cm2 WHERE cm2.remote_jid = cc.remote_jid),
+                        (SELECT MAX(cm2.message_timestamp) FROM chat_messages cm2 WHERE cm2.remote_jid = cc.remote_jid
+                            AND (cm2.instance_name IN ($listInstPh) OR cm2.instance_name IS NULL)),
                         cc.last_message_timestamp
                     ) as lastMsgTimestamp,
-                    cc.last_message_text as lastMsgText,
+                    COALESCE(
+                        (SELECT cm3.message_text FROM chat_messages cm3 WHERE cm3.remote_jid = cc.remote_jid
+                            AND (cm3.instance_name IN ($listInstPh) OR cm3.instance_name IS NULL)
+                            ORDER BY cm3.message_timestamp DESC, cm3.id DESC LIMIT 1),
+                        cc.last_message_text
+                    ) as lastMsgText,
                     cc.last_message_type as lastMsgType,
                     COUNT(CASE WHEN cm.from_me = 0 AND cm.is_read = 0 THEN 1 END) as unreadCount
                 FROM chat_contacts cc
@@ -729,12 +741,14 @@ try {
                     OR u.phone = CONCAT('55', REPLACE(REPLACE(REPLACE(cc.remote_jid, '@s.whatsapp.net', ''), '@g.us', ''), '@lid', ''))
                 )
                 LEFT JOIN chat_messages cm ON cm.remote_jid = cc.remote_jid
+                    AND (cm.instance_name IN ($listInstPh) OR cm.instance_name IS NULL)
                 $whereSQL
                 GROUP BY cc.remote_jid
                 ORDER BY lastMsgTimestamp DESC
                 LIMIT 50
             ");
-            $stmt->execute($params);
+            // Ordem dos "?": 2 subconsultas do SELECT, o JOIN e depois o WHERE.
+            $stmt->execute(array_merge($listInstanceNames, $listInstanceNames, $listInstanceNames, $params));
             $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Log para diagnóstico de duplicação e unreadCount
@@ -756,6 +770,10 @@ try {
 
 // Carregar mensagens do banco de dados para o chat selecionado
 if (!empty($selectedChat)) {
+    // Só as mensagens dos WhatsApps do usuário logado: o mesmo contato pode ter
+    // conversado com outro número da empresa (ex.: Financeiro) e essas mensagens
+    // não podem aparecer para a captação.
+    [$msgInstSql, $msgInstParams] = whatsapp_messages_instance_filter($currentUserId, $selectedChat, $instanceFilter);
     try {
         // Garantir que tabela existe com estrutura correta
         $tableCheck = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
@@ -796,10 +814,10 @@ if (!empty($selectedChat)) {
                 participant_jid as participantJid,
                 external_message_id as externalMessageId
             FROM chat_messages
-            WHERE remote_jid = ?
+            WHERE remote_jid = ?" . $msgInstSql . "
             ORDER BY message_timestamp ASC
         ");
-        $stmt->execute([$selectedChat]);
+        $stmt->execute(array_merge([$selectedChat], $msgInstParams));
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Buscar reações para todas as mensagens deste chat
@@ -2241,7 +2259,7 @@ if ($chatType === 'grupos') {
                             $proJid = '';
                         }
                     }
-                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' : '#';
+                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' . $instanceQS . $attendantQS : '#';
                     
                     echo '<a href="' . $linkHref . '" class="whatsapp-chat-item">';
                     echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';

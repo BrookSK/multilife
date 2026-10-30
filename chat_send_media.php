@@ -43,7 +43,12 @@ if ($mediaType === 'audio' && $audioBase64 !== '') {
     error_log("[$debugId] Áudio recebido como base64 (" . strlen($audioBase64) . " chars)");
     
     try {
-        $api = new EvolutionApiV1();
+        // WhatsApp DO USUÁRIO logado (antes usava a instância padrão global, o que
+        // mandava o áudio pelo número de outra pessoa, ex.: Financeiro).
+        $audioInstance = whatsapp_chat_instance_for_user((int)(auth_user_id() ?? 0), $remoteJid, trim((string)($_POST['instance'] ?? '')));
+        $api = $audioInstance !== ''
+            ? new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $audioInstance)
+            : new EvolutionApiV1();
         
         // Enviar direto como base64 via sendWhatsAppAudio
         $res = $api->sendWhatsAppAudio($remoteJid, $audioBase64);
@@ -63,10 +68,10 @@ if ($mediaType === 'audio' && $audioBase64 !== '') {
             // Salvar no banco
             $stmt = db()->prepare("
                 INSERT INTO chat_messages 
-                (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp)
-                VALUES (?, ?, 'audio', ?, 'audio/webm', ?, 1, ?)
+                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp)
+                VALUES (?, ?, ?, 'audio', ?, 'audio/webm', ?, 1, ?)
             ");
-            $stmt->execute([$remoteJid, '[Áudio]', $mediaUrl, $fileName, time()]);
+            $stmt->execute([$remoteJid, $api->getInstance(), '[Áudio]', $mediaUrl, $fileName, time()]);
             
             $response['success'] = true;
             $response['message_id'] = (int)db()->lastInsertId();
@@ -205,7 +210,8 @@ try {
 
     // Instância: se o front informou uma (filtro de WhatsApp), usa ela;
     // senão, usa a instância CONECTADA do usuário logado (não a padrão global).
-    $requestedInstance = trim((string)($_POST['instance'] ?? ''));
+    // Sempre um WhatsApp DO USUÁRIO (o pedido, se for dele; o da conversa; ou o dele).
+    $requestedInstance = whatsapp_chat_instance_for_user($_currentUserId, $remoteJid, trim((string)($_POST['instance'] ?? '')));
     if ($requestedInstance !== '') {
         $instanceName = $requestedInstance;
         $api = new EvolutionApiV1($baseUrl, $apiKey, $requestedInstance);
@@ -289,8 +295,8 @@ try {
     
     $stmt = db()->prepare("
         INSERT INTO chat_messages 
-        (remote_jid, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, from_me, message_timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, from_me, message_timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
     ");
     
     $caption = trim($_POST['caption'] ?? '');
@@ -302,6 +308,7 @@ try {
     
     $stmt->execute([
         $normalizedJid,
+        $instanceName,
         $messageText,
         $mediaType,
         $mediaUrl,

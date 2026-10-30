@@ -25,6 +25,10 @@ try {
         exit;
     }
 
+    // Só mensagens dos WhatsApps do usuário logado (não mistura com outro número).
+    [$instSql, $instParams] = whatsapp_messages_instance_filter(
+        (int)(auth_user_id() ?? 0), $chatId, trim((string)($_GET['instance'] ?? ''))
+    );
     // Buscar mensagens novas desde o último timestamp
     $stmt = db()->prepare("
         SELECT id, remote_jid, message_text, from_me, message_timestamp,
@@ -33,11 +37,11 @@ try {
                sender_name, external_message_id
         FROM chat_messages
         WHERE remote_jid = ?
-          AND message_timestamp > ?
+          AND message_timestamp > ?" . $instSql . "
         ORDER BY message_timestamp ASC, id ASC
         LIMIT 50
     ");
-    $stmt->execute([$chatId, $since]);
+    $stmt->execute(array_merge([$chatId, $since], $instParams));
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $lastTimestamp = $since;

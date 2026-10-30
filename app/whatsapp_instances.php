@@ -103,6 +103,30 @@ function whatsapp_get_user_instance(?int $userId = null): ?array
                 'is_default' => false,
             ];
         }
+
+        // O usuário TEM WhatsApp vinculado, mas o status gravado não está "connected"
+        // (pode estar desatualizado). Usa o dele mesmo assim: cair na instância
+        // padrão misturava conversas (ex.: captadora enviando pelo WhatsApp do
+        // Financeiro). Se estiver mesmo desconectado, o envio falha com aviso.
+        $stmt = db()->prepare("
+            SELECT wi.instance_name, wi.token, wi.owner_number, wi.owner_phone_formatted
+            FROM whatsapp_instances wi
+            LEFT JOIN whatsapp_instance_users wiu ON wiu.instance_id = wi.id AND wiu.user_id = :uid
+            WHERE (wiu.user_id = :uid2 OR wi.user_id = :uid3)
+            AND wi.status = 'active'
+            ORDER BY wi.id DESC
+            LIMIT 1
+        ");
+        $stmt->execute(['uid' => $userId, 'uid2' => $userId, 'uid3' => $userId]);
+        $row = $stmt->fetch();
+        if ($row) {
+            return [
+                'instance_name' => (string)$row['instance_name'],
+                'token' => (string)($row['token'] ?? ''),
+                'owner_number' => (string)($row['owner_phone_formatted'] ?: $row['owner_number'] ?: ''),
+                'is_default' => false,
+            ];
+        }
     }
 
     // Fallback: buscar instância padrão (is_default=1)
@@ -138,6 +162,107 @@ function whatsapp_get_user_instance(?int $userId = null): ?array
     }
 
     return null;
+}
+
+/**
+ * Instâncias cujas conversas o usuário pode ver no Chat ao Vivo.
+ * Admin (super admin): TODAS as instâncias ativas. Demais: só as vinculadas a ele
+ * (um WhatsApp pode ser compartilhado por vários usuários, ex.: Captação).
+ */
+function whatsapp_chat_instances_for_user(int $userId): array
+{
+    if ($userId > 0 && function_exists('rbac_user_has_role') && rbac_user_has_role($userId, 'admin')) {
+        return whatsapp_list_all_instances();
+    }
+    return whatsapp_list_user_instances($userId);
+}
+
+/**
+ * Nomes das instâncias (WhatsApps) que o usuário pode ver/usar no chat.
+ * Usuário sem vínculo: só a instância que whatsapp_get_user_instance() devolve.
+ *
+ * @return string[]
+ */
+function whatsapp_user_instance_names(int $userId): array
+{
+    static $cache = [];
+    if (isset($cache[$userId])) {
+        return $cache[$userId];
+    }
+    $names = [];
+    try {
+        foreach (whatsapp_chat_instances_for_user($userId) as $i) {
+            $n = (string)($i['instance_name'] ?? '');
+            if ($n !== '') {
+                $names[] = $n;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[WA] whatsapp_user_instance_names: ' . $e->getMessage());
+    }
+    if (!$names) {
+        $inst = whatsapp_get_user_instance($userId);
+        if ($inst && $inst['instance_name'] !== '') {
+            $names[] = $inst['instance_name'];
+        }
+    }
+    return $cache[$userId] = array_values(array_unique($names));
+}
+
+/**
+ * Instância pela qual o usuário deve conversar com um contato (privado).
+ * Ordem: a pedida (se for dele) → a da conversa (se for dele) → a dele.
+ * Nunca devolve um WhatsApp de outro usuário (ex.: Financeiro para a captação).
+ */
+function whatsapp_chat_instance_for_user(int $userId, string $jid, string $requested = ''): string
+{
+    $allowed = whatsapp_user_instance_names($userId);
+    if ($requested !== '' && in_array($requested, $allowed, true)) {
+        return $requested;
+    }
+    if ($jid !== '' && count($allowed) > 1) {
+        try {
+            $st = db()->prepare('SELECT instance_name FROM chat_contacts WHERE remote_jid = ? LIMIT 1');
+            $st->execute([$jid]);
+            $cInst = (string)($st->fetchColumn() ?: '');
+            if ($cInst !== '' && in_array($cInst, $allowed, true)) {
+                return $cInst;
+            }
+            $ph = implode(',', array_fill(0, count($allowed), '?'));
+            $st = db()->prepare("SELECT instance_name FROM chat_messages WHERE remote_jid = ? AND instance_name IN ($ph)
+                                 ORDER BY message_timestamp DESC LIMIT 1");
+            $st->execute(array_merge([$jid], $allowed));
+            $mInst = (string)($st->fetchColumn() ?: '');
+            if ($mInst !== '') {
+                return $mInst;
+            }
+        } catch (Throwable $e) { /* segue com a instância do usuário */ }
+    }
+    $own = whatsapp_get_user_instance($userId);
+    return (string)($own['instance_name'] ?? ($allowed[0] ?? ''));
+}
+
+/**
+ * Filtro SQL de mensagens de conversa PRIVADA pelas instâncias do usuário.
+ * Grupos não são filtrados (o grupo pode ter sido criado por outra instância).
+ * Mensagens sem instância gravada (legado) continuam aparecendo.
+ *
+ * @return array{0:string,1:array} [trecho SQL iniciando com " AND ...", params]
+ */
+function whatsapp_messages_instance_filter(int $userId, string $jid, string $onlyInstance = '', string $col = 'instance_name'): array
+{
+    if (strpos($jid, '@g.us') !== false) {
+        return ['', []];
+    }
+    $allowed = whatsapp_user_instance_names($userId);
+    if ($onlyInstance !== '' && in_array($onlyInstance, $allowed, true)) {
+        $allowed = [$onlyInstance];
+    }
+    if (!$allowed) {
+        return ['', []];
+    }
+    $ph = implode(',', array_fill(0, count($allowed), '?'));
+    return [" AND ($col IN ($ph) OR $col IS NULL)", $allowed];
 }
 
 /**
