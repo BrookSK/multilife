@@ -296,7 +296,13 @@ if (!function_exists('dispatch_abort')) {
         global $DISPATCH_WORKER_MODE, $DISPATCH_RUN_ID, $id;
 
         if ($DISPATCH_WORKER_MODE) {
-            demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', $message);
+            // Grava só o PRIMEIRO motivo: um segundo dispatch_abort (vindo de um catch
+            // que capturou o encerramento) não pode trocar o motivo real.
+            // Por run (o cron processa vários disparos na mesma execução).
+            if (empty($GLOBALS['__dispatch_aborted'][$DISPATCH_RUN_ID])) {
+                $GLOBALS['__dispatch_aborted'][$DISPATCH_RUN_ID] = true;
+                demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', $message);
+            }
             dispatch_stop();
         }
 
@@ -995,6 +1001,12 @@ if (count($groups) === 0) {
             dispatch_abort('Erro ao criar grupo automaticamente (HTTP ' . $createHttpCode . '). Crie o grupo manualmente e tente novamente.');
         }
     } catch (Exception $e) {
+        // DispatchWorkerDone é o sinal de "disparo já encerrado" (dispatch_abort
+        // já gravou o motivo real). Não pode ser tratado como erro aqui, senão a
+        // mensagem real era trocada por "Erro ao criar grupo: dispatch worker done".
+        if ($e instanceof DispatchWorkerDone) {
+            throw $e;
+        }
         dispatch_abort('Erro ao criar grupo: ' . $e->getMessage());
     }
 }
@@ -1508,6 +1520,9 @@ try {
         dispatch_abort('Nenhuma instância WhatsApp está conectada. Verifique em: Configurações → WhatsApp Conexão → aba Conexão.');
     }
 } catch (Throwable $e) {
+    if ($e instanceof DispatchWorkerDone) {
+        throw $e; // encerramento já registrado com o motivo real
+    }
     // registra erro em todos
     $upd = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = :err WHERE demand_id = :did AND dispatch_status = \'queued\'');
     $upd->execute(['err' => 'Evolution API não configurada: ' . mb_strimwidth($e->getMessage(), 0, 220, ''), 'did' => $id]);
