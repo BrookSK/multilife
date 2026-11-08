@@ -29,8 +29,8 @@ if ($instanceId <= 0 && $instanceName !== '') {
         $instanceId = (int)$row['id'];
     } else {
         // Criar registro se não existir
-        $insStmt = db()->prepare("INSERT INTO whatsapp_instances (instance_name, status, is_default, connection_status, user_id, created_by) VALUES (:name, 'active', 0, 'disconnected', :uid, :uid)");
-        $insStmt->execute(['name' => $instanceName, 'uid' => $userId > 0 ? $userId : null]);
+        $insStmt = db()->prepare("INSERT INTO whatsapp_instances (instance_name, status, is_default, connection_status, user_id, created_by) VALUES (:name, 'active', 0, 'disconnected', :uid, :uid2)");
+        $insStmt->execute(['name' => $instanceName, 'uid' => $userId > 0 ? $userId : null, 'uid2' => $userId > 0 ? $userId : null]);
         $instanceId = (int)db()->lastInsertId();
     }
 }

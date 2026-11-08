@@ -19,7 +19,20 @@ $stmt = db()->prepare('SELECT id, password_hash, status, is_suspended FROM users
 $stmt->execute(['email' => $email]);
 $user = $stmt->fetch();
 
-if ($email === $bootstrapAdminEmail && $password === $bootstrapAdminPassword) {
+// Admin inicial SÓ na primeira instalação (nenhum admin ativo no banco). Antes,
+// este atalho redefinia a senha da conta para "admin123" a qualquer momento: quem
+// soubesse esse e-mail/senha entrava como admin no sistema em produção.
+$hasActiveAdmin = false;
+try {
+    $hasActiveAdmin = (bool)db()->query("SELECT 1 FROM users u
+        INNER JOIN user_roles ur ON ur.user_id = u.id
+        INNER JOIN roles r ON r.id = ur.role_id
+        WHERE r.slug = 'admin' AND u.status = 'active' LIMIT 1")->fetchColumn();
+} catch (Throwable $e) {
+    $hasActiveAdmin = false; // tabelas ainda não criadas = instalação nova
+}
+
+if (!$hasActiveAdmin && $email === $bootstrapAdminEmail && $password === $bootstrapAdminPassword) {
     $needsBootstrap = false;
     if (!$user) {
         $needsBootstrap = true;

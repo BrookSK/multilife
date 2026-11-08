@@ -132,13 +132,15 @@ function notification_guard_check_patient_by_phone(string $phone): array
     // Buscar paciente pelo telefone
     $stmt = db()->prepare(
         "SELECT id, full_name, admin_status, deleted_at FROM patients 
-         WHERE (REPLACE(REPLACE(REPLACE(whatsapp,' ',''),'-',''),'(','') LIKE :p
-            OR REPLACE(REPLACE(REPLACE(phone_primary,' ',''),'-',''),'(','') LIKE :p
-            OR REPLACE(REPLACE(REPLACE(phone_secondary,' ',''),'-',''),'(','') LIKE :p)
+         WHERE (REPLACE(REPLACE(REPLACE(whatsapp,' ',''),'-',''),'(','') LIKE :p1
+            OR REPLACE(REPLACE(REPLACE(phone_primary,' ',''),'-',''),'(','') LIKE :p2
+            OR REPLACE(REPLACE(REPLACE(phone_secondary,' ',''),'-',''),'(','') LIKE :p3)
          AND deleted_at IS NULL
          ORDER BY id DESC LIMIT 1"
     );
-    $stmt->execute(['p' => '%' . $digits]);
+    // Placeholders distintos: com emulate prepares desligado, ":p" repetido falha.
+    $like = '%' . $digits;
+    $stmt->execute(['p1' => $like, 'p2' => $like, 'p3' => $like]);
     $patient = $stmt->fetch();
 
     if (!$patient) {

@@ -10,3 +10,6 @@ imports/*.xls
 
 # Pasta duplicada do projeto
 multilife/
+
+# Resultados dos testes de carga (testes/stress/http_load.php)
+testes/stress/_resultados/

@@ -62,14 +62,17 @@ try {
         // Criar novo registro
         $stmt = $db->prepare(
             'INSERT INTO chat_capture_info (chat_id, status, type, notes, created_by_user_id, updated_by_user_id)
-             VALUES (:chat_id, :status, :type, :notes, :uid, :uid)'
+             VALUES (:chat_id, :status, :type, :notes, :uid, :uid2)'
         );
+        // :uid e :uid2 separados: com emulate prepares desligado o PDO não aceita
+        // o mesmo placeholder duas vezes ("Invalid parameter number").
         $stmt->execute([
             'chat_id' => $chatId,
             'status' => $status,
             'type' => $type,
             'notes' => $notes,
-            'uid' => auth_user_id()
+            'uid' => auth_user_id(),
+            'uid2' => auth_user_id(),
         ]);
     }
     

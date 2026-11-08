@@ -346,7 +346,7 @@ foreach ($profs as $i => $p) { if ($i) echo ','; echo '[' . (int)$p['id'] . ',"'
 echo '];var A=[';
 foreach ($pats as $i => $p) { if ($i) echo ','; echo '[' . (int)$p['id'] . ',"' . addslashes($p['full_name']) . '"]'; }
 echo '];';
-echo 'function ur(){var t=document.getElementById("rt").value,s=document.getElementById("rs"),l=t==="professional"?P:t==="patient"?A:[];s.innerHTML="<option value=\\'\\'>Selecione...</option>";for(var i=0;i<l.length;i++){var o=document.createElement("option");o.value=l[i][0];o.textContent=l[i][1];s.appendChild(o);}}';
+echo 'function ur(){var t=document.getElementById("rt").value,s=document.getElementById("rs"),l=t==="professional"?P:t==="patient"?A:[];s.innerHTML="<option value=\'\'>Selecione...</option>";for(var i=0;i<l.length;i++){var o=document.createElement("option");o.value=l[i][0];o.textContent=l[i][1];s.appendChild(o);}}';
 echo 'function reenviar(id){document.getElementById("resend_log_id").value=id;document.getElementById("resendModal").style.display="flex";}';
 echo '</script>';
 
