@@ -116,6 +116,25 @@ foreach ($instances as $i) {
         $i['instance_name'], $i['display_name'] ?: '-', $i['connection_status'] ?: 'NULL',
         !empty($i['is_default']) ? 'sim' : 'não', $i['linked_user_names'] ?: ($i['user_name'] ?: '-')));
 }
+// WhatsApp "padrão" (admin_settings evolution.instance): usado pelas mensagens
+// automáticas (cron, aprovação de candidatura, "você foi selecionado", aviso de
+// captação finalizada no grupo...). Se ele estiver desconectado, essas falham.
+$defaultSetting = trim((string)admin_setting_get('evolution.instance', ''));
+$out('  WhatsApp padrão das mensagens automáticas (Configurações > evolution.instance): ' . ($defaultSetting ?: '(vazio)'));
+if (!$skipWa && $defaultSetting !== '' && $baseUrl !== '' && $apiKey !== '') {
+    try {
+        $dRes = (new EvolutionApiV1($baseUrl, $apiKey, $defaultSetting))->connectionState(null, 10);
+        $dState = (string)($dRes['json']['instance']['state'] ?? $dRes['json']['state'] ?? ('HTTP ' . ($dRes['status'] ?? 0)));
+        $out("  Estado do WhatsApp padrão: $dState");
+        if ($dState !== 'open') {
+            $problems[] = "O WhatsApp padrão das mensagens automáticas ('$defaultSetting') está DESCONECTADO ($dState). "
+                . 'Mensagens automáticas (lembretes do cron, aprovação de candidatura, "você foi selecionado", "captação finalizada" no grupo) vão falhar. '
+                . 'Conecte esse número ou troque evolution.instance em Configurações para um WhatsApp conectado.';
+        }
+    } catch (Throwable $e) {
+        $problems[] = 'Não deu para consultar o WhatsApp padrão: ' . $e->getMessage();
+    }
+}
 if (!$skipWa && $baseUrl !== '' && $apiKey !== '') {
     foreach ($instances as $i) {
         $name = (string)$i['instance_name'];
@@ -238,10 +257,14 @@ foreach ($cards as $d) {
 $section('5) FILA DE CAPTAÇÃO / JOBS');
 try {
     $stuck = db()->query("SELECT id, demand_id, status, phase, updated_at FROM demand_dispatch_runs
-        WHERE status IN ('queued','processing') AND updated_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE) ORDER BY id DESC LIMIT 20")->fetchAll();
-    $out('  Captações paradas há +10 min: ' . count($stuck));
+        WHERE status IN ('queued','processing') AND updated_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+          AND updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY) ORDER BY id DESC LIMIT 20")->fetchAll();
+    $old = (int)db()->query("SELECT COUNT(*) FROM demand_dispatch_runs WHERE status IN ('queued','processing')
+          AND updated_at <= DATE_SUB(NOW(), INTERVAL 1 DAY)")->fetchColumn();
+    $out('  Captações paradas há +10 min (últimas 24 h): ' . count($stuck));
     foreach ($stuck as $r) $out("    run #{$r['id']} card #{$r['demand_id']} {$r['status']}/{$r['phase']} desde {$r['updated_at']}");
-    if ($stuck) $warnings[] = count($stuck) . ' captação(ões) parada(s) em queued/processing (o acompanhamento marca como falha; confira o cron do worker).';
+    if ($old > 0) $out("  Registros antigos (+1 dia) ainda marcados como em andamento: $old — sobras dos testes antigos, não aparecem para ninguém e não atrapalham.");
+    if ($stuck) $warnings[] = count($stuck) . ' captação(ões) parada(s) nas últimas 24 h (confira o cron do worker).';
     $last = db()->query("SELECT status, COUNT(*) c FROM demand_dispatch_runs WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY status")->fetchAll();
     $out('  Últimos 7 dias: ' . json_encode(array_column($last, 'c', 'status')));
 } catch (Throwable $e) {

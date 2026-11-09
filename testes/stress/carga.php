@@ -31,7 +31,8 @@ $allPages = [
 
 $run = isset($_GET['run']);
 $users = max(1, min(20, (int)($_GET['users'] ?? 5)));
-$rounds = max(1, min(5, (int)($_GET['rounds'] ?? 3)));
+$rounds = max(1, min(8, (int)($_GET['rounds'] ?? 3)));
+$mode = (string)($_GET['mode'] ?? 'realista') === 'pesado' ? 'pesado' : 'realista';
 $picked = array_values(array_intersect(array_keys($allPages), (array)($_GET['p'] ?? array_keys($allPages))));
 if (!$picked) {
     $picked = array_keys($allPages);
@@ -70,8 +71,11 @@ if ($run) {
             for ($r = 1; $r <= $rounds; $r++) {
                 $mh = curl_multi_init();
                 $handles = [];
-                foreach ($tempIds as $sid) {
-                    foreach ($picked as $p) {
+                foreach ($tempIds as $uIdx => $sid) {
+                    // Realista: cada usuário abre UMA tela por vez (como uma pessoa).
+                    // Pesado: cada usuário abre TODAS as telas no mesmo instante.
+                    $pagesNow = $mode === 'realista' ? [$picked[($uIdx + $r) % count($picked)]] : $picked;
+                    foreach ($pagesNow as $p) {
                         $ch = curl_init($base . $p);
                         curl_setopt_array($ch, [
                             CURLOPT_RETURNTRANSFER => true,
@@ -104,6 +108,8 @@ if ($run) {
                     $err = '';
                     if ($code === 0) {
                         $err = 'sem resposta (' . (curl_error($ch) ?: 'tempo esgotado') . ')';
+                    } elseif ($code === 508) {
+                        $err = 'limite de processos da hospedagem atingido (508)';
                     } elseif ($code >= 500) {
                         $err = "erro HTTP $code";
                     } elseif ($code >= 300 && stripos($redirect, 'login') !== false) {
@@ -153,9 +159,13 @@ foreach ([1, 3, 5, 10, 15, 20] as $v) {
 }
 echo '</select></label>';
 echo '<label>Rodadas <select name="rounds">';
-foreach ([1, 2, 3, 5] as $v) {
+foreach ([1, 2, 3, 5, 8] as $v) {
     echo '<option value="' . $v . '"' . ($v === $rounds ? ' selected' : '') . '>' . $v . '</option>';
 }
+echo '</select></label>';
+echo '<label>Tipo <select name="mode">';
+echo '<option value="realista"' . ($mode === 'realista' ? ' selected' : '') . '>Realista (cada pessoa abre 1 tela por vez)</option>';
+echo '<option value="pesado"' . ($mode === 'pesado' ? ' selected' : '') . '>Pesado (cada pessoa abre todas as telas de uma vez)</option>';
 echo '</select></label>';
 echo '</div>';
 echo '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;margin-bottom:12px">';
@@ -174,7 +184,7 @@ if ($results) {
     $bad = 0;
     $slow = [];
     echo '<div class="card" style="padding:16px">';
-    echo '<h2 style="margin:0 0 10px;font-size:18px">Resultado — ' . $users . ' usuário(s), ' . $rounds . ' rodada(s)</h2>';
+    echo '<h2 style="margin:0 0 10px;font-size:18px">Resultado — ' . $users . ' usuário(s), ' . $rounds . ' rodada(s), modo ' . $mode . '</h2>';
     foreach ($results['rounds'] as $i => [$n, $s]) {
         echo '<div style="font-size:13px;color:#667781">Rodada ' . ($i + 1) . ': ' . $n . ' acessos simultâneos terminaram em ' . number_format($s, 1, ',', '.') . ' s</div>';
     }

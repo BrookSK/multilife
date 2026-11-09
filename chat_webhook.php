@@ -342,7 +342,11 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
             if (str_contains($mediaUrl, 'mmg.whatsapp.net') || str_contains($mediaUrl, '.enc')) {
                 error_log("[SAVE_MSG] URL criptografada do WhatsApp detectada, usando Evolution API...");
                 try {
-                    $api = new EvolutionApiV1();
+                    // A mídia só pode ser baixada pela instância que RECEBEU a mensagem
+                    // (antes usava a padrão: se ela estivesse desconectada, foto/áudio
+                    // recebidos na Grace/Financeiro não apareciam no chat).
+                    $whInst = trim((string)($GLOBALS['_webhookInstanceName'] ?? ''));
+                    $api = $whInst !== '' ? new EvolutionApiV1(null, null, $whInst) : new EvolutionApiV1();
                     $mediaEndpoint = $api->getBaseUrl() . '/chat/getBase64FromMediaMessage/' . urlencode($api->getInstance());
                     
                     global $currentMessageData;
