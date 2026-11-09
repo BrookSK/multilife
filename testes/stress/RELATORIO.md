@@ -30,8 +30,10 @@
 
 | Arquivo | Para quê | Onde rodar |
 |---------|----------|------------|
-| `diagnostico.php` | Só leitura. Confere banco, estado dos WhatsApps (N consultas seguidas, detecta loop e lentidão), o que cada usuário vê no chat (roda a mesma consulta da lista), profissionais por card aberto (cidade/estado), captações presas, jobs atrasados e login no IMAP | No servidor: navegador logado como admin, ou `php testes/stress/diagnostico.php --wa-rounds=10` |
-| `http_load.php` | Carga: N usuários simultâneos abrindo as telas principais. Mede média, p95 e erros (500, erro PHP, sessão caindo). Só faz GET | Em qualquer PC com PHP, apontando para o domínio |
+| `index.php` | Página inicial dos testes, com links para tudo abaixo | Navegador, admin: `/testes/stress/` |
+| `diagnostico.php` | Só leitura. Confere banco, estado dos WhatsApps (N consultas seguidas, detecta loop e lentidão), o que cada usuário vê no chat (roda a mesma consulta da lista), profissionais por card aberto (cidade/estado), captações presas, jobs atrasados e login no IMAP | Navegador, admin: `/testes/stress/diagnostico.php?wa_rounds=10` |
+| `carga.php` | Carga: N usuários simultâneos abrindo as telas principais, usando sessões temporárias com o login do admin (sem pedir senha; apagadas no fim). Mede média, p95 e erros (500, erro PHP, sessão caindo). Só faz GET | Navegador, admin: `/testes/stress/carga.php` |
+| `http_load.php` | Mesma carga, por linha de comando (opcional) | Terminal, se um dia precisar |
 | `static_scan.php` | Procura consultas com placeholder repetido (o tipo de bug que causou o "Enviando" travado antes) | Aqui, antes de subir código |
 | `ROTEIRO_TESTES.md` | Checklist manual completo: WhatsApp, captação, chat por WhatsApp, autorização até o financeiro, e-mail, perfis, carga | Equipe, no sistema |
 

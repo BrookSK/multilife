@@ -10,8 +10,7 @@ um profissional de teste.
 
 ## 0. Antes de começar (5 min)
 
-1. Entre como **admin** e abra no navegador:
-   `https://SEU-DOMINIO/testes/stress/diagnostico.php?wa_rounds=10`
+1. Entre como **admin** e abra `https://SEU-DOMINIO/testes/stress/`. Clique em **1. Diagnóstico geral**.
    Espere terminar (1 a 2 minutos). No fim aparece **RESUMO**.
    - ✅ Esperado: "Nenhum problema bloqueante encontrado". Avisos podem aparecer; leia cada um.
    - Se aparecer "oscilou entre estados", o WhatsApp está em loop. Resolva isso antes de tudo (seção 1).
@@ -104,18 +103,14 @@ Use os cards do arquivo `testes/seed_cards_cenarios_captacao.sql` ou crie cards 
 
 ## 7. Carga: vários usuários ao mesmo tempo (10 min, fora do horário de uso)
 
-Num computador com PHP, rode:
+Logado como admin, abra `https://SEU-DOMINIO/testes/stress/carga.php`.
 
-```
-set ML_EMAIL=email_do_admin
-set ML_PASS=senha_do_admin
-php testes/stress/http_load.php https://SEU-DOMINIO --users=5 --rounds=3
-php testes/stress/http_load.php https://SEU-DOMINIO --users=15 --rounds=3
-```
+1. Rode com **5 usuários** e 3 rodadas.
+2. Se der tudo verde, rode com **10** e depois com **15**.
 
-- ✅ Esperado: "OK: nenhuma falha". Tempo médio abaixo de 3 s e p95 abaixo de 6 s.
-- Se a coluna de erros mostrar "sessão caiu" ou "HTTP 500", anote a página e me envie o arquivo de `testes/stress/_resultados/`.
-- Ao mesmo tempo, abra o sistema no navegador e veja se continua usável.
+- ✅ Esperado: "Tudo certo: nenhuma falha e nenhuma tela lenta".
+- Se aparecer erro ("sessão caiu", "erro HTTP 500", "erro de PHP"), tire um print da tabela e me envie.
+- Enquanto o teste roda, outra pessoa abre o sistema em outro computador e confere se continua usável.
 
 ## Se algo falhar
 
