@@ -17,6 +17,23 @@ if (!$data) {
     exit;
 }
 
+// RESPONDE JÁ para a Evolution e processa em seguida. A Evolution espera a
+// resposta de cada webhook; com o processamento (download de mídia, consultas)
+// dentro da requisição, as mensagens seguintes ficavam na fila e demoravam a
+// chegar. As saídas (echo/http_response_code) depois daqui são descartadas.
+ignore_user_abort(true);
+@set_time_limit(120);
+if (function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request')) {
+    http_response_code(200);
+    header('Content-Type: application/json');
+    echo json_encode(['status' => 'ok']);
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        litespeed_finish_request();
+    }
+}
+
 $event = $data['event'] ?? '';
 // Normalizar: MESSAGES_UPSERT → messages.upsert (diferentes versões da Evolution API)
 $event = strtolower(str_replace('_', '.', $event));
@@ -29,7 +46,7 @@ $GLOBALS['_webhookInstanceName'] = $data['instance'] ?? null;
 // (antes connection.update era simplesmente ignorado).
 if (function_exists('whatsapp_health_handle_webhook')
     && whatsapp_health_handle_webhook($event, (string)($data['instance'] ?? ''), $data)) {
-    http_response_code(200);
+    if (!headers_sent()) http_response_code(200);
     echo json_encode(['status' => 'ok']);
     exit;
 }
@@ -60,8 +77,19 @@ $ignoredEvents = [
     'qrcode.updated',
 ];
 
+// Diagnóstico: eventos de mensagem que não são processados também ficam no rastreio
+// (messages.update fica de fora: é só status de entrega/leitura e chega a toda hora)
+if (in_array($event, $ignoredEvents) && $event !== 'messages.update'
+    && (strpos($event, 'messages') === 0 || strpos($event, 'send') === 0)) {
+    $traceItem = $data['data'] ?? [];
+    if (is_array($traceItem) && isset($traceItem[0]) && is_array($traceItem[0])) {
+        $traceItem = $traceItem[0];
+    }
+    chat_webhook_trace($event, is_array($traceItem['key'] ?? null) ? $traceItem['key'] : [], 'evento ignorado');
+}
+
 if (in_array($event, $ignoredEvents)) {
-    http_response_code(200);
+    if (!headers_sent()) http_response_code(200);
     echo json_encode(['status' => 'ok']);
     exit;
 }
@@ -135,11 +163,26 @@ function normalizeJid(string $jid): string {
 function resolveConversationJid(array $key, bool $fromMe): string {
     $remoteJid = (string)($key['remoteJid'] ?? '');
     $senderPn  = (string)($key['senderPn'] ?? '');
+    $senderLid = (string)($key['senderLid'] ?? '');
     $altJid    = (string)($key['remoteJidAlt'] ?? '');
     $isLid     = substr($remoteJid, -4) === '@lid';
 
     if (strpos($remoteJid, '@g.us') !== false) {
         return $remoteJid;
+    }
+
+    // Aprender o par LID <-> número sempre que a mensagem trouxer os dois. A
+    // Evolution costuma mandar a RECEBIDA já com o número (remoteJid) e o LID em
+    // remoteJidAlt/senderLid; a ENVIADA pelo celular vem só com o LID. Guardando o
+    // par na recebida, a enviada passa a cair na conversa certa.
+    $isPn = static fn(string $j): bool => strpos($j, '@s.whatsapp.net') !== false;
+    $isL  = static fn(string $j): bool => substr($j, -4) === '@lid';
+    if ($isL($remoteJid) && $isPn($altJid)) chat_lid_remember($remoteJid, $altJid);
+    if ($isPn($remoteJid) && $isL($altJid)) chat_lid_remember($altJid, $remoteJid);
+    if (!$fromMe) {
+        // Recebida: senderPn/senderLid são do contato (na enviada, são os NOSSOS)
+        if ($isPn($remoteJid) && $isL($senderLid)) chat_lid_remember($senderLid, $remoteJid);
+        if ($isL($remoteJid) && $isPn($senderPn)) chat_lid_remember($remoteJid, $senderPn);
     }
     if (!$fromMe && $senderPn !== '') {
         if ($isLid) chat_lid_remember($remoteJid, $senderPn);
@@ -603,6 +646,7 @@ if ($event === 'messages.upsert') {
     } else {
         $msgList = [];
         error_log('[WEBHOOK] messages.upsert: formato nao reconhecido');
+        chat_webhook_trace($event, [], 'formato não reconhecido: ' . implode(',', is_array($rawData) ? array_keys($rawData) : [gettype($rawData)]));
     }
 
     error_log('[WEBHOOK] messages.upsert recebido: ' . count($msgList) . ' mensagem(ns)');
@@ -1033,6 +1077,7 @@ if ($event === 'messages.upsert') {
                 // Já gravada (recebida OU enviada): não duplica
                 if (!empty($externalMsgId) && chat_msg_find_by_external_id((string)$externalMsgId) > 0) {
                     error_log("[WEBHOOK] mensagem '$externalMsgId' já existe, skip duplicata");
+                    chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'já existia (duplicada)', $remoteJid, $messageText);
                     continue;
                 }
                 
@@ -1091,6 +1136,7 @@ if ($event === 'messages.upsert') {
                             $stmtUpd->execute([$externalMsgId, $existingMsg['id']]);
                         }
                         error_log("[WEBHOOK] mensagem fromMe já existe (id={$existingMsg['id']}), skip duplicata");
+                        chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'eco do sistema (já existia)', $remoteJid, $messageText);
                         continue;
                     }
                 }
@@ -1106,8 +1152,10 @@ if ($event === 'messages.upsert') {
                 ];
                 saveMessage($remoteJid, $messageText, $fromMeInt, $timestamp, $mediaData, $extraData);
                 error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' fromMe=$fromMeInt text='" . substr($messageText,0,50) . "'" . ($quotedMessageId ? " [REPLY to $quotedMessageId]" : ""));
-            } catch (Exception $e) {
+                chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'gravada', normalizeJid($remoteJid), $messageText);
+            } catch (Throwable $e) {
                 error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
+                chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'erro: ' . $e->getMessage(), $remoteJid, $messageText);
             } finally {
                 if ($msgLocked) {
                     chat_msg_unlock((string)$externalMsgId);
@@ -1121,6 +1169,7 @@ if ($event === 'messages.upsert') {
             if ($isSystemType) $reason[] = 'systemType';
             if ($isSystemMsg) $reason[] = 'systemMsg';
             error_log("[WEBHOOK] mensagem IGNORADA: " . implode(', ', $reason) . " | jid='$remoteJid'");
+            chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'ignorada: ' . implode(', ', $reason) . ' | tipos: ' . implode(',', array_keys((array)$msgPayload)), $remoteJid, $messageText);
         }
     }
 }
@@ -1170,7 +1219,7 @@ if ($event === 'messages.delete') {
         }
     }
     
-    http_response_code(200);
+    if (!headers_sent()) http_response_code(200);
     echo json_encode(['status' => 'ok']);
     exit;
 }
@@ -1286,15 +1335,18 @@ if ($event === 'send.message') {
                     $stmtUpdate->execute([$sendExternalId, $existing['id']]);
                 }
                 error_log("[WEBHOOK] mensagem ENVIADA já existe no banco (id={$existing['id']}), skip duplicata");
+                chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'já existia (duplicada)', $normalizedJid, $messageText);
             } else {
                 $sendExtraData = [
                     'external_message_id' => $sendExternalId,
                 ];
                 saveMessage($remoteJid, $messageText, 1, $timestamp, $mediaData, $sendExtraData);
                 error_log("[WEBHOOK] mensagem ENVIADA salva: jid='$remoteJid' type='$messageType'");
+                chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'gravada', $normalizedJid, $messageText);
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Webhook erro ao salvar mensagem enviada: " . $e->getMessage());
+            chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'erro: ' . $e->getMessage(), $remoteJid, $messageText);
         } finally {
             if ($sendLocked) {
                 chat_msg_unlock((string)$sendExternalId);
@@ -1333,5 +1385,5 @@ if ($event === 'contacts.upsert' || $event === 'contacts.update') {
     }
 }
 
-http_response_code(200);
+if (!headers_sent()) http_response_code(200);
 echo json_encode(['status' => 'ok']);

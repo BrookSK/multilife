@@ -321,3 +321,57 @@ function chat_import_evolution_record(array $rec, string $instanceName, string $
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Rastreio do webhook (diagnóstico): o que chegou e o que foi feito com cada
+// mensagem. Visível em /admin_webhook_debug.php. Guarda só os últimos 3 dias.
+// ---------------------------------------------------------------------------
+
+function chat_webhook_trace(string $event, array $key, string $result, string $resolvedJid = '', string $text = ''): void
+{
+    try {
+        static $ready = false;
+        if (!$ready) {
+            db()->exec("CREATE TABLE IF NOT EXISTS chat_webhook_trace (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                event VARCHAR(40) NOT NULL,
+                instance_name VARCHAR(100) DEFAULT NULL,
+                from_me TINYINT(1) NOT NULL DEFAULT 0,
+                remote_jid VARCHAR(100) DEFAULT NULL,
+                remote_jid_alt VARCHAR(100) DEFAULT NULL,
+                sender_pn VARCHAR(100) DEFAULT NULL,
+                sender_lid VARCHAR(100) DEFAULT NULL,
+                resolved_jid VARCHAR(100) DEFAULT NULL,
+                external_id VARCHAR(100) DEFAULT NULL,
+                result VARCHAR(120) NOT NULL,
+                text_sample VARCHAR(120) DEFAULT NULL,
+                PRIMARY KEY (id),
+                INDEX idx_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $ready = true;
+        }
+        $cut = static fn($v, int $n) => $v === null || $v === '' ? null : mb_substr((string)$v, 0, $n);
+        db()->prepare('INSERT INTO chat_webhook_trace
+                (event, instance_name, from_me, remote_jid, remote_jid_alt, sender_pn, sender_lid, resolved_jid, external_id, result, text_sample)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([
+                $cut($event, 40),
+                $cut($GLOBALS['_webhookInstanceName'] ?? null, 100),
+                !empty($key['fromMe']) ? 1 : 0,
+                $cut($key['remoteJid'] ?? null, 100),
+                $cut($key['remoteJidAlt'] ?? null, 100),
+                $cut($key['senderPn'] ?? null, 100),
+                $cut($key['senderLid'] ?? null, 100),
+                $cut($resolvedJid, 100),
+                $cut($key['id'] ?? null, 100),
+                $cut($result, 120),
+                $cut($text, 120),
+            ]);
+        if (random_int(1, 200) === 1) {
+            db()->exec('DELETE FROM chat_webhook_trace WHERE created_at < (NOW() - INTERVAL 3 DAY)');
+        }
+    } catch (Throwable $e) {
+        // diagnóstico nunca pode atrapalhar o webhook
+    }
+}

@@ -56,6 +56,8 @@ $apiKey = admin_setting_get('evolution.api_key');
 
 $currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $userInstance = whatsapp_get_user_instance($currentUserId);
+// Assinatura das mensagens: nome do usuário logado (sem asteriscos, que quebrariam o negrito)
+$chatSignatureName = trim(str_replace(['*', "\n", "\r"], ' ', (string)(auth_user()['name'] ?? '')));
 $instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
 
 // FILTRO POR WHATSAPP: mostrar apenas as instâncias vinculadas ao usuário logado
@@ -2145,6 +2147,15 @@ echo '.whatsapp-message-bubble{max-width:65%;padding:8px 12px;border-radius:8px;
 echo '.whatsapp-message.out .whatsapp-message-bubble{background:#d9fdd3;border-bottom-right-radius:0}';
 echo '.whatsapp-message.in .whatsapp-message-bubble{background:#fff;border-bottom-left-radius:0;box-shadow:0 1px 0.5px rgba(0,0,0,.13)}';
 echo '.whatsapp-message-text{font-size:14px;color:#111b21;line-height:1.5;word-wrap:break-word}';
+// Formatação do WhatsApp e botão de download de mídia
+echo '.whatsapp-message-text code.wa-code,.whatsapp-message-text code.wa-code-block{font-family:Consolas,Menlo,monospace;font-size:13px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px}';
+echo '.whatsapp-message-text code.wa-code-block{display:block;white-space:pre-wrap;padding:6px 8px;margin:2px 0}';
+echo '.whatsapp-message-text .wa-quote{display:inline-block;border-left:3px solid #8696a0;padding-left:8px;color:#54656f}';
+echo '.whatsapp-message-text .wa-mention{color:#027eb5;font-weight:500}';
+echo '.wa-download{display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#00a884;background:rgba(0,168,132,.08);border:1px solid rgba(0,168,132,.25);border-radius:14px;text-decoration:none}';
+echo '.wa-download:hover{background:rgba(0,168,132,.16)}';
+echo '.wa-signature-btn{font-size:12px;font-weight:600;padding:4px 10px;border-radius:14px;border:1px solid #d1d7db;background:#fff;color:#667781;cursor:pointer;white-space:nowrap;align-self:center}';
+echo '.wa-signature-btn.on{border-color:#00a884;background:#e7f8f4;color:#00a884}';
 echo '.whatsapp-message-time{font-size:11px;color:#667781;margin-top:4px;text-align:right}';
 echo '.whatsapp-input-area{padding:12px 16px;background:#ffffff;border-top:1px solid #d1d7db;display:flex;gap:8px;align-items:flex-end}';
 echo '.whatsapp-input{flex:1;padding:10px 12px;border:none;border-radius:8px;font-size:15px;resize:none;max-height:120px;font-family:inherit}';
@@ -2984,6 +2995,7 @@ if (empty($selectedChat)) {
                 echo '<source src="' . h($mediaUrl) . '" type="' . h($mimeType) . '">';
                 echo 'Seu navegador não suporta este formato de áudio.';
                 echo '</audio>';
+                echo chat_media_download_link((int)($msg['id'] ?? 0));
                 echo '</div>';
                 
                 // Área de transcrição
@@ -3002,9 +3014,10 @@ if (empty($selectedChat)) {
                 echo '<!-- DEBUG IMAGE: URL=' . h($mediaUrl) . ' -->';
                 echo '<div style="margin-bottom:8px">';
                 echo '<img src="' . h($mediaUrl) . '" alt="Imagem" style="max-width:100%;max-height:300px;border-radius:8px;cursor:pointer;object-fit:contain" onclick="window.open(this.src)" onerror="console.error(\'Erro ao carregar imagem:\', this.src); this.style.border=\'2px solid red\';">';
+                echo chat_media_download_link((int)($msg['id'] ?? 0));
                 echo '</div>';
                 if (!empty($messageText) && $messageText !== '[Imagem]') {
-                    echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                    echo '<div class="whatsapp-message-text">' . chat_wa_format((string)$messageText) . '</div>';
                 }
             } elseif ($messageType === 'video' && !empty($mediaUrl)) {
                 echo '<!-- DEBUG VIDEO: URL=' . h($mediaUrl) . ' -->';
@@ -3013,14 +3026,17 @@ if (empty($selectedChat)) {
                 echo '<source src="' . h($mediaUrl) . '" type="' . h($msg['mediaMimeType'] ?? 'video/mp4') . '">';
                 echo 'Seu navegador não suporta vídeo.';
                 echo '</video>';
+                echo chat_media_download_link((int)($msg['id'] ?? 0));
                 echo '</div>';
                 if (!empty($messageText) && $messageText !== '[Vídeo]') {
-                    echo '<div class="whatsapp-message-text">' . h($messageText) . '</div>';
+                    echo '<div class="whatsapp-message-text">' . chat_wa_format((string)$messageText) . '</div>';
                 }
             } elseif ($messageType === 'document' && !empty($mediaUrl)) {
                 $docFilename = $msg['mediaFilename'] ?? 'Documento';
                 $docSize = !empty($msg['media_size']) ? number_format($msg['media_size'] / 1024, 1) . ' KB' : 'PDF';
-                echo '<a href="' . h($mediaUrl) . '" download style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
+                // Baixa pelo servidor (com o nome original do arquivo)
+                $docHref = !empty($msg['id']) ? '/chat_media_download.php?id=' . (int)$msg['id'] : $mediaUrl;
+                echo '<a href="' . h($docHref) . '" download title="Baixar arquivo no computador" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
                 echo '<div style="width:40px;height:40px;border-radius:8px;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0">';
                 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
                 echo '</div>';
@@ -3035,6 +3051,7 @@ if (empty($selectedChat)) {
             } elseif ($messageType === 'sticker' && !empty($mediaUrl)) {
                 echo '<div style="margin-bottom:4px">';
                 echo '<img src="' . h($mediaUrl) . '" alt="Sticker" style="max-width:150px;max-height:150px" onerror="this.alt=\'[Sticker]\';this.style.display=\'none\'">';
+                echo chat_media_download_link((int)($msg['id'] ?? 0));
                 echo '</div>';
             } elseif ($messageType === 'contact' || strpos((string)$messageText, '[Contato indicado]') === 0) {
                 // Card de CONTATO (estilo WhatsApp) — usado nas indicações de profissionais.
@@ -3074,20 +3091,18 @@ if (empty($selectedChat)) {
                     echo '</div>';
                 }
             } else {
-                // Texto com suporte a menções e quebras de linha
-                $displayText = $messageText;
+                // Texto com formatação do WhatsApp (*negrito*, _itálico_, ~tachado~,
+                // `código`), menções e quebras de linha. Escapado antes de formatar.
+                $mentionNumbers = [];
                 if (!empty($msg['mentionedJids'])) {
-                    $mentions = json_decode($msg['mentionedJids'], true);
+                    $mentions = json_decode((string)$msg['mentionedJids'], true);
                     if (is_array($mentions)) {
                         foreach ($mentions as $mentionJid) {
-                            $mentionNumber = str_replace(['@s.whatsapp.net', '@g.us'], '', $mentionJid);
-                            $displayText = str_replace('@' . $mentionNumber, '<span style="color:#027eb5;font-weight:500">@' . $mentionNumber . '</span>', $displayText);
+                            $mentionNumbers[] = str_replace(['@s.whatsapp.net', '@g.us', '@lid'], '', (string)$mentionJid);
                         }
                     }
-                    echo '<div class="whatsapp-message-text">' . nl2br($displayText) . '</div>';
-                } else {
-                    echo '<div class="whatsapp-message-text">' . nl2br(h($messageText)) . '</div>';
                 }
+                echo '<div class="whatsapp-message-text">' . chat_wa_format((string)$messageText, $mentionNumbers) . '</div>';
             }
             
             // Renderizar reações (se houver)
@@ -3211,6 +3226,10 @@ function toggleRec(){
     echo '<div id="quickRepliesDropdown" class="quick-replies-dropdown" style="display:none"></div>';
     echo '<textarea id="chatMessageInput" class="whatsapp-input" name="message" placeholder="Digite uma mensagem (use / para respostas rápidas)" rows="1" required style="width:100%"></textarea>';
     echo '</div>';
+    // Assinatura: liga/desliga o nome do atendente (*Nome*) no início das mensagens
+    if ($chatSignatureName !== '') {
+        echo '<button type="button" id="signatureToggleBtn" class="wa-signature-btn on" onclick="toggleChatSignature()">✍️ Assinatura: ligada</button>';
+    }
     // Botão para gerenciar respostas rápidas
     echo '<button type="button" onclick="openQuickRepliesManager()" class="whatsapp-action-btn" title="Gerenciar respostas rápidas" style="align-self:center">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/></svg>';
@@ -3494,6 +3513,8 @@ echo 'window.chatFilters = ' . json_encode([
     'q' => $searchQuery,
     'chatInstance' => $chatInstance,
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
+// Nome do atendente logado para a assinatura (*Nome*) das mensagens
+echo 'window.chatSignatureName = ' . json_encode($chatSignatureName, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
 echo 'window.chatFilterQS = ' . json_encode($chatFilterQS, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
 echo 'window.chatName = ' . json_encode($chatName) . ';';
 $lastTs = 0;

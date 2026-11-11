@@ -59,7 +59,7 @@ $instances = array_values(array_filter($instances, static fn($i) => $i !== ''));
 
 // Limite de frequência por conversa+instância (vários atendentes com a mesma
 // conversa aberta não multiplicam as chamadas à Evolution).
-$throttleSeconds = 12;
+$throttleSeconds = 5;
 $baseUrl = (string)admin_setting_get('evolution.base_url');
 $apiKey = (string)admin_setting_get('evolution.api_key');
 $imported = 0;
@@ -73,9 +73,38 @@ foreach ($instances as $instanceName) {
     }
     @file_put_contents($throttleFile, (string)time());
 
-    $jidsToQuery = array_values(array_unique(array_merge([$pnJid], chat_lid_for_pn($pnJid))));
     try {
         $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+
+        // Mensagens enviadas pelo celular podem estar na Evolution só com o LID do
+        // contato. Sem o LID conhecido, perguntamos à Evolution (whatsappNumbers)
+        // no máximo 1x por hora por contato.
+        if (!chat_lid_for_pn($pnJid)) {
+            $lidCheckFile = sys_get_temp_dir() . '/chat_lidchk_' . md5($instanceName . '|' . $pnJid);
+            $lastChk = is_file($lidCheckFile) ? (int)@file_get_contents($lidCheckFile) : 0;
+            if ($lastChk <= 0 || (time() - $lastChk) > 3600) {
+                @file_put_contents($lidCheckFile, (string)time());
+                try {
+                    $number = preg_replace('/\D+/', '', $pnJid);
+                    $chk = $api->checkIsWhatsapp([$number]);
+                    $items = is_array($chk['json'] ?? null) ? $chk['json'] : [];
+                    foreach ($items as $item) {
+                        if (!is_array($item)) {
+                            continue;
+                        }
+                        foreach ($item as $v) {
+                            if (is_string($v) && substr($v, -4) === '@lid') {
+                                chat_lid_remember($v, $pnJid);
+                            }
+                        }
+                    }
+                } catch (Throwable $e) {
+                    error_log('[CHAT_SYNC] whatsappNumbers: ' . $e->getMessage());
+                }
+            }
+        }
+
+        $jidsToQuery = array_values(array_unique(array_merge([$pnJid], chat_lid_for_pn($pnJid))));
         $records = [];
         foreach ($jidsToQuery as $qJid) {
             $res = $api->findRecentMessages($qJid, 30);
