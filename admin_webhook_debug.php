@@ -294,6 +294,56 @@ try {
 echo '<hr>';
 
 // ---------------------------------------------------------------------------
+// 3a) Volume de mensagens por WhatsApp (pelo horário da mensagem no WhatsApp).
+// Cada mensagem gera vários recibos (entregue/lido); em listas de transmissão e
+// grupos grandes isso multiplica o trabalho da Evolution naquele número.
+// ---------------------------------------------------------------------------
+echo '<h3>Volume de mensagens por WhatsApp (últimos 3 dias, pelo horário do WhatsApp)</h3>';
+echo '<p style="font-size:12px;color:#666">Só o que já chegou ao sistema: nos números atrasados o volume real é maior.</p>';
+try {
+    $since3d = time() - 3 * 86400;
+    $volSt = db()->prepare("SELECT instance_name,
+                                   SUM(from_me = 1) AS enviadas,
+                                   SUM(from_me = 0) AS recebidas,
+                                   SUM(remote_jid LIKE '%@g.us') AS em_grupo,
+                                   COUNT(DISTINCT CASE WHEN from_me = 1 AND remote_jid NOT LIKE '%@g.us' THEN remote_jid END) AS contatos_privados_enviados
+                            FROM chat_messages
+                            WHERE message_timestamp >= ? AND instance_name IS NOT NULL
+                            GROUP BY instance_name ORDER BY COUNT(*) DESC");
+    $volSt->execute([$since3d]);
+    $vol = $volSt->fetchAll(PDO::FETCH_ASSOC);
+    // Mesmo texto enviado a várias conversas (lista de transmissão / envio em massa)
+    $burstSt = db()->prepare("SELECT instance_name, MAX(n) AS maior FROM (
+                                  SELECT instance_name, message_text, COUNT(DISTINCT remote_jid) AS n
+                                  FROM chat_messages
+                                  WHERE message_timestamp >= ? AND from_me = 1 AND message_type = 'text'
+                                    AND instance_name IS NOT NULL AND CHAR_LENGTH(message_text) > 40
+                                  GROUP BY instance_name, message_text
+                              ) t GROUP BY instance_name");
+    $burstSt->execute([$since3d]);
+    $bursts = [];
+    foreach ($burstSt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+        $bursts[(string)$b['instance_name']] = (int)$b['maior'];
+    }
+    foreach ($vol as &$v) {
+        $v['maior_envio_repetido'] = $bursts[(string)$v['instance_name']] ?? 0;
+    }
+    unset($v);
+    if ($vol) {
+        echo '<table><tr><th>WhatsApp</th><th>Enviadas</th><th>Recebidas</th><th>Em grupo</th><th>Contatos privados que receberam</th><th>Mesmo texto enviado a</th></tr>';
+        foreach ($vol as $v) {
+            $burst = (int)$v['maior_envio_repetido'];
+            echo '<tr><td>' . $e($v['instance_name']) . '</td><td>' . (int)$v['enviadas'] . '</td><td>' . (int)$v['recebidas'] . '</td>'
+                . '<td>' . (int)$v['em_grupo'] . '</td><td>' . (int)$v['contatos_privados_enviados'] . '</td>'
+                . '<td>' . ($burst >= 20 ? '<span class="bad">' . $burst . ' conversas</span>' : $burst) . '</td></tr>';
+        }
+        echo '</table><p style="font-size:12px;color:#666">"Mesmo texto enviado a": maior quantidade de conversas que receberam exatamente o mesmo texto nos 3 dias (lista de transmissão / envio em massa).</p>';
+    }
+} catch (Throwable $ex) {
+    echo '<p class="bad">Erro ao consultar: ' . $e($ex->getMessage()) . '</p>';
+}
+
+// ---------------------------------------------------------------------------
 // 3b) Quanto o SISTEMA chama a Evolution (por WhatsApp e tipo de chamada).
 // Consultas de grupo (findGroupInfos, findGroupMembers, fetchAllGroups) vão ao
 // WhatsApp ao vivo; em excesso, o WhatsApp limita a sessão e ela passa a
