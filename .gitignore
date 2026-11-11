@@ -13,3 +13,6 @@ multilife/
 
 # Resultados dos testes de carga (testes/stress/http_load.php)
 testes/stress/_resultados/
+
+# Arquivos de sessão (app/bootstrap.php)
+storage/

@@ -59,7 +59,8 @@ $instances = array_values(array_filter($instances, static fn($i) => $i !== ''));
 
 // Limite de frequência por conversa+instância (vários atendentes com a mesma
 // conversa aberta não multiplicam as chamadas à Evolution).
-$throttleSeconds = 5;
+// (a Evolution está processando com atraso; consultas frequentes só aumentam a fila dela)
+$throttleSeconds = 25;
 $baseUrl = (string)admin_setting_get('evolution.base_url');
 $apiKey = (string)admin_setting_get('evolution.api_key');
 $imported = 0;
@@ -75,6 +76,24 @@ foreach ($instances as $instanceName) {
 
     try {
         $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+
+        // WhatsApp desconectado: não consulta (cada consulta presa ocupa o servidor).
+        // Estado guardado por 2 minutos.
+        $stateFile = sys_get_temp_dir() . '/chat_state_' . md5($instanceName);
+        $stateRaw = is_file($stateFile) ? (string)@file_get_contents($stateFile) : '';
+        [$stateTs, $stateVal] = array_pad(explode('|', $stateRaw, 2), 2, '');
+        if ((int)$stateTs < time() - 120) {
+            try {
+                $cs = $api->connectionState($instanceName, 5);
+                $stateVal = (string)($cs['json']['instance']['state'] ?? ($cs['json']['state'] ?? 'unknown'));
+            } catch (Throwable $e) {
+                $stateVal = 'unknown';
+            }
+            @file_put_contents($stateFile, time() . '|' . $stateVal);
+        }
+        if ($stateVal !== 'open') {
+            continue;
+        }
 
         // Mensagens enviadas pelo celular podem estar na Evolution só com o LID do
         // contato. Sem o LID conhecido, perguntamos à Evolution (whatsappNumbers)
@@ -107,7 +126,7 @@ foreach ($instances as $instanceName) {
         $jidsToQuery = array_values(array_unique(array_merge([$pnJid], chat_lid_for_pn($pnJid))));
         $records = [];
         foreach ($jidsToQuery as $qJid) {
-            $res = $api->findRecentMessages($qJid, 30);
+            $res = $api->findRecentMessages($qJid, 20, 6);
             if ((int)($res['status'] ?? 0) < 200 || (int)($res['status'] ?? 0) >= 300) {
                 $errors[] = $instanceName . ': HTTP ' . (int)($res['status'] ?? 0);
                 continue;

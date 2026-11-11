@@ -1251,7 +1251,7 @@ function startChatPolling() {
     window._pollingStarted = true;
     setInterval(checkForNewMessages, 3000);
     setTimeout(syncOpenChatFromEvolution, 800);
-    setInterval(syncOpenChatFromEvolution, 6000);
+    setInterval(syncOpenChatFromEvolution, 30000);
     // Ao voltar para a aba do navegador, sincroniza na hora
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) { syncOpenChatFromEvolution(); checkForNewMessages(); refreshChatList(); }
@@ -1267,7 +1267,7 @@ startChatPolling();
 document.addEventListener('DOMContentLoaded', function() {
   if (document.getElementById('chatsList') && !window._listRefreshStarted) {
     window._listRefreshStarted = true;
-    setInterval(refreshChatList, 10000);
+    setInterval(refreshChatList, 20000);
   }
 });
 

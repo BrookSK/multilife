@@ -602,6 +602,19 @@ function isSystemMessageType(array $message): bool {
     ];
     // reactionMessage removido - agora é processado como reação
     // messageContextInfo removido - é metadados de criptografia, não mensagem de sistema
+    //
+    // Mensagem com conteúdo real NUNCA é sistema. Em grupo, o WhatsApp manda
+    // senderKeyDistributionMessage (chave de criptografia) JUNTO com o texto; antes
+    // isso fazia descartar mensagens de grupo, captações e contatos indicados.
+    $contentTypes = [
+        'conversation', 'extendedTextMessage', 'imageMessage', 'videoMessage', 'audioMessage',
+        'documentMessage', 'documentWithCaptionMessage', 'stickerMessage', 'contactMessage',
+        'contactsArrayMessage', 'locationMessage', 'liveLocationMessage', 'buttonsResponseMessage',
+        'listResponseMessage', 'templateButtonReplyMessage',
+    ];
+    foreach ($contentTypes as $type) {
+        if (isset($message[$type])) return false;
+    }
     foreach ($systemTypes as $type) {
         if (isset($message[$type])) return true;
     }
