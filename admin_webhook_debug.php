@@ -92,6 +92,95 @@ if ($instanceNamesAll) {
 echo '<hr>';
 
 // ---------------------------------------------------------------------------
+// 1c) Reconectar um WhatsApp travado ("Conectando" / "Conexão em loop").
+// Primeiro limpa a sessão quebrada na Evolution (logout); sem isso o celular dá
+// erro ao ler o QR. Depois gera o QR e o CÓDIGO DE PAREAMENTO (8 letras), que se
+// digita no celular sem precisar da câmera.
+// ---------------------------------------------------------------------------
+echo '<h3 id="reconectar">Reconectar WhatsApp travado</h3>';
+$ownerNumbers = [];
+foreach ($instances as $inst) {
+    $ownerNumbers[(string)($inst['instance_name'] ?? '')] = preg_replace('/\D+/', '', (string)($inst['owner_number'] ?? ''));
+}
+$rlInstance = trim((string)($_POST['rl_instance'] ?? ($_GET['rl_instance'] ?? '')));
+$rlNumber = preg_replace('/\D+/', '', (string)($_POST['rl_number'] ?? ($ownerNumbers[$rlInstance] ?? '')));
+$rlDo = (string)($_POST['do'] ?? '');
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($rlDo, ['relink_reset', 'relink_code'], true)
+    && in_array($rlInstance, $instanceNamesAll, true)) {
+    $rlApi = new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $rlInstance);
+    try {
+        if ($rlDo === 'relink_reset') {
+            // Limpa a sessão quebrada (o celular passa a mostrar o aparelho como desconectado)
+            $lo = $rlApi->logoutInstance($rlInstance);
+            echo '<div class="box">Sessão antiga de ' . $e($rlInstance) . ' encerrada (HTTP ' . (int)($lo['status'] ?? 0) . ').</div>';
+            sleep(3);
+        }
+        $cn = $rlApi->connectInstance($rlInstance, $rlNumber !== '' ? $rlNumber : null);
+        $cj = is_array($cn['json'] ?? null) ? $cn['json'] : [];
+        $pairing = (string)($cj['pairingCode'] ?? '');
+        $qrImg = (string)($cj['base64'] ?? ($cj['qrcode']['base64'] ?? ''));
+        if ($qrImg === '' && !empty($cj['code']) && strpos((string)$cj['code'], 'data:image') === 0) {
+            $qrImg = (string)$cj['code'];
+        }
+        $state = (string)($cj['instance']['state'] ?? '');
+        if ($state === 'open') {
+            echo '<div class="box ok">' . $e($rlInstance) . ' já está conectado.</div>';
+        } else {
+            echo '<div class="box" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">';
+            if ($pairing !== '') {
+                echo '<div><div><strong>Opção 1 — código de pareamento</strong> (não usa a câmera):</div>'
+                    . '<div style="font-size:34px;font-weight:bold;letter-spacing:6px;margin:8px 0;font-family:monospace">' . $e(strlen($pairing) === 8 ? substr($pairing, 0, 4) . '-' . substr($pairing, 4) : $pairing) . '</div>'
+                    . '<div style="font-size:12px;color:#444;max-width:320px">No celular deste número: WhatsApp → Aparelhos conectados → Conectar aparelho → '
+                    . '<strong>Conectar com número de telefone</strong> → digite o código.</div></div>';
+            }
+            if ($qrImg !== '') {
+                if (strpos($qrImg, 'data:image') !== 0) {
+                    $qrImg = 'data:image/png;base64,' . $qrImg;
+                }
+                echo '<div><div><strong>Opção 2 — QR Code:</strong></div><img src="' . $e($qrImg) . '" alt="QR" style="width:260px;height:260px;background:#fff;padding:8px;margin-top:8px"></div>';
+            }
+            if ($pairing === '' && $qrImg === '') {
+                echo '<div class="bad">A Evolution não devolveu QR nem código (HTTP ' . (int)($cn['status'] ?? 0) . '): ' . $e(mb_substr((string)($cn['body_raw'] ?? ''), 0, 300)) . '</div>';
+            }
+            echo '</div><p style="font-size:12px;color:#666">O código e o QR valem cerca de 1 minuto. Se expirar, clique em "Gerar novo código". '
+                . 'Depois de conectar, clique em "Ver conexão".</p>';
+        }
+    } catch (Throwable $ex) {
+        echo '<div class="box bad">Erro: ' . $e($ex->getMessage()) . '</div>';
+    }
+}
+
+echo '<form method="post" action="#reconectar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+echo '<select name="rl_instance" style="padding:6px">';
+foreach ($instanceNamesAll as $iname) {
+    echo '<option value="' . $e($iname) . '"' . ($iname === $rlInstance ? ' selected' : '') . '>' . $e($iname) . '</option>';
+}
+echo '</select>';
+echo '<input name="rl_number" value="' . $e($rlNumber) . '" placeholder="Número deste WhatsApp com DDI (ex.: 5511999999999)" style="padding:6px;width:300px">';
+echo '<button type="submit" name="do" value="relink_reset" style="padding:6px 12px;font-weight:bold" '
+    . 'onclick="return confirm(\'Encerrar a sessão travada e gerar um código novo? O WhatsApp só volta a funcionar no sistema depois de conectar com o código.\')">'
+    . '1) Limpar sessão travada e gerar código</button>';
+echo '<button type="submit" name="do" value="relink_code" style="padding:6px 12px">Gerar novo código</button>';
+echo '</form>';
+if ($rlInstance !== '') {
+    echo '<p><a href="?rl_instance=' . $e(rawurlencode($rlInstance)) . '#conexao">Ver conexão de ' . $e($rlInstance) . '</a></p>';
+    if (($_GET['rl_instance'] ?? '') !== '') {
+        try {
+            $csApi = new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $rlInstance);
+            $cs = $csApi->connectionState($rlInstance, 8);
+            $st = (string)($cs['json']['instance']['state'] ?? ($cs['json']['state'] ?? '?'));
+            echo '<div class="box" id="conexao">Conexão de ' . $e($rlInstance) . ': ' . ($st === 'open' ? '<span class="ok">conectado</span>' : '<span class="bad">' . $e($st) . '</span>') . '</div>';
+        } catch (Throwable $ex) {
+            echo '<div class="box bad">Erro ao consultar: ' . $e($ex->getMessage()) . '</div>';
+        }
+    }
+}
+echo '<p style="font-size:12px;color:#666">Antes de conectar, no celular: apague em "Aparelhos conectados" o aparelho antigo da Evolution, '
+    . 'confira se há menos de 4 aparelhos conectados, atualize o WhatsApp e use uma internet estável.</p>';
+echo '<hr>';
+
+// ---------------------------------------------------------------------------
 // 2) Testar uma conversa direto na Evolution
 // ---------------------------------------------------------------------------
 $testNumber = preg_replace('/\D+/', '', (string)($_REQUEST['number'] ?? ''));
