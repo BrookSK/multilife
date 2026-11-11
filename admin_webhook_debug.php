@@ -21,6 +21,19 @@ echo '<h2>Webhook Debug — WhatsApp</h2>';
 // ---------------------------------------------------------------------------
 // 1) Servidor: o webhook consegue responder na hora para a Evolution?
 // ---------------------------------------------------------------------------
+// Versão da Evolution: até a 2.3.6 há o defeito "mensagens recebidas param de ser
+// processadas depois de uma reconexão" (corrigido na 2.3.7).
+try {
+    $info = (new EvolutionApiV1())->getInformation();
+    $evoVersion = (string)($info['json']['version'] ?? '');
+    $evoOld = $evoVersion !== '' && version_compare(ltrim($evoVersion, 'v'), '2.3.7', '<');
+    echo '<div class="box"><strong>Evolution API:</strong> versão ' . $e($evoVersion !== '' ? $evoVersion : 'desconhecida (HTTP ' . (int)($info['status'] ?? 0) . ')')
+        . ($evoOld ? ' — <span class="bad">ANTIGA: versões abaixo da 2.3.7 têm o defeito de parar de processar mensagens recebidas depois de reconectar. Atualize a Evolution.</span>' : '')
+        . '</div>';
+} catch (Throwable $ex) {
+    echo '<div class="box bad">Não foi possível consultar a versão da Evolution: ' . $e($ex->getMessage()) . '</div>';
+}
+
 $earlyOk = function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request');
 echo '<div class="box"><strong>Servidor:</strong> PHP ' . $e(PHP_VERSION) . ' (' . $e(PHP_SAPI) . ') — resposta antecipada ao webhook: '
     . ($earlyOk ? '<span class="ok">ATIVA</span>' : '<span class="bad">INDISPONÍVEL</span> (a Evolution espera o processamento terminar; pode gerar fila e atraso)')
