@@ -63,25 +63,8 @@ function myWaConfigureWebhook(string $baseUrl, string $apiKey, string $instanceN
     }
     $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
 
-    $payload = [
-        'webhook' => [
-            'enabled' => true,
-            'url' => $webhookUrl,
-            'webhook_by_events' => false,
-            'webhook_base64' => true,
-            'events' => [
-                'MESSAGES_UPSERT',
-                'SEND_MESSAGE',
-                'CONTACTS_UPSERT',
-                'CONTACTS_UPDATE',
-                'CONNECTION_UPDATE',
-                'GROUPS_UPSERT',
-                'GROUP_UPDATE',
-                'GROUP_PARTICIPANTS_UPDATE',
-                'QRCODE_UPDATED',
-            ],
-        ],
-    ];
+    // Configuração única (base64 desligado): app/whatsapp_webhook_config.php
+    $payload = whatsapp_webhook_payload($webhookUrl);
 
     $ch = curl_init($baseUrl . '/webhook/set/' . urlencode($instanceName));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

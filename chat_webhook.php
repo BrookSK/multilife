@@ -4,25 +4,23 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
 
-// Receber payload JSON
-$payload = file_get_contents('php://input');
-error_log('[WEBHOOK] chamado method:' . ($_SERVER['REQUEST_METHOD'] ?? '?') . ' payload_len:' . strlen($payload) . ' payload_sample:' . substr($payload, 0, 200));
-
-$data = json_decode($payload, true);
-
-if (!$data) {
-    error_log('[WEBHOOK] payload invalido ou vazio - json_last_error:' . json_last_error_msg());
-    http_response_code(200);
-    echo json_encode(['status' => 'ok']);
-    exit;
+// Webhook não usa login: descarta a sessão já (não trava nada nem deixa arquivo)
+if (session_status() === PHP_SESSION_ACTIVE) {
+    if (!isset($_COOKIE[session_name()])) {
+        @session_destroy();
+    } else {
+        session_write_close();
+    }
 }
 
-// RESPONDE JÁ para a Evolution e processa em seguida. A Evolution espera a
-// resposta de cada webhook; com o processamento (download de mídia, consultas)
-// dentro da requisição, as mensagens seguintes ficavam na fila e demoravam a
-// chegar. As saídas (echo/http_response_code) depois daqui são descartadas.
+// RESPONDE JÁ para a Evolution, ANTES de ler e decodificar o corpo. A Evolution
+// espera a resposta de cada webhook e, se der erro/tempo esgotado, repete o mesmo
+// envio por ~25 min (10 tentativas) segurando a fila da instância inteira. Assim,
+// nem um payload grande (mídia em base64) nem um erro no processamento chegam a
+// ela. As saídas (echo/http_response_code) depois daqui são descartadas.
 ignore_user_abort(true);
-@set_time_limit(120);
+@set_time_limit(180);
+@ini_set('memory_limit', '512M');
 if (function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request')) {
     http_response_code(200);
     header('Content-Type: application/json');
@@ -32,6 +30,20 @@ if (function_exists('fastcgi_finish_request') || function_exists('litespeed_fini
     } else {
         litespeed_finish_request();
     }
+}
+
+// Receber payload JSON
+$payload = (string)file_get_contents('php://input');
+error_log('[WEBHOOK] chamado method:' . ($_SERVER['REQUEST_METHOD'] ?? '?') . ' payload_len:' . strlen($payload) . ' payload_sample:' . substr($payload, 0, 200));
+
+$data = json_decode($payload, true);
+unset($payload);
+
+if (!$data) {
+    error_log('[WEBHOOK] payload invalido ou vazio - json_last_error:' . json_last_error_msg());
+    if (!headers_sent()) http_response_code(200);
+    echo json_encode(['status' => 'ok']);
+    exit;
 }
 
 $event = $data['event'] ?? '';

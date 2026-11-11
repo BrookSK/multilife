@@ -26,15 +26,62 @@ echo '<div class="box"><strong>Servidor:</strong> PHP ' . $e(PHP_VERSION) . ' ('
     . ($earlyOk ? '<span class="ok">ATIVA</span>' : '<span class="bad">INDISPONÍVEL</span> (a Evolution espera o processamento terminar; pode gerar fila e atraso)')
     . '</div>';
 
-// ---------------------------------------------------------------------------
-// 2) Testar uma conversa direto na Evolution
-// ---------------------------------------------------------------------------
 $instances = [];
 try {
     $instances = whatsapp_list_all_instances();
 } catch (Throwable $ex) {
     $instances = [];
 }
+$instanceNamesAll = array_values(array_filter(array_map(static fn($i) => (string)($i['instance_name'] ?? ''), $instances)));
+
+// ---------------------------------------------------------------------------
+// 1b) Configuração do webhook de cada WhatsApp na Evolution
+// ---------------------------------------------------------------------------
+echo '<h3>Configuração do webhook na Evolution</h3>';
+echo '<p>Com <strong>base64 ligado</strong>, a Evolution baixa cada foto/áudio/vídeo antes de avisar o sistema, uma mensagem por vez, '
+    . 'e forma fila de horas nos WhatsApps com muitos grupos. A configuração recomendada desliga o base64 (o sistema baixa a mídia depois) '
+    . 'e deixa só os eventos usados. Não desconecta o WhatsApp.</p>';
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['do'] ?? '') === 'optimize_webhook') {
+    $target = (string)($_POST['target'] ?? '');
+    $targets = $target === '__all__' ? $instanceNamesAll : (in_array($target, $instanceNamesAll, true) ? [$target] : []);
+    foreach ($targets as $t) {
+        try {
+            $r = whatsapp_webhook_optimize($t);
+            echo '<div class="box ' . ($r['ok'] ? 'ok' : 'bad') . '">' . $e($t) . ': ' . $e($r['message']) . '</div>';
+        } catch (Throwable $ex) {
+            echo '<div class="box bad">' . $e($t) . ': ' . $e($ex->getMessage()) . '</div>';
+        }
+    }
+}
+
+if ($instanceNamesAll) {
+    echo '<table><tr><th>WhatsApp</th><th>URL</th><th>Ativo</th><th>base64</th><th>Por evento</th><th>Eventos</th><th></th></tr>';
+    foreach ($instanceNamesAll as $iname) {
+        $wf = whatsapp_webhook_find($iname);
+        $fmtBool = static fn($v, bool $goodWhenTrue) => $v === null ? '?' : ($v === $goodWhenTrue ? '<span class="ok">' . ($v ? 'sim' : 'não') . '</span>' : '<span class="bad">' . ($v ? 'sim' : 'não') . '</span>');
+        $extra = array_diff($wf['events'], WHATSAPP_WEBHOOK_EVENTS);
+        echo '<tr><td>' . $e($iname) . '</td>'
+            . '<td>' . ($wf['ok'] ? $e($wf['url']) : '<span class="bad">HTTP ' . (int)$wf['http'] . ' ' . $e(mb_substr($wf['raw'], 0, 80)) . '</span>') . '</td>'
+            . '<td>' . $fmtBool($wf['enabled'], true) . '</td>'
+            . '<td>' . $fmtBool($wf['base64'], false) . '</td>'
+            . '<td>' . $fmtBool($wf['byEvents'], false) . '</td>'
+            . '<td>' . count($wf['events']) . ($extra ? ' <span class="bad">(+' . count($extra) . ' desnecessários)</span>' : '') . '</td>'
+            . '<td><form method="post" style="margin:0"><input type="hidden" name="do" value="optimize_webhook"><input type="hidden" name="target" value="' . $e($iname) . '">'
+            . '<button type="submit">Otimizar</button></form></td></tr>';
+    }
+    echo '</table>';
+    echo '<form method="post" style="margin-top:8px" onsubmit="return confirm(\'Aplicar a configuração recomendada no webhook de TODOS os WhatsApps?\')">'
+        . '<input type="hidden" name="do" value="optimize_webhook"><input type="hidden" name="target" value="__all__">'
+        . '<button type="submit" style="padding:6px 12px;font-weight:bold">Otimizar todos</button></form>';
+    echo '<p style="font-size:12px;color:#666">Se a Evolution também tiver o webhook GLOBAL ligado (variáveis WEBHOOK_GLOBAL_* no servidor dela), '
+        . 'ele precisa ser desligado lá, senão as mensagens chegam em dobro e com base64.</p>';
+}
+echo '<hr>';
+
+// ---------------------------------------------------------------------------
+// 2) Testar uma conversa direto na Evolution
+// ---------------------------------------------------------------------------
 $testNumber = preg_replace('/\D+/', '', (string)($_REQUEST['number'] ?? ''));
 $testInstance = trim((string)($_REQUEST['instance'] ?? ''));
 $validInstance = in_array($testInstance, array_map(static fn($i) => (string)($i['instance_name'] ?? ''), $instances), true);

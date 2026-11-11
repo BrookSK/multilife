@@ -120,6 +120,7 @@ require_once __DIR__ . '/whatsapp_event_dispatcher.php';
 require_once __DIR__ . '/whatsapp_instances.php';
 require_once __DIR__ . '/chat_message_store.php';
 require_once __DIR__ . '/chat_format.php';
+require_once __DIR__ . '/whatsapp_webhook_config.php';
 require_once __DIR__ . '/whatsapp_health.php';
 require_once __DIR__ . '/clients_helper.php';
 require_once __DIR__ . '/secure_store.php';
