@@ -57,6 +57,18 @@ if ($testNumber !== '' && $validInstance) {
     $pnJid = chat_store_normalize_jid($testNumber . '@s.whatsapp.net');
     $api = new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $testInstance);
 
+    // Reiniciar a sessão (quando a instância está "open" mas as mensagens chegam com horas de atraso)
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['do'] ?? '') === 'restart') {
+        try {
+            $rr = $api->restartInstance($testInstance);
+            $okR = (int)($rr['status'] ?? 0) >= 200 && (int)($rr['status'] ?? 0) < 300;
+            echo '<div class="box ' . ($okR ? 'ok' : 'bad') . '">Reinício de ' . $e($testInstance) . ': HTTP ' . (int)($rr['status'] ?? 0)
+                . ($okR ? ' — aguarde 1 a 2 minutos e teste de novo.' : ' — ' . $e(mb_substr((string)($rr['body_raw'] ?? ''), 0, 200))) . '</div>';
+        } catch (Throwable $ex) {
+            echo '<div class="box bad">Erro ao reiniciar: ' . $e($ex->getMessage()) . '</div>';
+        }
+    }
+
     // Conexão da instância
     try {
         $cs = $api->connectionState($testInstance, 8);
@@ -67,6 +79,11 @@ if ($testNumber !== '' && $validInstance) {
     } catch (Throwable $ex) {
         echo '<div class="box bad">Erro ao consultar conexão: ' . $e($ex->getMessage()) . '</div>';
     }
+
+    echo '<form method="post" onsubmit="return confirm(\'Reiniciar a sessão do WhatsApp ' . $e($testInstance) . '? Ela fica fora do ar por alguns segundos.\')">'
+        . '<input type="hidden" name="number" value="' . $e($testNumber) . '"><input type="hidden" name="instance" value="' . $e($testInstance) . '">'
+        . '<input type="hidden" name="do" value="restart"><button type="submit" style="padding:6px 12px">Reiniciar sessão deste WhatsApp</button>'
+        . ' <span style="font-size:12px;color:#666">Use quando estiver "open" mas as mensagens chegarem com atraso.</span></form>';
 
     $lids = chat_lid_for_pn($pnJid);
     echo '<p>LIDs conhecidos deste número: ' . ($lids ? $e(implode(', ', $lids)) : '<em>nenhum</em>') . '</p>';
