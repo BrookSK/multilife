@@ -952,18 +952,28 @@ function stopAudioRecording() {
 let lastUpdateTimestamp = Date.now();
 let isPolling = false;
 
+let pollStartedAt = 0;
+
 function checkForNewMessages() {
-  if (!window.chatId || isPolling) return;
+  if (!window.chatId) return;
+  // Uma requisição presa (rede/servidor) não pode travar a atualização para sempre:
+  // depois de 15s a trava é liberada e a próxima verificação segue.
+  if (isPolling && (Date.now() - pollStartedAt) < 15000) return;
   isPolling = true;
+  pollStartedAt = Date.now();
   
   var lastIdParam = (typeof window.lastMsgId === 'number' && window.lastMsgId > 0) ? ('&last_id=' + window.lastMsgId) : '';
   // Mesmo WhatsApp usado ao carregar a conversa
   var pollInstance = chatCurrentInstance();
   var instanceParam = pollInstance ? ('&instance=' + encodeURIComponent(pollInstance)) : '';
-  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam + instanceParam)
+  var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  var abortTimer = ctrl ? setTimeout(function () { ctrl.abort(); }, 12000) : null;
+  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam + instanceParam,
+        { cache: 'no-store', credentials: 'same-origin', signal: ctrl ? ctrl.signal : undefined })
     .then(r => r.json())
     .then(data => {
       isPolling = false;
+      if (abortTimer) clearTimeout(abortTimer);
       if (data.messages && data.messages.length > 0) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
@@ -971,8 +981,13 @@ function checkForNewMessages() {
         // Verificar se está no fundo antes de adicionar (para auto-scroll)
         const wasAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
         
+        // Uma mensagem com problema não impede as outras de aparecer
         data.messages.forEach(msg => {
-          appendMessageToDOM(msg);
+          try {
+            appendMessageToDOM(msg);
+          } catch (e) {
+            console.error('Erro ao exibir mensagem', msg && msg.id, e);
+          }
         });
         
         // Atualizar lastTimestamp
@@ -997,6 +1012,7 @@ function checkForNewMessages() {
     })
     .catch(err => {
       isPolling = false;
+      if (abortTimer) clearTimeout(abortTimer);
       console.error('Erro ao verificar atualizações:', err);
     });
 }
@@ -1249,7 +1265,8 @@ function syncOpenChatFromEvolution() {
 function startChatPolling() {
   if (window.chatId && !window._pollingStarted) {
     window._pollingStarted = true;
-    setInterval(checkForNewMessages, 3000);
+    // A cada 2s (a consulta é leve: só mensagens com id maior que o último exibido)
+    setInterval(checkForNewMessages, 2000);
     // Só ao abrir a conversa e ao voltar para a aba: a busca de mensagens na
     // Evolution é pesada no banco dela (sem índice) e repetir a cada 30s por
     // conversa aberta somava carga justamente no que está lento.
@@ -1269,7 +1286,28 @@ startChatPolling();
 document.addEventListener('DOMContentLoaded', function() {
   if (document.getElementById('chatsList') && !window._listRefreshStarted) {
     window._listRefreshStarted = true;
-    setInterval(refreshChatList, 20000);
+    // A cada 3s pergunta só "chegou mensagem nova?" (id da última gravada);
+    // recarrega a lista apenas quando muda. Reserva: recarrega a cada 60s.
+    let listVersion = null;
+    let versionBusy = false;
+    setInterval(function () {
+      if (document.hidden || versionBusy) return;
+      versionBusy = true;
+      fetch('/chat_list_version.php', { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(d => {
+          const v = d && typeof d.v === 'number' ? d.v : null;
+          if (v !== null && listVersion !== null && v !== listVersion) {
+            refreshChatList();
+            // Conversa aberta: busca a mensagem nova já (sem esperar o próximo ciclo)
+            if (window.chatId) checkForNewMessages();
+          }
+          if (v !== null) listVersion = v;
+        })
+        .catch(() => {})
+        .finally(() => { versionBusy = false; });
+    }, 3000);
+    setInterval(refreshChatList, 60000);
   }
 });
 
