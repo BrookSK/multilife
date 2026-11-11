@@ -1031,19 +1031,22 @@ if (!empty($selectedChat) && !$chatListOnly) {
         $stmt->execute(array_merge([$selectedChat], $msgInstParams));
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Duplicatas antigas no banco (mesmo id de mensagem do WhatsApp): mostra uma só
-        $seenExtIds = [];
-        $messages = array_values(array_filter($messages, static function ($m) use (&$seenExtIds) {
+        // Duplicatas no banco (mesmo id de mensagem do WhatsApp): mostra uma só,
+        // preferindo a que tem o arquivo (a outra aparece só como "[Imagem]").
+        $bestByExt = [];
+        foreach ($messages as $idx => $m) {
             $ext = (string)($m['externalMessageId'] ?? '');
             if ($ext === '') {
-                return true;
+                continue;
             }
-            if (isset($seenExtIds[$ext])) {
-                return false;
+            if (!isset($bestByExt[$ext]) || ((string)($messages[$bestByExt[$ext]]['mediaUrl'] ?? '') === '' && (string)($m['mediaUrl'] ?? '') !== '')) {
+                $bestByExt[$ext] = $idx;
             }
-            $seenExtIds[$ext] = true;
-            return true;
-        }));
+        }
+        $messages = array_values(array_filter($messages, static function ($m, $idx) use ($bestByExt) {
+            $ext = (string)($m['externalMessageId'] ?? '');
+            return $ext === '' || $bestByExt[$ext] === $idx;
+        }, ARRAY_FILTER_USE_BOTH));
         
         // Buscar reações para todas as mensagens deste chat
         $reactions = [];

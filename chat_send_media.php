@@ -68,15 +68,20 @@ if ($mediaType === 'audio' && $audioBase64 !== '') {
             // Salvar no banco
             // key.id da mensagem no WhatsApp: o webhook usa para não gravar o eco duplicado
             $audioExtId = is_array($res['json'] ?? null) ? (string)($res['json']['key']['id'] ?? '') : '';
-            $stmt = db()->prepare("
-                INSERT INTO chat_messages 
-                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp, external_message_id)
-                VALUES (?, ?, ?, 'audio', ?, 'audio/webm', ?, 1, ?, ?)
-            ");
-            $stmt->execute([$remoteJid, $api->getInstance(), '[Áudio]', $mediaUrl, $fileName, time(), $audioExtId !== '' ? $audioExtId : null]);
+            $audioRowId = chat_store_sent_media([
+                'remote_jid' => chat_store_normalize_jid($remoteJid),
+                'instance_name' => $api->getInstance(),
+                'message_text' => '[Áudio]',
+                'message_type' => 'audio',
+                'media_url' => $mediaUrl,
+                'media_mime_type' => 'audio/webm',
+                'media_filename' => $fileName,
+                'message_timestamp' => time(),
+                'external_message_id' => $audioExtId,
+            ]);
             
             $response['success'] = true;
-            $response['message_id'] = (int)db()->lastInsertId();
+            $response['message_id'] = $audioRowId;
             error_log("[$debugId] ✅ Áudio base64 enviado com sucesso");
         } else {
             $errMsg = json_encode($res['json'] ?? $res['body_raw'] ?? '');
@@ -297,11 +302,6 @@ try {
     
     // key.id da mensagem no WhatsApp: o webhook usa para não gravar o eco duplicado
     $mediaExtId = is_array($apiResponse['json'] ?? null) ? (string)($apiResponse['json']['key']['id'] ?? '') : '';
-    $stmt = db()->prepare("
-        INSERT INTO chat_messages 
-        (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, from_me, message_timestamp, external_message_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    ");
     
     $caption = trim($_POST['caption'] ?? '');
     $messageText = $mediaType === 'audio' ? '[Áudio]' : 
@@ -310,21 +310,20 @@ try {
     
     error_log("[$debugId] Texto da mensagem: '$messageText'");
     
-    $stmt->execute([
-        $normalizedJid,
-        $instanceName,
-        $messageText,
-        $mediaType,
-        $mediaUrl,
-        $fileMimeType,
-        $fileName,
-        $fileSize,
-        $transcription,
-        $timestamp,
-        $mediaExtId !== '' ? $mediaExtId : null,
+    // Grava (ou completa a linha já criada pela sincronização/webhook) com o arquivo local
+    $insertId = chat_store_sent_media([
+        'remote_jid' => $normalizedJid,
+        'instance_name' => $instanceName,
+        'message_text' => $messageText,
+        'message_type' => $mediaType,
+        'media_url' => $mediaUrl,
+        'media_mime_type' => $fileMimeType,
+        'media_filename' => $fileName,
+        'media_size' => $fileSize,
+        'audio_transcription' => $transcription,
+        'message_timestamp' => $timestamp,
+        'external_message_id' => $mediaExtId,
     ]);
-    
-    $insertId = db()->lastInsertId();
     error_log("[$debugId] Mensagem salva no banco - ID: $insertId");
     
     // Atualizar última mensagem do contato

@@ -54,6 +54,55 @@ function chat_msg_find_by_external_id(string $externalId): int
     return (int)($st->fetchColumn() ?: 0);
 }
 
+/**
+ * Grava a mídia ENVIADA pelo sistema (chat_send_media.php). A Evolution guarda a
+ * mensagem antes de responder ao envio, então a sincronização ou o webhook podem
+ * já ter criado a linha (sem o arquivo, mostrando só "[Imagem]"). Nesse caso a
+ * linha existente é completada com o arquivo local, em vez de criar outra.
+ *
+ * @param array $f remote_jid, instance_name, message_text, message_type, media_url,
+ *                 media_mime_type, media_filename, media_size, audio_transcription,
+ *                 message_timestamp, external_message_id
+ * @return int id da linha
+ */
+function chat_store_sent_media(array $f): int
+{
+    $extId = (string)($f['external_message_id'] ?? '');
+    $locked = $extId !== '' && chat_msg_lock($extId, 30);
+    try {
+        $existing = chat_msg_find_by_external_id($extId);
+        if ($existing > 0) {
+            db()->prepare("UPDATE chat_messages
+                           SET media_url = ?, media_mime_type = ?, media_filename = ?, media_size = ?,
+                               message_type = ?, message_text = ?, instance_name = COALESCE(instance_name, ?),
+                               audio_transcription = COALESCE(audio_transcription, ?)
+                           WHERE id = ?")
+                ->execute([
+                    $f['media_url'] ?? null, $f['media_mime_type'] ?? null, $f['media_filename'] ?? null, $f['media_size'] ?? null,
+                    $f['message_type'] ?? 'document', $f['message_text'] ?? '', $f['instance_name'] ?? null,
+                    $f['audio_transcription'] ?? null, $existing,
+                ]);
+            // Linhas repetidas do mesmo key.id (de versões anteriores): fica só uma
+            db()->prepare('DELETE FROM chat_messages WHERE external_message_id = ? AND id <> ?')->execute([$extId, $existing]);
+            return $existing;
+        }
+        db()->prepare("INSERT INTO chat_messages
+                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size,
+                 audio_transcription, from_me, message_timestamp, external_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)")
+            ->execute([
+                $f['remote_jid'], $f['instance_name'] ?? null, $f['message_text'] ?? '', $f['message_type'] ?? 'document',
+                $f['media_url'] ?? null, $f['media_mime_type'] ?? null, $f['media_filename'] ?? null, $f['media_size'] ?? null,
+                $f['audio_transcription'] ?? null, (int)($f['message_timestamp'] ?? time()), $extId !== '' ? $extId : null,
+            ]);
+        return (int)db()->lastInsertId();
+    } finally {
+        if ($locked) {
+            chat_msg_unlock($extId);
+        }
+    }
+}
+
 /** Mesmo formato usado no resto do chat: número@s.whatsapp.net ou id@g.us. */
 function chat_store_normalize_jid(string $jid): string
 {
@@ -195,6 +244,61 @@ function chat_lid_resolve_via_evolution(string $lidJid, string $instanceName): s
     return '';
 }
 
+/**
+ * Baixa a mídia de uma mensagem pela Evolution (getBase64FromMediaMessage) e
+ * grava em /uploads/chat_media/AAAA-MM/. Retorna ['url' => ..., 'mime' => ...] ou null.
+ */
+function chat_evolution_fetch_media(array $rec, string $instanceName): ?array
+{
+    if ($instanceName === '' || empty($rec['key']['id'])) {
+        return null;
+    }
+    try {
+        $api = new EvolutionApiV1(
+            (string)admin_setting_get('evolution.base_url'),
+            (string)admin_setting_get('evolution.api_key'),
+            $instanceName
+        );
+        $res = http_json_request(
+            'POST',
+            $api->getBaseUrl() . '/chat/getBase64FromMediaMessage/' . rawurlencode($instanceName),
+            ['apikey' => $api->getApiKey()],
+            ['message' => ['key' => $rec['key'], 'message' => $rec['message'] ?? []], 'convertToMp4' => false],
+            20
+        );
+        $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+        $b64 = (string)($json['base64'] ?? '');
+        if ((int)($res['status'] ?? 0) < 200 || (int)($res['status'] ?? 0) >= 300 || $b64 === '') {
+            return null;
+        }
+        $bin = base64_decode($b64, true);
+        if ($bin === false || $bin === '') {
+            return null;
+        }
+        $mime = (string)($json['mimetype'] ?? 'application/octet-stream');
+        $extMap = [
+            'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif',
+            'video/mp4' => 'mp4', 'audio/ogg' => 'ogg', 'audio/mpeg' => 'mp3', 'audio/mp4' => 'm4a',
+            'application/pdf' => 'pdf',
+        ];
+        $baseMime = strtolower(trim(explode(';', $mime)[0]));
+        $ext = $extMap[$baseMime] ?? (strtolower(pathinfo((string)($json['fileName'] ?? ''), PATHINFO_EXTENSION)) ?: 'bin');
+        $ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'bin';
+        $dir = dirname(__DIR__) . '/uploads/chat_media/' . date('Y-m');
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            return null;
+        }
+        $name = uniqid('chat_', true) . '.' . $ext;
+        if (@file_put_contents($dir . '/' . $name, $bin) === false) {
+            return null;
+        }
+        return ['url' => '/uploads/chat_media/' . date('Y-m') . '/' . $name, 'mime' => $mime];
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] erro ao baixar mídia da Evolution: ' . $e->getMessage());
+        return null;
+    }
+}
+
 /** Horário (unix) de um registro da Evolution (número, string ou {low,high}). */
 function chat_evolution_record_ts(array $rec): int
 {
@@ -303,10 +407,16 @@ function chat_import_evolution_record(array $rec, string $instanceName, string $
             }
         }
         $senderName = (!$fromMe && !empty($rec['pushName'])) ? (string)$rec['pushName'] : null;
+        // Mídia: baixa o arquivo da Evolution (senão aparece só "[Imagem]")
+        $media = $type !== 'text' ? chat_evolution_fetch_media($rec, $instanceName) : null;
         db()->prepare("INSERT INTO chat_messages
-                (remote_jid, instance_name, message_text, message_type, media_filename, from_me, message_timestamp, sender_name, external_message_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-            ->execute([$jid, $instanceName !== '' ? $instanceName : null, $text, $type, $filename, $fromMe, $ts, $senderName, $extId]);
+                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp, sender_name, external_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([
+                $jid, $instanceName !== '' ? $instanceName : null, $text, $type,
+                $media['url'] ?? null, $media['mime'] ?? null, $filename,
+                $fromMe, $ts, $senderName, $extId,
+            ]);
         $newId = (int)db()->lastInsertId();
 
         // Conversa sobe na lista (também quando a mensagem foi ENVIADA)

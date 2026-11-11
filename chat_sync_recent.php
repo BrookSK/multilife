@@ -145,6 +145,13 @@ foreach ($instances as $instanceName) {
             if (!$recFromMe && $recTs > time() - 20) {
                 continue;
             }
+            // Mídia ENVIADA há pouco: o envio pelo sistema ainda está gravando a
+            // linha com o arquivo local (importar agora criava a versão sem arquivo).
+            $recMsg = is_array($rec['message'] ?? null) ? $rec['message'] : [];
+            $recIsText = isset($recMsg['conversation']) || isset($recMsg['extendedTextMessage']);
+            if ($recFromMe && !$recIsText && $recTs > time() - 90) {
+                continue;
+            }
             if (chat_import_evolution_record($rec, $instanceName, $pnJid) > 0) {
                 $imported++;
             }
