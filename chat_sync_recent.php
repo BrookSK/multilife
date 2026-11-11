@@ -133,8 +133,8 @@ foreach ($instances as $instanceName) {
         // Grava da mais antiga para a mais nova (ids em ordem cronológica)
         usort($records, static fn($a, $b) => chat_evolution_record_ts($a) <=> chat_evolution_record_ts($b));
         foreach ($records as $rec) {
-            // Recebidas recentes ficam para o webhook (ele também reabre a conversa
-            // concluída etc.). Só importamos recebidas que o webhook claramente perdeu.
+            // Recebidas dos últimos 20s ficam para o webhook (que também baixa a mídia).
+            // Depois disso importamos: o webhook da Evolution chega a atrasar horas.
             $recFromMe = !empty($rec['key']['fromMe']);
             $recTs = chat_evolution_record_ts($rec);
             // Só as últimas 24h: histórico antigo pode ter linhas sem key.id que
@@ -142,7 +142,7 @@ foreach ($instances as $instanceName) {
             if ($recTs < time() - 86400) {
                 continue;
             }
-            if (!$recFromMe && $recTs > time() - 120) {
+            if (!$recFromMe && $recTs > time() - 20) {
                 continue;
             }
             if (chat_import_evolution_record($rec, $instanceName, $pnJid) > 0) {

@@ -1075,10 +1075,20 @@ if ($event === 'messages.upsert') {
                 $fromMeInt = $fromMe ? 1 : 0;
 
                 // Já gravada (recebida OU enviada): não duplica
-                if (!empty($externalMsgId) && chat_msg_find_by_external_id((string)$externalMsgId) > 0) {
-                    error_log("[WEBHOOK] mensagem '$externalMsgId' já existe, skip duplicata");
-                    chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'já existia (duplicada)', $remoteJid, $messageText);
-                    continue;
+                $existingRowId = !empty($externalMsgId) ? chat_msg_find_by_external_id((string)$externalMsgId) : 0;
+                if ($existingRowId > 0) {
+                    // Importada antes pela sincronização (sem o arquivo): troca pela versão
+                    // do webhook, que traz a mídia. Senão é duplicata e ignora.
+                    $stNoMedia = db()->prepare("SELECT 1 FROM chat_messages WHERE id = ? AND message_type <> 'text'
+                                                AND (media_url IS NULL OR media_url = '')");
+                    $stNoMedia->execute([$existingRowId]);
+                    if ($messageType !== 'text' && !empty($mediaData) && $stNoMedia->fetchColumn()) {
+                        db()->prepare('DELETE FROM chat_messages WHERE id = ?')->execute([$existingRowId]);
+                    } else {
+                        error_log("[WEBHOOK] mensagem '$externalMsgId' já existe, skip duplicata");
+                        chat_webhook_trace($event, (array)($messageData['key'] ?? []), 'já existia (duplicada)', $remoteJid, $messageText);
+                        continue;
+                    }
                 }
                 
                 // Para mensagens fromMe: verificar se já existe (pode ter sido salva pelo chat_web.php)

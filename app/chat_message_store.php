@@ -310,10 +310,19 @@ function chat_import_evolution_record(array $rec, string $instanceName, string $
         $newId = (int)db()->lastInsertId();
 
         // Conversa sobe na lista (também quando a mensagem foi ENVIADA)
+        db()->prepare("INSERT IGNORE INTO chat_contacts (remote_jid, instance_name, contact_name, is_group, last_message_timestamp)
+                       VALUES (?, ?, ?, 0, ?)")
+            ->execute([$jid, $instanceName !== '' ? $instanceName : null, $senderName ?? str_replace('@s.whatsapp.net', '', $jid), $ts]);
         db()->prepare("UPDATE chat_contacts
                        SET last_message_timestamp = ?, last_message_text = ?, last_message_type = ?, updated_at = CURRENT_TIMESTAMP
                        WHERE remote_jid = ? AND (last_message_timestamp IS NULL OR last_message_timestamp <= ?)")
             ->execute([$ts, $text, $type, $jid, $ts]);
+        // Resposta do contato reabre a conversa concluída (mesma regra do webhook)
+        if (!$fromMe) {
+            db()->prepare("UPDATE chat_contacts SET status = 'aguardando', updated_at = CURRENT_TIMESTAMP
+                           WHERE remote_jid = ? AND status = 'resolvido'")
+                ->execute([$jid]);
+        }
         return $newId;
     } finally {
         if ($locked) {
