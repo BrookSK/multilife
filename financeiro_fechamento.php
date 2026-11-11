@@ -85,19 +85,43 @@ if (empty($byClient)) {
         echo '</div>';
         echo '</div>';
 
-        // Operadoras com valores
-        foreach ($c['operators'] as $o) {
-            echo '<div style="border:1px solid hsl(var(--border));border-radius:10px;padding:12px;margin-bottom:12px">';
+        // Polos do cliente (cliente -> polo -> operadora), com valores
+        foreach ($c['polos'] as $pl) {
+          echo '<div style="border-left:4px solid hsl(var(--primary));background:hsla(var(--primary)/.04);border-radius:10px;padding:10px 12px 2px;margin-bottom:14px">';
+          echo '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
+          echo '<span style="font-size:15px;font-weight:800">📍 ' . h((string)$pl['polo_name']) . '</span>';
+          echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">' . (int)$pl['total_sessions'] . ' atend. · ' . (int)$pl['patients_count'] . ' paciente(s)</span>';
+          echo '<span style="font-size:13px;font-weight:700;color:#059669">A receber: ' . h($brl((float)$pl['total_receivable'])) . '</span>';
+          echo '<span style="font-size:13px;font-weight:700;color:#b45309">A pagar: ' . h($brl((float)$pl['total_payable'])) . '</span>';
+          echo '</div>';
+
+        // Operadoras do polo com valores
+        foreach ($pl['operators'] as $o) {
+            echo '<div style="border:1px solid hsl(var(--border));border-radius:10px;padding:12px;margin-bottom:12px;background:#fff">';
             echo '<div style="font-weight:700;margin-bottom:8px">' . h((string)$o['insurer_name'])
                 . ' <span style="font-weight:400;font-size:12px;color:hsl(var(--muted-foreground))">· ' . (int)$o['total_sessions'] . ' atend. · '
                 . 'A receber ' . h($brl((float)$o['total_receivable'])) . ' · A pagar ' . h($brl((float)$o['total_payable'])) . '</span></div>';
             echo '<div style="overflow:auto"><table>';
-            echo '<thead><tr><th>Paciente</th><th>Profissional</th><th>Especialidade</th><th style="text-align:center">Atend.</th><th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th></tr></thead><tbody>';
+            echo '<thead><tr><th>Paciente</th><th>Profissional</th><th>Especialidade</th><th>PAD</th><th>Início / Desmame / Fim</th><th style="text-align:center">Atend.</th><th style="text-align:right">A receber</th><th style="text-align:right">A pagar</th></tr></thead><tbody>';
             foreach ($o['lines'] as $line) {
+                $notes = (string)($line['internal_notes'] ?? '');
+                $dates = [];
+                foreach (['admitted_at' => 'Início', 'weaning_at' => 'Desmame', 'ended_at' => 'Fim'] as $dk => $dl) {
+                    $dv = trim((string)($line[$dk] ?? ''));
+                    if ($dv !== '' && strpos($dv, '0000-00-00') !== 0 && ($ts = strtotime($dv))) {
+                        $dates[] = $dl . ' ' . date('d/m/Y', $ts);
+                    }
+                }
                 echo '<tr>';
-                echo '<td style="font-weight:600">' . h((string)$line['patient_name']) . '</td>';
+                echo '<td style="font-weight:600">' . h((string)$line['patient_name']);
+                if ($notes !== '') {
+                    echo '<div title="' . h($notes) . '" style="margin-top:3px;font-size:11px;font-weight:500;color:#92400e;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📝 ' . h(mb_strimwidth($notes, 0, 60, '…')) . '</div>';
+                }
+                echo '</td>';
                 echo '<td>' . h((string)$line['professional_name']) . '</td>';
                 echo '<td>' . h((string)$line['specialty']) . '</td>';
+                echo '<td style="white-space:nowrap">' . h(billing_closure_pad_label($line['session_frequency'] ?? '', $line['session_quantity'] ?? null, (int)($line['is_indefinite'] ?? 0))) . '</td>';
+                echo '<td style="font-size:12px;white-space:nowrap">' . ($dates ? h(implode(' · ', $dates)) : '-') . '</td>';
                 echo '<td style="text-align:center">' . (int)$line['sessions'] . '</td>';
                 echo '<td style="text-align:right;color:#059669;font-weight:600">' . h($brl((float)$line['receivable'])) . '</td>';
                 echo '<td style="text-align:right;color:#b45309;font-weight:600">' . h($brl((float)$line['payable'])) . '</td>';
@@ -105,6 +129,8 @@ if (empty($byClient)) {
             }
             echo '</tbody></table></div>';
             echo '</div>';
+        }
+          echo '</div>'; // fim polo
         }
 
         echo '</section>';

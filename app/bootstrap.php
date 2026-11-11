@@ -112,6 +112,7 @@ require_once __DIR__ . '/frequency_helper.php';
 require_once __DIR__ . '/insurer_document_types.php';
 require_once __DIR__ . '/attendance_resume_helper.php';
 require_once __DIR__ . '/billing_closure_helper.php';
+require_once __DIR__ . '/assignment_schedule_helper.php';
 require_once __DIR__ . '/demand_followup_helper.php';
 require_once __DIR__ . '/demand_dispatch_batch.php';
 require_once __DIR__ . '/notifications.php';

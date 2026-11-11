@@ -9,6 +9,7 @@ auth_require_login();
 rbac_require_permission('demands.manage');
 
 insurer_orientations_ensure_schema();
+clients_ensure_schema(); // polo_id em demands/patient_assignments/health_insurers
 
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $status = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
@@ -79,6 +80,7 @@ if ($selectedId > 0) {
         $stmt = db()->prepare('
             SELECT pa.*, 
                    d.title, d.location_city, d.location_state, d.origin_email, d.description,
+                   d.polo_id AS demand_polo_id, d.health_insurer_id AS demand_insurer_id,
                    p.full_name AS patient_name, p.phone_primary AS patient_phone,
                    prof.name AS professional_name, prof.phone AS professional_phone,
                    assigned_by.name AS assigned_by_name,
@@ -397,12 +399,12 @@ if ($selected) {
     echo '</div>';
 
     // Buscar operadoras para dropdown
-    $insurersStmt = db()->query("SELECT id, name FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
+    $insurersStmt = db()->query("SELECT id, name, client_id, polo_id FROM health_insurers WHERE is_active = 1 ORDER BY name ASC");
     $insurersList = $insurersStmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Detectar ID da operadora (se identificada)
-    $detectedInsurerId = 0;
-    if ($detectedInsurer !== 'Não informado' && !empty($detectedInsurer)) {
+    // Detectar ID da operadora: a do atendimento/card; senão, pelo nome identificado.
+    $detectedInsurerId = (int)($selected['health_insurer_id'] ?? 0) ?: (int)($selected['demand_insurer_id'] ?? 0);
+    if ($detectedInsurerId === 0 && $detectedInsurer !== 'Não informado' && !empty($detectedInsurer)) {
         foreach ($insurersList as $ins) {
             if (strcasecmp($ins['name'], $detectedInsurer) === 0) {
                 $detectedInsurerId = (int)$ins['id'];
@@ -419,9 +421,28 @@ if ($selected) {
     echo '<option value="">Selecione a operadora / cliente...</option>';
     foreach ($insurersList as $ins) {
         $sel = ((int)$ins['id'] === $detectedInsurerId) ? ' selected' : '';
-        echo '<option value="' . (int)$ins['id'] . '"' . $sel . '>' . h($ins['name']) . '</option>';
+        echo '<option value="' . (int)$ins['id'] . '" data-polo="' . (int)($ins['polo_id'] ?? 0) . '" data-client="' . (int)($ins['client_id'] ?? 0) . '"' . $sel . '>' . h($ins['name']) . '</option>';
     }
     echo '</select></label>';
+
+    // Polo do atendimento (cliente -> polo -> operadora). Pré-seleciona o do
+    // atendimento, depois o do card e por fim o polo padrão da operadora.
+    $paPolos = polos_list(null, true);
+    $curPoloId = (int)($selected['polo_id'] ?? 0) ?: (int)($selected['demand_polo_id'] ?? 0);
+    if ($curPoloId === 0 && $detectedInsurerId > 0) {
+        foreach ($insurersList as $ins) {
+            if ((int)$ins['id'] === $detectedInsurerId) { $curPoloId = (int)($ins['polo_id'] ?? 0); break; }
+        }
+    }
+    echo '<label>Polo<select name="polo_id" form="approveForm" id="paPoloSelect">';
+    echo '<option value="">— Sem polo —</option>';
+    foreach ($paPolos as $po) {
+        $sel = (int)$po['id'] === $curPoloId ? ' selected' : '';
+        echo '<option value="' . (int)$po['id'] . '" data-client="' . (int)($po['client_id'] ?? 0) . '"' . $sel . '>' . h(polos_label($po)) . '</option>';
+    }
+    echo '</select></label>';
+    echo '<script>(function(){var i=document.querySelector("select[name=health_insurer_id][form=approveForm]"),p=document.getElementById("paPoloSelect");'
+        . 'if(!i||!p)return;i.addEventListener("change",function(){var o=i.options[i.selectedIndex];if(!o)return;var dp=o.getAttribute("data-polo");if(dp&&dp!=="0"){p.value=dp;}});})();</script>';
     
     echo '<label>E-mail Origem<input value="' . h((string)($selected['origin_email'] ?? '')) . '" readonly></label>';
     echo '<label>Local<input value="' . h($locTxt) . '" readonly></label>';

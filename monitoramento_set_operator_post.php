@@ -44,28 +44,53 @@ try {
     }
     $clientId = $op['client_id'] !== null ? (int)$op['client_id'] : null;
 
+    // Polo: o escolhido (precisa ser do mesmo cliente) ou o padrão da operadora.
+    $poloId = (int)($_POST['polo_id'] ?? 0);
+    $poloName = '';
+    if ($poloId > 0) {
+        $polo = polos_find($poloId);
+        if ($polo === null) {
+            echo json_encode(['success' => false, 'error' => 'Polo inválido.']);
+            exit;
+        }
+        if ($clientId !== null && $polo['client_id'] !== null && (int)$polo['client_id'] !== $clientId) {
+            echo json_encode(['success' => false, 'error' => 'O polo escolhido não pertence ao cliente da operadora.']);
+            exit;
+        }
+        $poloName = (string)$polo['name'];
+    } else {
+        $poloId = isset($op['polo_id']) && $op['polo_id'] !== null ? (int)$op['polo_id'] : 0;
+        if ($poloId > 0 && ($polo = polos_find($poloId))) {
+            $poloName = (string)$polo['name'];
+        }
+    }
+
     $stmt = db()->prepare("
         UPDATE patient_assignments
-        SET health_insurer_id = :hi, client_id = :cid
+        SET health_insurer_id = :hi, client_id = :cid, polo_id = :polo
         WHERE id = :id
     ");
     $stmt->execute([
         'hi' => $healthInsurerId,
         'cid' => $clientId,
+        'polo' => $poloId > 0 ? $poloId : null,
         'id' => $assignmentId,
     ]);
 
     audit_log('update', 'patient_assignments', (string)$assignmentId, null, [
         'health_insurer_id' => $healthInsurerId,
         'client_id' => $clientId,
+        'polo_id' => $poloId > 0 ? $poloId : null,
     ]);
 
     echo json_encode([
         'success' => true,
         'health_insurer_id' => $healthInsurerId,
         'client_id' => $clientId,
+        'polo_id' => $poloId > 0 ? $poloId : null,
         'operator_name' => (string)$op['name'],
         'client_name' => (string)($op['client_name'] ?? ''),
+        'polo_name' => $poloName,
     ]);
 } catch (Throwable $e) {
     error_log('[MONITORAMENTO_SET_OPERATOR] ' . $e->getMessage());

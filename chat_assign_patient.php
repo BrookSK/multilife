@@ -177,6 +177,10 @@ try {
     ]);
     
     $assignmentId = (int)$db->lastInsertId();
+    // Completa polo (e cliente/operadora, se vazios) a partir do card e da operadora.
+    if (function_exists('assignment_fill_org')) {
+        assignment_fill_org($db, $assignmentId);
+    }
     
     // Disparar evento WhatsApp attendance_assigned
     try {

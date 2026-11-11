@@ -91,6 +91,7 @@ function view_header(string $title): void
             ['title' => 'Tipos de Serviço', 'path' => '/service_types_list.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
             ['title' => 'Operadoras', 'path' => '/health_insurers_config.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
             ['title' => 'Clientes', 'path' => '/clients_config.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
+            ['title' => 'Polos', 'path' => '/polos_config.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
             ['title' => 'Pendências', 'path' => '/pending_items_list.php', 'perm' => null],
             ['title' => 'WhatsApp', 'path' => '/my_whatsapp.php', 'perm' => null],
             ['title' => 'Integrações', 'path' => '/admin_integrations_hub.php', 'perm' => 'admin.settings.manage'],

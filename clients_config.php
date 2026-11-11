@@ -84,6 +84,7 @@ view_header('Configuração de Clientes');
             </div>
             <div style="display:flex;gap:10px">
                 <a href="/health_insurers_config.php" class="btn">Operadoras</a>
+                <a href="/polos_config.php" class="btn">Polos</a>
                 <button onclick="openClientModal()" class="btn-primary">+ Novo Cliente</button>
                 <a href="/settings.php" class="btn">← Voltar</a>
             </div>

@@ -29,7 +29,9 @@ $month = billing_closure_normalize_month($_POST['month'] ?? null);
 $scope = trim((string)($_POST['scope'] ?? ''));
 $id = (int)($_POST['id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? 'close'));
-$redirect = '/faturamento_fechamento.php?month=' . urlencode((string)$month);
+// Volta para a mesma visão (competência + filtros que estavam na tela).
+$returnFilters = billing_closure_filters_from(is_array($_POST['f'] ?? null) ? $_POST['f'] : []);
+$redirect = '/faturamento_fechamento.php?' . billing_closure_filters_qs((string)($month ?? date('Y-m')), $returnFilters);
 
 if ($month === null || !in_array($scope, ['operator', 'client'], true) || $id <= 0) {
     flash_set('error', 'Parâmetros inválidos.');

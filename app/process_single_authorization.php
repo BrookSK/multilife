@@ -245,6 +245,10 @@ function process_single_authorization(int $authId, int $emailId): array
                 'notes' => "Autorização aprovada automaticamente. Proposta: R$ " . number_format($proposalValue, 2, ',', '.') . " | Acordado: R$ " . number_format($agreedValue, 2, ',', '.')
             ]);
             $assignmentId = (int)$db->lastInsertId();
+            // Cliente / operadora / polo do card vão para o atendimento (sem DDL; seguro na transação).
+            if (function_exists('assignment_fill_org')) {
+                assignment_fill_org($db, $assignmentId);
+            }
             error_log("[PROCESS_SINGLE_AUTH] ✓ Atendimento criado - ID: $assignmentId");
             
             // Coletar dados do evento WhatsApp attendance_assigned para disparar APÓS o commit.

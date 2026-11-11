@@ -67,6 +67,18 @@ try {
     exit;
 }
 
+// Atendimentos já criados a partir deste card: completa cliente/operadora/polo
+// que estiverem vazios (não sobrescreve o que já foi definido no atendimento).
+try {
+    $paIds = $db->prepare('SELECT id FROM patient_assignments WHERE demand_id = :d');
+    $paIds->execute(['d' => $id]);
+    foreach ($paIds->fetchAll(PDO::FETCH_COLUMN) as $paId) {
+        assignment_fill_org($db, (int)$paId);
+    }
+} catch (Throwable $e) {
+    error_log('[DEMANDS_EDIT] fill_org: ' . $e->getMessage());
+}
+
 $changed = [];
 foreach ($data as $k => $v) {
     if (array_key_exists($k, $old) && (string)($old[$k] ?? '') !== (string)($v ?? '')) {

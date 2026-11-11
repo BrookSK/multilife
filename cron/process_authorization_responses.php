@@ -295,6 +295,9 @@ foreach ($pendingRequests as $request) {
                         'notes' => 'Criado automaticamente após aprovação da proposta #' . $authId
                     ]);
                     $assignmentId = (int)$db->lastInsertId();
+                    if (function_exists('assignment_fill_org')) {
+                        assignment_fill_org($db, $assignmentId);
+                    }
                     error_log("[AUTHORIZATION_RESPONSE] ✓ Atendimento criado - ID: $assignmentId");
                     
                     // Criar lançamentos financeiros
