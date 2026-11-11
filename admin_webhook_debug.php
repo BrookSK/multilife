@@ -295,6 +295,47 @@ try {
 echo '<hr>';
 
 // ---------------------------------------------------------------------------
+// 3b) Quanto o SISTEMA chama a Evolution (por WhatsApp e tipo de chamada).
+// Consultas de grupo (findGroupInfos, findGroupMembers, fetchAllGroups) vão ao
+// WhatsApp ao vivo; em excesso, o WhatsApp limita a sessão e ela passa a
+// receber com atraso. Serve para achar o que o sistema faz a mais nesses números.
+// ---------------------------------------------------------------------------
+$hours = max(1, min(72, (int)($_GET['h'] ?? 24)));
+echo '<h3>Chamadas do sistema à Evolution (últimas ' . $hours . 'h)</h3>';
+echo '<p style="font-size:12px"><a href="?h=1">1h</a> · <a href="?h=6">6h</a> · <a href="?h=24">24h</a> · <a href="?h=72">72h</a></p>';
+try {
+    $st = db()->prepare("SELECT action, COUNT(*) AS n,
+                                SUM(status = 'error') AS errs,
+                                MIN(created_at) AS first_at, MAX(created_at) AS last_at
+                         FROM integration_logs
+                         WHERE provider = 'evolution' AND created_at >= (NOW() - INTERVAL ? HOUR)
+                         GROUP BY action ORDER BY n DESC LIMIT 40");
+    $st->execute([$hours]);
+    $calls = $st->fetchAll(PDO::FETCH_ASSOC);
+    if (!$calls) {
+        echo '<p>Nenhuma chamada registrada.</p>';
+    } else {
+        $total = array_sum(array_map(static fn($c) => (int)$c['n'], $calls));
+        echo '<p>Total (top 40): <strong>' . $total . '</strong> chamadas — média de ' . round($total / ($hours * 60), 1) . ' por minuto.</p>';
+        echo '<table><tr><th>Chamada</th><th>Qtde</th><th>Por minuto</th><th>Erros</th><th>Primeira</th><th>Última</th></tr>';
+        foreach ($calls as $c) {
+            $isGroupLive = preg_match('#findGroupInfos|findGroupMembers|fetchAllGroups|participants|updateGroupSetting#i', (string)$c['action']);
+            echo '<tr' . ($isGroupLive && (int)$c['n'] > 50 ? ' style="background:#fff3cd"' : '') . '>'
+                . '<td>' . $e($c['action']) . '</td><td>' . (int)$c['n'] . '</td>'
+                . '<td>' . round((int)$c['n'] / ($hours * 60), 2) . '</td>'
+                . '<td>' . ((int)$c['errs'] > 0 ? '<span class="bad">' . (int)$c['errs'] . '</span>' : '0') . '</td>'
+                . '<td>' . $e($c['first_at']) . '</td><td>' . $e($c['last_at']) . '</td></tr>';
+        }
+        echo '</table>';
+        echo '<p style="font-size:12px;color:#666">Amarelo: consulta de grupo ao vivo no WhatsApp com mais de 50 chamadas no período.</p>';
+    }
+} catch (Throwable $ex) {
+    echo '<p class="bad">Erro ao consultar: ' . $e($ex->getMessage()) . '</p>';
+}
+
+echo '<hr>';
+
+// ---------------------------------------------------------------------------
 // 4) Últimas chamadas à Evolution e últimas mensagens gravadas
 // ---------------------------------------------------------------------------
 echo '<h3>Últimas 20 chamadas à Evolution API</h3>';

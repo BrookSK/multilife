@@ -1250,8 +1250,10 @@ function startChatPolling() {
   if (window.chatId && !window._pollingStarted) {
     window._pollingStarted = true;
     setInterval(checkForNewMessages, 3000);
+    // Só ao abrir a conversa e ao voltar para a aba: a busca de mensagens na
+    // Evolution é pesada no banco dela (sem índice) e repetir a cada 30s por
+    // conversa aberta somava carga justamente no que está lento.
     setTimeout(syncOpenChatFromEvolution, 800);
-    setInterval(syncOpenChatFromEvolution, 30000);
     // Ao voltar para a aba do navegador, sincroniza na hora
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) { syncOpenChatFromEvolution(); checkForNewMessages(); refreshChatList(); }
