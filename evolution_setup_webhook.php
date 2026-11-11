@@ -22,12 +22,11 @@ $webhookUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/chat_webhook.php';
 // Configurar webhook na Evolution API
 $url = $baseUrl . '/webhook/set/' . urlencode($instanceName);
 
-// base64 desligado: com ele a Evolution baixa cada mídia antes de avisar e forma
-// fila de horas (ver app/whatsapp_webhook_config.php)
+// Mesmo padrão de app/whatsapp_webhook_config.php (modelo helpdeskON)
 $payload = json_encode([
     'url' => $webhookUrl,
     'webhook_by_events' => false,
-    'webhook_base64' => false,
+    'webhook_base64' => true,
     'events' => WHATSAPP_WEBHOOK_EVENTS,
 ]);
 

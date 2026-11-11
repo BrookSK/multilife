@@ -63,7 +63,7 @@ function myWaConfigureWebhook(string $baseUrl, string $apiKey, string $instanceN
     }
     $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
 
-    // Configuração única (base64 desligado): app/whatsapp_webhook_config.php
+    // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
     $payload = whatsapp_webhook_payload($webhookUrl);
 
     $ch = curl_init($baseUrl . '/webhook/set/' . urlencode($instanceName));

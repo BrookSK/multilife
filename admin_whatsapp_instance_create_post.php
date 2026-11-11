@@ -38,13 +38,13 @@ $payload = [
 ];
 
 if ($webhook !== '') {
-    // Mesma configuração das demais instâncias (app/whatsapp_webhook_config.php):
-    // URL única, sem base64 (evita fila de horas na Evolution) e só os eventos usados.
+    // Mesma configuração das demais instâncias (app/whatsapp_webhook_config.php,
+    // modelo helpdeskON): URL única, base64 ligado e só os eventos usados.
     $payload['webhook'] = $webhook;
     $payload['webhook_by_events'] = false;
     $payload['webhookByEvents'] = false;
-    $payload['webhook_base64'] = false;
-    $payload['webhookBase64'] = false;
+    $payload['webhook_base64'] = true;
+    $payload['webhookBase64'] = true;
     $payload['events'] = WHATSAPP_WEBHOOK_EVENTS;
 }
 

@@ -5,15 +5,10 @@ declare(strict_types=1);
 /**
  * Configuração do webhook das instâncias na Evolution (fonte única).
  *
- * Por que base64 DESLIGADO: com base64 ligado, a Evolution baixa e converte cada
- * foto/áudio/vídeo/documento ANTES de gravar a mensagem e avisar o sistema, uma
- * mensagem por vez por instância. Em WhatsApps com muitos grupos (captação) isso
- * formava fila de horas/dias (ml-grace 47 h, ml-tania 40 h, ml-maju 30 h de atraso).
- * Sem base64, a mensagem chega na hora e o sistema baixa a mídia depois, pela
- * própria Evolution (getBase64FromMediaMessage), sem travar a fila dela.
- *
- * Eventos: só os que o sistema usa. Cada evento a mais é uma chamada HTTP que a
- * Evolution faz e espera (ex.: status de entrega de cada mensagem de grupo).
+ * Mesmo modelo do helpdeskON (que funciona com a mesma Evolution): um único
+ * endereço, base64 ligado (a mídia já vem junto com a mensagem) e só os eventos
+ * usados. Particularidades do multilife: SEND_MESSAGE (eco do envio pela API,
+ * usado para confirmar o disparo de captação) e CONTACTS_UPSERT (nome/foto).
  */
 
 const WHATSAPP_WEBHOOK_EVENTS = [
@@ -44,7 +39,7 @@ function whatsapp_webhook_payload(string $url): array
             'enabled' => true,
             'url' => $url,
             'byEvents' => false,
-            'base64' => false,
+            'base64' => true,
             'events' => WHATSAPP_WEBHOOK_EVENTS,
         ],
     ];
@@ -114,16 +109,16 @@ function whatsapp_webhook_optimize(string $instanceName): array
         // Versões anteriores da Evolution: chaves com outro nome
         $legacy = whatsapp_webhook_payload($url);
         $legacy['webhook']['webhookByEvents'] = false;
-        $legacy['webhook']['webhookBase64'] = false;
+        $legacy['webhook']['webhookBase64'] = true;
         unset($legacy['webhook']['byEvents'], $legacy['webhook']['base64']);
         $res = http_json_request('POST', $base . '/webhook/set/' . rawurlencode($instanceName), $headers, $legacy, 15);
         $status = (int)($res['status'] ?? 0);
     }
 
     $after = whatsapp_webhook_find($instanceName);
-    $ok = $status >= 200 && $status < 300 && $after['base64'] !== true;
+    $ok = $status >= 200 && $status < 300 && $after['byEvents'] !== true;
     $msg = $ok
-        ? 'Webhook otimizado (base64 desligado, ' . count($after['events'] ?: WHATSAPP_WEBHOOK_EVENTS) . ' eventos).'
+        ? 'Webhook configurado no padrão (base64 ligado, ' . count($after['events'] ?: WHATSAPP_WEBHOOK_EVENTS) . ' eventos).'
         : ('Não foi possível confirmar a mudança. HTTP ' . $status . ': ' . mb_substr((string)($res['body_raw'] ?? ''), 0, 200));
     integration_log('evolution', 'webhook optimize ' . $instanceName, $ok ? 'success' : 'error', $status, ['url' => $url], $after, $ok ? null : $msg, 1);
 

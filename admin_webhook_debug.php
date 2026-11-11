@@ -51,9 +51,8 @@ $instanceNamesAll = array_values(array_filter(array_map(static fn($i) => (string
 // 1b) Configuração do webhook de cada WhatsApp na Evolution
 // ---------------------------------------------------------------------------
 echo '<h3>Configuração do webhook na Evolution</h3>';
-echo '<p>Com <strong>base64 ligado</strong>, a Evolution baixa cada foto/áudio/vídeo antes de avisar o sistema, uma mensagem por vez, '
-    . 'e forma fila de horas nos WhatsApps com muitos grupos. A configuração recomendada desliga o base64 (o sistema baixa a mídia depois) '
-    . 'e deixa só os eventos usados. Não desconecta o WhatsApp.</p>';
+echo '<p>Padrão do sistema (mesmo modelo do helpdeskON): um único endereço, base64 ligado (a mídia vem junto com a mensagem) '
+    . 'e só os eventos usados. "Aplicar padrão" não desconecta o WhatsApp.</p>';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['do'] ?? '') === 'optimize_webhook') {
     $target = (string)($_POST['target'] ?? '');
@@ -77,18 +76,18 @@ if ($instanceNamesAll) {
         echo '<tr><td>' . $e($iname) . '</td>'
             . '<td>' . ($wf['ok'] ? $e($wf['url']) : '<span class="bad">HTTP ' . (int)$wf['http'] . ' ' . $e(mb_substr($wf['raw'], 0, 80)) . '</span>') . '</td>'
             . '<td>' . $fmtBool($wf['enabled'], true) . '</td>'
-            . '<td>' . $fmtBool($wf['base64'], false) . '</td>'
+            . '<td>' . $fmtBool($wf['base64'], true) . '</td>'
             . '<td>' . $fmtBool($wf['byEvents'], false) . '</td>'
             . '<td>' . count($wf['events']) . ($extra ? ' <span class="bad">(+' . count($extra) . ' desnecessários)</span>' : '') . '</td>'
             . '<td><form method="post" style="margin:0"><input type="hidden" name="do" value="optimize_webhook"><input type="hidden" name="target" value="' . $e($iname) . '">'
-            . '<button type="submit">Otimizar</button></form></td></tr>';
+            . '<button type="submit">Aplicar padrão</button></form></td></tr>';
     }
     echo '</table>';
-    echo '<form method="post" style="margin-top:8px" onsubmit="return confirm(\'Aplicar a configuração recomendada no webhook de TODOS os WhatsApps?\')">'
+    echo '<form method="post" style="margin-top:8px" onsubmit="return confirm(\'Aplicar a configuração padrão no webhook de TODOS os WhatsApps?\')">'
         . '<input type="hidden" name="do" value="optimize_webhook"><input type="hidden" name="target" value="__all__">'
-        . '<button type="submit" style="padding:6px 12px;font-weight:bold">Otimizar todos</button></form>';
+        . '<button type="submit" style="padding:6px 12px;font-weight:bold">Aplicar padrão em todos</button></form>';
     echo '<p style="font-size:12px;color:#666">Se a Evolution também tiver o webhook GLOBAL ligado (variáveis WEBHOOK_GLOBAL_* no servidor dela), '
-        . 'ele precisa ser desligado lá, senão as mensagens chegam em dobro e com base64.</p>';
+        . 'ele precisa ser desligado lá, senão as mensagens chegam em dobro.</p>';
 }
 echo '<hr>';
 

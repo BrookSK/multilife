@@ -90,11 +90,11 @@ echo "Resposta: $resp4\n\n";
 echo "=== RECONFIGURANDO WEBHOOK ===\n";
 $webhookUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/chat_webhook.php';
 $url5 = $baseUrl . '/webhook/set/' . urlencode($instanceName);
-// base64 desligado (ver app/whatsapp_webhook_config.php)
+// Mesmo padrão de app/whatsapp_webhook_config.php (modelo helpdeskON)
 $payload5 = json_encode([
     'url' => $webhookUrl,
     'webhook_by_events' => false,
-    'webhook_base64' => false,
+    'webhook_base64' => true,
     'events' => WHATSAPP_WEBHOOK_EVENTS,
 ]);
 
