@@ -19,6 +19,30 @@ $instanceFilter = isset($_GET['instance']) ? trim((string)$_GET['instance']) : '
 $attendantFilter = isset($_GET['attendant']) ? (int)$_GET['attendant'] : 0;
 $chatName = ''; // Inicializar para evitar erro no JavaScript
 
+// PERSISTÊNCIA DOS FILTROS: o filtro que não veio na URL é restaurado da sessão.
+// Assim abrir/fechar uma conversa, trocar de WhatsApp ou sair e voltar para o
+// chat mantém aba, WhatsApp, atendente e busca. Para limpar um filtro, a URL
+// envia o parâmetro vazio (ex.: "Todos WhatsApp" manda instance=).
+$savedChatFilters = isset($_SESSION['chat_web_filters']) && is_array($_SESSION['chat_web_filters'])
+    ? $_SESSION['chat_web_filters'] : [];
+$instanceFromSession = false;
+if (!array_key_exists('type', $_GET) && isset($savedChatFilters['type'])) {
+    $chatType = (string)$savedChatFilters['type'];
+}
+if (!array_key_exists('q', $_GET) && isset($savedChatFilters['q'])) {
+    $searchQuery = (string)$savedChatFilters['q'];
+}
+if (!array_key_exists('instance', $_GET) && !empty($savedChatFilters['instance'])) {
+    $instanceFilter = (string)$savedChatFilters['instance'];
+    $instanceFromSession = true;
+}
+if (!array_key_exists('attendant', $_GET) && isset($savedChatFilters['attendant'])) {
+    $attendantFilter = (int)$savedChatFilters['attendant'];
+}
+if ($chatType === '') {
+    $chatType = 'all';
+}
+
 // Buscar configurações da Evolution API
 // MULTI-INSTÂNCIA: Usar a instância do usuário logado (se tiver), senão a padrão
 $baseUrl = admin_setting_get('evolution.base_url');
@@ -71,6 +95,46 @@ if ($isChatAdmin) {
     // Usuário não-admin não pode aplicar o filtro por atendente.
     $attendantFilter = 0;
 }
+
+// WhatsApp restaurado da sessão + conversa aberta por link externo (ex.: "abrir
+// conversa" em outra tela): só mantém o filtro se a conversa for desse WhatsApp,
+// senão as mensagens dela ficariam escondidas.
+if ($instanceFromSession && $instanceFilter !== '' && $selectedChat !== '' && strpos($selectedChat, '@g.us') === false) {
+    try {
+        $stBelongs = db()->prepare(
+            'SELECT 1 FROM chat_contacts WHERE remote_jid = ? AND instance_name = ?
+             UNION SELECT 1 FROM chat_messages WHERE remote_jid = ? AND instance_name = ? LIMIT 1'
+        );
+        $stBelongs->execute([$selectedChat, $instanceFilter, $selectedChat, $instanceFilter]);
+        if (!$stBelongs->fetchColumn()) {
+            $instanceFilter = '';
+            $instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
+        }
+    } catch (Throwable $e) {
+        error_log('[CHAT] Erro ao validar instancia da conversa: ' . $e->getMessage());
+    }
+}
+
+// Guardar os filtros atuais (já validados) para as próximas navegações.
+$_SESSION['chat_web_filters'] = [
+    'type' => $chatType,
+    'q' => $searchQuery,
+    'instance' => $instanceFilter,
+    'attendant' => $attendantFilter,
+];
+
+// Query string com os filtros atuais, usada em todos os links do chat.
+$chatFilterParams = ['type' => $chatType];
+if ($instanceFilter !== '') {
+    $chatFilterParams['instance'] = $instanceFilter;
+}
+if ($attendantFilter > 0) {
+    $chatFilterParams['attendant'] = $attendantFilter;
+}
+if ($searchQuery !== '') {
+    $chatFilterParams['q'] = $searchQuery;
+}
+$chatFilterQS = '&' . http_build_query($chatFilterParams, '', '&', PHP_QUERY_RFC3986);
 
 $success = '';
 $error = '';
@@ -187,6 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $savedToDb = false;
                 $dbError = '';
                 $lastId = 0;
+                $sentExternalId = '';
                 $timestamp = time();
                 
                 try {
@@ -216,15 +281,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $normalizedJid = normalizeJid($remoteJid);
                     error_log("[$debugId] DB_SAVE - Original JID: '$remoteJid' | Normalized: '$normalizedJid'");
                     
-                    $stmt = db()->prepare("
-                        INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp)
-                        VALUES (?, ?, ?, 1, ?)
-                    ");
-                    $savedToDb = $stmt->execute([$normalizedJid, $instanceName, $message, $timestamp]);
+                    // ID da mensagem no WhatsApp (key.id): o webhook usa para reconhecer
+                    // o "eco" desta mensagem e não gravar duplicada.
+                    $sentExternalId = '';
+                    if (is_array($res['json'] ?? null)) {
+                        $sentExternalId = (string)($res['json']['key']['id'] ?? ($res['json']['data']['key']['id'] ?? ''));
+                    }
+                    $existingSentId = 0;
+                    if ($sentExternalId !== '') {
+                        // O webhook pode ter chegado antes deste INSERT
+                        $stDupSent = db()->prepare('SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1');
+                        $stDupSent->execute([$sentExternalId]);
+                        $existingSentId = (int)($stDupSent->fetchColumn() ?: 0);
+                    }
+
+                    if ($existingSentId > 0) {
+                        $savedToDb = true;
+                    } else {
+                        $stmt = db()->prepare("
+                            INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp, external_message_id)
+                            VALUES (?, ?, ?, 1, ?, ?)
+                        ");
+                        $savedToDb = $stmt->execute([$normalizedJid, $instanceName, $message, $timestamp, $sentExternalId !== '' ? $sentExternalId : null]);
+                    }
                     
                     // Verificar se realmente salvou
                     if ($savedToDb) {
-                        $lastId = db()->lastInsertId();
+                        $lastId = $existingSentId > 0 ? $existingSentId : db()->lastInsertId();
                         if (!$lastId) {
                             $savedToDb = false;
                             $dbError = "INSERT não retornou ID";
@@ -331,12 +414,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if ($isAjax) {
                         error_log("[$debugId] JSON_RESP success:true ts=$timestamp");
                         header('Content-Type: application/json');
-                        echo json_encode(['success' => true, 'message' => $message, 'timestamp' => $timestamp]);
+                        echo json_encode([
+                            'success' => true,
+                            'message' => $message,
+                            'timestamp' => $timestamp,
+                            'message_id' => (int)$lastId,
+                            'external_message_id' => $sentExternalId !== '' ? $sentExternalId : null,
+                        ]);
                         exit();
                     }
-                    $redirectType = isset($_GET['type']) ? '&type=' . urlencode($_GET['type']) : '';
-                    $redirectType = $redirectType ?: (strpos($remoteJid, '@g.us') !== false ? '&type=grupos' : '');
-                    header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1' . $redirectType);
+                    // Volta para a conversa mantendo os filtros (aba, WhatsApp, atendente, busca)
+                    $redirectParams = $chatFilterParams;
+                    if (!isset($_GET['type']) && strpos($remoteJid, '@g.us') !== false) {
+                        $redirectParams['type'] = 'grupos';
+                    }
+                    header('Location: /chat_web.php?chat=' . urlencode($remoteJid) . '&success=1&' . http_build_query($redirectParams, '', '&', PHP_QUERY_RFC3986));
                     exit();
                 }
             } else {
@@ -2119,9 +2211,12 @@ $tabs = [
 ];
 $instanceQS = $instanceFilter !== '' ? '&instance=' . rawurlencode($instanceFilter) : '';
 $attendantQS = $attendantFilter > 0 ? '&attendant=' . (int)$attendantFilter : '';
+$searchQS = $searchQuery !== '' ? '&q=' . rawurlencode($searchQuery) : '';
 foreach ($tabs as $tabKey => $tabData) {
     $activeClass = ($chatType === $tabKey) ? 'active' : '';
-    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=\'/chat_web.php?type=' . $tabKey . $instanceQS . $attendantQS . '\'" title="' . h($tabData['label']) . '">';
+    // Trocar de aba mantém WhatsApp, atendente e busca
+    $tabUrl = '/chat_web.php?type=' . $tabKey . $instanceQS . $attendantQS . $searchQS;
+    echo '<div class="whatsapp-tab ' . $activeClass . '" onclick="window.location.href=' . h(json_encode($tabUrl, JSON_UNESCAPED_SLASHES)) . '" title="' . h($tabData['label']) . '">';
     echo $tabData['icon'];
     echo '</div>';
 }
@@ -2141,7 +2236,14 @@ if ($chatType === 'grupos') {
             $groupPic = $group['profilePictureUrl'] ?? '';
             $isActive = ($groupId === $selectedChat) ? ' active' : '';
             
-            echo '<a href="/chat_web.php?chat=' . urlencode($groupId) . '&type=grupos" class="whatsapp-chat-item' . $isActive . '">';
+            $groupLinkParams = array_merge($chatFilterParams, ['type' => 'grupos']);
+            if ($specialtyFilter !== '') {
+                $groupLinkParams['specialty'] = $specialtyFilter;
+            }
+            if ($regionFilter !== '') {
+                $groupLinkParams['region'] = $regionFilter;
+            }
+            echo '<a href="' . h('/chat_web.php?chat=' . urlencode($groupId) . '&' . http_build_query($groupLinkParams, '', '&', PHP_QUERY_RFC3986)) . '" class="whatsapp-chat-item' . $isActive . '">';
             if (!empty($groupPic)) {
                 echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($groupPic) . ');background-size:cover;background-position:center"></div>';
             } else {
@@ -2412,7 +2514,7 @@ if ($chatType === 'grupos') {
             $initials = strtoupper(substr($chatName, 0, 2));
             $profilePic = $chat['profilePictureUrl'] ?? '';
             
-            echo '<a href="/chat_web.php?chat=' . urlencode($chatId) . '&type=' . urlencode($chatType) . '" class="whatsapp-chat-item' . $isActive . '">';
+            echo '<a href="' . h('/chat_web.php?chat=' . urlencode($chatId) . $chatFilterQS) . '" class="whatsapp-chat-item' . $isActive . '">';
             if (!empty($profilePic)) {
                 echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
             } else {
@@ -2648,7 +2750,9 @@ if (empty($selectedChat)) {
                 $mediaUrl = $protocol . '://' . $host . $mediaUrl;
             }
             
-            echo '<div class="whatsapp-message ' . $messageClass . '"' . (!empty($msg['externalMessageId']) ? ' data-msg-id="' . h($msg['externalMessageId']) . '"' : '') . '>';
+            // Mesma chave usada pelo polling (external_message_id ou "row-<id>") para não duplicar
+            $domMsgKey = !empty($msg['externalMessageId']) ? (string)$msg['externalMessageId'] : (!empty($msg['id']) ? 'row-' . (int)$msg['id'] : '');
+            echo '<div class="whatsapp-message ' . $messageClass . '"' . ($domMsgKey !== '' ? ' data-msg-id="' . h($domMsgKey) . '"' : '') . (!empty($msg['id']) ? ' data-row-id="' . (int)$msg['id'] . '"' : '') . '>';
             echo '<div class="whatsapp-message-bubble">';
             
             // Renderizar nome do remetente em grupos (mensagens recebidas)
@@ -2858,7 +2962,7 @@ if (empty($selectedChat)) {
     
     // Formulário de envio
     echo '<div class="whatsapp-input-area">';
-    echo '<form method="post" action="/chat_web.php?chat=' . urlencode($selectedChat) . '" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
+    echo '<form method="post" action="' . h('/chat_web.php?chat=' . urlencode($selectedChat) . $chatFilterQS) . '" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
     echo '<input type="hidden" name="action" value="send_message">';
     echo '<input type="hidden" name="phone_number" value="' . h($selectedChat) . '">';
     
@@ -3214,6 +3318,15 @@ echo '<script src="/chat_web_functions.js?v=' . $__jsVer . '"></script>';
 // JavaScript inline apenas para configuração específica da página
 echo '<script>';
 echo 'window.chatId = ' . json_encode($selectedChat) . ';';
+// Filtros atuais da lista (aba, WhatsApp, atendente, busca): usados pelo JS para
+// manter os filtros ao abrir/fechar conversa, enviar mensagem e no polling.
+echo 'window.chatFilters = ' . json_encode([
+    'type' => $chatType,
+    'instance' => $instanceFilter,
+    'attendant' => $attendantFilter > 0 ? (string)$attendantFilter : '',
+    'q' => $searchQuery,
+], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
+echo 'window.chatFilterQS = ' . json_encode($chatFilterQS, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
 echo 'window.chatName = ' . json_encode($chatName) . ';';
 $lastTs = 0;
 $lastMsgId = 0;
@@ -3240,7 +3353,7 @@ if (window.chatId) {
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: "chat_id=" + encodeURIComponent(window.chatId)
+        body: "chat_id=" + encodeURIComponent(window.chatId) + "&instance=" + encodeURIComponent((window.chatFilters && window.chatFilters.instance) || "")
     })
     .then(response => response.json())
     .then(data => {
@@ -3959,8 +4072,9 @@ async function setConversationStatus(status) {
         const resp = await fetch("/chat_conclude.php", { method: "POST", body: formData });
         const data = await resp.json();
         if (data.success) {
-            // Recarregar para atualizar a listagem (a conversa sai da aba atual)
-            window.location.href = "/chat_web.php";
+            // Recarregar para atualizar a listagem (a conversa sai da aba atual),
+            // mantendo os filtros da lista
+            window.location.href = chatListUrl();
         } else {
             alert("Erro: " + (data.error || "desconhecido"));
         }
@@ -3984,35 +4098,16 @@ function updateStatus(status) {
 }
 
 // FILTRO POR WHATSAPP: recarrega a lista filtrando pela instância escolhida,
-// preservando a aba atual (type) e o filtro de atendente.
+// preservando aba, atendente e busca. "Todos WhatsApp" manda instance vazio
+// para limpar o filtro guardado na sessão.
 function filterByInstance(instanceName) {
-    const params = new URLSearchParams(window.location.search);
-    const type = params.get("type") || "all";
-    const attendant = params.get("attendant") || "";
-    let url = "/chat_web.php?type=" + encodeURIComponent(type);
-    if (instanceName) {
-        url += "&instance=" + encodeURIComponent(instanceName);
-    }
-    if (attendant && attendant !== "0") {
-        url += "&attendant=" + encodeURIComponent(attendant);
-    }
-    window.location.href = url;
+    window.location.href = chatListUrl({ instance: instanceName || "" });
 }
 
 // FILTRO POR ATENDENTE: recarrega a lista filtrando pelo atendente escolhido,
-// preservando a aba atual (type) e o filtro de WhatsApp.
+// preservando aba, WhatsApp e busca.
 function filterByAttendant(attendantId) {
-    const params = new URLSearchParams(window.location.search);
-    const type = params.get("type") || "all";
-    const instance = params.get("instance") || "";
-    let url = "/chat_web.php?type=" + encodeURIComponent(type);
-    if (instance) {
-        url += "&instance=" + encodeURIComponent(instance);
-    }
-    if (attendantId && attendantId !== "0") {
-        url += "&attendant=" + encodeURIComponent(attendantId);
-    }
-    window.location.href = url;
+    window.location.href = chatListUrl({ attendant: (attendantId && attendantId !== "0") ? attendantId : "0" });
 }
 
 // ATRIBUIR ATENDENTE: define o atendente responsável pela conversa aberta.

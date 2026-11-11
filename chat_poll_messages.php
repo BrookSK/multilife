@@ -28,8 +28,19 @@ try {
     [$instSql, $instParams] = whatsapp_messages_instance_filter(
         (int)(auth_user_id() ?? 0), $chatId, trim((string)($_GET['instance'] ?? ''))
     );
-    // Buscar mensagens novas desde o último cursor (timestamp + id).
-    // Condição: timestamp estritamente maior, OU mesmo timestamp porém id maior.
+    // Cursor das mensagens novas:
+    // - Com last_id: tudo que foi GRAVADO depois (id maior), seja qual for o horário.
+    //   As mensagens enviadas pelo celular chegam pelo webhook com o horário do
+    //   WhatsApp, que pode ser anterior ao último horário já exibido (atraso do
+    //   webhook, relógio do servidor). Pelo horário elas nunca apareciam.
+    // - Sem last_id (conversa vazia ao abrir): pelo horário, como antes.
+    if ($lastId > 0) {
+        $cursorSql = 'id > ?';
+        $cursorParams = [$lastId];
+    } else {
+        $cursorSql = '(message_timestamp > ? OR (message_timestamp = ? AND id > ?))';
+        $cursorParams = [$since, $since, $lastId];
+    }
     $stmt = db()->prepare("
         SELECT 
             id,
@@ -52,14 +63,11 @@ try {
             external_message_id
         FROM chat_messages
         WHERE remote_jid = ?
-          AND (
-                message_timestamp > ?
-                OR (message_timestamp = ? AND id > ?)
-          )" . $instSql . "
-        ORDER BY message_timestamp ASC, id ASC
+          AND " . $cursorSql . $instSql . "
+        ORDER BY id ASC
         LIMIT 50
     ");
-    $stmt->execute(array_merge([$chatId, $since, $since, $lastId], $instParams));
+    $stmt->execute(array_merge([$chatId], $cursorParams, $instParams));
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Converter URLs relativas para absolutas
@@ -99,13 +107,12 @@ try {
     }
     unset($msg);
 
-    // Avança os cursores com base na ÚLTIMA mensagem do lote (ordenado por ts, id).
+    // Avança os cursores: maior id e maior horário do lote.
     $lastTimestamp = $since;
     $lastIdOut = $lastId;
-    if (!empty($messages)) {
-        $lastMsg = end($messages);
-        $lastTimestamp = (int)$lastMsg['message_timestamp'];
-        $lastIdOut = (int)$lastMsg['id'];
+    foreach ($messages as $m) {
+        $lastTimestamp = max($lastTimestamp, (int)$m['message_timestamp']);
+        $lastIdOut = max($lastIdOut, (int)$m['id']);
     }
 
     echo json_encode([

@@ -124,6 +124,73 @@ function normalizeJid(string $jid): string {
     return $numberOnly . '@s.whatsapp.net';
 }
 
+// Mapa LID -> número real. O WhatsApp pode identificar o contato por um LID
+// (XXXX@lid) em vez do número. Quando a mensagem traz o número (remoteJidAlt ou
+// senderPn) guardamos o par, para resolver as próximas que vierem só com o LID.
+function ensureLidMapTable(): void {
+    static $done = false;
+    if ($done) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS chat_lid_map (
+        lid_jid VARCHAR(100) NOT NULL,
+        pn_jid VARCHAR(100) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (lid_jid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $done = true;
+}
+
+function rememberLidMapping(string $lidJid, string $pnJid): void {
+    if (substr($lidJid, -4) !== '@lid' || strpos($pnJid, '@s.whatsapp.net') === false) return;
+    try {
+        ensureLidMapTable();
+        db()->prepare("INSERT INTO chat_lid_map (lid_jid, pn_jid) VALUES (?, ?) ON DUPLICATE KEY UPDATE pn_jid = VALUES(pn_jid)")
+            ->execute([$lidJid, $pnJid]);
+    } catch (Throwable $e) {
+        error_log('[WEBHOOK] erro ao gravar mapa LID: ' . $e->getMessage());
+    }
+}
+
+/**
+ * JID da CONVERSA (número real) a partir do key da mensagem.
+ * - Recebida: senderPn tem o número do contato (comportamento anterior).
+ * - Enviada pelo celular (fromMe): senderPn é o NOSSO número, então usamos
+ *   remoteJidAlt ou o mapa LID -> número. Sem isso a mensagem ia para uma
+ *   conversa "fantasma" (LID@s.whatsapp.net) e não aparecia na conversa certa.
+ */
+function resolveConversationJid(array $key, bool $fromMe): string {
+    $remoteJid = (string)($key['remoteJid'] ?? '');
+    $senderPn  = (string)($key['senderPn'] ?? '');
+    $altJid    = (string)($key['remoteJidAlt'] ?? '');
+
+    if (strpos($remoteJid, '@g.us') !== false) {
+        return $remoteJid;
+    }
+    if (!$fromMe && $senderPn !== '') {
+        if (substr($remoteJid, -4) === '@lid') rememberLidMapping($remoteJid, $senderPn);
+        return $senderPn;
+    }
+    if (substr($remoteJid, -4) !== '@lid') {
+        return $remoteJid;
+    }
+    if (strpos($altJid, '@s.whatsapp.net') !== false) {
+        rememberLidMapping($remoteJid, $altJid);
+        return $altJid;
+    }
+    try {
+        ensureLidMapTable();
+        $st = db()->prepare('SELECT pn_jid FROM chat_lid_map WHERE lid_jid = ? LIMIT 1');
+        $st->execute([$remoteJid]);
+        $pn = (string)($st->fetchColumn() ?: '');
+        if ($pn !== '') {
+            return $pn;
+        }
+    } catch (Throwable $e) {
+        error_log('[WEBHOOK] erro ao ler mapa LID: ' . $e->getMessage());
+    }
+    error_log("[WEBHOOK] LID sem número conhecido: '$remoteJid' (fromMe=" . ($fromMe ? '1' : '0') . ')');
+    return $remoteJid;
+}
+
 // Função para fazer download de mídia externa e salvar localmente
 function downloadMedia(string $externalUrl, string $filename, string $mimeType): ?string {
     try {
@@ -944,11 +1011,12 @@ if ($event === 'messages.upsert') {
 
         error_log("[WEBHOOK] Tipo de mensagem detectado: '$messageType' | URL extraída: " . ($mediaData['url'] ?? 'N/A'));
 
-        // CORREÇÃO: Se senderPn existe, usar ele em vez de remoteJid
-        // Isso acontece quando remoteJid é um canal (@lid) mas senderPn tem o número real
-        if (!empty($senderPn) && !$fromMe) {
-            error_log("[WEBHOOK] CORREÇÃO: Usando senderPn '$senderPn' em vez de remoteJid '$remoteJid'");
-            $remoteJid = $senderPn;
+        // CORREÇÃO DO JID: quando remoteJid é um LID (@lid), usar o número real.
+        // Recebidas: senderPn. Enviadas pelo celular (fromMe): remoteJidAlt ou o mapa LID.
+        $resolvedJid = resolveConversationJid(is_array($messageData['key'] ?? null) ? $messageData['key'] : [], $fromMe);
+        if ($resolvedJid !== '' && $resolvedJid !== $remoteJid) {
+            error_log("[WEBHOOK] CORREÇÃO: Usando '$resolvedJid' em vez de remoteJid '$remoteJid'");
+            $remoteJid = $resolvedJid;
         }
 
         error_log("[WEBHOOK] msg jid:'$remoteJid' | senderPn:'$senderPn' | participant:'$participant' | fromMe:" . ($fromMe?'1':'0') . " text:'" . substr($messageText,0,50) . "'");
@@ -1004,6 +1072,24 @@ if ($event === 'messages.upsert') {
                         ");
                         $stmtDupCheck->execute([$normalizedCheckJid, $messageText, $timestamp - 10, $timestamp + 10]);
                         $existingMsg = $stmtDupCheck->fetch();
+                    }
+
+                    // 3) Eco de texto enviado pelo sistema e gravado SEM id externo
+                    //    (ex.: follow-up automático): mesma conversa, mesmo texto, linha
+                    //    ainda sem external_message_id e horário próximo. A linha recebe
+                    //    o id e não duplicamos. Mensagens digitadas no celular não batem
+                    //    aqui (não existe linha "sem id" correspondente).
+                    if (!$existingMsg && !empty($externalMsgId) && $messageType === 'text' && $messageText !== '') {
+                        $stmtEcho = db()->prepare("
+                            SELECT id FROM chat_messages
+                            WHERE remote_jid = ? AND from_me = 1 AND message_text = ?
+                              AND external_message_id IS NULL
+                              AND message_timestamp BETWEEN ? AND ?
+                            ORDER BY id ASC
+                            LIMIT 1
+                        ");
+                        $stmtEcho->execute([$normalizedCheckJid, $messageText, $timestamp - 60, $timestamp + 60]);
+                        $existingMsg = $stmtEcho->fetch();
                     }
 
                     if ($existingMsg) {
@@ -1171,19 +1257,30 @@ if ($event === 'send.message') {
         && !$isStatusBroadcast && !isSystemMessageType($msgPayload) && !isSystemText($messageText)) {
         try {
             $sendExternalId = $messageData['key']['id'] ?? null;
+            // LID -> número real (mesma regra do messages.upsert)
+            $remoteJid = resolveConversationJid(is_array($messageData['key'] ?? null) ? $messageData['key'] : [], true) ?: $remoteJid;
             $normalizedJid = normalizeJid($remoteJid);
             
-            // Verificar se a mensagem já foi salva pelo chat_web.php (evitar duplicata)
-            // Mensagens enviadas pelo sistema são salvas no momento do envio,
-            // o webhook send.message chega depois e duplicaria
-            $stmtCheck = db()->prepare("
-                SELECT id FROM chat_messages 
-                WHERE remote_jid = ? AND from_me = 1 AND message_text = ? 
-                AND message_timestamp BETWEEN ? AND ?
-                LIMIT 1
-            ");
-            $stmtCheck->execute([$normalizedJid, $messageText, $timestamp - 10, $timestamp + 10]);
-            $existing = $stmtCheck->fetch();
+            // Verificar se a mensagem já foi salva (evitar duplicata):
+            // 1) pelo id da mensagem no WhatsApp (o messages.upsert pode já ter gravado);
+            // 2) pelo texto em janela curta (gravada pelo sistema sem id).
+            $existing = false;
+            if (!empty($sendExternalId)) {
+                $stmtCheckId = db()->prepare("SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1");
+                $stmtCheckId->execute([$sendExternalId]);
+                $existing = $stmtCheckId->fetch();
+            }
+            if (!$existing) {
+                $stmtCheck = db()->prepare("
+                    SELECT id FROM chat_messages 
+                    WHERE remote_jid = ? AND from_me = 1 AND message_text = ? 
+                    AND message_timestamp BETWEEN ? AND ?
+                    AND external_message_id IS NULL
+                    LIMIT 1
+                ");
+                $stmtCheck->execute([$normalizedJid, $messageText, $timestamp - 10, $timestamp + 10]);
+                $existing = $stmtCheck->fetch();
+            }
             
             if ($existing) {
                 // Mensagem já existe (salva pelo chat_web.php), apenas atualizar external_message_id se necessário

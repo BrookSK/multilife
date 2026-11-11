@@ -49,8 +49,22 @@ function closeAssignmentModal() {
   document.getElementById("assignmentForm").reset();
 }
 
+// Monta a URL do chat mantendo os filtros atuais da lista (aba, WhatsApp,
+// atendente e busca). Os filtros vão sempre explícitos (mesmo vazios) para o
+// servidor atualizar o que guarda na sessão.
+function chatListUrl(overrides, chatId) {
+  var f = Object.assign({ type: 'all', instance: '', attendant: '', q: '' }, window.chatFilters || {}, overrides || {});
+  var params = new URLSearchParams();
+  if (chatId) params.set('chat', chatId);
+  params.set('type', f.type || 'all');
+  params.set('instance', f.instance || '');
+  params.set('attendant', f.attendant || '0');
+  params.set('q', f.q || '');
+  return '/chat_web.php?' + params.toString();
+}
+
 function closeInfoPanel() {
-  window.location.href = "/chat_web.php";
+  window.location.href = chatListUrl();
 }
 
 // Função de atribuição de paciente
@@ -682,8 +696,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const phoneInput = sendForm.querySelector('input[name=phone_number]');
         const chatId = phoneInput ? phoneInput.value : '';
         const isGroup = chatId.indexOf('@g.us') > -1;
-        const typeParam = isGroup ? '&type=grupos' : '';
-        const sendUrl = '/chat_web.php?chat=' + encodeURIComponent(chatId) + typeParam;
+        // Mantém os filtros (principalmente o WhatsApp escolhido, que define a instância de envio)
+        const sendUrl = chatListUrl({}, chatId);
         
         const sendBtn = sendForm.querySelector('button[type=submit]');
         if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
@@ -746,11 +760,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
                 // Remover atributo optimistic para que não seja tocada pelo polling
                 msgDiv.removeAttribute('data-optimistic');
+                // Mesma chave do polling: quando a linha voltar no polling, não duplica
+                if (data.message_id) {
+                  msgDiv.setAttribute('data-row-id', String(data.message_id));
+                  msgDiv.setAttribute('data-msg-id', data.external_message_id || ('row-' + data.message_id));
+                }
               }
-              // Atualizar lastTimestamp para que o polling pule esta mensagem
-              if (data.timestamp && data.timestamp > window.lastTimestamp) {
-                window.lastTimestamp = data.timestamp;
-              }
+              // O cursor do polling é o id da linha (não o horário), então não é
+              // preciso mexer nele aqui: mensagens enviadas pelo celular com horário
+              // anterior continuam sendo encontradas.
             } else {
               // Erro no envio — remover mensagem otimista e mostrar erro
               if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
@@ -918,7 +936,10 @@ function checkForNewMessages() {
   isPolling = true;
   
   var lastIdParam = (typeof window.lastMsgId === 'number' && window.lastMsgId > 0) ? ('&last_id=' + window.lastMsgId) : '';
-  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam)
+  // Mesmo filtro de WhatsApp usado ao carregar a conversa
+  var pollInstance = (window.chatFilters && window.chatFilters.instance) || '';
+  var instanceParam = pollInstance ? ('&instance=' + encodeURIComponent(pollInstance)) : '';
+  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam + instanceParam)
     .then(r => r.json())
     .then(data => {
       isPolling = false;
@@ -965,37 +986,27 @@ function appendMessageToDOM(msg) {
   // Verificar se mensagem já existe no DOM (evitar duplicatas).
   // Preferir external_message_id; se ausente, usar o id do banco como chave estável.
   var dedupKey = msg.external_message_id || (msg.id ? ('row-' + msg.id) : '');
-  if (dedupKey) {
-    const existing = container.querySelector('[data-msg-id="' + (window.CSS && CSS.escape ? CSS.escape(dedupKey) : dedupKey) + '"]');
-    if (existing) return;
-  }
+  var cssEsc = function (v) { return (window.CSS && CSS.escape) ? CSS.escape(String(v)) : String(v); };
+  if (dedupKey && container.querySelector('[data-msg-id="' + cssEsc(dedupKey) + '"]')) return;
+  if (msg.id && container.querySelector('[data-row-id="' + cssEsc(msg.id) + '"]')) return;
   
   const isFromMe = msg.from_me == 1 || msg.from_me === true;
   
-  // Se é uma mensagem from_me, pular - mensagens enviadas pelo sistema já foram
-  // mostradas otimisticamente no momento do envio. Isso evita duplicação.
+  // Mensagem from_me enviada pelo sistema já aparece na tela (bolha otimista).
+  // Só comparamos o texto com bolhas otimistas que ainda NÃO têm id: as mensagens
+  // digitadas no celular não podem ser descartadas só porque o texto é igual a
+  // outra já enviada (ex.: "ok").
   if (isFromMe) {
-    const msgTimestamp = parseInt(msg.message_timestamp) || 0;
-    const now = Math.floor(Date.now() / 1000);
-    // Se a mensagem foi enviada nos últimos 60 segundos, é provável que já está no DOM
-    if (now - msgTimestamp < 60) {
-      // Normalizar: remover \r, trim
-      const msgTextNorm = (msg.message_text || '').replace(/\r/g, '').trim();
-      const existingOutMsgs = container.querySelectorAll('.whatsapp-message.out');
-      for (let i = existingOutMsgs.length - 1; i >= Math.max(0, existingOutMsgs.length - 15); i--) {
-        const el = existingOutMsgs[i];
-        const rawText = (el.getAttribute('data-raw-text') || '').replace(/\r/g, '').trim();
-        if (rawText && rawText === msgTextNorm) {
-          return; // Já existe, não adicionar
-        }
-        // Comparar via innerText (para mensagens do page load que não têm data-raw-text)
-        const textEl = el.querySelector('.whatsapp-message-text');
-        if (textEl) {
-          const innerNorm = textEl.innerText.replace(/\r/g, '').trim();
-          if (innerNorm === msgTextNorm) {
-            return; // Já existe
-          }
-        }
+    const msgTextNorm = (msg.message_text || '').replace(/\r/g, '').trim();
+    const pendingOut = container.querySelectorAll('.whatsapp-message.out[data-raw-text]:not([data-row-id])');
+    for (let i = 0; i < pendingOut.length; i++) {
+      const el = pendingOut[i];
+      const rawText = (el.getAttribute('data-raw-text') || '').replace(/\r/g, '').trim();
+      if (rawText && rawText === msgTextNorm) {
+        // Vincula a bolha a esta linha para que ela não "consuma" outra mensagem igual
+        if (msg.id) el.setAttribute('data-row-id', String(msg.id));
+        if (dedupKey) el.setAttribute('data-msg-id', dedupKey);
+        return;
       }
     }
   }
@@ -1090,11 +1101,14 @@ function escapeHtml(str) {
 
 function updateChatListPreview(lastMsg) {
   // Atualizar preview na lista lateral
-  const chatItems = document.querySelectorAll('.whatsapp-chat-item');
+  if (!lastMsg || !window.chatId) return;
+  // O próprio item (.whatsapp-chat-item) é o <a> da conversa
+  const chatItems = document.querySelectorAll('a.whatsapp-chat-item');
   chatItems.forEach(item => {
-    const link = item.querySelector('a');
-    if (link && link.href && link.href.includes(encodeURIComponent(window.chatId))) {
-      const preview = item.querySelector('.whatsapp-chat-last-msg, [style*="color:#667781"]');
+    let itemChat = '';
+    try { itemChat = new URL(item.href, window.location.origin).searchParams.get('chat') || ''; } catch (e) {}
+    if (itemChat === window.chatId) {
+      const preview = item.querySelector('.whatsapp-chat-preview');
       if (preview && lastMsg.message_text) {
         let previewText = lastMsg.message_text;
         if (lastMsg.message_type && lastMsg.message_type !== 'text') {

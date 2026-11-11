@@ -66,12 +66,14 @@ if ($mediaType === 'audio' && $audioBase64 !== '') {
             $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $fileName;
             
             // Salvar no banco
+            // key.id da mensagem no WhatsApp: o webhook usa para não gravar o eco duplicado
+            $audioExtId = is_array($res['json'] ?? null) ? (string)($res['json']['key']['id'] ?? '') : '';
             $stmt = db()->prepare("
                 INSERT INTO chat_messages 
-                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp)
-                VALUES (?, ?, ?, 'audio', ?, 'audio/webm', ?, 1, ?)
+                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp, external_message_id)
+                VALUES (?, ?, ?, 'audio', ?, 'audio/webm', ?, 1, ?, ?)
             ");
-            $stmt->execute([$remoteJid, $api->getInstance(), '[Áudio]', $mediaUrl, $fileName, time()]);
+            $stmt->execute([$remoteJid, $api->getInstance(), '[Áudio]', $mediaUrl, $fileName, time(), $audioExtId !== '' ? $audioExtId : null]);
             
             $response['success'] = true;
             $response['message_id'] = (int)db()->lastInsertId();
@@ -293,10 +295,12 @@ try {
     
     error_log("[$debugId] Salvando no banco de dados - JID: $normalizedJid | Timestamp: $timestamp");
     
+    // key.id da mensagem no WhatsApp: o webhook usa para não gravar o eco duplicado
+    $mediaExtId = is_array($apiResponse['json'] ?? null) ? (string)($apiResponse['json']['key']['id'] ?? '') : '';
     $stmt = db()->prepare("
         INSERT INTO chat_messages 
-        (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, from_me, message_timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size, audio_transcription, from_me, message_timestamp, external_message_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     ");
     
     $caption = trim($_POST['caption'] ?? '');
@@ -316,7 +320,8 @@ try {
         $fileName,
         $fileSize,
         $transcription,
-        $timestamp
+        $timestamp,
+        $mediaExtId !== '' ? $mediaExtId : null,
     ]);
     
     $insertId = db()->lastInsertId();
