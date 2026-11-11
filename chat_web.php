@@ -7,6 +7,12 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('chat.manage');
 
+// Atualização automática da lista (?list_only=1): só o HTML da lista de conversas
+$chatListOnly = (($_GET['list_only'] ?? '') === '1') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET';
+if ($chatListOnly) {
+    ob_start();
+}
+
 // Buscar especialidades
 $specialtiesStmt = db()->query("SELECT id, name FROM specialties WHERE status = 'active' ORDER BY name ASC");
 $specialties = $specialtiesStmt->fetchAll();
@@ -115,6 +121,57 @@ if ($instanceFromSession && $instanceFilter !== '' && $selectedChat !== '' && st
     }
 }
 
+// WHATSAPP DA CONVERSA ABERTA (?ci=): separa a conversa quando o mesmo contato
+// fala com mais de um WhatsApp do usuário. É diferente do filtro da lista: com
+// "Todos WhatsApp" a lista mostra um item por WhatsApp e cada um abre só as
+// mensagens daquele número. Com filtro de WhatsApp ativo, a conversa usa o filtro.
+$userInstanceNames = array_values(array_filter(array_map(
+    static fn($i) => (string)($i['instance_name'] ?? ''),
+    $availableInstances
+), static fn($n) => $n !== ''));
+$chatInstance = '';
+if ($instanceFilter !== '') {
+    $chatInstance = $instanceFilter;
+} else {
+    $ciParam = isset($_GET['ci']) ? trim((string)$_GET['ci']) : '';
+    if ($ciParam !== '' && in_array($ciParam, $userInstanceNames, true)) {
+        $chatInstance = $ciParam;
+    }
+}
+// Conversa privada aberta sem WhatsApp definido (link de outra tela): se o contato
+// tem mensagens em mais de um WhatsApp do usuário, abre no mais recente para não misturar.
+if ($chatInstance === '' && $selectedChat !== '' && strpos($selectedChat, '@g.us') === false && count($userInstanceNames) > 1) {
+    try {
+        $phCi = implode(',', array_fill(0, count($userInstanceNames), '?'));
+        $stCi = db()->prepare("SELECT instance_name, MAX(id) AS last_id FROM chat_messages
+                               WHERE remote_jid = ? AND instance_name IN ($phCi)
+                               GROUP BY instance_name ORDER BY last_id DESC");
+        $stCi->execute(array_merge([$selectedChat], $userInstanceNames));
+        $ciRows = $stCi->fetchAll(PDO::FETCH_ASSOC);
+        if (count($ciRows) > 1) {
+            $chatInstance = (string)$ciRows[0]['instance_name'];
+        }
+    } catch (Throwable $e) {
+        error_log('[CHAT] Erro ao escolher WhatsApp da conversa: ' . $e->getMessage());
+    }
+}
+if ($chatInstance !== '') {
+    // Envio e gravação usam o WhatsApp da conversa
+    $instanceName = $chatInstance;
+}
+
+// Rótulo amigável de cada WhatsApp (apelido > usuários vinculados > nome técnico)
+$instanceLabels = [];
+foreach ($availableInstances as $inst) {
+    $instKey = (string)($inst['instance_name'] ?? '');
+    if ($instKey === '') {
+        continue;
+    }
+    $instanceLabels[$instKey] = (string)($inst['display_name'] ?? '') !== '' ? (string)$inst['display_name']
+        : ((string)($inst['linked_user_names'] ?? '') !== '' ? (string)$inst['linked_user_names']
+        : ((string)($inst['user_name'] ?? '') !== '' ? (string)$inst['user_name'] : $instKey));
+}
+
 // Guardar os filtros atuais (já validados) para as próximas navegações.
 $_SESSION['chat_web_filters'] = [
     'type' => $chatType,
@@ -122,6 +179,9 @@ $_SESSION['chat_web_filters'] = [
     'instance' => $instanceFilter,
     'attendant' => $attendantFilter,
 ];
+if ($chatListOnly && function_exists('session_release')) {
+    session_release(); // atualização da lista não trava as outras telas
+}
 
 // Query string com os filtros atuais, usada em todos os links do chat.
 $chatFilterParams = ['type' => $chatType];
@@ -227,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // 2) Caso contrário, usa a instância do usuário logado (a conectada),
                 //    e só cai na instância padrão global se o usuário não tiver nenhuma.
                 // Sempre um WhatsApp DO USUÁRIO (o filtro, o da conversa ou o dele).
-                $sendInstance = whatsapp_chat_instance_for_user($currentUserId, $remoteJid, $instanceFilter);
+                $sendInstance = whatsapp_chat_instance_for_user($currentUserId, $remoteJid, $chatInstance !== '' ? $chatInstance : $instanceFilter);
                 if ($sendInstance !== '') {
                     $api = new EvolutionApiV1($baseUrl, $apiKey, $sendInstance);
                 } else {
@@ -287,27 +347,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if (is_array($res['json'] ?? null)) {
                         $sentExternalId = (string)($res['json']['key']['id'] ?? ($res['json']['data']['key']['id'] ?? ''));
                     }
-                    $existingSentId = 0;
-                    if ($sentExternalId !== '') {
-                        // O webhook pode ter chegado antes deste INSERT
-                        $stDupSent = db()->prepare('SELECT id FROM chat_messages WHERE external_message_id = ? LIMIT 1');
-                        $stDupSent->execute([$sentExternalId]);
-                        $existingSentId = (int)($stDupSent->fetchColumn() ?: 0);
-                    }
-
-                    if ($existingSentId > 0) {
-                        $savedToDb = true;
-                    } else {
-                        $stmt = db()->prepare("
-                            INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp, external_message_id)
-                            VALUES (?, ?, ?, 1, ?, ?)
-                        ");
-                        $savedToDb = $stmt->execute([$normalizedJid, $instanceName, $message, $timestamp, $sentExternalId !== '' ? $sentExternalId : null]);
+                    // Lock + checagem: o webhook da Evolution costuma chegar ANTES da
+                    // resposta do envio; sem isso a mensagem era gravada duas vezes.
+                    $sentLocked = $sentExternalId !== '' && chat_msg_lock($sentExternalId, 10);
+                    try {
+                        $existingSentId = chat_msg_find_by_external_id($sentExternalId);
+                        if ($existingSentId > 0) {
+                            $savedToDb = true;
+                            $newSentId = $existingSentId;
+                        } else {
+                            $stmt = db()->prepare("
+                                INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp, external_message_id)
+                                VALUES (?, ?, ?, 1, ?, ?)
+                            ");
+                            $savedToDb = $stmt->execute([$normalizedJid, $instanceName, $message, $timestamp, $sentExternalId !== '' ? $sentExternalId : null]);
+                            $newSentId = $savedToDb ? (int)db()->lastInsertId() : 0;
+                        }
+                    } finally {
+                        if ($sentLocked) {
+                            chat_msg_unlock($sentExternalId);
+                        }
                     }
                     
                     // Verificar se realmente salvou
                     if ($savedToDb) {
-                        $lastId = $existingSentId > 0 ? $existingSentId : db()->lastInsertId();
+                        $lastId = $newSentId;
                         if (!$lastId) {
                             $savedToDb = false;
                             $dbError = "INSERT não retornou ID";
@@ -425,6 +489,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                     // Volta para a conversa mantendo os filtros (aba, WhatsApp, atendente, busca)
                     $redirectParams = $chatFilterParams;
+                    if ($chatInstance !== '') {
+                        $redirectParams['ci'] = $chatInstance;
+                    }
                     if (!isset($_GET['type']) && strpos($remoteJid, '@g.us') !== false) {
                         $redirectParams['type'] = 'grupos';
                     }
@@ -842,6 +909,56 @@ try {
             // Ordem dos "?": 2 subconsultas do SELECT, o JOIN e depois o WHERE.
             $stmt->execute(array_merge($listInstanceNames, $listInstanceNames, $listInstanceNames, $params));
             $chats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // UM ITEM POR WHATSAPP: o mesmo contato conversando com 2 WhatsApps do
+            // usuário vira 2 conversas separadas (cada uma com o seu histórico,
+            // última mensagem e não lidas). Também marca o WhatsApp de cada item.
+            if (!empty($chats) && count($listInstanceNames) > 0) {
+                try {
+                    $splitJids = array_values(array_unique(array_column($chats, 'id')));
+                    $phJ = implode(',', array_fill(0, count($splitJids), '?'));
+                    $phI = implode(',', array_fill(0, count($listInstanceNames), '?'));
+                    $stSplit = db()->prepare("
+                        SELECT cm.remote_jid, cm.instance_name, cm.message_text, cm.message_type, cm.message_timestamp,
+                               x.unread
+                        FROM chat_messages cm
+                        INNER JOIN (
+                            SELECT remote_jid, instance_name, MAX(id) AS last_id,
+                                   SUM(CASE WHEN from_me = 0 AND is_read = 0 THEN 1 ELSE 0 END) AS unread
+                            FROM chat_messages
+                            WHERE remote_jid IN ($phJ) AND instance_name IN ($phI)
+                            GROUP BY remote_jid, instance_name
+                        ) x ON x.last_id = cm.id
+                    ");
+                    $stSplit->execute(array_merge($splitJids, $listInstanceNames));
+                    $perInstance = [];
+                    foreach ($stSplit->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                        $perInstance[(string)$row['remote_jid']][(string)$row['instance_name']] = $row;
+                    }
+                    $expanded = [];
+                    foreach ($chats as $c) {
+                        $rows = $perInstance[(string)$c['id']] ?? [];
+                        if (count($rows) <= 1) {
+                            $c['chatInstance'] = $rows ? (string)array_key_first($rows) : '';
+                            $expanded[] = $c;
+                            continue;
+                        }
+                        foreach ($rows as $instKey => $row) {
+                            $copy = $c;
+                            $copy['chatInstance'] = (string)$instKey;
+                            $copy['lastMsgTimestamp'] = (int)$row['message_timestamp'];
+                            $copy['lastMsgText'] = (string)$row['message_text'];
+                            $copy['lastMsgType'] = (string)($row['message_type'] ?? 'text');
+                            $copy['unreadCount'] = (int)$row['unread'];
+                            $expanded[] = $copy;
+                        }
+                    }
+                    usort($expanded, static fn($a, $b) => (int)($b['lastMsgTimestamp'] ?? 0) <=> (int)($a['lastMsgTimestamp'] ?? 0));
+                    $chats = $expanded;
+                } catch (Throwable $e) {
+                    error_log('[CHAT_LIST] Erro ao separar conversas por WhatsApp: ' . $e->getMessage());
+                }
+            }
             
             // Log para diagnóstico de duplicação e unreadCount
             error_log("[CHAT_LIST] Total de chats carregados: " . count($chats));
@@ -861,11 +978,11 @@ try {
 }
 
 // Carregar mensagens do banco de dados para o chat selecionado
-if (!empty($selectedChat)) {
+if (!empty($selectedChat) && !$chatListOnly) {
     // Só as mensagens dos WhatsApps do usuário logado: o mesmo contato pode ter
     // conversado com outro número da empresa (ex.: Financeiro) e essas mensagens
     // não podem aparecer para a captação.
-    [$msgInstSql, $msgInstParams] = whatsapp_messages_instance_filter($currentUserId, $selectedChat, $instanceFilter);
+    [$msgInstSql, $msgInstParams] = whatsapp_messages_instance_filter($currentUserId, $selectedChat, $chatInstance);
     try {
         // Garantir que tabela existe com estrutura correta
         $tableCheck = db()->query("SHOW TABLES LIKE 'chat_messages'")->fetch();
@@ -911,6 +1028,20 @@ if (!empty($selectedChat)) {
         ");
         $stmt->execute(array_merge([$selectedChat], $msgInstParams));
         $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Duplicatas antigas no banco (mesmo id de mensagem do WhatsApp): mostra uma só
+        $seenExtIds = [];
+        $messages = array_values(array_filter($messages, static function ($m) use (&$seenExtIds) {
+            $ext = (string)($m['externalMessageId'] ?? '');
+            if ($ext === '') {
+                return true;
+            }
+            if (isset($seenExtIds[$ext])) {
+                return false;
+            }
+            $seenExtIds[$ext] = true;
+            return true;
+        }));
         
         // Buscar reações para todas as mensagens deste chat
         $reactions = [];
@@ -1997,6 +2128,8 @@ echo '.whatsapp-chat-info{flex:1;min-width:0}';
 echo '.whatsapp-chat-name{font-size:16px;font-weight:500;color:#111b21;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 echo '.whatsapp-chat-preview{font-size:14px;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
 echo '.whatsapp-chat-meta{text-align:right;font-size:12px;color:#667781;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}';
+echo '.whatsapp-chat-instance{font-size:11px;color:#00a884;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
+echo '.whatsapp-container.info-hidden .whatsapp-info-panel{display:none}';
 echo '.whatsapp-unread-badge{background:#00a884;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:600;min-width:20px;text-align:center}';
 echo '.whatsapp-main{flex:1;display:flex;flex-direction:column;background:#ffffff}';
 echo '.whatsapp-chat-header{padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;align-items:center;justify-content:space-between}';
@@ -2111,7 +2244,9 @@ echo 'QR Code';
 echo '</a>';
 echo '</div>';
 
-echo '<div class="whatsapp-container">';
+echo '<div class="whatsapp-container" id="whatsappContainer">';
+// Aplica já a preferência "painel de detalhes oculto" (evita o painel piscar)
+echo '<script>try{if(localStorage.getItem("chatInfoPanelHidden")==="1"){document.getElementById("whatsappContainer").classList.add("info-hidden");}}catch(e){}</script>';
 
 // Sidebar esquerda - Lista de conversas
 echo '<div class="whatsapp-sidebar">';
@@ -2225,6 +2360,16 @@ echo '</div>';
 // Abas removidas temporariamente para simplificar
 
 // Lista de conversas
+// Modo list_only: descarta tudo que foi gerado até aqui e devolve só a lista
+// (usado pela atualização automática da lista no navegador).
+if ($chatListOnly) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    ob_start();
+}
 echo '<div class="whatsapp-chats" id="chatsList">';
 
 // Se for aba de grupos, exibir grupos da tabela chat_groups
@@ -2490,7 +2635,8 @@ if ($chatType === 'grupos') {
             $chatId = $chat['id'] ?? '';
             $chatName = $chat['name'] ?? $chatId;
             $isGroup = strpos($chatId, '@g.us') !== false;
-            $isActive = $selectedChat === $chatId ? ' active' : '';
+            $itemInstance = (string)($chat['chatInstance'] ?? '');
+            $isActive = ($selectedChat === $chatId && ($itemInstance === '' || $chatInstance === '' || $itemInstance === $chatInstance)) ? ' active' : '';
             $lastMsg = $chat['lastMsgText'] ?? '';
             $lastMsgType = $chat['lastMsgType'] ?? 'text';
             $unreadCount = (int)($chat['unreadCount'] ?? 0);
@@ -2514,7 +2660,9 @@ if ($chatType === 'grupos') {
             $initials = strtoupper(substr($chatName, 0, 2));
             $profilePic = $chat['profilePictureUrl'] ?? '';
             
-            echo '<a href="' . h('/chat_web.php?chat=' . urlencode($chatId) . $chatFilterQS) . '" class="whatsapp-chat-item' . $isActive . '">';
+            $itemUrl = '/chat_web.php?chat=' . urlencode($chatId) . $chatFilterQS
+                . ($itemInstance !== '' && $instanceFilter === '' ? '&ci=' . rawurlencode($itemInstance) : '');
+            echo '<a href="' . h($itemUrl) . '" class="whatsapp-chat-item' . $isActive . '" data-chat="' . h($chatId) . '" data-ci="' . h($itemInstance) . '">';
             if (!empty($profilePic)) {
                 echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
             } else {
@@ -2530,6 +2678,10 @@ if ($chatType === 'grupos') {
             }
             echo '</div>';
             echo '<div class="whatsapp-chat-preview">' . h(mb_strimwidth($lastMsg, 0, 50, '...')) . '</div>';
+            // Qual WhatsApp (só quando o usuário tem mais de um e a lista não está filtrada)
+            if ($itemInstance !== '' && $instanceFilter === '' && count($userInstanceNames) > 1) {
+                echo '<div class="whatsapp-chat-instance">📱 ' . h($instanceLabels[$itemInstance] ?? $itemInstance) . '</div>';
+            }
             echo '</div>';
             echo '<div class="whatsapp-chat-meta">';
             echo h($lastTime);
@@ -2549,6 +2701,12 @@ if ($chatType === 'grupos') {
     }
 }
 echo '</div>';
+
+if ($chatListOnly) {
+    $chatListHtml = (string)ob_get_clean();
+    echo $chatListHtml;
+    exit;
+}
 
 echo '</div>';
 
@@ -2653,12 +2811,19 @@ if (empty($selectedChat)) {
             $participantLabel = h($selectedChatData['specialty']) . ' · ' . $participantLabel;
         }
         echo '<div style="font-size:13px;color:#667781">' . $participantLabel . '</div>';
+    } elseif ($chatInstance !== '' && count($userInstanceNames) > 1) {
+        // Qual WhatsApp desta conversa (o mesmo contato pode falar com outro número seu)
+        echo '<div style="font-size:13px;color:#00a884">📱 ' . h($instanceLabels[$chatInstance] ?? $chatInstance) . '</div>';
     } else {
         echo '<div style="font-size:13px;color:#667781">online</div>';
     }
     echo '</div>';
     echo '</div>';
     echo '<div class="whatsapp-chat-header-actions">';
+    // Mostrar / ocultar o painel de detalhes (direita). A escolha fica salva no navegador.
+    echo '<button class="whatsapp-action-btn" id="toggleInfoPanelBtn" onclick="toggleInfoPanel()" title="Mostrar/ocultar detalhes">';
+    echo '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>';
+    echo '</button>';
     // Botão Concluir / Reabrir conversa (não exibir para grupos)
     if (!$isGroup) {
         // Obter status atual do contato selecionado
@@ -2996,6 +3161,7 @@ function toggleRec(){
           fd.append("media_type","audio");
           fd.append("audio_base64",base64);
           fd.append("file_name","audio.webm");
+          fd.append("instance",(typeof chatCurrentInstance==="function"?chatCurrentInstance():""));
           fetch("/chat_send_media.php",{method:"POST",body:fd})
           .then(function(r){return r.json();})
           .then(function(d){if(d.success)location.reload();else alert("Erro: "+(d.error||"falha"));})
@@ -3065,7 +3231,8 @@ if (!empty($selectedChat)) {
     // Header do painel
     echo '<div class="whatsapp-info-header">';
     echo 'Informações';
-    echo '<button onclick="closeInfoPanel()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#54656f">&times;</button>';
+    // Oculta só o painel (reabre pelo botão no cabeçalho da conversa)
+    echo '<button onclick="toggleInfoPanel(false)" title="Ocultar detalhes" style="background:none;border:none;font-size:20px;cursor:pointer;color:#54656f">&times;</button>';
     echo '</div>';
     
     // Avatar/Foto
@@ -3325,6 +3492,7 @@ echo 'window.chatFilters = ' . json_encode([
     'instance' => $instanceFilter,
     'attendant' => $attendantFilter > 0 ? (string)$attendantFilter : '',
     'q' => $searchQuery,
+    'chatInstance' => $chatInstance,
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
 echo 'window.chatFilterQS = ' . json_encode($chatFilterQS, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ';';
 echo 'window.chatName = ' . json_encode($chatName) . ';';
@@ -3353,7 +3521,7 @@ if (window.chatId) {
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: "chat_id=" + encodeURIComponent(window.chatId) + "&instance=" + encodeURIComponent((window.chatFilters && window.chatFilters.instance) || "")
+        body: "chat_id=" + encodeURIComponent(window.chatId) + "&instance=" + encodeURIComponent(chatCurrentInstance())
     })
     .then(response => response.json())
     .then(data => {

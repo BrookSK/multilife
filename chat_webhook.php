@@ -124,68 +124,41 @@ function normalizeJid(string $jid): string {
     return $numberOnly . '@s.whatsapp.net';
 }
 
-// Mapa LID -> número real. O WhatsApp pode identificar o contato por um LID
-// (XXXX@lid) em vez do número. Quando a mensagem traz o número (remoteJidAlt ou
-// senderPn) guardamos o par, para resolver as próximas que vierem só com o LID.
-function ensureLidMapTable(): void {
-    static $done = false;
-    if ($done) return;
-    db()->exec("CREATE TABLE IF NOT EXISTS chat_lid_map (
-        lid_jid VARCHAR(100) NOT NULL,
-        pn_jid VARCHAR(100) NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (lid_jid)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    $done = true;
-}
-
-function rememberLidMapping(string $lidJid, string $pnJid): void {
-    if (substr($lidJid, -4) !== '@lid' || strpos($pnJid, '@s.whatsapp.net') === false) return;
-    try {
-        ensureLidMapTable();
-        db()->prepare("INSERT INTO chat_lid_map (lid_jid, pn_jid) VALUES (?, ?) ON DUPLICATE KEY UPDATE pn_jid = VALUES(pn_jid)")
-            ->execute([$lidJid, $pnJid]);
-    } catch (Throwable $e) {
-        error_log('[WEBHOOK] erro ao gravar mapa LID: ' . $e->getMessage());
-    }
-}
-
 /**
  * JID da CONVERSA (número real) a partir do key da mensagem.
- * - Recebida: senderPn tem o número do contato (comportamento anterior).
+ * - Recebida: senderPn/remoteJidAlt têm o número do contato.
  * - Enviada pelo celular (fromMe): senderPn é o NOSSO número, então usamos
- *   remoteJidAlt ou o mapa LID -> número. Sem isso a mensagem ia para uma
- *   conversa "fantasma" (LID@s.whatsapp.net) e não aparecia na conversa certa.
+ *   remoteJidAlt, o mapa LID -> número ou o histórico da Evolution. Sem isso a
+ *   mensagem ia para uma conversa "fantasma" (LID@s.whatsapp.net).
+ * Funções chat_lid_* em app/chat_message_store.php.
  */
 function resolveConversationJid(array $key, bool $fromMe): string {
     $remoteJid = (string)($key['remoteJid'] ?? '');
     $senderPn  = (string)($key['senderPn'] ?? '');
     $altJid    = (string)($key['remoteJidAlt'] ?? '');
+    $isLid     = substr($remoteJid, -4) === '@lid';
 
     if (strpos($remoteJid, '@g.us') !== false) {
         return $remoteJid;
     }
     if (!$fromMe && $senderPn !== '') {
-        if (substr($remoteJid, -4) === '@lid') rememberLidMapping($remoteJid, $senderPn);
+        if ($isLid) chat_lid_remember($remoteJid, $senderPn);
         return $senderPn;
     }
-    if (substr($remoteJid, -4) !== '@lid') {
+    if (!$isLid) {
         return $remoteJid;
     }
     if (strpos($altJid, '@s.whatsapp.net') !== false) {
-        rememberLidMapping($remoteJid, $altJid);
+        chat_lid_remember($remoteJid, $altJid);
         return $altJid;
     }
-    try {
-        ensureLidMapTable();
-        $st = db()->prepare('SELECT pn_jid FROM chat_lid_map WHERE lid_jid = ? LIMIT 1');
-        $st->execute([$remoteJid]);
-        $pn = (string)($st->fetchColumn() ?: '');
-        if ($pn !== '') {
-            return $pn;
-        }
-    } catch (Throwable $e) {
-        error_log('[WEBHOOK] erro ao ler mapa LID: ' . $e->getMessage());
+    $pn = chat_lid_lookup($remoteJid);
+    if ($pn !== '') {
+        return $pn;
+    }
+    $pn = chat_lid_resolve_via_evolution($remoteJid, (string)($GLOBALS['_webhookInstanceName'] ?? ''));
+    if ($pn !== '') {
+        return $pn;
     }
     error_log("[WEBHOOK] LID sem número conhecido: '$remoteJid' (fromMe=" . ($fromMe ? '1' : '0') . ')');
     return $remoteJid;
@@ -650,6 +623,15 @@ if ($event === 'messages.upsert') {
         $externalMsgId = $messageData['key']['id'] ?? '';
         $pushName    = $messageData['pushName'] ?? '';
         $msgPayload  = $messageData['message'] ?? [];
+        // Desembrulhar mensagens temporárias / enviadas de outro aparelho: antes eram
+        // descartadas como "sistema" (ephemeralMessage) e não apareciam no chat.
+        if (is_array($msgPayload)) {
+            foreach (['ephemeralMessage', 'deviceSentMessage', 'viewOnceMessage', 'viewOnceMessageV2'] as $wrapKey) {
+                if (isset($msgPayload[$wrapKey]['message']) && is_array($msgPayload[$wrapKey]['message'])) {
+                    $msgPayload = $msgPayload[$wrapKey]['message'];
+                }
+            }
+        }
         $messageText = $msgPayload['conversation']
                        ?? $msgPayload['extendedTextMessage']['text']
                        ?? '';
@@ -1041,8 +1023,18 @@ if ($event === 'messages.upsert') {
             && !$isStatusBroadcast && !$isSystemType && !$isSystemMsg;
 
         if ($shouldSave) {
+            // Lock pelo key.id: a mesma mensagem pode chegar ao mesmo tempo por outro
+            // webhook (ex.: webhook global + da instância, send.message) ou pela resposta
+            // do envio. Sem o lock, as duas requisições gravavam (mensagem repetida).
+            $msgLocked = !empty($externalMsgId) && chat_msg_lock((string)$externalMsgId, 30);
             try {
                 $fromMeInt = $fromMe ? 1 : 0;
+
+                // Já gravada (recebida OU enviada): não duplica
+                if (!empty($externalMsgId) && chat_msg_find_by_external_id((string)$externalMsgId) > 0) {
+                    error_log("[WEBHOOK] mensagem '$externalMsgId' já existe, skip duplicata");
+                    continue;
+                }
                 
                 // Para mensagens fromMe: verificar se já existe (pode ter sido salva pelo chat_web.php)
                 if ($fromMe) {
@@ -1116,6 +1108,10 @@ if ($event === 'messages.upsert') {
                 error_log("[WEBHOOK] mensagem salva: jid='$remoteJid' type='$messageType' fromMe=$fromMeInt text='" . substr($messageText,0,50) . "'" . ($quotedMessageId ? " [REPLY to $quotedMessageId]" : ""));
             } catch (Exception $e) {
                 error_log('[WEBHOOK] erro ao salvar mensagem: ' . $e->getMessage());
+            } finally {
+                if ($msgLocked) {
+                    chat_msg_unlock((string)$externalMsgId);
+                }
             }
         } else {
             $reason = [];
@@ -1255,8 +1251,9 @@ if ($event === 'send.message') {
 
     if (!empty($remoteJid) && $hasContent
         && !$isStatusBroadcast && !isSystemMessageType($msgPayload) && !isSystemText($messageText)) {
+        $sendExternalId = $messageData['key']['id'] ?? null;
+        $sendLocked = !empty($sendExternalId) && chat_msg_lock((string)$sendExternalId, 30);
         try {
-            $sendExternalId = $messageData['key']['id'] ?? null;
             // LID -> número real (mesma regra do messages.upsert)
             $remoteJid = resolveConversationJid(is_array($messageData['key'] ?? null) ? $messageData['key'] : [], true) ?: $remoteJid;
             $normalizedJid = normalizeJid($remoteJid);
@@ -1298,6 +1295,10 @@ if ($event === 'send.message') {
             }
         } catch (Exception $e) {
             error_log("Webhook erro ao salvar mensagem enviada: " . $e->getMessage());
+        } finally {
+            if ($sendLocked) {
+                chat_msg_unlock((string)$sendExternalId);
+            }
         }
     }
 }

@@ -60,11 +60,29 @@ function chatListUrl(overrides, chatId) {
   params.set('instance', f.instance || '');
   params.set('attendant', f.attendant || '0');
   params.set('q', f.q || '');
+  // WhatsApp da conversa aberta (separa o mesmo contato em números diferentes)
+  if (chatId && !f.instance && f.chatInstance) params.set('ci', f.chatInstance);
   return '/chat_web.php?' + params.toString();
+}
+
+// WhatsApp (instância) da conversa aberta: o da conversa (ci) ou o filtro da lista.
+function chatCurrentInstance() {
+  var f = window.chatFilters || {};
+  return f.chatInstance || f.instance || '';
 }
 
 function closeInfoPanel() {
   window.location.href = chatListUrl();
+}
+
+// Mostrar / ocultar o painel de detalhes da direita (preferência salva no navegador).
+// show: true = mostrar, false = ocultar, undefined = alternar.
+function toggleInfoPanel(show) {
+  var container = document.getElementById('whatsappContainer');
+  if (!container) return;
+  var hide = (typeof show === 'boolean') ? !show : !container.classList.contains('info-hidden');
+  container.classList.toggle('info-hidden', hide);
+  try { localStorage.setItem('chatInfoPanelHidden', hide ? '1' : '0'); } catch (e) {}
 }
 
 // Função de atribuição de paciente
@@ -816,7 +834,7 @@ async function sendMediaMessage() {
   formData.append('remote_jid', window.chatId);
   formData.append('media_type', selectedMediaType);
   // Preservar o WhatsApp (instância) filtrado, se houver.
-  var _inst = new URLSearchParams(window.location.search).get('instance') || '';
+  var _inst = chatCurrentInstance() || new URLSearchParams(window.location.search).get('instance') || '';
   if (_inst) {
     formData.append('instance', _inst);
   }
@@ -936,8 +954,8 @@ function checkForNewMessages() {
   isPolling = true;
   
   var lastIdParam = (typeof window.lastMsgId === 'number' && window.lastMsgId > 0) ? ('&last_id=' + window.lastMsgId) : '';
-  // Mesmo filtro de WhatsApp usado ao carregar a conversa
-  var pollInstance = (window.chatFilters && window.chatFilters.instance) || '';
+  // Mesmo WhatsApp usado ao carregar a conversa
+  var pollInstance = chatCurrentInstance();
   var instanceParam = pollInstance ? ('&instance=' + encodeURIComponent(pollInstance)) : '';
   fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam + instanceParam)
     .then(r => r.json())
@@ -968,8 +986,10 @@ function checkForNewMessages() {
           container.scrollTop = container.scrollHeight;
         }
         
-        // Atualizar lista de conversas (preview da última mensagem)
+        // Atualizar lista de conversas (preview e ordem: a conversa sobe também
+        // quando a mensagem foi ENVIADA, ex.: pelo celular)
         updateChatListPreview(data.messages[data.messages.length - 1]);
+        refreshChatList();
       }
     })
     .catch(err => {
@@ -1020,7 +1040,7 @@ function appendMessageToDOM(msg) {
   const senderName = msg.sender_name || '';
   const reactions = msg.reactions || [];
   
-  let html = '<div class="whatsapp-message ' + messageClass + '"' + (dedupKey ? ' data-msg-id="' + escapeHtml(dedupKey) + '"' : '') + '>';
+  let html = '<div class="whatsapp-message ' + messageClass + '"' + (dedupKey ? ' data-msg-id="' + escapeHtml(dedupKey) + '"' : '') + (msg.id ? ' data-row-id="' + escapeHtml(String(msg.id)) + '"' : '') + '>';
   html += '<div class="whatsapp-message-bubble">';
   
   // Nome do remetente em grupos
@@ -1123,16 +1143,65 @@ function updateChatListPreview(lastMsg) {
 
 // Iniciar polling se houver chat selecionado
 // (Será iniciado pelo inline script que define window.chatId)
+// ATUALIZAÇÃO DA LISTA: recarrega só a lista de conversas (chat_web.php?list_only=1)
+// para a ordem e as prévias acompanharem mensagens novas, recebidas ou enviadas.
+let _listRefreshing = false;
+function refreshChatList() {
+  if (_listRefreshing || document.hidden) return;
+  const list = document.getElementById('chatsList');
+  if (!list) return;
+  const f = window.chatFilters || {};
+  if (['grupos', 'lista_espera', 'contatos'].indexOf(f.type) !== -1) return;
+  _listRefreshing = true;
+  fetch(chatListUrl({}, window.chatId || '') + '&list_only=1', { credentials: 'same-origin', cache: 'no-store' })
+    .then(r => (r.ok ? r.text() : ''))
+    .then(html => {
+      if (!html || html.indexOf('id="chatsList"') === -1) return; // ex.: sessão expirada
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const fresh = tmp.querySelector('#chatsList');
+      if (fresh && fresh.innerHTML !== list.innerHTML) {
+        const scroll = list.scrollTop;
+        list.innerHTML = fresh.innerHTML;
+        list.scrollTop = scroll;
+      }
+    })
+    .catch(() => {})
+    .finally(() => { _listRefreshing = false; });
+}
+
+// SINCRONIZAÇÃO DE RESERVA: busca na Evolution as últimas mensagens da conversa
+// aberta e grava as que faltam (ex.: resposta enviada pelo celular que o webhook
+// não entregou). O polling mostra as novas em seguida.
+function syncOpenChatFromEvolution() {
+  if (!window.chatId || window.chatId.indexOf('@g.us') !== -1 || document.hidden) return;
+  const inst = chatCurrentInstance();
+  fetch('/chat_sync_recent.php?chat_id=' + encodeURIComponent(window.chatId) + (inst ? '&instance=' + encodeURIComponent(inst) : ''), { credentials: 'same-origin', cache: 'no-store' })
+    .then(r => r.json())
+    .then(d => { if (d && d.imported > 0) checkForNewMessages(); })
+    .catch(() => {});
+}
+
 function startChatPolling() {
   if (window.chatId && !window._pollingStarted) {
     window._pollingStarted = true;
     setInterval(checkForNewMessages, 3000);
+    setTimeout(syncOpenChatFromEvolution, 1500);
+    setInterval(syncOpenChatFromEvolution, 15000);
     console.log("✅ Polling iniciado para chat:", window.chatId, "| lastTimestamp:", window.lastTimestamp);
   }
 }
 
 // Tentar iniciar imediatamente (caso chatId já esteja definido)
 startChatPolling();
+
+// Lista de conversas sempre atualizada (com ou sem conversa aberta)
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('chatsList') && !window._listRefreshStarted) {
+    window._listRefreshStarted = true;
+    setInterval(refreshChatList, 10000);
+  }
+});
 
 // Também tentar após DOMContentLoaded (fallback)
 document.addEventListener('DOMContentLoaded', function() {

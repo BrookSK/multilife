@@ -158,6 +158,24 @@ final class EvolutionApiV1
         ]);
     }
 
+    /**
+     * Últimas mensagens de uma conversa (Evolution v2: paginação por page/offset,
+     * ordenadas da mais nova para a mais antiga). Timeout curto: é usada pela
+     * sincronização da conversa aberta no chat.
+     */
+    public function findRecentMessages(string $remoteJid, int $count = 30, int $timeoutSeconds = 8): array
+    {
+        return $this->request('POST', '/chat/findMessages/' . urlencode($this->inst()), [], [
+            'where' => [
+                'key' => [
+                    'remoteJid' => $remoteJid,
+                ],
+            ],
+            'page' => 1,
+            'offset' => max(1, $count),
+        ], $timeoutSeconds);
+    }
+
     public function archiveChat(array $lastMessageKey, bool $archive = true): array
     {
         return $this->request('PUT', '/chat/archiveChat/' . urlencode($this->inst()), [], [

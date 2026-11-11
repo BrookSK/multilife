@@ -1868,13 +1868,21 @@ foreach ($toSend as $row) {
             whatsapp_health_record((string)$sendInstName, 'send_ok', 'open', null);
             
             // Salvar na chat_messages para aparecer no chat
+            // O webhook pode ter gravado esta mensagem antes (mesmo key.id): não duplicar.
+            $chatLocked = $externalMsgId ? chat_msg_lock($externalMsgId, 10) : false;
             try {
-                $stmtChat = db()->prepare(
-                    'INSERT INTO chat_messages (remote_jid, message_text, from_me, message_timestamp, external_message_id) VALUES (?, ?, 1, ?, ?)'
-                );
-                $stmtChat->execute([$jid, $msgRow, time(), $externalMsgId]);
+                if (!$externalMsgId || chat_msg_find_by_external_id($externalMsgId) === 0) {
+                    $stmtChat = db()->prepare(
+                        'INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp, external_message_id) VALUES (?, ?, ?, 1, ?, ?)'
+                    );
+                    $stmtChat->execute([$jid, (string)$sendInstName !== '' ? (string)$sendInstName : null, $msgRow, time(), $externalMsgId]);
+                }
             } catch (Throwable $chatErr) {
                 error_log('[DISPATCH] Erro ao salvar em chat_messages: ' . $chatErr->getMessage());
+            } finally {
+                if ($chatLocked) {
+                    chat_msg_unlock($externalMsgId);
+                }
             }
         } else {
             $errText = "[instância '$sendInstName'] " . dispatch_evolution_error_text($res);
