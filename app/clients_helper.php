@@ -152,6 +152,100 @@ function polos_find(int $id): ?array
 }
 
 /**
+ * Polos encontrados nos dados do projeto (sugestão de cadastro inicial).
+ * Fontes:
+ *   - docs/contatos.csv: "Polo Araçatuba - Cenemed", "Polo Bauru - Cenemed" etc.;
+ *   - orientações da GLOBAL (migrations 2026-10-03_0009 e 2026-10-27_0003):
+ *     "Rio Preto/SP/Prudente/Campinas" e "Salvador/Recife".
+ * Mesma lista da migration 2026-11-11_0002_polos_iniciais.sql.
+ *
+ * @return array<int,array{client:string,name:string,city:string,state:string,source:string}>
+ */
+function polos_seed_list(): array
+{
+    $global = 'Orientações da GLOBAL (Rio Preto/SP/Prudente/Campinas, Salvador/Recife)';
+    $cene = 'Contatos: "Polo ... - Cenemed"';
+    return [
+        ['client' => 'GLOBAL', 'name' => 'Rio Preto', 'city' => 'São José do Rio Preto', 'state' => 'SP', 'source' => $global],
+        ['client' => 'GLOBAL', 'name' => 'São Paulo', 'city' => 'São Paulo', 'state' => 'SP', 'source' => $global],
+        ['client' => 'GLOBAL', 'name' => 'Presidente Prudente', 'city' => 'Presidente Prudente', 'state' => 'SP', 'source' => $global],
+        ['client' => 'GLOBAL', 'name' => 'Campinas', 'city' => 'Campinas', 'state' => 'SP', 'source' => $global],
+        ['client' => 'GLOBAL', 'name' => 'Salvador', 'city' => 'Salvador', 'state' => 'BA', 'source' => $global],
+        ['client' => 'GLOBAL', 'name' => 'Recife', 'city' => 'Recife', 'state' => 'PE', 'source' => $global],
+        ['client' => 'CENEMED', 'name' => 'Araçatuba', 'city' => 'Araçatuba', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Bauru', 'city' => 'Bauru', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Campinas', 'city' => 'Campinas', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Divinópolis', 'city' => 'Divinópolis', 'state' => 'MG', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Fernandópolis', 'city' => 'Fernandópolis', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Goiânia', 'city' => 'Goiânia', 'state' => 'GO', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Marília', 'city' => 'Marília', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Presidente Prudente', 'city' => 'Presidente Prudente', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'Ribeirão Preto', 'city' => 'Ribeirão Preto', 'state' => 'SP', 'source' => $cene],
+        ['client' => 'CENEMED', 'name' => 'São Paulo', 'city' => 'São Paulo', 'state' => 'SP', 'source' => $cene],
+    ];
+}
+
+/** Acha o cliente pelo nome (exato primeiro; depois começando com o nome). */
+function polos_seed_find_client(string $name): ?int
+{
+    $stmt = db()->prepare("SELECT id FROM clients
+        WHERE UPPER(TRIM(name)) = :n OR UPPER(TRIM(name)) LIKE :p
+        ORDER BY (UPPER(TRIM(name)) = :n2) DESC, is_active DESC, id ASC LIMIT 1");
+    $up = mb_strtoupper(trim($name));
+    $stmt->execute(['n' => $up, 'p' => $up . '%', 'n2' => $up]);
+    $id = $stmt->fetchColumn();
+    return $id !== false ? (int)$id : null;
+}
+
+/**
+ * Sugestões que ainda não estão cadastradas (cliente existe e o polo não).
+ *
+ * @return array{missing: array<int,array>, no_client: string[]}
+ */
+function polos_seed_pending(): array
+{
+    clients_ensure_schema();
+    $missing = [];
+    $noClient = [];
+    $exists = db()->prepare('SELECT 1 FROM polos WHERE client_id = :c AND UPPER(TRIM(name)) = :n LIMIT 1');
+    foreach (polos_seed_list() as $p) {
+        $cid = polos_seed_find_client($p['client']);
+        if ($cid === null) {
+            $noClient[$p['client']] = $p['client'];
+            continue;
+        }
+        $exists->execute(['c' => $cid, 'n' => mb_strtoupper($p['name'])]);
+        if (!$exists->fetchColumn()) {
+            $missing[] = $p + ['client_id' => $cid];
+        }
+    }
+    return ['missing' => $missing, 'no_client' => array_values($noClient)];
+}
+
+/**
+ * Cadastra as sugestões que faltam. Não altera nem apaga polos existentes.
+ *
+ * @return array{inserted:int, no_client:string[]}
+ */
+function polos_seed_apply(): array
+{
+    $pending = polos_seed_pending();
+    $ins = db()->prepare('INSERT INTO polos (client_id, name, city, state, notes, is_active) VALUES (:c, :n, :city, :st, :notes, 1)');
+    $count = 0;
+    foreach ($pending['missing'] as $p) {
+        $ins->execute([
+            'c' => $p['client_id'],
+            'n' => $p['name'],
+            'city' => $p['city'],
+            'st' => $p['state'],
+            'notes' => 'Cadastro inicial. Fonte: ' . $p['source'],
+        ]);
+        $count++;
+    }
+    return ['inserted' => $count, 'no_client' => $pending['no_client']];
+}
+
+/**
  * Rótulo do polo para selects ("Rio Preto — GLOBAL").
  */
 function polos_label(array $polo, bool $withClient = true): string

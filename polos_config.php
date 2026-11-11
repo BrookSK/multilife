@@ -69,6 +69,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($action === 'seed') {
+        try {
+            $r = polos_seed_apply();
+            audit_log('create', 'polos', 'seed', null, ['inserted' => $r['inserted']]);
+            $msg = $r['inserted'] > 0 ? $r['inserted'] . ' polo(s) cadastrado(s).' : 'Nenhum polo novo para cadastrar.';
+            if ($r['no_client']) {
+                $msg .= ' Cliente não encontrado: ' . implode(', ', $r['no_client']) . '.';
+            }
+            flash_set('success', $msg);
+        } catch (Throwable $e) {
+            flash_set('error', 'Erro ao cadastrar polos: ' . $e->getMessage());
+        }
+        header('Location: /polos_config.php');
+        exit;
+    }
+
     if ($action === 'toggle_status') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
@@ -99,6 +115,13 @@ try {
 
 $inputStyle = 'width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px';
 
+// Sugestões de polos (dos contatos e orientações) que ainda não estão cadastradas.
+try {
+    $seed = polos_seed_pending();
+} catch (Throwable $e) {
+    $seed = ['missing' => [], 'no_client' => []];
+}
+
 view_header('Polos');
 
 echo '<div class="grid">';
@@ -126,6 +149,26 @@ foreach ($clients as $cl) {
 echo '</select>';
 echo '</form>';
 echo '</section>';
+
+if (!empty($seed['missing'])) {
+    $byCli = [];
+    foreach ($seed['missing'] as $m) {
+        $byCli[$m['client']][] = $m['name'];
+    }
+    echo '<section class="card col12" style="background:hsla(var(--primary)/.05)">';
+    echo '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+    echo '<div><div style="font-weight:800">Polos encontrados nos dados e ainda não cadastrados (' . count($seed['missing']) . ')</div>';
+    foreach ($byCli as $cli => $names) {
+        echo '<div style="margin-top:4px;font-size:13px"><strong>' . h((string)$cli) . ':</strong> ' . h(implode(', ', $names)) . '</div>';
+    }
+    echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">Fonte: orientações da GLOBAL e contatos "Polo … - Cenemed". Depois dá para editar ou desativar cada um.</div></div>';
+    echo '<form method="post" onsubmit="return confirm(' . h(json_encode('Cadastrar ' . count($seed['missing']) . ' polo(s)?', JSON_UNESCAPED_UNICODE)) . ')"><input type="hidden" name="action" value="seed"><button type="submit" class="btn-primary">Cadastrar estes polos</button></form>';
+    echo '</div>';
+    echo '</section>';
+}
+if (!empty($seed['no_client'])) {
+    echo '<section class="card col12"><div style="font-size:13px;color:#92400e">Para cadastrar os polos sugeridos de <strong>' . h(implode(', ', $seed['no_client'])) . '</strong>, cadastre antes o cliente com esse nome em <a href="/clients_config.php">Clientes</a>.</div></section>';
+}
 
 echo '<section class="card col12">';
 echo '<table class="data-table"><thead><tr><th>Polo</th><th>Cliente</th><th>Cidade/UF</th><th style="text-align:center">Operadoras (padrão)</th><th style="text-align:center">Atendimentos</th><th>Status</th><th style="width:140px">Ações</th></tr></thead><tbody>';
