@@ -548,7 +548,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Integrações (OpenAI/Evolution/ZapSign/SMTP/Webhooks).';
+        echo 'Integrações (OpenAI/Evolution/ZapSign/SMTP/Webhooks). Tamanho da tabela, prazos de retenção e limpeza: <a href="/tech_logs_list.php" style="font-weight:700">Logs Técnicos › Tamanho e limpeza</a>.';
         echo '</div>';
         echo '</div>';
         
