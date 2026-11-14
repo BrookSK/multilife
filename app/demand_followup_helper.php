@@ -324,10 +324,20 @@ function demand_followup_process_one_batch(PDO $db, int $batchId): array
                     ->execute(['m' => $message, 'id' => $itemId]);
                 $db->prepare("UPDATE demand_followup_batches SET sent_items = sent_items + 1 WHERE id=:id")->execute(['id' => $batchId]);
                 $result['sent']++;
+                // key.id da mensagem: o webhook pode ter gravado antes (não duplicar)
+                $fuExtId = is_array($res['json'] ?? null) ? (string)($res['json']['key']['id'] ?? '') : '';
+                $fuLocked = $fuExtId !== '' && function_exists('chat_msg_lock') && chat_msg_lock($fuExtId, 10);
                 try {
-                    $db->prepare('INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp) VALUES (?, ?, ?, 1, ?)')
-                        ->execute([$jid, $batch['instance_name'] ?? null, $message, time()]);
-                } catch (Throwable $e) {}
+                    if ($fuExtId === '' || !function_exists('chat_msg_find_by_external_id') || chat_msg_find_by_external_id($fuExtId) === 0) {
+                        $db->prepare('INSERT INTO chat_messages (remote_jid, instance_name, message_text, from_me, message_timestamp, external_message_id) VALUES (?, ?, ?, 1, ?, ?)')
+                            ->execute([$jid, $batch['instance_name'] ?? null, $message, time(), $fuExtId !== '' ? $fuExtId : null]);
+                    }
+                } catch (Throwable $e) {
+                } finally {
+                    if ($fuLocked) {
+                        chat_msg_unlock($fuExtId);
+                    }
+                }
             } else {
                 $err = 'HTTP ' . (string)($res['status'] ?? '');
                 $db->prepare("UPDATE demand_followup_items SET status='failed', generated_message=:m, attempts=attempts+1, error_message=:e WHERE id=:id")

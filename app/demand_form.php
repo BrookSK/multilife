@@ -74,6 +74,7 @@ function demand_form_field_labels(): array
         'patient_name' => 'Nome do paciente',
         'title' => 'Título do card',
         'client_id' => 'Cliente (contratante)',
+        'polo_id' => 'Polo',
         'health_insurer_id' => 'Operadora',
         'specialty' => 'Especialidade',
         'frequency' => 'Frequência',
@@ -171,6 +172,7 @@ function demand_form_from_post(array $p): array
         'patient_name' => $t('patient_name', 200),
         'title' => $t('title', 200),
         'client_id' => (int)($p['client_id'] ?? 0),
+        'polo_id' => (int)($p['polo_id'] ?? 0),
         'health_insurer_id' => (int)($p['health_insurer_id'] ?? 0),
         'specialty' => $t('specialty', 120),
         'frequency' => $t('frequency', 120),
@@ -243,6 +245,21 @@ function demand_form_from_post(array $p): array
             ?? '';
     } else {
         $data['location_zone'] = '';
+    }
+
+    // Cliente / polo / operadora: completa pelo cadastro da operadora (cliente e
+    // polo padrão) e confere se o polo é do cliente escolhido.
+    if (function_exists('org_resolve')) {
+        $org = org_resolve($data['client_id'], $data['health_insurer_id'], $data['polo_id']);
+        if ($data['polo_id'] > 0 && $org['client_id'] !== null && function_exists('polos_find')) {
+            $polo = polos_find((int)$data['polo_id']);
+            if ($polo && $polo['client_id'] !== null && (int)$polo['client_id'] !== (int)$org['client_id']) {
+                $errors[] = 'O polo escolhido não pertence ao cliente do card.';
+            }
+        }
+        $data['client_id'] = (int)($org['client_id'] ?? 0);
+        $data['health_insurer_id'] = (int)($org['health_insurer_id'] ?? 0);
+        $data['polo_id'] = (int)($org['polo_id'] ?? 0);
     }
 
     if ($data['title'] === '') {
@@ -401,6 +418,38 @@ function demand_form_render(array $d, string $action, array $opts = []): void
         echo '<button type="button" class="btn dfPlus" data-qr="health_insurer" title="Cadastrar operadora rapidamente">+</button>';
     }
     echo '</div></div>';
+
+    // Polo (cliente -> polo -> operadora). Lista filtrada pelo cliente escolhido.
+    $polos = function_exists('polos_list') ? polos_list(null, true) : [];
+    $curPolo = (int)($d['polo_id'] ?? 0);
+    echo '<div class="col6"><label>Polo<select name="polo_id" id="df_polo_id">';
+    echo '<option value="">— Selecione —</option>';
+    $poloFound = false;
+    foreach ($polos as $po) {
+        $sel = (int)$po['id'] === $curPolo ? ' selected' : '';
+        $poloFound = $poloFound || $sel !== '';
+        echo '<option value="' . (int)$po['id'] . '" data-client="' . (int)($po['client_id'] ?? 0) . '"' . $sel . '>' . h(polos_label($po)) . '</option>';
+    }
+    if (!$poloFound && $curPolo > 0 && function_exists('polos_find') && ($pf = polos_find($curPolo))) {
+        echo '<option value="' . $curPolo . '" data-client="' . (int)($pf['client_id'] ?? 0) . '" selected>' . h(polos_label($pf) . ' (inativo)') . '</option>';
+    }
+    echo '</select></label>';
+    echo '<div class="dfHint">Ex.: GLOBAL → Rio Preto → Unimed. Se vazio, usa o polo padrão da operadora. <a href="/polos_config.php" target="_blank">Cadastrar polo</a></div>';
+    echo '</div>';
+    // Operadoras: cliente e polo padrão (para preencher automaticamente).
+    $opMeta = [];
+    foreach ($operators as $op) {
+        $opMeta[(int)$op['id']] = ['c' => (int)($op['client_id'] ?? 0), 'p' => (int)($op['polo_id'] ?? 0)];
+    }
+    echo '<script>(function(){'
+        . 'var meta=' . json_encode($opMeta, JSON_HEX_TAG | JSON_HEX_AMP) . ';'
+        . 'var c=document.getElementById("df_client_id"),p=document.getElementById("df_polo_id"),o=document.getElementById("df_health_insurer_id");'
+        . 'function filt(){if(!c||!p)return;var cid=c.value||"";Array.prototype.forEach.call(p.options,function(op){var dc=op.getAttribute("data-client");if(dc===null)return;var ok=cid===""||dc===cid||dc==="0"||op.selected;op.hidden=!ok;});}'
+        . 'if(c)c.addEventListener("change",function(){var cur=p.options[p.selectedIndex];if(cur&&cur.value&&cur.getAttribute("data-client")!==c.value&&cur.getAttribute("data-client")!=="0"){p.value="";}filt();});'
+        . 'if(o)o.addEventListener("change",function(){var m=meta[o.value];if(!m)return;if(m.c&&c&&!c.value){c.value=String(m.c);}if(m.p&&p&&!p.value){p.value=String(m.p);}filt();});'
+        . 'document.addEventListener("DOMContentLoaded",filt);filt();'
+        . '})();</script>';
+
     echo '<div class="col6"><label>E-mail de origem (operadora/cliente)<input type="email" name="origin_email" maxlength="190" value="' . h($v('origin_email')) . '" placeholder="origem@operadora.com.br"></label></div>';
     echo '</div></div>';
 

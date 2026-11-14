@@ -138,12 +138,14 @@ $sql = 'SELECT d.id, d.title, d.specialty, d.location_city, d.location_state,
         d.origin_email,
         d.patient_name, d.location_street, d.location_neighborhood, d.location_zone, d.frequency,
         COALESCE(cli.name, cli_hi.name, cli_dom.name) AS client_name,
-        COALESCE(hi.name, hi_dom.name) AS insurer_name
+        COALESCE(hi.name, hi_dom.name) AS insurer_name,
+        po.name AS polo_name
         FROM demands d
         LEFT JOIN users u ON u.id = d.assumed_by_user_id
         LEFT JOIN patient_assignments pa ON pa.demand_id = d.id
         LEFT JOIN clients cli ON cli.id = d.client_id
         LEFT JOIN health_insurers hi ON hi.id = d.health_insurer_id
+        LEFT JOIN polos po ON po.id = COALESCE(pa.polo_id, d.polo_id, hi.polo_id)
         LEFT JOIN clients cli_hi ON cli_hi.id = hi.client_id
         LEFT JOIN health_insurers hi_dom ON (d.client_id IS NULL AND d.health_insurer_id IS NULL
              AND hi_dom.email_domain IS NOT NULL AND hi_dom.email_domain != ""
@@ -406,6 +408,10 @@ foreach ($columns as $col) {
             $insurerName = trim((string)($r['insurer_name'] ?? ''));
             if ($clientName !== '' || $insurerName !== '') {
                 $cliLabel = $clientName !== '' ? $clientName : $insurerName;
+                $poloName = trim((string)($r['polo_name'] ?? ''));
+                if ($poloName !== '') {
+                    $cliLabel .= ' · ' . $poloName;
+                }
                 if ($insurerName !== '' && $insurerName !== $clientName) {
                     $cliLabel .= ' · ' . $insurerName;
                 }

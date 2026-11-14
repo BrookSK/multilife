@@ -22,18 +22,12 @@ $webhookUrl = 'https://' . $_SERVER['HTTP_HOST'] . '/chat_webhook.php';
 // Configurar webhook na Evolution API
 $url = $baseUrl . '/webhook/set/' . urlencode($instanceName);
 
+// Mesmo padrão de app/whatsapp_webhook_config.php (modelo helpdeskON)
 $payload = json_encode([
     'url' => $webhookUrl,
     'webhook_by_events' => false,
     'webhook_base64' => true,
-    'events' => [
-        'MESSAGES_UPSERT',
-        'SEND_MESSAGE',
-        'CONTACTS_UPSERT',
-        'CONTACTS_UPDATE',
-        'CONNECTION_UPDATE',
-        'QRCODE_UPDATED',
-    ]
+    'events' => WHATSAPP_WEBHOOK_EVENTS,
 ]);
 
 $ch = curl_init($url);
@@ -56,15 +50,7 @@ if ($httpCode === 200 || $httpCode === 201) {
 } else {
     // Tentar formato alternativo (Evolution API v2)
     $url2 = $baseUrl . '/webhook/set/' . urlencode($instanceName);
-    $payload2 = json_encode([
-        'webhook' => [
-            'url' => $webhookUrl,
-            // CONNECTION_UPDATE/QRCODE_UPDATED alimentam a detecção de conexão em loop.
-            'events' => ['MESSAGES_UPSERT', 'SEND_MESSAGE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
-            'webhook_by_events' => false,
-            'webhook_base64' => true,
-        ]
-    ]);
+    $payload2 = json_encode(whatsapp_webhook_payload($webhookUrl));
     
     $ch2 = curl_init($url2);
     curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);

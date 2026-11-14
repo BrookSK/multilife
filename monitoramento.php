@@ -9,6 +9,8 @@ $db = db();
 
 // Garantir coluna is_indefinite (fallback caso a migration não tenha rodado)
 try { $db->exec("ALTER TABLE patient_assignments ADD COLUMN is_indefinite TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+// polo_id / internal_notes / weaning_at
+clients_ensure_schema();
 
 // Buscar sessões de atendimentos aprovados (usa session_date + start_time da proposta)
 $sql = "SELECT bdr.id, 
@@ -33,14 +35,17 @@ $sql = "SELECT bdr.id,
         pa.service_type, pa.payment_value, pa.session_quantity,
         pa.session_frequency, pa.is_indefinite,
         pa.health_insurer_id, hi.name as insurer_name,
-        pa.client_id, c.name as client_name
+        COALESCE(pa.client_id, hi.client_id) as client_id, c.name as client_name,
+        COALESCE(pa.polo_id, hi.polo_id) as polo_id, po.name as polo_name,
+        pa.internal_notes, pa.weaning_at, pa.admitted_at
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = bdr.patient_id
         INNER JOIN users u ON u.id = bdr.professional_user_id
         LEFT JOIN demands d ON d.id = pa.demand_id
         LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
-        LEFT JOIN clients c ON c.id = pa.client_id
+        LEFT JOIN clients c ON c.id = COALESCE(pa.client_id, hi.client_id)
+        LEFT JOIN polos po ON po.id = COALESCE(pa.polo_id, hi.polo_id)
         WHERE pa.status IN ('admitted', 'awaiting_documents', 'awaiting_financial_approval')
         AND pa.admitted_at IS NOT NULL
         ORDER BY first_at ASC";
@@ -89,6 +94,11 @@ foreach ($appointments as $apt) {
             'health_insurer_id' => (int)($apt['health_insurer_id'] ?? 0),
             'client_id' => (int)($apt['client_id'] ?? 0),
             'client_name' => $apt['client_name'] ?? '',
+            'polo_id' => (int)($apt['polo_id'] ?? 0),
+            'polo_name' => $apt['polo_name'] ?? '',
+            'internal_notes' => $apt['internal_notes'] ?? '',
+            'weaning_at' => $apt['weaning_at'] ?? '',
+            'admitted_at' => $apt['admitted_at'] ?? '',
             'assignment_id' => (int)$apt['assignment_id'],
             'patient_id' => (int)$apt['patient_id'],
             'patient_name' => $apt['patient_name'],
@@ -145,6 +155,7 @@ try {
 
 // Operadoras disponíveis para preencher a operadora que faltou.
 $operatorsForSelect = [];
+$polosForSelect = polos_list(null, true);
 try {
     $operatorsForSelect = operators_list(null, true);
 } catch (Throwable $e) {
@@ -323,14 +334,23 @@ body{margin:0;padding:0;overflow:hidden}
                 <div class="row"><span class="label">Tipo de Serviço:</span><span class="value" id="aptServiceType">-</span></div>
                 <div class="row"><span class="label">Localização:</span><span class="value" id="aptLocation">-</span></div>
                 <div class="row"><span class="label">Cliente:</span><span class="value" id="aptClient">-</span></div>
+                <div class="row"><span class="label">Polo:</span><span class="value" id="aptPolo">-</span></div>
                 <div class="row"><span class="label">Operadora:</span><span class="value" id="aptInsurer">-</span></div>
+                <div class="row"><span class="label">Desmame:</span><span class="value" id="aptWeaning">-</span></div>
+                <div class="row" id="aptNotesRow" style="display:none"><span class="label">Observação interna:</span><span class="value" id="aptNotes" style="white-space:pre-wrap;color:#92400e">-</span></div>
                 <div class="row" id="setOperatorRow" style="display:none;align-items:center;gap:8px">
-                    <span class="label">Definir operadora:</span>
+                    <span class="label">Definir operadora / polo:</span>
                     <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                         <select id="setOperatorSelect" style="padding:6px 8px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
                             <option value="">Selecione…</option>
                             <?php foreach ($operatorsForSelect as $op): ?>
-                                <option value="<?= (int)$op['id'] ?>"><?= h((string)$op['name']) ?><?= $op['client_name'] ? ' — ' . h((string)$op['client_name']) : '' ?></option>
+                                <option value="<?= (int)$op['id'] ?>" data-polo="<?= (int)($op['polo_id'] ?? 0) ?>"><?= h((string)$op['name']) ?><?= $op['client_name'] ? ' — ' . h((string)$op['client_name']) : '' ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <select id="setPoloSelect" style="padding:6px 8px;border:1px solid #d1d7db;border-radius:6px;font-size:13px">
+                            <option value="">Polo: padrão da operadora</option>
+                            <?php foreach ($polosForSelect as $po): ?>
+                                <option value="<?= (int)$po['id'] ?>"><?= h(polos_label($po)) ?></option>
                             <?php endforeach; ?>
                         </select>
                         <button type="button" id="setOperatorBtn" onclick="saveOperator()" style="padding:6px 12px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Salvar</button>
@@ -444,6 +464,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 ? p.location_city + '/' + p.location_state 
                 : 'Não informado';
             document.getElementById('aptClient').textContent = p.client_name || 'Não informado';
+            document.getElementById('aptPolo').textContent = p.polo_name || 'Não informado';
+            document.getElementById('aptWeaning').textContent = p.weaning_at
+                ? new Date(String(p.weaning_at).substring(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR')
+                : '-';
+            var notesRow = document.getElementById('aptNotesRow');
+            if (p.internal_notes) {
+                document.getElementById('aptNotes').textContent = p.internal_notes;
+                notesRow.style.display = '';
+            } else {
+                notesRow.style.display = 'none';
+            }
             var insurerEl = document.getElementById('aptInsurer');
             if (Number(p.needs_operator) === 1) {
                 insurerEl.innerHTML = '<span style="color:#991b1b;font-weight:700">⚠️ Sem operadora</span>';
@@ -457,6 +488,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (setRow && setSel) {
                 setRow.style.display = 'flex';
                 setSel.value = p.health_insurer_id ? String(p.health_insurer_id) : '';
+                var poloSel = document.getElementById('setPoloSelect');
+                if (poloSel) poloSel.value = p.polo_id ? String(p.polo_id) : '';
             }
             
             // Paciente
@@ -609,11 +642,13 @@ function saveOperator() {
     var fd = new FormData();
     fd.append('assignment_id', assignmentId);
     fd.append('health_insurer_id', operatorId);
+    var poloSelEl = document.getElementById('setPoloSelect');
+    fd.append('polo_id', poloSelEl ? (poloSelEl.value || '') : '');
     fetch('/monitoramento_set_operator_post.php', { method: 'POST', body: fd })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (data.success) {
-                alert('✅ Operadora definida: ' + data.operator_name + (data.client_name ? ' (Cliente: ' + data.client_name + ')' : ''));
+                alert('✅ Operadora definida: ' + data.operator_name + (data.client_name ? ' (Cliente: ' + data.client_name + ')' : '') + (data.polo_name ? ' · Polo: ' + data.polo_name : ''));
                 window.location.reload();
             } else {
                 alert('❌ Erro: ' + (data.error || 'desconhecido'));

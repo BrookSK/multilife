@@ -4,6 +4,24 @@ auth_require_login();
 rbac_require_any_permission(['admin.settings.manage', 'cadastros.manage']);
 
 $db = db();
+// Garante client_id/closing_day/polo_id antes de gravar.
+clients_ensure_schema();
+
+/** Polo padrão da operadora: só aceita polo do mesmo cliente. */
+$resolvePolo = static function (?int $clientId): ?int {
+    $poloId = (int)($_POST['polo_id'] ?? 0);
+    if ($poloId <= 0) {
+        return null;
+    }
+    $polo = polos_find($poloId);
+    if ($polo === null) {
+        return null;
+    }
+    if ($clientId !== null && $polo['client_id'] !== null && (int)$polo['client_id'] !== $clientId) {
+        return null;
+    }
+    return $poloId;
+};
 
 // Especialidades ativas (para classificar os documentos da operadora)
 $specialtiesForDocs = [];
@@ -27,13 +45,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $closingDay = (int)($_POST['closing_day'] ?? 0);
         $closingDay = ($closingDay >= 1 && $closingDay <= 31) ? $closingDay : null;
         
+        $poloId = $resolvePolo($clientId);
+
         if ($name !== '') {
             try {
                 $stmt = $db->prepare("
-                    INSERT INTO health_insurers (name, client_id, closing_day, cnpj, contact_phone, contact_email, billing_email, email_domain, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO health_insurers (name, client_id, polo_id, closing_day, cnpj, contact_phone, contact_email, billing_email, email_domain, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$name, $clientId, $closingDay, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes]);
+                $stmt->execute([$name, $clientId, $poloId, $closingDay, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes]);
                 $_SESSION['success'] = 'Operadora cadastrada com sucesso!';
             } catch (PDOException $e) {
                 $_SESSION['error'] = 'Erro ao cadastrar: ' . $e->getMessage();
@@ -56,14 +76,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $closingDay = (int)($_POST['closing_day'] ?? 0);
         $closingDay = ($closingDay >= 1 && $closingDay <= 31) ? $closingDay : null;
         
+        $poloId = $resolvePolo($clientId);
+
         if ($id > 0 && $name !== '') {
             try {
                 $stmt = $db->prepare("
                     UPDATE health_insurers 
-                    SET name = ?, client_id = ?, closing_day = ?, cnpj = ?, contact_phone = ?, contact_email = ?, billing_email = ?, email_domain = ?, notes = ?
+                    SET name = ?, client_id = ?, polo_id = ?, closing_day = ?, cnpj = ?, contact_phone = ?, contact_email = ?, billing_email = ?, email_domain = ?, notes = ?
                     WHERE id = ?
                 ");
-                $stmt->execute([$name, $clientId, $closingDay, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes, $id]);
+                $stmt->execute([$name, $clientId, $poloId, $closingDay, $cnpj, $contactPhone, $contactEmail, $billingEmail, $emailDomain, $notes, $id]);
                 $_SESSION['success'] = 'Operadora atualizada com sucesso!';
             } catch (PDOException $e) {
                 $_SESSION['error'] = 'Erro ao atualizar: ' . $e->getMessage();
@@ -91,11 +113,15 @@ clients_ensure_schema();
 // Clientes disponíveis (para vincular a operadora)
 $clientsForSelect = clients_list(false);
 
-// Buscar operadoras (com nome do cliente)
+// Polos (para o polo padrão da operadora)
+$polosForSelect = polos_list(null, false);
+
+// Buscar operadoras (com nome do cliente e do polo padrão)
 $insurers = $db->query("
-    SELECT hi.*, c.name AS client_name
+    SELECT hi.*, c.name AS client_name, po.name AS polo_name
     FROM health_insurers hi
     LEFT JOIN clients c ON c.id = hi.client_id
+    LEFT JOIN polos po ON po.id = hi.polo_id
     ORDER BY hi.is_active DESC, hi.name ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -111,6 +137,7 @@ view_header('Configuração de Operadoras');
             </div>
             <div style="display:flex;gap:10px">
                 <a href="/clients_config.php" class="btn">Clientes</a>
+                <a href="/polos_config.php" class="btn">Polos</a>
                 <button onclick="openCreateModal()" class="btn-primary">+ Nova Operadora</button>
                 <a href="/settings.php" class="btn">← Voltar</a>
             </div>
@@ -123,6 +150,7 @@ view_header('Configuração de Operadoras');
                 <tr>
                     <th>Operadora</th>
                     <th>Cliente</th>
+                    <th>Polo padrão</th>
                     <th>Dia fech.</th>
                     <th>CNPJ</th>
                     <th>E-mail Faturamento</th>
@@ -135,6 +163,7 @@ view_header('Configuração de Operadoras');
                 <tr>
                     <td><strong><?= h($insurer['name']) ?></strong></td>
                     <td><?= $insurer['client_name'] ? h($insurer['client_name']) : '<span style="color:hsl(var(--destructive))">Sem cliente</span>' ?></td>
+                    <td><?= !empty($insurer['polo_name']) ? h((string)$insurer['polo_name']) : '-' ?></td>
                     <td><?= $insurer['closing_day'] ? ('dia ' . (int)$insurer['closing_day']) : '-' ?></td>
                     <td><?= h($insurer['cnpj'] ?? '-') ?></td>
                     <td><?= h($insurer['billing_email'] ?? '-') ?></td>
@@ -194,6 +223,17 @@ view_header('Configuração de Operadoras');
                     <input type="number" name="closing_day" id="insurerClosingDay" min="1" max="31" placeholder="1-31" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
                     <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Prazo de entrega ao financeiro.</div>
                 </div>
+            </div>
+
+            <div style="margin-bottom:16px">
+                <label style="display:block;margin-bottom:8px;font-weight:600">Polo padrão</label>
+                <select name="polo_id" id="insurerPoloId" style="width:100%;padding:10px;border:1px solid #d1d7db;border-radius:8px">
+                    <option value="">Nenhum (definir em cada atendimento)</option>
+                    <?php foreach ($polosForSelect as $po): ?>
+                        <option value="<?= (int)$po['id'] ?>" data-client="<?= (int)($po['client_id'] ?? 0) ?>"><?= h(polos_label($po, false)) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px">Sugerido automaticamente nos cards/atendimentos desta operadora (pode ser trocado em cada um). Cadastre em <a href="/polos_config.php">Polos</a>.</div>
             </div>
             
             <div style="margin-bottom:16px">
@@ -318,11 +358,30 @@ view_header('Configuração de Operadoras');
 </div>
 
 <script>
+// Mostra só os polos do cliente escolhido.
+function filterInsurerPolos() {
+    var cid = document.getElementById('insurerClientId').value || '';
+    var sel = document.getElementById('insurerPoloId');
+    if (!sel) return;
+    Array.prototype.forEach.call(sel.options, function(o) {
+        if (!o.value) return;
+        var ok = cid === '' || o.getAttribute('data-client') === cid;
+        o.hidden = !ok;
+        o.disabled = !ok;
+    });
+    if (sel.selectedOptions.length && sel.selectedOptions[0].disabled) sel.value = '';
+}
+document.addEventListener('DOMContentLoaded', function() {
+    var c = document.getElementById('insurerClientId');
+    if (c) c.addEventListener('change', filterInsurerPolos);
+});
+
 function openCreateModal() {
     document.getElementById('modalTitle').textContent = 'Nova Operadora';
     document.getElementById('formAction').value = 'create';
     document.getElementById('insurerForm').reset();
     document.getElementById('insurerId').value = '';
+    filterInsurerPolos();
     document.getElementById('insurerModal').style.display = 'block';
 }
 
@@ -332,6 +391,8 @@ function editInsurer(insurer) {
     document.getElementById('insurerId').value = insurer.id;
     document.getElementById('insurerName').value = insurer.name;
     document.getElementById('insurerClientId').value = insurer.client_id || '';
+    document.getElementById('insurerPoloId').value = insurer.polo_id || '';
+    filterInsurerPolos();
     document.getElementById('insurerClosingDay').value = insurer.closing_day || '';
     document.getElementById('insurerCnpj').value = insurer.cnpj || '';
     document.getElementById('insurerPhone').value = insurer.contact_phone || '';

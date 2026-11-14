@@ -9,83 +9,507 @@ rbac_require_permission('admin.settings.manage');
 
 header('Content-Type: text/html; charset=utf-8');
 
-echo '<h2>Webhook Debug — Últimos eventos recebidos</h2>';
-echo '<p>Verifique o log de erros do PHP para ver os payloads do webhook.</p>';
-echo '<p><strong>Teste:</strong> Mande uma mensagem no WhatsApp agora e recarregue esta página.</p>';
+$e = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+$fmtTs = static fn($ts): string => (int)$ts > 0 ? date('d/m H:i:s', (int)$ts) : '-';
+
+echo '<style>body{font-family:Arial,sans-serif;font-size:14px;margin:20px}table{border-collapse:collapse;font-size:12px;font-family:monospace}
+td,th{border:1px solid #ccc;padding:4px 6px;vertical-align:top}th{background:#eee}.ok{color:#0a7a3b;font-weight:bold}.bad{color:#b00020;font-weight:bold}
+.box{background:#f6f8fa;border:1px solid #ddd;border-radius:8px;padding:12px;margin:10px 0}</style>';
+
+echo '<h2>Webhook Debug — WhatsApp</h2>';
+
+// ---------------------------------------------------------------------------
+// 1) Servidor: o webhook consegue responder na hora para a Evolution?
+// ---------------------------------------------------------------------------
+// Versão da Evolution: até a 2.3.6 há o defeito "mensagens recebidas param de ser
+// processadas depois de uma reconexão" (corrigido na 2.3.7).
+try {
+    $info = (new EvolutionApiV1())->getInformation();
+    $evoVersion = (string)($info['json']['version'] ?? '');
+    $evoOld = $evoVersion !== '' && version_compare(ltrim($evoVersion, 'v'), '2.3.7', '<');
+    echo '<div class="box"><strong>Evolution API:</strong> versão ' . $e($evoVersion !== '' ? $evoVersion : 'desconhecida (HTTP ' . (int)($info['status'] ?? 0) . ')')
+        . ($evoOld ? ' — <span class="bad">ANTIGA: versões abaixo da 2.3.7 têm o defeito de parar de processar mensagens recebidas depois de reconectar. Atualize a Evolution.</span>' : '')
+        . '</div>';
+} catch (Throwable $ex) {
+    echo '<div class="box bad">Não foi possível consultar a versão da Evolution: ' . $e($ex->getMessage()) . '</div>';
+}
+
+$earlyOk = function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request');
+echo '<div class="box"><strong>Servidor:</strong> PHP ' . $e(PHP_VERSION) . ' (' . $e(PHP_SAPI) . ') — resposta antecipada ao webhook: '
+    . ($earlyOk ? '<span class="ok">ATIVA</span>' : '<span class="bad">INDISPONÍVEL</span> (a Evolution espera o processamento terminar; pode gerar fila e atraso)')
+    . '</div>';
+
+$instances = [];
+try {
+    $instances = whatsapp_list_all_instances();
+} catch (Throwable $ex) {
+    $instances = [];
+}
+$instanceNamesAll = array_values(array_filter(array_map(static fn($i) => (string)($i['instance_name'] ?? ''), $instances)));
+
+// ---------------------------------------------------------------------------
+// 1b) Configuração do webhook de cada WhatsApp na Evolution
+// ---------------------------------------------------------------------------
+echo '<h3>Configuração do webhook na Evolution</h3>';
+echo '<p>Padrão do sistema (mesmo modelo do helpdeskON): um único endereço, base64 ligado (a mídia vem junto com a mensagem) '
+    . 'e só os eventos usados. "Aplicar padrão" não desconecta o WhatsApp.</p>';
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['do'] ?? '') === 'optimize_webhook') {
+    $target = (string)($_POST['target'] ?? '');
+    $targets = $target === '__all__' ? $instanceNamesAll : (in_array($target, $instanceNamesAll, true) ? [$target] : []);
+    foreach ($targets as $t) {
+        try {
+            $r = whatsapp_webhook_optimize($t);
+            echo '<div class="box ' . ($r['ok'] ? 'ok' : 'bad') . '">' . $e($t) . ': ' . $e($r['message']) . '</div>';
+        } catch (Throwable $ex) {
+            echo '<div class="box bad">' . $e($t) . ': ' . $e($ex->getMessage()) . '</div>';
+        }
+    }
+}
+
+if ($instanceNamesAll) {
+    echo '<table><tr><th>WhatsApp</th><th>URL</th><th>Ativo</th><th>base64</th><th>Por evento</th><th>Eventos</th><th></th></tr>';
+    foreach ($instanceNamesAll as $iname) {
+        $wf = whatsapp_webhook_find($iname);
+        $fmtBool = static fn($v, bool $goodWhenTrue) => $v === null ? '?' : ($v === $goodWhenTrue ? '<span class="ok">' . ($v ? 'sim' : 'não') . '</span>' : '<span class="bad">' . ($v ? 'sim' : 'não') . '</span>');
+        $extra = array_diff($wf['events'], WHATSAPP_WEBHOOK_EVENTS);
+        echo '<tr><td>' . $e($iname) . '</td>'
+            . '<td>' . ($wf['ok'] ? $e($wf['url']) : '<span class="bad">HTTP ' . (int)$wf['http'] . ' ' . $e(mb_substr($wf['raw'], 0, 80)) . '</span>') . '</td>'
+            . '<td>' . $fmtBool($wf['enabled'], true) . '</td>'
+            . '<td>' . $fmtBool($wf['base64'], true) . '</td>'
+            . '<td>' . $fmtBool($wf['byEvents'], false) . '</td>'
+            . '<td>' . count($wf['events']) . ($extra ? ' <span class="bad">(+' . count($extra) . ' desnecessários)</span>' : '') . '</td>'
+            . '<td><form method="post" style="margin:0"><input type="hidden" name="do" value="optimize_webhook"><input type="hidden" name="target" value="' . $e($iname) . '">'
+            . '<button type="submit">Aplicar padrão</button></form></td></tr>';
+    }
+    echo '</table>';
+    echo '<form method="post" style="margin-top:8px" onsubmit="return confirm(\'Aplicar a configuração padrão no webhook de TODOS os WhatsApps?\')">'
+        . '<input type="hidden" name="do" value="optimize_webhook"><input type="hidden" name="target" value="__all__">'
+        . '<button type="submit" style="padding:6px 12px;font-weight:bold">Aplicar padrão em todos</button></form>';
+    echo '<p style="font-size:12px;color:#666">Se a Evolution também tiver o webhook GLOBAL ligado (variáveis WEBHOOK_GLOBAL_* no servidor dela), '
+        . 'ele precisa ser desligado lá, senão as mensagens chegam em dobro.</p>';
+}
 echo '<hr>';
 
-// Verificar se existe a tabela de log de webhook
-try {
-    $stmt = db()->query("SELECT COUNT(*) FROM integration_logs WHERE provider = 'evolution' ORDER BY id DESC LIMIT 1");
-    $count = (int)$stmt->fetchColumn();
-    
-    echo "<h3>Últimos 20 logs da Evolution API:</h3>";
-    echo '<pre style="max-height:600px;overflow:auto;font-size:12px;background:#1a1a1a;color:#0f0;padding:12px;border-radius:8px">';
-    
-    $stmt = db()->query("
-        SELECT id, action, status, http_code, response_data, error_message, created_at
-        FROM integration_logs 
-        WHERE provider = 'evolution'
-        ORDER BY id DESC 
-        LIMIT 20
-    ");
-    $logs = $stmt->fetchAll();
-    
-    if (empty($logs)) {
-        echo "Nenhum log encontrado na tabela integration_logs.\n";
-    }
-    
-    foreach ($logs as $log) {
-        echo "---\n";
-        echo "[" . $log['created_at'] . "] " . $log['action'] . " | HTTP: " . $log['http_code'] . " | Status: " . $log['status'] . "\n";
-        if ($log['error_message']) {
-            echo "  ERROR: " . $log['error_message'] . "\n";
+// ---------------------------------------------------------------------------
+// 1c) Reconectar um WhatsApp travado ("Conectando" / "Conexão em loop").
+// Primeiro limpa a sessão quebrada na Evolution (logout); sem isso o celular dá
+// erro ao ler o QR. Depois gera o QR e o CÓDIGO DE PAREAMENTO (8 letras), que se
+// digita no celular sem precisar da câmera.
+// ---------------------------------------------------------------------------
+echo '<h3 id="reconectar">Reconectar WhatsApp travado</h3>';
+$ownerNumbers = [];
+foreach ($instances as $inst) {
+    $ownerNumbers[(string)($inst['instance_name'] ?? '')] = preg_replace('/\D+/', '', (string)($inst['owner_number'] ?? ''));
+}
+$rlInstance = trim((string)($_POST['rl_instance'] ?? ($_GET['rl_instance'] ?? '')));
+$rlNumber = preg_replace('/\D+/', '', (string)($_POST['rl_number'] ?? ($ownerNumbers[$rlInstance] ?? '')));
+$rlDo = (string)($_POST['do'] ?? '');
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($rlDo, ['relink_reset', 'relink_code'], true)
+    && in_array($rlInstance, $instanceNamesAll, true)) {
+    $rlApi = new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $rlInstance);
+    try {
+        if ($rlDo === 'relink_reset') {
+            // Limpa a sessão quebrada (o celular passa a mostrar o aparelho como desconectado)
+            $lo = $rlApi->logoutInstance($rlInstance);
+            echo '<div class="box">Sessão antiga de ' . $e($rlInstance) . ' encerrada (HTTP ' . (int)($lo['status'] ?? 0) . ').</div>';
+            sleep(3);
         }
-        $resp = $log['response_data'] ?? '';
-        if (strlen($resp) > 300) $resp = substr($resp, 0, 300) . '...';
-        echo "  Response: " . $resp . "\n";
+        $cn = $rlApi->connectInstance($rlInstance, $rlNumber !== '' ? $rlNumber : null);
+        $cj = is_array($cn['json'] ?? null) ? $cn['json'] : [];
+        $pairing = (string)($cj['pairingCode'] ?? '');
+        $qrImg = (string)($cj['base64'] ?? ($cj['qrcode']['base64'] ?? ''));
+        if ($qrImg === '' && !empty($cj['code']) && strpos((string)$cj['code'], 'data:image') === 0) {
+            $qrImg = (string)$cj['code'];
+        }
+        $state = (string)($cj['instance']['state'] ?? '');
+        if ($state === 'open') {
+            echo '<div class="box ok">' . $e($rlInstance) . ' já está conectado.</div>';
+        } else {
+            echo '<div class="box" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">';
+            if ($pairing !== '') {
+                echo '<div><div><strong>Opção 1 — código de pareamento</strong> (não usa a câmera):</div>'
+                    . '<div style="font-size:34px;font-weight:bold;letter-spacing:6px;margin:8px 0;font-family:monospace">' . $e(strlen($pairing) === 8 ? substr($pairing, 0, 4) . '-' . substr($pairing, 4) : $pairing) . '</div>'
+                    . '<div style="font-size:12px;color:#444;max-width:320px">No celular deste número: WhatsApp → Aparelhos conectados → Conectar aparelho → '
+                    . '<strong>Conectar com número de telefone</strong> → digite o código.</div></div>';
+            }
+            if ($qrImg !== '') {
+                if (strpos($qrImg, 'data:image') !== 0) {
+                    $qrImg = 'data:image/png;base64,' . $qrImg;
+                }
+                echo '<div><div><strong>Opção 2 — QR Code:</strong></div><img src="' . $e($qrImg) . '" alt="QR" style="width:260px;height:260px;background:#fff;padding:8px;margin-top:8px"></div>';
+            }
+            if ($pairing === '' && $qrImg === '') {
+                echo '<div class="bad">A Evolution não devolveu QR nem código (HTTP ' . (int)($cn['status'] ?? 0) . '): ' . $e(mb_substr((string)($cn['body_raw'] ?? ''), 0, 300)) . '</div>';
+            }
+            echo '</div><p style="font-size:12px;color:#666">O código e o QR valem cerca de 1 minuto. Se expirar, clique em "Gerar novo código". '
+                . 'Depois de conectar, clique em "Ver conexão".</p>';
+        }
+    } catch (Throwable $ex) {
+        echo '<div class="box bad">Erro: ' . $e($ex->getMessage()) . '</div>';
     }
-    
-    echo '</pre>';
-} catch (Exception $e) {
-    echo "<p>Erro ao consultar logs: " . htmlspecialchars($e->getMessage()) . "</p>";
 }
 
-// Verificar últimas mensagens no chat
-echo "<h3>Últimas 10 mensagens no chat_messages:</h3>";
-echo '<pre style="max-height:400px;overflow:auto;font-size:12px;background:#1a1a1a;color:#fff;padding:12px;border-radius:8px">';
+echo '<form method="post" action="#reconectar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+echo '<select name="rl_instance" style="padding:6px">';
+foreach ($instanceNamesAll as $iname) {
+    echo '<option value="' . $e($iname) . '"' . ($iname === $rlInstance ? ' selected' : '') . '>' . $e($iname) . '</option>';
+}
+echo '</select>';
+echo '<input name="rl_number" value="' . $e($rlNumber) . '" placeholder="Número deste WhatsApp com DDI (ex.: 5511999999999)" style="padding:6px;width:300px">';
+echo '<button type="submit" name="do" value="relink_reset" style="padding:6px 12px;font-weight:bold" '
+    . 'onclick="return confirm(\'Encerrar a sessão travada e gerar um código novo? O WhatsApp só volta a funcionar no sistema depois de conectar com o código.\')">'
+    . '1) Limpar sessão travada e gerar código</button>';
+echo '<button type="submit" name="do" value="relink_code" style="padding:6px 12px">Gerar novo código</button>';
+echo '</form>';
+if ($rlInstance !== '') {
+    echo '<p><a href="?rl_instance=' . $e(rawurlencode($rlInstance)) . '#conexao">Ver conexão de ' . $e($rlInstance) . '</a></p>';
+    if (($_GET['rl_instance'] ?? '') !== '') {
+        try {
+            $csApi = new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $rlInstance);
+            $cs = $csApi->connectionState($rlInstance, 8);
+            $st = (string)($cs['json']['instance']['state'] ?? ($cs['json']['state'] ?? '?'));
+            echo '<div class="box" id="conexao">Conexão de ' . $e($rlInstance) . ': ' . ($st === 'open' ? '<span class="ok">conectado</span>' : '<span class="bad">' . $e($st) . '</span>') . '</div>';
+        } catch (Throwable $ex) {
+            echo '<div class="box bad">Erro ao consultar: ' . $e($ex->getMessage()) . '</div>';
+        }
+    }
+}
+echo '<p style="font-size:12px;color:#666">Antes de conectar, no celular: apague em "Aparelhos conectados" o aparelho antigo da Evolution, '
+    . 'confira se há menos de 4 aparelhos conectados, atualize o WhatsApp e use uma internet estável.</p>';
+echo '<hr>';
 
+// ---------------------------------------------------------------------------
+// 2) Testar uma conversa direto na Evolution
+// ---------------------------------------------------------------------------
+$testNumber = preg_replace('/\D+/', '', (string)($_REQUEST['number'] ?? ''));
+$testInstance = trim((string)($_REQUEST['instance'] ?? ''));
+$validInstance = in_array($testInstance, array_map(static fn($i) => (string)($i['instance_name'] ?? ''), $instances), true);
+
+echo '<h3>Testar conversa na Evolution</h3>';
+echo '<p>Mostra o que a Evolution tem guardado para um contato e o que já está no sistema. Use para saber se uma resposta chegou ao WhatsApp conectado.</p>';
+echo '<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+echo '<input name="number" value="' . $e($testNumber) . '" placeholder="Número com DDI, ex.: 553498225070" style="padding:6px;width:260px">';
+echo '<select name="instance" style="padding:6px">';
+foreach ($instances as $inst) {
+    $n = (string)($inst['instance_name'] ?? '');
+    $label = (string)($inst['display_name'] ?? '') !== '' ? $inst['display_name'] . ' (' . $n . ')' : $n;
+    echo '<option value="' . $e($n) . '"' . ($n === $testInstance ? ' selected' : '') . '>' . $e($label) . '</option>';
+}
+echo '</select>';
+echo '<button type="submit" style="padding:6px 12px">Testar</button>';
+echo '</form>';
+
+if ($testNumber !== '' && $validInstance) {
+    $pnJid = chat_store_normalize_jid($testNumber . '@s.whatsapp.net');
+    $api = new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $testInstance);
+
+    // Reiniciar a sessão (quando a instância está "open" mas as mensagens chegam com horas de atraso)
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['do'] ?? '') === 'restart') {
+        try {
+            $rr = $api->restartInstance($testInstance);
+            $okR = (int)($rr['status'] ?? 0) >= 200 && (int)($rr['status'] ?? 0) < 300;
+            echo '<div class="box ' . ($okR ? 'ok' : 'bad') . '">Reinício de ' . $e($testInstance) . ': HTTP ' . (int)($rr['status'] ?? 0)
+                . ($okR ? ' — aguarde 1 a 2 minutos e teste de novo.' : ' — ' . $e(mb_substr((string)($rr['body_raw'] ?? ''), 0, 200))) . '</div>';
+        } catch (Throwable $ex) {
+            echo '<div class="box bad">Erro ao reiniciar: ' . $e($ex->getMessage()) . '</div>';
+        }
+    }
+
+    // Conexão da instância
+    try {
+        $cs = $api->connectionState($testInstance, 8);
+        $state = (string)($cs['json']['instance']['state'] ?? ($cs['json']['state'] ?? ''));
+        echo '<div class="box"><strong>Conexão de ' . $e($testInstance) . ':</strong> '
+            . ($state === 'open' ? '<span class="ok">open (conectada)</span>' : '<span class="bad">' . $e($state !== '' ? $state : 'HTTP ' . ($cs['status'] ?? '?')) . '</span>')
+            . '</div>';
+    } catch (Throwable $ex) {
+        echo '<div class="box bad">Erro ao consultar conexão: ' . $e($ex->getMessage()) . '</div>';
+    }
+
+    echo '<form method="post" onsubmit="return confirm(\'Reiniciar a sessão do WhatsApp ' . $e($testInstance) . '? Ela fica fora do ar por alguns segundos.\')">'
+        . '<input type="hidden" name="number" value="' . $e($testNumber) . '"><input type="hidden" name="instance" value="' . $e($testInstance) . '">'
+        . '<input type="hidden" name="do" value="restart"><button type="submit" style="padding:6px 12px">Reiniciar sessão deste WhatsApp</button>'
+        . ' <span style="font-size:12px;color:#666">Use quando estiver "open" mas as mensagens chegarem com atraso.</span></form>';
+
+    $lids = chat_lid_for_pn($pnJid);
+    echo '<p>LIDs conhecidos deste número: ' . ($lids ? $e(implode(', ', $lids)) : '<em>nenhum</em>') . '</p>';
+
+    $records = [];
+    foreach (array_values(array_unique(array_merge([$pnJid], $lids))) as $qJid) {
+        try {
+            $res = $api->findRecentMessages($qJid, 20, 10);
+            $status = (int)($res['status'] ?? 0);
+            $recs = chat_evolution_records($res['json'] ?? null);
+            echo '<p>findMessages(' . $e($qJid) . '): HTTP ' . $status . ' — ' . count($recs) . ' registro(s)';
+            if ($status < 200 || $status >= 300) {
+                echo ' <span class="bad">' . $e(mb_substr((string)($res['body_raw'] ?? ''), 0, 300)) . '</span>';
+            }
+            echo '</p>';
+            foreach ($recs as $r) {
+                $records[(string)($r['key']['id'] ?? '')] = $r;
+            }
+        } catch (Throwable $ex) {
+            echo '<p class="bad">findMessages(' . $e($qJid) . ') falhou: ' . $e($ex->getMessage()) . '</p>';
+        }
+    }
+    unset($records['']);
+    usort($records, static fn($a, $b) => chat_evolution_record_ts($b) <=> chat_evolution_record_ts($a));
+
+    $imported = 0;
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['do'] ?? '') === 'import') {
+        foreach (array_reverse($records) as $r) {
+            $rj = (string)($r['key']['remoteJid'] ?? '');
+            if (strpos($rj, '@g.us') !== false) {
+                continue;
+            }
+            if (chat_import_evolution_record($r, $testInstance, $pnJid) > 0) {
+                $imported++;
+            }
+        }
+        echo '<div class="box ok">' . $imported . ' mensagem(ns) importada(s) para o sistema.</div>';
+    }
+
+    if ($records) {
+        echo '<table><tr><th>Horário (WhatsApp)</th><th>Dir.</th><th>remoteJid</th><th>remoteJidAlt</th><th>Texto</th><th>No sistema?</th></tr>';
+        $missing = 0;
+        foreach (array_slice($records, 0, 20) as $r) {
+            $k = (array)($r['key'] ?? []);
+            $m = (array)($r['message'] ?? []);
+            $txt = (string)($m['conversation'] ?? ($m['extendedTextMessage']['text'] ?? ''));
+            if ($txt === '') {
+                $txt = '[' . implode(',', array_keys($m)) . ']';
+            }
+            $inDb = chat_msg_find_by_external_id((string)($k['id'] ?? '')) > 0;
+            if (!$inDb) {
+                $missing++;
+            }
+            echo '<tr><td>' . $e($fmtTs(chat_evolution_record_ts($r))) . '</td>'
+                . '<td>' . (!empty($k['fromMe']) ? '→ enviada' : '← recebida') . '</td>'
+                . '<td>' . $e($k['remoteJid'] ?? '') . '</td><td>' . $e($k['remoteJidAlt'] ?? '') . '</td>'
+                . '<td>' . $e(mb_substr($txt, 0, 80)) . '</td>'
+                . '<td>' . ($inDb ? '<span class="ok">sim</span>' : '<span class="bad">NÃO</span>') . '</td></tr>';
+        }
+        echo '</table>';
+        if ($missing > 0) {
+            echo '<form method="post" style="margin-top:8px"><input type="hidden" name="number" value="' . $e($testNumber) . '">'
+                . '<input type="hidden" name="instance" value="' . $e($testInstance) . '"><input type="hidden" name="do" value="import">'
+                . '<button type="submit" style="padding:6px 12px">Importar as que faltam no sistema</button></form>';
+        }
+    } else {
+        echo '<p class="bad">A Evolution não devolveu nenhuma mensagem para este número nesta instância.</p>';
+    }
+} elseif ($testNumber !== '') {
+    echo '<p class="bad">Escolha uma instância válida.</p>';
+}
+
+echo '<hr>';
+
+// ---------------------------------------------------------------------------
+// 3) Rastreio do webhook
+// ---------------------------------------------------------------------------
+$onlyFromMe = ($_GET['fromme'] ?? '') === '1';
+$traceNumber = preg_replace('/\D+/', '', (string)($_GET['tnum'] ?? ''));
+echo '<h3>Mensagens recebidas pelo webhook (rastreio)</h3>';
+echo '<form method="get" style="display:flex;gap:8px;align-items:center">';
+echo '<input name="tnum" value="' . $e($traceNumber) . '" placeholder="Filtrar por número" style="padding:6px">';
+echo '<label><input type="checkbox" name="fromme" value="1"' . ($onlyFromMe ? ' checked' : '') . '> só enviadas</label>';
+echo '<button type="submit" style="padding:6px 12px">Filtrar</button></form>';
 try {
-    $stmt = db()->query("
-        SELECT id, remote_jid, LEFT(message_text, 50) as msg, from_me, message_timestamp, message_type, 
-               DATE_FORMAT(FROM_UNIXTIME(message_timestamp), '%d/%m %H:%i') as dt
-        FROM chat_messages 
-        ORDER BY id DESC 
-        LIMIT 10
-    ");
-    $msgs = $stmt->fetchAll();
-    
-    foreach ($msgs as $m) {
-        $dir = $m['from_me'] ? '→ ENVIADA' : '← RECEBIDA';
-        echo "[{$m['dt']}] {$dir} | JID: {$m['remote_jid']} | Type: {$m['message_type']} | \"{$m['msg']}\"\n";
+    $where = [];
+    $params = [];
+    if ($onlyFromMe) {
+        $where[] = 'from_me = 1';
     }
-    
-    if (empty($msgs)) {
-        echo "Nenhuma mensagem encontrada.\n";
+    if ($traceNumber !== '') {
+        $where[] = '(remote_jid LIKE ? OR remote_jid_alt LIKE ? OR resolved_jid LIKE ?)';
+        array_push($params, '%' . $traceNumber . '%', '%' . $traceNumber . '%', '%' . $traceNumber . '%');
     }
-} catch (Exception $e) {
-    echo "Erro: " . $e->getMessage() . "\n";
+    $st = db()->prepare("SELECT created_at, event, instance_name, from_me, remote_jid, remote_jid_alt, sender_pn, sender_lid,
+                                resolved_jid, external_id, result, text_sample
+                         FROM chat_webhook_trace" . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . "
+                         ORDER BY id DESC LIMIT 80");
+    $st->execute($params);
+    $traceRows = $st->fetchAll(PDO::FETCH_ASSOC);
+    if (!$traceRows) {
+        echo '<p>Nenhum registro. Se você mandou mensagem e nada aparece aqui, a Evolution NÃO entregou o evento ao webhook do sistema (ainda).</p>';
+    } else {
+        echo '<div style="overflow:auto"><table>';
+        echo '<tr><th>Chegou no sistema</th><th>Evento</th><th>WhatsApp</th><th>Dir.</th><th>remoteJid</th><th>remoteJidAlt</th><th>senderPn</th><th>senderLid</th><th>Gravada em</th><th>Resultado</th><th>Texto</th></tr>';
+        foreach ($traceRows as $tr) {
+            $isLidOnly = strpos((string)$tr['resolved_jid'], '@lid') !== false;
+            echo '<tr' . ($isLidOnly ? ' style="background:#fff3cd"' : '') . '>';
+            foreach (['created_at', 'event', 'instance_name'] as $c) {
+                echo '<td>' . $e($tr[$c]) . '</td>';
+            }
+            echo '<td>' . ($tr['from_me'] ? '→ enviada' : '← recebida') . '</td>';
+            foreach (['remote_jid', 'remote_jid_alt', 'sender_pn', 'sender_lid', 'resolved_jid', 'result', 'text_sample'] as $c) {
+                echo '<td>' . $e($tr[$c]) . '</td>';
+            }
+            echo '</tr>';
+        }
+        echo '</table></div>';
+    }
+} catch (Throwable $ex) {
+    echo '<p>O rastreio ainda não tem dados (a tabela é criada quando chega a primeira mensagem).</p>';
 }
 
+// Atraso de entrega: diferença entre a chegada no sistema e o horário da mensagem no WhatsApp
+try {
+    $lag = db()->query("SELECT instance_name, COUNT(*) AS n,
+                               ROUND(AVG(UNIX_TIMESTAMP(created_at) - message_timestamp)) AS avg_lag,
+                               MAX(UNIX_TIMESTAMP(created_at) - message_timestamp) AS max_lag
+                        FROM chat_messages
+                        WHERE created_at >= (NOW() - INTERVAL 6 HOUR) AND external_message_id IS NOT NULL
+                        GROUP BY instance_name ORDER BY max_lag DESC")->fetchAll(PDO::FETCH_ASSOC);
+    if ($lag) {
+        $fmtLag = static function ($s): string {
+            $s = (int)$s;
+            if ($s < 120) return $s . ' s';
+            if ($s < 7200) return round($s / 60) . ' min';
+            return round($s / 3600, 1) . ' h';
+        };
+        echo '<h3>Atraso de entrega (últimas 6h)</h3><table><tr><th>WhatsApp</th><th>Mensagens</th><th>Atraso médio</th><th>Maior atraso</th></tr>';
+        foreach ($lag as $l) {
+            echo '<tr><td>' . $e($l['instance_name']) . '</td><td>' . (int)$l['n'] . '</td><td>' . $e($fmtLag($l['avg_lag'])) . '</td><td>' . $e($fmtLag($l['max_lag'])) . '</td></tr>';
+        }
+        echo '</table><p style="font-size:12px;color:#666">Atraso = hora em que a mensagem foi gravada no sistema menos a hora da mensagem no WhatsApp.</p>';
+    }
+} catch (Throwable $ex) {
+    // sem dados
+}
+
+echo '<hr>';
+
+// ---------------------------------------------------------------------------
+// 3a) Volume de mensagens por WhatsApp (pelo horário da mensagem no WhatsApp).
+// Cada mensagem gera vários recibos (entregue/lido); em listas de transmissão e
+// grupos grandes isso multiplica o trabalho da Evolution naquele número.
+// ---------------------------------------------------------------------------
+echo '<h3>Volume de mensagens por WhatsApp (últimos 3 dias, pelo horário do WhatsApp)</h3>';
+echo '<p style="font-size:12px;color:#666">Só o que já chegou ao sistema: nos números atrasados o volume real é maior.</p>';
+try {
+    $since3d = time() - 3 * 86400;
+    $volSt = db()->prepare("SELECT instance_name,
+                                   SUM(from_me = 1) AS enviadas,
+                                   SUM(from_me = 0) AS recebidas,
+                                   SUM(remote_jid LIKE '%@g.us') AS em_grupo,
+                                   COUNT(DISTINCT CASE WHEN from_me = 1 AND remote_jid NOT LIKE '%@g.us' THEN remote_jid END) AS contatos_privados_enviados
+                            FROM chat_messages
+                            WHERE message_timestamp >= ? AND instance_name IS NOT NULL
+                            GROUP BY instance_name ORDER BY COUNT(*) DESC");
+    $volSt->execute([$since3d]);
+    $vol = $volSt->fetchAll(PDO::FETCH_ASSOC);
+    // Mesmo texto enviado a várias conversas (lista de transmissão / envio em massa)
+    $burstSt = db()->prepare("SELECT instance_name, MAX(n) AS maior FROM (
+                                  SELECT instance_name, message_text, COUNT(DISTINCT remote_jid) AS n
+                                  FROM chat_messages
+                                  WHERE message_timestamp >= ? AND from_me = 1 AND message_type = 'text'
+                                    AND instance_name IS NOT NULL AND CHAR_LENGTH(message_text) > 40
+                                  GROUP BY instance_name, message_text
+                              ) t GROUP BY instance_name");
+    $burstSt->execute([$since3d]);
+    $bursts = [];
+    foreach ($burstSt->fetchAll(PDO::FETCH_ASSOC) as $b) {
+        $bursts[(string)$b['instance_name']] = (int)$b['maior'];
+    }
+    foreach ($vol as &$v) {
+        $v['maior_envio_repetido'] = $bursts[(string)$v['instance_name']] ?? 0;
+    }
+    unset($v);
+    if ($vol) {
+        echo '<table><tr><th>WhatsApp</th><th>Enviadas</th><th>Recebidas</th><th>Em grupo</th><th>Contatos privados que receberam</th><th>Mesmo texto enviado a</th></tr>';
+        foreach ($vol as $v) {
+            $burst = (int)$v['maior_envio_repetido'];
+            echo '<tr><td>' . $e($v['instance_name']) . '</td><td>' . (int)$v['enviadas'] . '</td><td>' . (int)$v['recebidas'] . '</td>'
+                . '<td>' . (int)$v['em_grupo'] . '</td><td>' . (int)$v['contatos_privados_enviados'] . '</td>'
+                . '<td>' . ($burst >= 20 ? '<span class="bad">' . $burst . ' conversas</span>' : $burst) . '</td></tr>';
+        }
+        echo '</table><p style="font-size:12px;color:#666">"Mesmo texto enviado a": maior quantidade de conversas que receberam exatamente o mesmo texto nos 3 dias (lista de transmissão / envio em massa).</p>';
+    }
+} catch (Throwable $ex) {
+    echo '<p class="bad">Erro ao consultar: ' . $e($ex->getMessage()) . '</p>';
+}
+
+// ---------------------------------------------------------------------------
+// 3b) Quanto o SISTEMA chama a Evolution (por WhatsApp e tipo de chamada).
+// Consultas de grupo (findGroupInfos, findGroupMembers, fetchAllGroups) vão ao
+// WhatsApp ao vivo; em excesso, o WhatsApp limita a sessão e ela passa a
+// receber com atraso. Serve para achar o que o sistema faz a mais nesses números.
+// ---------------------------------------------------------------------------
+$hours = max(1, min(72, (int)($_GET['h'] ?? 24)));
+echo '<h3>Chamadas do sistema à Evolution (últimas ' . $hours . 'h)</h3>';
+echo '<p style="font-size:12px"><a href="?h=1">1h</a> · <a href="?h=6">6h</a> · <a href="?h=24">24h</a> · <a href="?h=72">72h</a></p>';
+try {
+    $st = db()->prepare("SELECT action, COUNT(*) AS n,
+                                SUM(status = 'error') AS errs,
+                                MIN(created_at) AS first_at, MAX(created_at) AS last_at
+                         FROM integration_logs
+                         WHERE provider = 'evolution' AND created_at >= (NOW() - INTERVAL ? HOUR)
+                         GROUP BY action ORDER BY n DESC LIMIT 40");
+    $st->execute([$hours]);
+    $calls = $st->fetchAll(PDO::FETCH_ASSOC);
+    if (!$calls) {
+        echo '<p>Nenhuma chamada registrada.</p>';
+    } else {
+        $total = array_sum(array_map(static fn($c) => (int)$c['n'], $calls));
+        echo '<p>Total (top 40): <strong>' . $total . '</strong> chamadas — média de ' . round($total / ($hours * 60), 1) . ' por minuto.</p>';
+        echo '<table><tr><th>Chamada</th><th>Qtde</th><th>Por minuto</th><th>Erros</th><th>Primeira</th><th>Última</th></tr>';
+        foreach ($calls as $c) {
+            $isGroupLive = preg_match('#findGroupInfos|findGroupMembers|fetchAllGroups|participants|updateGroupSetting#i', (string)$c['action']);
+            echo '<tr' . ($isGroupLive && (int)$c['n'] > 50 ? ' style="background:#fff3cd"' : '') . '>'
+                . '<td>' . $e($c['action']) . '</td><td>' . (int)$c['n'] . '</td>'
+                . '<td>' . round((int)$c['n'] / ($hours * 60), 2) . '</td>'
+                . '<td>' . ((int)$c['errs'] > 0 ? '<span class="bad">' . (int)$c['errs'] . '</span>' : '0') . '</td>'
+                . '<td>' . $e($c['first_at']) . '</td><td>' . $e($c['last_at']) . '</td></tr>';
+        }
+        echo '</table>';
+        echo '<p style="font-size:12px;color:#666">Amarelo: consulta de grupo ao vivo no WhatsApp com mais de 50 chamadas no período.</p>';
+    }
+} catch (Throwable $ex) {
+    echo '<p class="bad">Erro ao consultar: ' . $e($ex->getMessage()) . '</p>';
+}
+
+echo '<hr>';
+
+// ---------------------------------------------------------------------------
+// 4) Últimas chamadas à Evolution e últimas mensagens gravadas
+// ---------------------------------------------------------------------------
+echo '<h3>Últimas 20 chamadas à Evolution API</h3>';
+echo '<pre style="max-height:400px;overflow:auto;font-size:12px;background:#1a1a1a;color:#0f0;padding:12px;border-radius:8px">';
+try {
+    $logs = db()->query("SELECT action, status, http_status, response_payload, error_message, created_at
+                         FROM integration_logs WHERE provider = 'evolution' ORDER BY id DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+    if (!$logs) {
+        echo "Nenhum log.\n";
+    }
+    foreach ($logs as $log) {
+        echo '[' . $e($log['created_at']) . '] ' . $e($log['action']) . ' | HTTP: ' . $e($log['http_status']) . ' | ' . $e($log['status']) . "\n";
+        if (!empty($log['error_message'])) {
+            echo '  ERRO: ' . $e($log['error_message']) . "\n";
+        }
+        $resp = (string)($log['response_payload'] ?? '');
+        echo '  ' . $e(mb_strlen($resp) > 300 ? mb_substr($resp, 0, 300) . '...' : $resp) . "\n";
+    }
+} catch (Throwable $ex) {
+    echo 'Erro ao consultar logs: ' . $e($ex->getMessage()) . "\n";
+}
 echo '</pre>';
 
-// Link para ver o error_log
-echo '<hr>';
-echo '<p><strong>Para ver os payloads completos do webhook:</strong></p>';
-echo '<ul>';
-echo '<li>Acesse o error_log do PHP no servidor</li>';
-echo '<li>Procure por <code>[WEBHOOK]</code> nos logs</li>';
-echo '<li>Cada mensagem recebida gera log com <code>[WEBHOOK] event:\'messages.upsert\'</code></li>';
-echo '</ul>';
+echo '<h3>Últimas 15 mensagens gravadas</h3>';
+echo '<pre style="max-height:400px;overflow:auto;font-size:12px;background:#1a1a1a;color:#fff;padding:12px;border-radius:8px">';
+try {
+    $msgs = db()->query("SELECT id, remote_jid, instance_name, LEFT(message_text, 60) AS msg, from_me, message_timestamp, message_type, created_at
+                         FROM chat_messages ORDER BY id DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($msgs as $m) {
+        echo '[gravada ' . $e($m['created_at']) . ' | WhatsApp ' . $e($fmtTs($m['message_timestamp'])) . '] '
+            . ($m['from_me'] ? '→ ENVIADA' : '← RECEBIDA') . ' | ' . $e($m['instance_name']) . ' | ' . $e($m['remote_jid'])
+            . ' | ' . $e($m['message_type']) . ' | "' . $e($m['msg']) . "\"\n";
+    }
+} catch (Throwable $ex) {
+    echo 'Erro: ' . $e($ex->getMessage()) . "\n";
+}
+echo '</pre>';
 
 echo '<br><a href="/admin_settings.php">Voltar</a>';

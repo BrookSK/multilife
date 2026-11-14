@@ -1,0 +1,496 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Gravação de mensagens do chat (chat_messages) sem duplicar e resolução de LID.
+ *
+ * Duplicação: a mesma mensagem pode chegar por vários caminhos ao mesmo tempo
+ * (resposta do envio pela API, webhook messages.upsert, webhook send.message,
+ * webhook entregue duas vezes). Todos usam o id da mensagem no WhatsApp (key.id,
+ * gravado em external_message_id) com um lock no MySQL para que só um grave.
+ *
+ * LID: o WhatsApp pode identificar o contato por um código "XXXX@lid" em vez do
+ * número. Guardamos o par LID -> número para gravar tudo na conversa certa.
+ */
+
+/** Lock por mensagem (GET_LOCK do MySQL). Retorna true se conseguiu. */
+function chat_msg_lock(string $externalId, int $timeoutSeconds = 5): bool
+{
+    if ($externalId === '') {
+        return false;
+    }
+    try {
+        $st = db()->prepare('SELECT GET_LOCK(?, ?)');
+        $st->execute(['cm_' . md5($externalId), $timeoutSeconds]);
+        return (int)$st->fetchColumn() === 1;
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] GET_LOCK falhou: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function chat_msg_unlock(string $externalId): void
+{
+    if ($externalId === '') {
+        return;
+    }
+    try {
+        $st = db()->prepare('SELECT RELEASE_LOCK(?)');
+        $st->execute(['cm_' . md5($externalId)]);
+    } catch (Throwable $e) {
+        // sem ação: o lock é liberado ao fechar a conexão
+    }
+}
+
+/** Id da linha já gravada com esse key.id (0 se não existe). */
+function chat_msg_find_by_external_id(string $externalId): int
+{
+    if ($externalId === '') {
+        return 0;
+    }
+    $st = db()->prepare('SELECT id FROM chat_messages WHERE external_message_id = ? ORDER BY id ASC LIMIT 1');
+    $st->execute([$externalId]);
+    return (int)($st->fetchColumn() ?: 0);
+}
+
+/**
+ * Grava a mídia ENVIADA pelo sistema (chat_send_media.php). A Evolution guarda a
+ * mensagem antes de responder ao envio, então a sincronização ou o webhook podem
+ * já ter criado a linha (sem o arquivo, mostrando só "[Imagem]"). Nesse caso a
+ * linha existente é completada com o arquivo local, em vez de criar outra.
+ *
+ * @param array $f remote_jid, instance_name, message_text, message_type, media_url,
+ *                 media_mime_type, media_filename, media_size, audio_transcription,
+ *                 message_timestamp, external_message_id
+ * @return int id da linha
+ */
+function chat_store_sent_media(array $f): int
+{
+    $extId = (string)($f['external_message_id'] ?? '');
+    $locked = $extId !== '' && chat_msg_lock($extId, 30);
+    try {
+        $existing = chat_msg_find_by_external_id($extId);
+        if ($existing > 0) {
+            db()->prepare("UPDATE chat_messages
+                           SET media_url = ?, media_mime_type = ?, media_filename = ?, media_size = ?,
+                               message_type = ?, message_text = ?, instance_name = COALESCE(instance_name, ?),
+                               audio_transcription = COALESCE(audio_transcription, ?)
+                           WHERE id = ?")
+                ->execute([
+                    $f['media_url'] ?? null, $f['media_mime_type'] ?? null, $f['media_filename'] ?? null, $f['media_size'] ?? null,
+                    $f['message_type'] ?? 'document', $f['message_text'] ?? '', $f['instance_name'] ?? null,
+                    $f['audio_transcription'] ?? null, $existing,
+                ]);
+            // Linhas repetidas do mesmo key.id (de versões anteriores): fica só uma
+            db()->prepare('DELETE FROM chat_messages WHERE external_message_id = ? AND id <> ?')->execute([$extId, $existing]);
+            return $existing;
+        }
+        db()->prepare("INSERT INTO chat_messages
+                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, media_size,
+                 audio_transcription, from_me, message_timestamp, external_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)")
+            ->execute([
+                $f['remote_jid'], $f['instance_name'] ?? null, $f['message_text'] ?? '', $f['message_type'] ?? 'document',
+                $f['media_url'] ?? null, $f['media_mime_type'] ?? null, $f['media_filename'] ?? null, $f['media_size'] ?? null,
+                $f['audio_transcription'] ?? null, (int)($f['message_timestamp'] ?? time()), $extId !== '' ? $extId : null,
+            ]);
+        return (int)db()->lastInsertId();
+    } finally {
+        if ($locked) {
+            chat_msg_unlock($extId);
+        }
+    }
+}
+
+/** Mesmo formato usado no resto do chat: número@s.whatsapp.net ou id@g.us. */
+function chat_store_normalize_jid(string $jid): string
+{
+    $numberOnly = preg_replace('/@(s\.whatsapp\.net|g\.us|lid|c\.us|broadcast)$/', '', $jid);
+    if (strpos($jid, '@g.us') !== false) {
+        return $numberOnly . '@g.us';
+    }
+    return $numberOnly . '@s.whatsapp.net';
+}
+
+// ---------------------------------------------------------------------------
+// Mapa LID -> número
+// ---------------------------------------------------------------------------
+
+function chat_lid_ensure_table(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    db()->exec("CREATE TABLE IF NOT EXISTS chat_lid_map (
+        lid_jid VARCHAR(100) NOT NULL,
+        pn_jid VARCHAR(100) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (lid_jid),
+        INDEX idx_pn (pn_jid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $done = true;
+}
+
+function chat_lid_lookup(string $lidJid): string
+{
+    if (substr($lidJid, -4) !== '@lid') {
+        return '';
+    }
+    try {
+        chat_lid_ensure_table();
+        $st = db()->prepare('SELECT pn_jid FROM chat_lid_map WHERE lid_jid = ? LIMIT 1');
+        $st->execute([$lidJid]);
+        return (string)($st->fetchColumn() ?: '');
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] erro ao ler mapa LID: ' . $e->getMessage());
+        return '';
+    }
+}
+
+/** LIDs conhecidos de um número (para buscar o histórico na Evolution). */
+function chat_lid_for_pn(string $pnJid): array
+{
+    try {
+        chat_lid_ensure_table();
+        $st = db()->prepare('SELECT lid_jid FROM chat_lid_map WHERE pn_jid = ?');
+        $st->execute([chat_store_normalize_jid($pnJid)]);
+        return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN) ?: []);
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/**
+ * Guarda o par LID -> número. Quando o par é novo, move para a conversa certa
+ * as mensagens que já tinham sido gravadas na conversa "fantasma" do LID
+ * (LID@s.whatsapp.net), ex.: respostas enviadas pelo celular.
+ */
+function chat_lid_remember(string $lidJid, string $pnJid): void
+{
+    if (substr($lidJid, -4) !== '@lid' || strpos($pnJid, '@s.whatsapp.net') === false) {
+        return;
+    }
+    $pnJid = chat_store_normalize_jid($pnJid);
+    try {
+        chat_lid_ensure_table();
+        if (chat_lid_lookup($lidJid) === $pnJid) {
+            return;
+        }
+        db()->prepare('INSERT INTO chat_lid_map (lid_jid, pn_jid) VALUES (?, ?) ON DUPLICATE KEY UPDATE pn_jid = VALUES(pn_jid)')
+            ->execute([$lidJid, $pnJid]);
+
+        $ghostJid = chat_store_normalize_jid($lidJid);
+        if ($ghostJid === $pnJid) {
+            return;
+        }
+        $moved = db()->prepare('UPDATE chat_messages SET remote_jid = ? WHERE remote_jid = ?');
+        $moved->execute([$pnJid, $ghostJid]);
+        try {
+            db()->prepare('UPDATE chat_reactions SET remote_jid = ? WHERE remote_jid = ?')->execute([$pnJid, $ghostJid]);
+        } catch (Throwable $e) { /* tabela pode não existir */ }
+
+        $stPn = db()->prepare('SELECT COUNT(*) FROM chat_contacts WHERE remote_jid = ?');
+        $stPn->execute([$pnJid]);
+        if ((int)$stPn->fetchColumn() > 0) {
+            db()->prepare('DELETE FROM chat_contacts WHERE remote_jid = ?')->execute([$ghostJid]);
+        } else {
+            db()->prepare('UPDATE chat_contacts SET remote_jid = ? WHERE remote_jid = ?')->execute([$pnJid, $ghostJid]);
+        }
+        if ($moved->rowCount() > 0) {
+            error_log("[CHAT_STORE] LID $lidJid -> $pnJid: " . $moved->rowCount() . ' mensagem(ns) movida(s) para a conversa certa');
+        }
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] erro ao gravar mapa LID: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Descobre o número de um LID pelo histórico da Evolution: as mensagens
+ * RECEBIDAS desse contato trazem o número em senderPn/remoteJidAlt.
+ */
+function chat_lid_resolve_via_evolution(string $lidJid, string $instanceName): string
+{
+    if (substr($lidJid, -4) !== '@lid' || $instanceName === '') {
+        return '';
+    }
+    try {
+        $api = new EvolutionApiV1(
+            (string)admin_setting_get('evolution.base_url'),
+            (string)admin_setting_get('evolution.api_key'),
+            $instanceName
+        );
+        $res = $api->findRecentMessages($lidJid, 50, 6);
+        foreach (chat_evolution_records($res['json'] ?? null) as $rec) {
+            $key = is_array($rec['key'] ?? null) ? $rec['key'] : [];
+            if ((string)($key['remoteJid'] ?? '') !== $lidJid) {
+                continue;
+            }
+            foreach (['remoteJidAlt', 'senderPn'] as $field) {
+                $cand = (string)($key[$field] ?? '');
+                if ($field === 'senderPn' && !empty($key['fromMe'])) {
+                    continue; // em mensagem enviada, senderPn é o NOSSO número
+                }
+                if (strpos($cand, '@s.whatsapp.net') !== false) {
+                    chat_lid_remember($lidJid, $cand);
+                    return chat_store_normalize_jid($cand);
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] erro ao resolver LID na Evolution: ' . $e->getMessage());
+    }
+    return '';
+}
+
+/**
+ * Baixa a mídia de uma mensagem pela Evolution (getBase64FromMediaMessage) e
+ * grava em /uploads/chat_media/AAAA-MM/. Retorna ['url' => ..., 'mime' => ...] ou null.
+ */
+function chat_evolution_fetch_media(array $rec, string $instanceName): ?array
+{
+    if ($instanceName === '' || empty($rec['key']['id'])) {
+        return null;
+    }
+    try {
+        $api = new EvolutionApiV1(
+            (string)admin_setting_get('evolution.base_url'),
+            (string)admin_setting_get('evolution.api_key'),
+            $instanceName
+        );
+        $res = http_json_request(
+            'POST',
+            $api->getBaseUrl() . '/chat/getBase64FromMediaMessage/' . rawurlencode($instanceName),
+            ['apikey' => $api->getApiKey()],
+            ['message' => ['key' => $rec['key'], 'message' => $rec['message'] ?? []], 'convertToMp4' => false],
+            20
+        );
+        $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+        $b64 = (string)($json['base64'] ?? '');
+        if ((int)($res['status'] ?? 0) < 200 || (int)($res['status'] ?? 0) >= 300 || $b64 === '') {
+            return null;
+        }
+        $bin = base64_decode($b64, true);
+        if ($bin === false || $bin === '') {
+            return null;
+        }
+        $mime = (string)($json['mimetype'] ?? 'application/octet-stream');
+        $extMap = [
+            'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif',
+            'video/mp4' => 'mp4', 'audio/ogg' => 'ogg', 'audio/mpeg' => 'mp3', 'audio/mp4' => 'm4a',
+            'application/pdf' => 'pdf',
+        ];
+        $baseMime = strtolower(trim(explode(';', $mime)[0]));
+        $ext = $extMap[$baseMime] ?? (strtolower(pathinfo((string)($json['fileName'] ?? ''), PATHINFO_EXTENSION)) ?: 'bin');
+        $ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'bin';
+        $dir = dirname(__DIR__) . '/uploads/chat_media/' . date('Y-m');
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            return null;
+        }
+        $name = uniqid('chat_', true) . '.' . $ext;
+        if (@file_put_contents($dir . '/' . $name, $bin) === false) {
+            return null;
+        }
+        return ['url' => '/uploads/chat_media/' . date('Y-m') . '/' . $name, 'mime' => $mime];
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] erro ao baixar mídia da Evolution: ' . $e->getMessage());
+        return null;
+    }
+}
+
+/** Horário (unix) de um registro da Evolution (número, string ou {low,high}). */
+function chat_evolution_record_ts(array $rec): int
+{
+    $raw = $rec['messageTimestamp'] ?? 0;
+    if (is_array($raw)) {
+        $raw = $raw['low'] ?? 0;
+    }
+    return is_numeric($raw) ? (int)$raw : 0;
+}
+
+/** Lista de mensagens da resposta do findMessages (formatos v1 e v2). */
+function chat_evolution_records($json): array
+{
+    if (!is_array($json)) {
+        return [];
+    }
+    $records = $json['messages']['records'] ?? ($json['records'] ?? (isset($json[0]) ? $json : []));
+    return is_array($records) ? array_values(array_filter($records, 'is_array')) : [];
+}
+
+// ---------------------------------------------------------------------------
+// Importação do histórico da Evolution (reserva quando o webhook não entrega)
+// ---------------------------------------------------------------------------
+
+/**
+ * Grava uma mensagem vinda do findMessages da Evolution, se ainda não existir.
+ * Usada pela sincronização da conversa aberta: garante que respostas enviadas
+ * pelo celular apareçam mesmo que o webhook falhe ou chegue com LID.
+ *
+ * @return int id da linha criada (0 se já existia ou foi ignorada)
+ */
+function chat_import_evolution_record(array $rec, string $instanceName, string $conversationJid): int
+{
+    $key = is_array($rec['key'] ?? null) ? $rec['key'] : [];
+    $extId = (string)($key['id'] ?? '');
+    if ($extId === '') {
+        return 0;
+    }
+    $msg = is_array($rec['message'] ?? null) ? $rec['message'] : [];
+    // Mensagens embrulhadas (temporárias / enviadas de outro aparelho)
+    foreach (['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'documentWithCaptionMessage'] as $wrap) {
+        if (isset($msg[$wrap]['message']) && is_array($msg[$wrap]['message'])) {
+            $msg = $msg[$wrap]['message'];
+        }
+    }
+    if (isset($msg['deviceSentMessage']['message']) && is_array($msg['deviceSentMessage']['message'])) {
+        $msg = $msg['deviceSentMessage']['message'];
+    }
+    foreach (['protocolMessage', 'reactionMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'encReactionMessage'] as $sys) {
+        if (isset($msg[$sys]) && count($msg) <= 2) {
+            return 0;
+        }
+    }
+
+    $type = 'text';
+    $text = (string)($msg['conversation'] ?? ($msg['extendedTextMessage']['text'] ?? ''));
+    $map = [
+        'imageMessage' => ['image', '[Imagem]'],
+        'videoMessage' => ['video', '[Vídeo]'],
+        'audioMessage' => ['audio', '[Áudio]'],
+        'documentMessage' => ['document', '[Documento]'],
+        'stickerMessage' => ['sticker', '[Sticker]'],
+    ];
+    $filename = null;
+    foreach ($map as $field => [$t, $placeholder]) {
+        if (isset($msg[$field]) && is_array($msg[$field])) {
+            $type = $t;
+            $text = (string)($msg[$field]['caption'] ?? '') ?: $placeholder;
+            $filename = $msg[$field]['fileName'] ?? null;
+            break;
+        }
+    }
+    if ($text === '') {
+        return 0;
+    }
+
+    $fromMe = !empty($key['fromMe']) ? 1 : 0;
+    $ts = chat_evolution_record_ts($rec);
+    if ($ts <= 0) {
+        $ts = time();
+    }
+    $jid = chat_store_normalize_jid($conversationJid);
+
+    $locked = chat_msg_lock($extId);
+    try {
+        if (chat_msg_find_by_external_id($extId) > 0) {
+            return 0;
+        }
+        // Eco de mensagem do sistema gravada sem key.id (linhas antigas, follow-ups,
+        // mídia): só associa o id. Janela larga porque a linha do sistema usa o
+        // horário do servidor e pode ter sido gravada bem antes desta sincronização.
+        if ($fromMe) {
+            if ($type === 'text') {
+                $stEcho = db()->prepare("SELECT id FROM chat_messages WHERE remote_jid = ? AND from_me = 1 AND message_text = ?
+                                         AND external_message_id IS NULL AND message_timestamp BETWEEN ? AND ? ORDER BY id ASC LIMIT 1");
+                $stEcho->execute([$jid, $text, $ts - 86400, $ts + 86400]);
+            } else {
+                $stEcho = db()->prepare("SELECT id FROM chat_messages WHERE remote_jid = ? AND from_me = 1 AND message_type = ?
+                                         AND external_message_id IS NULL AND message_timestamp BETWEEN ? AND ? ORDER BY id ASC LIMIT 1");
+                $stEcho->execute([$jid, $type, $ts - 600, $ts + 600]);
+            }
+            $echoId = (int)($stEcho->fetchColumn() ?: 0);
+            if ($echoId > 0) {
+                db()->prepare('UPDATE chat_messages SET external_message_id = ? WHERE id = ?')->execute([$extId, $echoId]);
+                return 0;
+            }
+        }
+        $senderName = (!$fromMe && !empty($rec['pushName'])) ? (string)$rec['pushName'] : null;
+        // Mídia: baixa o arquivo da Evolution (senão aparece só "[Imagem]")
+        $media = $type !== 'text' ? chat_evolution_fetch_media($rec, $instanceName) : null;
+        db()->prepare("INSERT INTO chat_messages
+                (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp, sender_name, external_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([
+                $jid, $instanceName !== '' ? $instanceName : null, $text, $type,
+                $media['url'] ?? null, $media['mime'] ?? null, $filename,
+                $fromMe, $ts, $senderName, $extId,
+            ]);
+        $newId = (int)db()->lastInsertId();
+
+        // Conversa sobe na lista (também quando a mensagem foi ENVIADA)
+        db()->prepare("INSERT IGNORE INTO chat_contacts (remote_jid, instance_name, contact_name, is_group, last_message_timestamp)
+                       VALUES (?, ?, ?, 0, ?)")
+            ->execute([$jid, $instanceName !== '' ? $instanceName : null, $senderName ?? str_replace('@s.whatsapp.net', '', $jid), $ts]);
+        db()->prepare("UPDATE chat_contacts
+                       SET last_message_timestamp = ?, last_message_text = ?, last_message_type = ?, updated_at = CURRENT_TIMESTAMP
+                       WHERE remote_jid = ? AND (last_message_timestamp IS NULL OR last_message_timestamp <= ?)")
+            ->execute([$ts, $text, $type, $jid, $ts]);
+        // Resposta do contato reabre a conversa concluída (mesma regra do webhook)
+        if (!$fromMe) {
+            db()->prepare("UPDATE chat_contacts SET status = 'aguardando', updated_at = CURRENT_TIMESTAMP
+                           WHERE remote_jid = ? AND status = 'resolvido'")
+                ->execute([$jid]);
+        }
+        return $newId;
+    } finally {
+        if ($locked) {
+            chat_msg_unlock($extId);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rastreio do webhook (diagnóstico): o que chegou e o que foi feito com cada
+// mensagem. Visível em /admin_webhook_debug.php. Guarda só os últimos 3 dias.
+// ---------------------------------------------------------------------------
+
+function chat_webhook_trace(string $event, array $key, string $result, string $resolvedJid = '', string $text = ''): void
+{
+    try {
+        static $ready = false;
+        if (!$ready) {
+            db()->exec("CREATE TABLE IF NOT EXISTS chat_webhook_trace (
+                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                event VARCHAR(40) NOT NULL,
+                instance_name VARCHAR(100) DEFAULT NULL,
+                from_me TINYINT(1) NOT NULL DEFAULT 0,
+                remote_jid VARCHAR(100) DEFAULT NULL,
+                remote_jid_alt VARCHAR(100) DEFAULT NULL,
+                sender_pn VARCHAR(100) DEFAULT NULL,
+                sender_lid VARCHAR(100) DEFAULT NULL,
+                resolved_jid VARCHAR(100) DEFAULT NULL,
+                external_id VARCHAR(100) DEFAULT NULL,
+                result VARCHAR(120) NOT NULL,
+                text_sample VARCHAR(120) DEFAULT NULL,
+                PRIMARY KEY (id),
+                INDEX idx_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $ready = true;
+        }
+        $cut = static fn($v, int $n) => $v === null || $v === '' ? null : mb_substr((string)$v, 0, $n);
+        db()->prepare('INSERT INTO chat_webhook_trace
+                (event, instance_name, from_me, remote_jid, remote_jid_alt, sender_pn, sender_lid, resolved_jid, external_id, result, text_sample)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([
+                $cut($event, 40),
+                $cut($GLOBALS['_webhookInstanceName'] ?? null, 100),
+                !empty($key['fromMe']) ? 1 : 0,
+                $cut($key['remoteJid'] ?? null, 100),
+                $cut($key['remoteJidAlt'] ?? null, 100),
+                $cut($key['senderPn'] ?? null, 100),
+                $cut($key['senderLid'] ?? null, 100),
+                $cut($resolvedJid, 100),
+                $cut($key['id'] ?? null, 100),
+                $cut($result, 120),
+                $cut($text, 120),
+            ]);
+        if (random_int(1, 200) === 1) {
+            db()->exec('DELETE FROM chat_webhook_trace WHERE created_at < (NOW() - INTERVAL 3 DAY)');
+        }
+    } catch (Throwable $e) {
+        // diagnóstico nunca pode atrapalhar o webhook
+    }
+}

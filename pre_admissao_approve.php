@@ -62,6 +62,12 @@ try {
 // frequency era ENUM e rejeitava '3x_semana' etc. (o UPDATE da autorização falhava calado).
 authorization_requests_ensure_frequency_column();
 
+// Cliente e polo do atendimento (resolvidos FORA da transação: o helper pode
+// rodar DDL idempotente na primeira chamada). O cliente vem da operadora; o polo
+// vem do formulário ou, se vazio, do polo padrão da operadora.
+clients_ensure_schema();
+$org = org_resolve(null, $healthInsurerId, (int)($_POST['polo_id'] ?? 0));
+
 try {
     $db->beginTransaction();
     
@@ -88,6 +94,7 @@ try {
     $updateAssignmentStmt = $db->prepare("
         UPDATE patient_assignments 
         SET status = 'admitted', approved_at = NOW(), approved_by_user_id = ?, admitted_at = NOW(), weekdays = ?, health_insurer_id = ?,
+            client_id = COALESCE(?, client_id), polo_id = COALESCE(?, polo_id),
             external_login = ?, external_password = ?, orientation_id = ?
         WHERE id = ?
     ");
@@ -103,6 +110,8 @@ try {
         auth_user_id(),
         $weekdaysJson,
         $healthInsurerId,
+        $org['client_id'],
+        $org['polo_id'],
         $externalLogin !== '' ? $externalLogin : null,
         $externalPassword !== '' ? secure_encrypt($externalPassword) : null, // gravada criptografada
         $orientationId > 0 ? $orientationId : null,

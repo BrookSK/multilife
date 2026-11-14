@@ -38,16 +38,14 @@ $payload = [
 ];
 
 if ($webhook !== '') {
+    // Mesma configuração das demais instâncias (app/whatsapp_webhook_config.php,
+    // modelo helpdeskON): URL única, base64 ligado e só os eventos usados.
     $payload['webhook'] = $webhook;
-    $payload['webhook_by_events'] = true;
-    $payload['events'] = [
-        'QRCODE_UPDATED',
-        'MESSAGES_UPSERT',
-        'CHATS_UPSERT',
-        'CONNECTION_UPDATE',
-        'GROUPS_UPSERT',
-        'GROUP_PARTICIPANTS_UPDATE',
-    ];
+    $payload['webhook_by_events'] = false;
+    $payload['webhookByEvents'] = false;
+    $payload['webhook_base64'] = true;
+    $payload['webhookBase64'] = true;
+    $payload['events'] = WHATSAPP_WEBHOOK_EVENTS;
 }
 
 $evo = new EvolutionApiV1();

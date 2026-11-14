@@ -73,23 +73,62 @@ function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlr
     [$first, $last] = billing_closure_month_range($month);
     $statusIn = billing_closure_status_in_sql();
 
+    // Garante polo_id / internal_notes / weaning_at (idempotente; fora de transação).
+    if (function_exists('clients_ensure_schema')) {
+        clients_ensure_schema();
+    }
+
     $closureFilter = $includeAlreadyClosed ? '' : ' AND bdr.monthly_closure_id IS NULL';
 
     $params = ['first' => $first, 'last' => $last];
     $extraWhere = '';
 
-    // Filtros opcionais (Fechamento Mensal): paciente, operadora, profissional, operador.
-    if (!empty($filters['patient_q'])) {
+    // Cliente e polo EFETIVOS do atendimento: o que estiver no atendimento ou,
+    // se vazio, o da operadora. (Antes o filtro usava só pa.client_id e não
+    // achava atendimentos cujo cliente vinha apenas da operadora.)
+    $clientExpr = 'COALESCE(pa.client_id, hi.client_id)';
+    $poloExpr = 'COALESCE(pa.polo_id, hi.polo_id)';
+
+    // Filtros opcionais (Fechamento Mensal).
+    $patientQ = trim((string)($filters['patient_q'] ?? ''));
+    if ($patientQ !== '') {
+        // "\" é o escape padrão do LIKE no MySQL/MariaDB.
         $extraWhere .= ' AND p.full_name LIKE :patient_q';
-        $params['patient_q'] = '%' . $filters['patient_q'] . '%';
+        $params['patient_q'] = '%' . addcslashes($patientQ, '%_\\') . '%';
     }
     if (!empty($filters['insurer_id'])) {
-        $extraWhere .= ' AND pa.health_insurer_id = :insurer_id';
-        $params['insurer_id'] = (int)$filters['insurer_id'];
+        if ((int)$filters['insurer_id'] === -1) {
+            $extraWhere .= ' AND pa.health_insurer_id IS NULL';
+        } else {
+            $extraWhere .= ' AND pa.health_insurer_id = :insurer_id';
+            $params['insurer_id'] = (int)$filters['insurer_id'];
+        }
     }
     if (!empty($filters['client_id'])) {
-        $extraWhere .= ' AND pa.client_id = :client_id';
-        $params['client_id'] = (int)$filters['client_id'];
+        if ((int)$filters['client_id'] === -1) {
+            $extraWhere .= " AND $clientExpr IS NULL";
+        } else {
+            $extraWhere .= " AND $clientExpr = :client_id";
+            $params['client_id'] = (int)$filters['client_id'];
+        }
+    }
+    if (!empty($filters['polo_id'])) {
+        if ((int)$filters['polo_id'] === -1) {
+            $extraWhere .= " AND $poloExpr IS NULL";
+        } else {
+            $extraWhere .= " AND $poloExpr = :polo_id";
+            $params['polo_id'] = (int)$filters['polo_id'];
+        }
+    }
+    $specialtyF = trim((string)($filters['specialty'] ?? ''));
+    if ($specialtyF !== '') {
+        $extraWhere .= ' AND TRIM(pa.specialty) = :specialty';
+        $params['specialty'] = $specialtyF;
+    }
+    $frequencyF = trim((string)($filters['frequency'] ?? ''));
+    if ($frequencyF !== '') {
+        $extraWhere .= ' AND pa.session_frequency = :frequency';
+        $params['frequency'] = $frequencyF;
     }
     if (!empty($filters['professional_id'])) {
         $extraWhere .= ' AND pa.professional_user_id = :professional_id';
@@ -111,22 +150,34 @@ function billing_closure_fetch_sessions(PDO $db, string $month, bool $includeAlr
             pa.patient_id,
             pa.professional_user_id,
             pa.health_insurer_id,
-            pa.client_id,
+            $clientExpr AS client_id,
+            $poloExpr AS polo_id,
             pa.specialty,
+            pa.session_frequency,
+            pa.session_quantity,
+            pa.is_indefinite,
+            pa.admitted_at,
+            pa.ended_at,
+            pa.weaning_at,
+            pa.internal_notes,
+            pa.weekdays,
+            pa.month_days,
             COALESCE(pa.authorized_value, pa.payment_value, 0) AS receivable_per_session,
             COALESCE(pa.agreed_value, pa.payment_value, 0) AS payable_per_session,
             p.full_name AS patient_name,
             u.name AS professional_name,
             op.name AS operator_name,
             hi.name AS insurer_name,
-            cl.name AS client_name
+            cl.name AS client_name,
+            po.name AS polo_name
         FROM billing_document_requirements bdr
         INNER JOIN patient_assignments pa ON pa.id = bdr.assignment_id
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
         LEFT JOIN users op ON op.id = bdr.created_by_user_id
         LEFT JOIN health_insurers hi ON hi.id = pa.health_insurer_id
-        LEFT JOIN clients cl ON cl.id = pa.client_id
+        LEFT JOIN clients cl ON cl.id = $clientExpr
+        LEFT JOIN polos po ON po.id = $poloExpr
         WHERE bdr.status IN ($statusIn)
           AND bdr.session_date IS NOT NULL
           AND bdr.session_date BETWEEN :first AND :last
@@ -332,17 +383,36 @@ function billing_closure_group_by_client(array $sessions): array
         $pay = (float)$s['payable_per_session'];
         $pid = (int)$s['patient_id'];
         $profId = (int)($s['professional_user_id'] ?? 0);
-        $specialty = (string)($s['specialty'] ?? '');
-        $lineKey = $pid . '|' . $profId . '|' . $specialty;
+        $specialty = trim((string)($s['specialty'] ?? ''));
+        $assignmentId = (int)($s['assignment_id'] ?? 0);
+        // Uma linha por ATENDIMENTO (assignment): cada linha tem seu PAD, datas,
+        // polo e observação, e pode ser editada individualmente.
+        $lineKey = $assignmentId . '|' . $pid . '|' . $profId . '|' . $specialty;
 
         $op =& $byClient[$clientId]['operators'][$insurerId];
         $op['patients'][$pid] = true;
         if (!isset($op['lines'][$lineKey])) {
             $op['lines'][$lineKey] = [
+                'assignment_id' => $assignmentId,
                 'patient_id' => $pid,
                 'patient_name' => (string)($s['patient_name'] ?? '-'),
+                'professional_user_id' => $profId,
                 'professional_name' => (string)($s['professional_name'] ?? '-'),
                 'specialty' => $specialty !== '' ? $specialty : '-',
+                'specialty_raw' => $specialty,
+                'health_insurer_id' => $s['health_insurer_id'] !== null ? (int)$s['health_insurer_id'] : null,
+                'client_id' => $s['client_id'] !== null ? (int)$s['client_id'] : null,
+                'polo_id' => isset($s['polo_id']) && $s['polo_id'] !== null ? (int)$s['polo_id'] : null,
+                'polo_name' => (string)($s['polo_name'] ?? ''),
+                'session_frequency' => (string)($s['session_frequency'] ?? ''),
+                'session_quantity' => $s['session_quantity'] !== null ? (int)$s['session_quantity'] : null,
+                'is_indefinite' => (int)($s['is_indefinite'] ?? 0),
+                'admitted_at' => (string)($s['admitted_at'] ?? ''),
+                'ended_at' => (string)($s['ended_at'] ?? ''),
+                'weaning_at' => (string)($s['weaning_at'] ?? ''),
+                'internal_notes' => (string)($s['internal_notes'] ?? ''),
+                'weekdays' => (string)($s['weekdays'] ?? ''),
+                'month_days' => (string)($s['month_days'] ?? ''),
                 'sessions' => 0,
                 'receivable' => 0.0,
                 'payable' => 0.0,
@@ -370,17 +440,105 @@ function billing_closure_group_by_client(array $sessions): array
         unset($op);
     }
 
-    // Consolidar contagem de pacientes por operadora.
+    // Consolidar contagem de pacientes por operadora e montar o nível de POLO.
     foreach ($byClient as &$c) {
         foreach ($c['operators'] as &$o) {
             $o['patients_count'] = count($o['patients']);
             unset($o['patients']);
         }
         unset($o);
+        $c['polos'] = billing_closure_split_by_polo($c['operators']);
     }
     unset($c);
 
     return $byClient;
+}
+
+/**
+ * Reagrupa as operadoras de um cliente por POLO: cliente -> polo -> operadora.
+ *
+ * O polo vem de cada atendimento (linha). Como a mesma operadora pode atender
+ * mais de um polo, ela pode aparecer em vários polos; 'polos_count' informa em
+ * quantos polos do cliente a operadora aparece (o fechamento continua sendo por
+ * operadora inteira no mês).
+ *
+ * Retorno: [polo_id => ['polo_id','polo_name','total_sessions','total_receivable',
+ *   'total_payable','patients_count','operators' => [insurer_id => [... 'lines' ...]]]]
+ * "Sem polo" (id 0) fica por último; os demais em ordem alfabética.
+ *
+ * @param array<int,array<string,mixed>> $operators
+ * @return array<int,array<string,mixed>>
+ */
+function billing_closure_split_by_polo(array $operators): array
+{
+    $polos = [];
+    $patientsByPolo = [];
+    $patientsByPoloOp = [];
+    $polosByOp = [];
+
+    foreach ($operators as $insurerId => $o) {
+        foreach ($o['lines'] as $lineKey => $line) {
+            $poloId = (int)($line['polo_id'] ?? 0);
+            $poloName = trim((string)($line['polo_name'] ?? ''));
+            if (!isset($polos[$poloId])) {
+                $polos[$poloId] = [
+                    'polo_id' => $poloId,
+                    'polo_name' => $poloId > 0 && $poloName !== '' ? $poloName : 'Sem polo',
+                    'total_sessions' => 0,
+                    'total_receivable' => 0.0,
+                    'total_payable' => 0.0,
+                    'patients_count' => 0,
+                    'operators' => [],
+                ];
+            }
+            if (!isset($polos[$poloId]['operators'][$insurerId])) {
+                $polos[$poloId]['operators'][$insurerId] = [
+                    'insurer_id' => (int)$o['insurer_id'],
+                    'insurer_name' => (string)$o['insurer_name'],
+                    'total_sessions' => 0,
+                    'total_receivable' => 0.0,
+                    'total_payable' => 0.0,
+                    'patients_count' => 0,
+                    'polos_count' => 1,
+                    'lines' => [],
+                ];
+            }
+            $po =& $polos[$poloId]['operators'][$insurerId];
+            $po['lines'][$lineKey] = $line;
+            $po['total_sessions'] += (int)$line['sessions'];
+            $po['total_receivable'] += (float)$line['receivable'];
+            $po['total_payable'] += (float)$line['payable'];
+            unset($po);
+
+            $polos[$poloId]['total_sessions'] += (int)$line['sessions'];
+            $polos[$poloId]['total_receivable'] += (float)$line['receivable'];
+            $polos[$poloId]['total_payable'] += (float)$line['payable'];
+
+            $pid = (int)$line['patient_id'];
+            $patientsByPolo[$poloId][$pid] = true;
+            $patientsByPoloOp[$poloId][$insurerId][$pid] = true;
+            $polosByOp[$insurerId][$poloId] = true;
+        }
+    }
+
+    foreach ($polos as $poloId => &$p) {
+        $p['patients_count'] = count($patientsByPolo[$poloId] ?? []);
+        foreach ($p['operators'] as $insurerId => &$po) {
+            $po['patients_count'] = count($patientsByPoloOp[$poloId][$insurerId] ?? []);
+            $po['polos_count'] = count($polosByOp[$insurerId] ?? []);
+        }
+        unset($po);
+    }
+    unset($p);
+
+    uasort($polos, static function (array $a, array $b): int {
+        if (($a['polo_id'] === 0) !== ($b['polo_id'] === 0)) {
+            return $a['polo_id'] === 0 ? 1 : -1;
+        }
+        return strnatcasecmp((string)$a['polo_name'], (string)$b['polo_name']);
+    });
+
+    return $polos;
 }
 
 /**
@@ -407,4 +565,75 @@ function billing_closure_scoped_status(PDO $db, string $month): array
         error_log('[BILLING] scoped_status: ' . $e->getMessage());
     }
     return $result;
+}
+
+/**
+ * Rótulo do PAD (frequência do atendimento), ex.: "2x/Semana · 8 sessões".
+ */
+function billing_closure_pad_label(?string $frequency, ?int $quantity = null, int $isIndefinite = 0): string
+{
+    $frequency = trim((string)$frequency);
+    $label = $frequency !== '' ? frequency_get_label($frequency) : '';
+    $extra = '';
+    if ($isIndefinite === 1) {
+        $extra = 'contínuo';
+    } elseif ($quantity !== null && $quantity > 0) {
+        $extra = $quantity . ' sess.';
+    }
+    if ($label === '' && $extra === '') {
+        return '-';
+    }
+    return $label !== '' ? ($extra !== '' ? $label . ' · ' . $extra : $label) : $extra;
+}
+
+/**
+ * Lê e normaliza os filtros do fechamento a partir de um array (GET/POST).
+ * Valor -1 em cliente/operadora/polo significa "sem cliente/operadora/polo".
+ *
+ * @return array<string,mixed>
+ */
+function billing_closure_filters_from(array $src): array
+{
+    $int = static function ($v): int {
+        $n = (int)$v;
+        return $n === -1 ? -1 : max(0, $n);
+    };
+    return [
+        'patient_q' => mb_substr(trim((string)($src['patient_q'] ?? '')), 0, 120),
+        'client_id' => $int($src['client_id'] ?? 0),
+        'polo_id' => $int($src['polo_id'] ?? 0),
+        'insurer_id' => $int($src['insurer_id'] ?? 0),
+        'professional_id' => max(0, (int)($src['professional_id'] ?? 0)),
+        'specialty' => mb_substr(trim((string)($src['specialty'] ?? '')), 0, 120),
+        'frequency' => preg_replace('/[^a-z0-9_]/', '', (string)($src['frequency'] ?? '')),
+    ];
+}
+
+/**
+ * Query string (sem "?") com competência + filtros ativos, para manter os
+ * filtros em links e redirects.
+ */
+function billing_closure_filters_qs(string $month, array $filters): string
+{
+    $qs = ['month' => $month];
+    foreach ($filters as $k => $v) {
+        if ($v === '' || $v === 0 || $v === null) {
+            continue;
+        }
+        $qs[$k] = $v;
+    }
+    return http_build_query($qs);
+}
+
+/**
+ * True se algum filtro (além da competência) estiver ativo.
+ */
+function billing_closure_filters_active(array $filters): bool
+{
+    foreach ($filters as $v) {
+        if ($v !== '' && $v !== 0 && $v !== null) {
+            return true;
+        }
+    }
+    return false;
 }

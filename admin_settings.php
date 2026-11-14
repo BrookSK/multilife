@@ -78,7 +78,7 @@ $fields = [
     'professional.docs_approved_email_subject_template' => 'Profissional - Confirmação aprovação e-mail assunto (placeholders: {name},{doc_id},{patient_ref},{sessions_count})',
     'professional.docs_approved_email_body_template' => 'Profissional - Confirmação aprovação e-mail corpo (placeholders: {name},{doc_id},{patient_ref},{sessions_count})',
     'app.public_base_url' => 'App - Base URL pública (ex: https://suaurl.com) para links enviados via WhatsApp',
-    'app.session_lifetime_seconds' => 'Sessão expira após (segundos)',
+    'app.session_lifetime_seconds' => 'Sessão expira após (segundos sem uso; mínimo 30 dias = 2592000)',
     'cron.token' => 'Token do CRON (segredo)',
 
     'smtp.in.host' => 'IMAP Recebimento - Host (servidor de e-mail)',

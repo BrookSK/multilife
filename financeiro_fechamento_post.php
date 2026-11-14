@@ -90,6 +90,7 @@ foreach ($sessions as $s) {
             'patient_name' => (string)($s['patient_name'] ?? '-'),
             'ref_assignment_id' => (int)$s['assignment_id'],
             'health_insurer_id' => $s['health_insurer_id'] !== null ? (int)$s['health_insurer_id'] : null,
+            'polo_id' => isset($s['polo_id']) && $s['polo_id'] !== null ? (int)$s['polo_id'] : null,
             'sessions' => 0,
             'receivable' => 0.0,
         ];
@@ -136,8 +137,8 @@ try {
     // Contas a RECEBER (income) por paciente.
     $insIncome = $db->prepare(
         "INSERT INTO financial_entries
-            (entry_type, category, assignment_id, patient_id, client_id, health_insurer_id, amount, description, entry_date, status, cost_center, supplier_name, monthly_closure_id, is_active, created_by_user_id, created_at)
-         VALUES ('income', 'Faturamento Mensal', :assignment_id, :patient_id, :client_id, :hi, :amount, :description, :entry_date, 'pending', 'Fechamento Mensal', :supplier_name, :closure_id, 1, :uid, NOW())"
+            (entry_type, category, assignment_id, patient_id, client_id, health_insurer_id, polo_id, amount, description, entry_date, status, cost_center, supplier_name, monthly_closure_id, is_active, created_by_user_id, created_at)
+         VALUES ('income', 'Faturamento Mensal', :assignment_id, :patient_id, :client_id, :hi, :polo, :amount, :description, :entry_date, 'pending', 'Fechamento Mensal', :supplier_name, :closure_id, 1, :uid, NOW())"
     );
     foreach ($byPatient as $p) {
         $desc = 'Faturamento ' . $monthLabel . ' - ' . $p['patient_name'] . ' (' . (int)$p['sessions'] . ' atend.)';
@@ -146,6 +147,7 @@ try {
             'patient_id' => (int)$p['patient_id'],
             'client_id' => $clientId,
             'hi' => $p['health_insurer_id'],
+            'polo' => $p['polo_id'],
             'amount' => round((float)$p['receivable'], 2),
             'description' => $desc,
             'entry_date' => $lastDay,
@@ -179,8 +181,8 @@ try {
     $markStmt = $db->prepare("UPDATE billing_document_requirements SET monthly_closure_id = :cid WHERE id = :id AND monthly_closure_id IS NULL");
     $itemStmt = $db->prepare(
         "INSERT INTO billing_monthly_closure_items
-            (closure_id, requirement_id, assignment_id, patient_id, professional_user_id, health_insurer_id, client_id, session_date, receivable_amount, payable_amount)
-         VALUES (:cid, :rid, :aid, :pid, :prof, :ins, :client, :sdate, :recv, :pay)"
+            (closure_id, requirement_id, assignment_id, patient_id, professional_user_id, health_insurer_id, client_id, polo_id, session_date, receivable_amount, payable_amount)
+         VALUES (:cid, :rid, :aid, :pid, :prof, :ins, :client, :polo, :sdate, :recv, :pay)"
     );
     foreach ($sessions as $s) {
         $markStmt->execute(['cid' => $closureId, 'id' => (int)$s['requirement_id']]);
@@ -192,6 +194,7 @@ try {
             'prof' => (int)($s['professional_user_id'] ?? 0) ?: null,
             'ins' => $s['health_insurer_id'] !== null ? (int)$s['health_insurer_id'] : null,
             'client' => $clientId,
+            'polo' => isset($s['polo_id']) && $s['polo_id'] !== null ? (int)$s['polo_id'] : null,
             'sdate' => $s['session_date'],
             'recv' => round((float)$s['receivable_per_session'], 2),
             'pay' => round((float)$s['payable_per_session'], 2),

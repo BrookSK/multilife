@@ -103,6 +103,8 @@ try {
         'notes' => 'Autorização confirmada manualmente (envio automático desabilitado).',
     ]);
     $assignmentId = (int)$db->lastInsertId();
+    // Cliente / operadora / polo do card vão para o atendimento.
+    assignment_fill_org($db, $assignmentId);
 
     // Lançamentos financeiros
     // $proposalValue agora é o TOTAL autorizado (informado na aprovação), então NÃO multiplicar por sessões.

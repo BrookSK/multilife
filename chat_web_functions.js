@@ -49,8 +49,40 @@ function closeAssignmentModal() {
   document.getElementById("assignmentForm").reset();
 }
 
+// Monta a URL do chat mantendo os filtros atuais da lista (aba, WhatsApp,
+// atendente e busca). Os filtros vão sempre explícitos (mesmo vazios) para o
+// servidor atualizar o que guarda na sessão.
+function chatListUrl(overrides, chatId) {
+  var f = Object.assign({ type: 'all', instance: '', attendant: '', q: '' }, window.chatFilters || {}, overrides || {});
+  var params = new URLSearchParams();
+  if (chatId) params.set('chat', chatId);
+  params.set('type', f.type || 'all');
+  params.set('instance', f.instance || '');
+  params.set('attendant', f.attendant || '0');
+  params.set('q', f.q || '');
+  // WhatsApp da conversa aberta (separa o mesmo contato em números diferentes)
+  if (chatId && !f.instance && f.chatInstance) params.set('ci', f.chatInstance);
+  return '/chat_web.php?' + params.toString();
+}
+
+// WhatsApp (instância) da conversa aberta: o da conversa (ci) ou o filtro da lista.
+function chatCurrentInstance() {
+  var f = window.chatFilters || {};
+  return f.chatInstance || f.instance || '';
+}
+
 function closeInfoPanel() {
-  window.location.href = "/chat_web.php";
+  window.location.href = chatListUrl();
+}
+
+// Mostrar / ocultar o painel de detalhes da direita (preferência salva no navegador).
+// show: true = mostrar, false = ocultar, undefined = alternar.
+function toggleInfoPanel(show) {
+  var container = document.getElementById('whatsappContainer');
+  if (!container) return;
+  var hide = (typeof show === 'boolean') ? !show : !container.classList.contains('info-hidden');
+  container.classList.toggle('info-hidden', hide);
+  try { localStorage.setItem('chatInfoPanelHidden', hide ? '1' : '0'); } catch (e) {}
 }
 
 // Função de atribuição de paciente
@@ -676,14 +708,16 @@ document.addEventListener('DOMContentLoaded', function() {
       } else {
         // Envio via AJAX (sem recarregar página)
         const textarea = sendForm.querySelector('textarea[name=message]');
-        const message = textarea ? textarea.value.trim() : '';
-        if (!message) return;
+        const typed = textarea ? textarea.value.trim() : '';
+        if (!typed) return;
+        // Assinatura (*Nome do atendente*) na primeira linha, se estiver ligada
+        const message = chatApplySignature(typed);
         
         const phoneInput = sendForm.querySelector('input[name=phone_number]');
         const chatId = phoneInput ? phoneInput.value : '';
         const isGroup = chatId.indexOf('@g.us') > -1;
-        const typeParam = isGroup ? '&type=grupos' : '';
-        const sendUrl = '/chat_web.php?chat=' + encodeURIComponent(chatId) + typeParam;
+        // Mantém os filtros (principalmente o WhatsApp escolhido, que define a instância de envio)
+        const sendUrl = chatListUrl({}, chatId);
         
         const sendBtn = sendForm.querySelector('button[type=submit]');
         if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = '0.5'; }
@@ -708,7 +742,7 @@ document.addEventListener('DOMContentLoaded', function() {
           msgDiv.id = optimisticId;
           msgDiv.setAttribute('data-optimistic', '1');
           msgDiv.setAttribute('data-raw-text', message); // Guardar texto original para comparação
-          msgDiv.innerHTML = '<div class="whatsapp-message-bubble"><div class="whatsapp-message-text">' + message.replace(/\n/g,'<br>') + '</div><div class="whatsapp-message-time">' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ✓</div></div>';
+          msgDiv.innerHTML = '<div class="whatsapp-message-bubble"><div class="whatsapp-message-text">' + chatFormatWa(message) + '</div><div class="whatsapp-message-time">' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ✓</div></div>';
           chatArea.appendChild(msgDiv);
           chatArea.scrollTop = chatArea.scrollHeight;
         }
@@ -746,11 +780,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (timeEl) timeEl.innerHTML = timeEl.innerHTML.replace('✓','✓✓');
                 // Remover atributo optimistic para que não seja tocada pelo polling
                 msgDiv.removeAttribute('data-optimistic');
+                // Mesma chave do polling: quando a linha voltar no polling, não duplica
+                if (data.message_id) {
+                  msgDiv.setAttribute('data-row-id', String(data.message_id));
+                  msgDiv.setAttribute('data-msg-id', data.external_message_id || ('row-' + data.message_id));
+                }
               }
-              // Atualizar lastTimestamp para que o polling pule esta mensagem
-              if (data.timestamp && data.timestamp > window.lastTimestamp) {
-                window.lastTimestamp = data.timestamp;
-              }
+              // O cursor do polling é o id da linha (não o horário), então não é
+              // preciso mexer nele aqui: mensagens enviadas pelo celular com horário
+              // anterior continuam sendo encontradas.
             } else {
               // Erro no envio — remover mensagem otimista e mostrar erro
               if (msgDiv && chatArea) chatArea.removeChild(msgDiv);
@@ -798,12 +836,13 @@ async function sendMediaMessage() {
   formData.append('remote_jid', window.chatId);
   formData.append('media_type', selectedMediaType);
   // Preservar o WhatsApp (instância) filtrado, se houver.
-  var _inst = new URLSearchParams(window.location.search).get('instance') || '';
+  var _inst = chatCurrentInstance() || new URLSearchParams(window.location.search).get('instance') || '';
   if (_inst) {
     formData.append('instance', _inst);
   }
   if (caption) {
-    formData.append('caption', caption);
+    // Legenda também sai assinada, se a assinatura estiver ligada
+    formData.append('caption', chatApplySignature(caption));
   }
   
   console.log('FormData criado:', {
@@ -913,15 +952,28 @@ function stopAudioRecording() {
 let lastUpdateTimestamp = Date.now();
 let isPolling = false;
 
+let pollStartedAt = 0;
+
 function checkForNewMessages() {
-  if (!window.chatId || isPolling) return;
+  if (!window.chatId) return;
+  // Uma requisição presa (rede/servidor) não pode travar a atualização para sempre:
+  // depois de 15s a trava é liberada e a próxima verificação segue.
+  if (isPolling && (Date.now() - pollStartedAt) < 15000) return;
   isPolling = true;
+  pollStartedAt = Date.now();
   
   var lastIdParam = (typeof window.lastMsgId === 'number' && window.lastMsgId > 0) ? ('&last_id=' + window.lastMsgId) : '';
-  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam)
+  // Mesmo WhatsApp usado ao carregar a conversa
+  var pollInstance = chatCurrentInstance();
+  var instanceParam = pollInstance ? ('&instance=' + encodeURIComponent(pollInstance)) : '';
+  var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  var abortTimer = ctrl ? setTimeout(function () { ctrl.abort(); }, 12000) : null;
+  fetch('/chat_poll_messages.php?chat_id=' + encodeURIComponent(window.chatId) + '&since=' + window.lastTimestamp + lastIdParam + instanceParam,
+        { cache: 'no-store', credentials: 'same-origin', signal: ctrl ? ctrl.signal : undefined })
     .then(r => r.json())
     .then(data => {
       isPolling = false;
+      if (abortTimer) clearTimeout(abortTimer);
       if (data.messages && data.messages.length > 0) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
@@ -929,8 +981,13 @@ function checkForNewMessages() {
         // Verificar se está no fundo antes de adicionar (para auto-scroll)
         const wasAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
         
+        // Uma mensagem com problema não impede as outras de aparecer
         data.messages.forEach(msg => {
-          appendMessageToDOM(msg);
+          try {
+            appendMessageToDOM(msg);
+          } catch (e) {
+            console.error('Erro ao exibir mensagem', msg && msg.id, e);
+          }
         });
         
         // Atualizar lastTimestamp
@@ -947,12 +1004,15 @@ function checkForNewMessages() {
           container.scrollTop = container.scrollHeight;
         }
         
-        // Atualizar lista de conversas (preview da última mensagem)
+        // Atualizar lista de conversas (preview e ordem: a conversa sobe também
+        // quando a mensagem foi ENVIADA, ex.: pelo celular)
         updateChatListPreview(data.messages[data.messages.length - 1]);
+        refreshChatList();
       }
     })
     .catch(err => {
       isPolling = false;
+      if (abortTimer) clearTimeout(abortTimer);
       console.error('Erro ao verificar atualizações:', err);
     });
 }
@@ -965,37 +1025,27 @@ function appendMessageToDOM(msg) {
   // Verificar se mensagem já existe no DOM (evitar duplicatas).
   // Preferir external_message_id; se ausente, usar o id do banco como chave estável.
   var dedupKey = msg.external_message_id || (msg.id ? ('row-' + msg.id) : '');
-  if (dedupKey) {
-    const existing = container.querySelector('[data-msg-id="' + (window.CSS && CSS.escape ? CSS.escape(dedupKey) : dedupKey) + '"]');
-    if (existing) return;
-  }
+  var cssEsc = function (v) { return (window.CSS && CSS.escape) ? CSS.escape(String(v)) : String(v); };
+  if (dedupKey && container.querySelector('[data-msg-id="' + cssEsc(dedupKey) + '"]')) return;
+  if (msg.id && container.querySelector('[data-row-id="' + cssEsc(msg.id) + '"]')) return;
   
   const isFromMe = msg.from_me == 1 || msg.from_me === true;
   
-  // Se é uma mensagem from_me, pular - mensagens enviadas pelo sistema já foram
-  // mostradas otimisticamente no momento do envio. Isso evita duplicação.
+  // Mensagem from_me enviada pelo sistema já aparece na tela (bolha otimista).
+  // Só comparamos o texto com bolhas otimistas que ainda NÃO têm id: as mensagens
+  // digitadas no celular não podem ser descartadas só porque o texto é igual a
+  // outra já enviada (ex.: "ok").
   if (isFromMe) {
-    const msgTimestamp = parseInt(msg.message_timestamp) || 0;
-    const now = Math.floor(Date.now() / 1000);
-    // Se a mensagem foi enviada nos últimos 60 segundos, é provável que já está no DOM
-    if (now - msgTimestamp < 60) {
-      // Normalizar: remover \r, trim
-      const msgTextNorm = (msg.message_text || '').replace(/\r/g, '').trim();
-      const existingOutMsgs = container.querySelectorAll('.whatsapp-message.out');
-      for (let i = existingOutMsgs.length - 1; i >= Math.max(0, existingOutMsgs.length - 15); i--) {
-        const el = existingOutMsgs[i];
-        const rawText = (el.getAttribute('data-raw-text') || '').replace(/\r/g, '').trim();
-        if (rawText && rawText === msgTextNorm) {
-          return; // Já existe, não adicionar
-        }
-        // Comparar via innerText (para mensagens do page load que não têm data-raw-text)
-        const textEl = el.querySelector('.whatsapp-message-text');
-        if (textEl) {
-          const innerNorm = textEl.innerText.replace(/\r/g, '').trim();
-          if (innerNorm === msgTextNorm) {
-            return; // Já existe
-          }
-        }
+    const msgTextNorm = (msg.message_text || '').replace(/\r/g, '').trim();
+    const pendingOut = container.querySelectorAll('.whatsapp-message.out[data-raw-text]:not([data-row-id])');
+    for (let i = 0; i < pendingOut.length; i++) {
+      const el = pendingOut[i];
+      const rawText = (el.getAttribute('data-raw-text') || '').replace(/\r/g, '').trim();
+      if (rawText && rawText === msgTextNorm) {
+        // Vincula a bolha a esta linha para que ela não "consuma" outra mensagem igual
+        if (msg.id) el.setAttribute('data-row-id', String(msg.id));
+        if (dedupKey) el.setAttribute('data-msg-id', dedupKey);
+        return;
       }
     }
   }
@@ -1009,7 +1059,7 @@ function appendMessageToDOM(msg) {
   const senderName = msg.sender_name || '';
   const reactions = msg.reactions || [];
   
-  let html = '<div class="whatsapp-message ' + messageClass + '"' + (dedupKey ? ' data-msg-id="' + escapeHtml(dedupKey) + '"' : '') + '>';
+  let html = '<div class="whatsapp-message ' + messageClass + '"' + (dedupKey ? ' data-msg-id="' + escapeHtml(dedupKey) + '"' : '') + (msg.id ? ' data-row-id="' + escapeHtml(String(msg.id)) + '"' : '') + '>';
   html += '<div class="whatsapp-message-bubble">';
   
   // Nome do remetente em grupos
@@ -1029,29 +1079,31 @@ function appendMessageToDOM(msg) {
   }
   
   // Conteúdo baseado no tipo
+  const downloadBtn = chatMediaDownloadLink(msg.id);
   if (messageType === 'audio' && mediaUrl) {
     const mimeType = msg.media_mime_type || 'audio/ogg; codecs=opus';
-    html += '<div style="margin-bottom:8px"><audio controls preload="metadata" style="max-width:100%;height:40px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(mimeType) + '"></audio></div>';
+    html += '<div style="margin-bottom:8px"><audio controls preload="metadata" style="max-width:100%;height:40px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(mimeType) + '"></audio>' + downloadBtn + '</div>';
   } else if (messageType === 'image' && mediaUrl) {
-    html += '<div style="margin-bottom:8px"><img src="' + escapeHtml(mediaUrl) + '" alt="Imagem" style="max-width:100%;max-height:300px;border-radius:8px;cursor:pointer;object-fit:contain" onclick="window.open(this.src)"></div>';
+    html += '<div style="margin-bottom:8px"><img src="' + escapeHtml(mediaUrl) + '" alt="Imagem" style="max-width:100%;max-height:300px;border-radius:8px;cursor:pointer;object-fit:contain" onclick="window.open(this.src)">' + downloadBtn + '</div>';
     if (text && text !== '[Imagem]') {
-      html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
+      html += '<div class="whatsapp-message-text">' + chatFormatWa(text) + '</div>';
     }
   } else if (messageType === 'video' && mediaUrl) {
-    html += '<div style="margin-bottom:8px"><video controls style="max-width:100%;border-radius:8px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(msg.media_mime_type || 'video/mp4') + '"></video></div>';
+    html += '<div style="margin-bottom:8px"><video controls style="max-width:100%;border-radius:8px"><source src="' + escapeHtml(mediaUrl) + '" type="' + escapeHtml(msg.media_mime_type || 'video/mp4') + '"></video>' + downloadBtn + '</div>';
     if (text && text !== '[Vídeo]') {
-      html += '<div class="whatsapp-message-text">' + escapeHtml(text) + '</div>';
+      html += '<div class="whatsapp-message-text">' + chatFormatWa(text) + '</div>';
     }
   } else if (messageType === 'document' && mediaUrl) {
     const docFilename = msg.media_filename || 'Documento';
-    html += '<a href="' + escapeHtml(mediaUrl) + '" download style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
+    const docHref = msg.id ? ('/chat_media_download.php?id=' + encodeURIComponent(msg.id)) : mediaUrl;
+    html += '<a href="' + escapeHtml(docHref) + '" download title="Baixar arquivo no computador" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
     html += '<div style="width:40px;height:40px;border-radius:8px;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>';
     html += '<div style="flex:1;min-width:0;overflow:hidden"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(docFilename) + '</div></div>';
     html += '</a>';
   } else if (messageType === 'sticker' && mediaUrl) {
-    html += '<div style="margin-bottom:4px"><img src="' + escapeHtml(mediaUrl) + '" alt="Sticker" style="max-width:150px;max-height:150px"></div>';
+    html += '<div style="margin-bottom:4px"><img src="' + escapeHtml(mediaUrl) + '" alt="Sticker" style="max-width:150px;max-height:150px">' + downloadBtn + '</div>';
   } else {
-    html += '<div class="whatsapp-message-text">' + escapeHtml(text).replace(/\n/g, '<br>') + '</div>';
+    html += '<div class="whatsapp-message-text">' + chatFormatWa(text) + '</div>';
   }
   
   // Reações
@@ -1082,19 +1134,81 @@ function formatTimestamp(unixTs) {
 }
 
 function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  if (str === null || str === undefined || str === '') return '';
+  // Escapa também aspas: o valor é usado dentro de atributos (src, href, title)
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
+
+// Formatação do WhatsApp em HTML seguro (mesma regra do PHP chat_wa_format):
+// *negrito*, _itálico_, ~tachado~, `código`, ```bloco```, "> citação", quebras de linha.
+function chatFormatWa(text) {
+  let s = escapeHtml(String(text || '').replace(/\r\n/g, '\n'));
+  const codes = [];
+  const keep = function (html) { codes.push(html); return '\u0001' + (codes.length - 1) + '\u0002'; };
+  s = s.replace(/```([\s\S]+?)```/g, function (m, c) { return keep('<code class="wa-code-block">' + c + '</code>'); });
+  s = s.replace(/`([^`\n]+)`/g, function (m, c) { return keep('<code class="wa-code">' + c + '</code>'); });
+  [['\\*', 'strong'], ['_', 'em'], ['~', 's']].forEach(function (pair) {
+    const mk = pair[0], tag = pair[1];
+    const re = new RegExp('(^|[^\\p{L}\\p{N}' + mk + '])' + mk + '(?=\\S)([^' + mk + '\\n]*?\\S)' + mk + '(?![\\p{L}\\p{N}' + mk + '])', 'gmu');
+    s = s.replace(re, '$1<' + tag + '>$2</' + tag + '>');
+  });
+  s = s.replace(/^&gt;\s?(.*)$/gm, '<span class="wa-quote">$1</span>');
+  s = s.replace(/\u0001(\d+)\u0002/g, function (m, i) { return codes[+i] || ''; });
+  return s.replace(/\n/g, '<br>');
+}
+
+// Botão "Baixar" da mídia (download pelo servidor com o nome do arquivo)
+function chatMediaDownloadLink(messageId) {
+  if (!messageId) return '';
+  return '<a class="wa-download" href="/chat_media_download.php?id=' + encodeURIComponent(messageId) + '" title="Baixar arquivo no computador">'
+    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Baixar</a>';
+}
+
+// ASSINATURA: quando ativa, a mensagem sai com o nome do atendente em negrito
+// na primeira linha (ex.: "*Ana Carla*"). Nome vem do login (window.chatSignatureName).
+function chatSignatureOn() {
+  try { return localStorage.getItem('chatSignatureOn') !== '0'; } catch (e) { return true; }
+}
+
+function chatApplySignature(message) {
+  const name = (window.chatSignatureName || '').trim();
+  if (!name || !chatSignatureOn() || !message) return message;
+  const sig = '*' + name + '*';
+  if (message.indexOf(sig) === 0) return message; // já assinada
+  return sig + '\n' + message;
+}
+
+function toggleChatSignature() {
+  const on = !chatSignatureOn();
+  try { localStorage.setItem('chatSignatureOn', on ? '1' : '0'); } catch (e) {}
+  chatRenderSignatureBtn();
+}
+
+function chatRenderSignatureBtn() {
+  const btn = document.getElementById('signatureToggleBtn');
+  if (!btn) return;
+  const on = chatSignatureOn();
+  btn.classList.toggle('on', on);
+  btn.textContent = on ? '✍️ Assinatura: ligada' : '✍️ Assinatura: desligada';
+  btn.title = on ? ('As mensagens saem com *' + (window.chatSignatureName || '') + '* no início. Clique para desligar.') : 'Clique para assinar as mensagens com o seu nome';
+}
+document.addEventListener('DOMContentLoaded', chatRenderSignatureBtn);
 
 function updateChatListPreview(lastMsg) {
   // Atualizar preview na lista lateral
-  const chatItems = document.querySelectorAll('.whatsapp-chat-item');
+  if (!lastMsg || !window.chatId) return;
+  // O próprio item (.whatsapp-chat-item) é o <a> da conversa
+  const chatItems = document.querySelectorAll('a.whatsapp-chat-item');
   chatItems.forEach(item => {
-    const link = item.querySelector('a');
-    if (link && link.href && link.href.includes(encodeURIComponent(window.chatId))) {
-      const preview = item.querySelector('.whatsapp-chat-last-msg, [style*="color:#667781"]');
+    let itemChat = '';
+    try { itemChat = new URL(item.href, window.location.origin).searchParams.get('chat') || ''; } catch (e) {}
+    if (itemChat === window.chatId) {
+      const preview = item.querySelector('.whatsapp-chat-preview');
       if (preview && lastMsg.message_text) {
         let previewText = lastMsg.message_text;
         if (lastMsg.message_type && lastMsg.message_type !== 'text') {
@@ -1109,16 +1223,93 @@ function updateChatListPreview(lastMsg) {
 
 // Iniciar polling se houver chat selecionado
 // (Será iniciado pelo inline script que define window.chatId)
+// ATUALIZAÇÃO DA LISTA: recarrega só a lista de conversas (chat_web.php?list_only=1)
+// para a ordem e as prévias acompanharem mensagens novas, recebidas ou enviadas.
+let _listRefreshing = false;
+function refreshChatList() {
+  if (_listRefreshing || document.hidden) return;
+  const list = document.getElementById('chatsList');
+  if (!list) return;
+  const f = window.chatFilters || {};
+  if (['grupos', 'lista_espera', 'contatos'].indexOf(f.type) !== -1) return;
+  _listRefreshing = true;
+  fetch(chatListUrl({}, window.chatId || '') + '&list_only=1', { credentials: 'same-origin', cache: 'no-store' })
+    .then(r => (r.ok ? r.text() : ''))
+    .then(html => {
+      if (!html || html.indexOf('id="chatsList"') === -1) return; // ex.: sessão expirada
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const fresh = tmp.querySelector('#chatsList');
+      if (fresh && fresh.innerHTML !== list.innerHTML) {
+        const scroll = list.scrollTop;
+        list.innerHTML = fresh.innerHTML;
+        list.scrollTop = scroll;
+      }
+    })
+    .catch(() => {})
+    .finally(() => { _listRefreshing = false; });
+}
+
+// SINCRONIZAÇÃO DE RESERVA: busca na Evolution as últimas mensagens da conversa
+// aberta e grava as que faltam (ex.: resposta enviada pelo celular que o webhook
+// não entregou). O polling mostra as novas em seguida.
+function syncOpenChatFromEvolution() {
+  if (!window.chatId || window.chatId.indexOf('@g.us') !== -1 || document.hidden) return;
+  const inst = chatCurrentInstance();
+  fetch('/chat_sync_recent.php?chat_id=' + encodeURIComponent(window.chatId) + (inst ? '&instance=' + encodeURIComponent(inst) : ''), { credentials: 'same-origin', cache: 'no-store' })
+    .then(r => r.json())
+    .then(d => { if (d && d.imported > 0) checkForNewMessages(); })
+    .catch(() => {});
+}
+
 function startChatPolling() {
   if (window.chatId && !window._pollingStarted) {
     window._pollingStarted = true;
-    setInterval(checkForNewMessages, 3000);
+    // A cada 2s (a consulta é leve: só mensagens com id maior que o último exibido)
+    setInterval(checkForNewMessages, 2000);
+    // Só ao abrir a conversa e ao voltar para a aba: a busca de mensagens na
+    // Evolution é pesada no banco dela (sem índice) e repetir a cada 30s por
+    // conversa aberta somava carga justamente no que está lento.
+    setTimeout(syncOpenChatFromEvolution, 800);
+    // Ao voltar para a aba do navegador, sincroniza na hora
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { syncOpenChatFromEvolution(); checkForNewMessages(); refreshChatList(); }
+    });
     console.log("✅ Polling iniciado para chat:", window.chatId, "| lastTimestamp:", window.lastTimestamp);
   }
 }
 
 // Tentar iniciar imediatamente (caso chatId já esteja definido)
 startChatPolling();
+
+// Lista de conversas sempre atualizada (com ou sem conversa aberta)
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('chatsList') && !window._listRefreshStarted) {
+    window._listRefreshStarted = true;
+    // A cada 3s pergunta só "chegou mensagem nova?" (id da última gravada);
+    // recarrega a lista apenas quando muda. Reserva: recarrega a cada 60s.
+    let listVersion = null;
+    let versionBusy = false;
+    setInterval(function () {
+      if (document.hidden || versionBusy) return;
+      versionBusy = true;
+      fetch('/chat_list_version.php', { cache: 'no-store', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(d => {
+          const v = d && typeof d.v === 'number' ? d.v : null;
+          if (v !== null && listVersion !== null && v !== listVersion) {
+            refreshChatList();
+            // Conversa aberta: busca a mensagem nova já (sem esperar o próximo ciclo)
+            if (window.chatId) checkForNewMessages();
+          }
+          if (v !== null) listVersion = v;
+        })
+        .catch(() => {})
+        .finally(() => { versionBusy = false; });
+    }, 3000);
+    setInterval(refreshChatList, 60000);
+  }
+});
 
 // Também tentar após DOMContentLoaded (fallback)
 document.addEventListener('DOMContentLoaded', function() {

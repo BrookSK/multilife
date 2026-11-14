@@ -38,25 +38,8 @@ function configureWebhook(string $baseUrl, string $apiKey, string $instanceName)
     }
     $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
 
-    $payload = [
-        'webhook' => [
-            'enabled' => true,
-            'url' => $webhookUrl,
-            'webhook_by_events' => false,
-            'webhook_base64' => true,
-            'events' => [
-                'MESSAGES_UPSERT',
-                'SEND_MESSAGE',
-                'CONTACTS_UPSERT',
-                'CONTACTS_UPDATE',
-                'CONNECTION_UPDATE',
-                'GROUPS_UPSERT',
-                'GROUP_UPDATE',
-                'GROUP_PARTICIPANTS_UPDATE',
-                'QRCODE_UPDATED',
-            ],
-        ],
-    ];
+    // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
+    $payload = whatsapp_webhook_payload($webhookUrl);
 
     $url = $baseUrl . '/webhook/set/' . urlencode($instanceName);
     $ch = curl_init($url);
@@ -188,25 +171,8 @@ try {
             }
             $whUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
 
-            $payload = [
-                'webhook' => [
-                    'enabled' => true,
-                    'url' => $whUrl,
-                    'webhook_by_events' => false,
-                    'webhook_base64' => true,
-                    'events' => [
-                        'MESSAGES_UPSERT',
-                        'SEND_MESSAGE',
-                        'CONTACTS_UPSERT',
-                        'CONTACTS_UPDATE',
-                        'CONNECTION_UPDATE',
-                        'GROUPS_UPSERT',
-                        'GROUP_UPDATE',
-                        'GROUP_PARTICIPANTS_UPDATE',
-                        'QRCODE_UPDATED',
-                    ],
-                ],
-            ];
+            // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
+            $payload = whatsapp_webhook_payload($whUrl);
 
             // POST /webhook/set/{instance} com wrapper
             $testUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
