@@ -457,7 +457,10 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
             $reactor = $known;
         }
     }
-    $chatJid = chat_store_normalize_jid($rawJid);
+    // Conversa da mensagem reagida. Reação em grupo pode chegar com remoteJid do
+    // próprio contato; o grupo vem na chave da mensagem reagida.
+    $reactedJid = (string)($reaction['key']['remoteJid'] ?? '');
+    $chatJid = chat_store_normalize_jid(strpos($reactedJid, '@g.us') !== false ? $reactedJid : $rawJid);
 
     if ($emoji === '') {
         db()->prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reactor_jid = ?')->execute([$targetId, $reactor]);
@@ -469,8 +472,9 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
                    ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), reaction_timestamp = VALUES(reaction_timestamp)")
         ->execute([$chatJid, $targetId, $reactor, $emoji, $ts]);
 
-    // Reação de profissional numa mensagem de CAPTAÇÃO (grupo) = interesse
-    if ($fromMe || strpos($rawJid, '@g.us') === false) {
+    // Reação de profissional numa mensagem de CAPTAÇÃO = interesse. Não depende
+    // do remoteJid ser o grupo: a busca é pelo id da mensagem reagida.
+    if ($fromMe) {
         chat_webhook_trace($traceEvent, $key, 'reação gravada', $reactor, $traceInfo);
         return;
     }
