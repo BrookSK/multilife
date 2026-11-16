@@ -3233,10 +3233,13 @@ function toggleRec(){
     // Referenciar uma demanda: escolhe o card e o início da mensagem vem pronto
     // ("Sobre a demanda #900 – Fisioterapia..., em Cidade/UF: "). Não usa o nome
     // do paciente (a mensagem vai para o profissional).
+    // Só para captação (captador) e admin, e só com as demandas que o usuário assumiu.
     $refDemands = ['interessado' => [], 'abertas' => []];
-    try {
+    $refUid = (int)(auth_user_id() ?? 0);
+    $refAllowed = $refUid > 0 && (rbac_user_has_role($refUid, 'admin') || rbac_user_has_role($refUid, 'captador'));
+    if ($refAllowed) try {
         $refCols = "d.id, d.specialty, d.location_city, d.location_state, d.location_neighborhood, d.frequency";
-        $refOpen = "d.status NOT IN ('admitido','concluido','cancelado')";
+        $refOpen = "d.status NOT IN ('admitido','concluido','cancelado') AND d.assumed_by_user_id = " . $refUid;
         $refPhone = substr((string)preg_replace('/\D+/', '', (string)preg_replace('/@.+$/', '', $selectedChat)), -8);
         if (strpos($selectedChat, '@g.us') === false && strlen($refPhone) === 8) {
             $stRef = db()->prepare("SELECT DISTINCT $refCols FROM demands d
@@ -3270,13 +3273,17 @@ function toggleRec(){
         $seenRef = [];
         echo '<select id="demandRefSelect" class="wa-signature-btn" title="Referenciar uma demanda na mensagem" style="max-width:170px;align-self:center">';
         echo '<option value="">📋 Demanda…</option>';
-        foreach (['interessado' => 'Reagiu / interessado', 'abertas' => 'Captações abertas'] as $grp => $label) {
+        foreach (['interessado' => 'Reagiu / interessado', 'abertas' => 'Minhas captações'] as $grp => $label) {
             $opts = '';
             foreach ($refDemands[$grp] as $d) {
                 $id = (int)$d['id'];
                 if (isset($seenRef[$id])) continue;
                 $seenRef[$id] = true;
-                $optLabel = '#' . $id . ' ' . trim((string)($d['specialty'] ?? '')) . ' – ' . trim((string)($d['location_city'] ?? ''));
+                // Sem traço solto quando o card não tem especialidade/cidade
+                $optLabel = '#' . $id . ' ' . implode(' – ', array_filter([
+                    trim((string)($d['specialty'] ?? '')) ?: 'sem especialidade',
+                    trim((string)($d['location_city'] ?? '')),
+                ]));
                 $opts .= '<option value="' . $id . '" data-text="' . h($refText($d)) . '">' . h(mb_strimwidth($optLabel, 0, 70, '…')) . '</option>';
             }
             if ($opts !== '') {
