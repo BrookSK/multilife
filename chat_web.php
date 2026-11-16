@@ -2162,6 +2162,11 @@ echo '.wa-signature-btn.on{border-color:#00a884;background:#e7f8f4;color:#00a884
 echo '.whatsapp-message-time{font-size:11px;color:#667781;margin-top:4px;text-align:right}';
 echo '.whatsapp-input-area{padding:12px 16px;background:#ffffff;border-top:1px solid #d1d7db;display:flex;gap:8px;align-items:flex-end}';
 echo '.whatsapp-input{flex:1;padding:10px 12px;border:none;border-radius:8px;font-size:15px;resize:none;max-height:120px;font-family:inherit}';
+// Linha de ferramentas acima do campo (demanda + assinatura), para não apertar a caixa de digitar
+echo '#sendMessageForm{flex-wrap:wrap}';
+echo '.wa-composer-tools{order:-1;width:100%;display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}';
+echo '.wa-composer-tools:empty{display:none}';
+echo '.wa-composer-tools select{max-width:320px;min-width:0}';
 echo '.whatsapp-send-btn{width:48px;height:48px;border-radius:50%;background:#00a884;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;transition:background .2s}';
 echo '.whatsapp-send-btn:hover{background:#06cf9c}';
 // Dropdown de respostas rápidas
@@ -3233,6 +3238,9 @@ function toggleRec(){
     // Referenciar uma demanda: escolhe o card e o início da mensagem vem pronto
     // ("Sobre a demanda #900 – Fisioterapia..., em Cidade/UF: "). Não usa o nome
     // do paciente (a mensagem vai para o profissional).
+    // Ferramentas (demanda + assinatura) numa linha própria acima do campo
+    echo '<div class="wa-composer-tools">';
+
     // Só para captação (captador) e admin, e só com as demandas que o usuário assumiu.
     $refDemands = ['interessado' => [], 'abertas' => []];
     $refUid = (int)(auth_user_id() ?? 0);
@@ -3271,7 +3279,7 @@ function toggleRec(){
     };
     if ($refDemands['interessado'] || $refDemands['abertas']) {
         $seenRef = [];
-        echo '<select id="demandRefSelect" class="wa-signature-btn" title="Referenciar uma demanda na mensagem" style="max-width:170px;align-self:center">';
+        echo '<select id="demandRefSelect" class="wa-signature-btn" title="Referenciar uma demanda na mensagem">';
         echo '<option value="">📋 Demanda…</option>';
         foreach (['interessado' => 'Reagiu / interessado', 'abertas' => 'Minhas captações'] as $grp => $label) {
             $opts = '';
@@ -3320,6 +3328,7 @@ function toggleRec(){
     if ($chatSignatureName !== '') {
         echo '<button type="button" id="signatureToggleBtn" class="wa-signature-btn on" onclick="toggleChatSignature()">✍️ Assinatura: ligada</button>';
     }
+    echo '</div>'; // .wa-composer-tools
     // Botão para gerenciar respostas rápidas
     echo '<button type="button" onclick="openQuickRepliesManager()" class="whatsapp-action-btn" title="Gerenciar respostas rápidas" style="align-self:center">';
     echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/></svg>';
