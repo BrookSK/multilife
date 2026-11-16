@@ -3229,6 +3229,86 @@ function toggleRec(){
     echo '<div id="quickRepliesDropdown" class="quick-replies-dropdown" style="display:none"></div>';
     echo '<textarea id="chatMessageInput" class="whatsapp-input" name="message" placeholder="Digite uma mensagem (use / para respostas rápidas)" rows="1" required style="width:100%"></textarea>';
     echo '</div>';
+
+    // Referenciar uma demanda: escolhe o card e o início da mensagem vem pronto
+    // ("Sobre a demanda #900 – Fisioterapia..., em Cidade/UF: "). Não usa o nome
+    // do paciente (a mensagem vai para o profissional).
+    $refDemands = ['interessado' => [], 'abertas' => []];
+    try {
+        $refCols = "d.id, d.specialty, d.location_city, d.location_state, d.location_neighborhood, d.frequency";
+        $refOpen = "d.status NOT IN ('admitido','concluido','cancelado')";
+        $refPhone = substr((string)preg_replace('/\D+/', '', (string)preg_replace('/@.+$/', '', $selectedChat)), -8);
+        if (strpos($selectedChat, '@g.us') === false && strlen($refPhone) === 8) {
+            $stRef = db()->prepare("SELECT DISTINCT $refCols FROM demands d
+                                    INNER JOIN demand_interested_professionals dip ON dip.demand_id = d.id
+                                    WHERE $refOpen AND dip.phone LIKE ? ORDER BY d.id DESC LIMIT 30");
+            $stRef->execute(['%' . $refPhone]);
+            $refDemands['interessado'] = $stRef->fetchAll(PDO::FETCH_ASSOC);
+        }
+        $refDemands['abertas'] = db()->query("SELECT $refCols FROM demands d WHERE $refOpen ORDER BY d.id DESC LIMIT 150")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('[CHAT] demandas para referência: ' . $e->getMessage());
+    }
+    $refText = static function (array $d): string {
+        $freq = trim((string)($d['frequency'] ?? ''));
+        if (preg_match('/^(\d+)x_semana$/', $freq, $fm)) {
+            $freq = $fm[1] === '7' ? 'diário' : $fm[1] . 'x por semana';
+        } else {
+            $freq = str_replace('_', ' ', $freq);
+        }
+        $city = trim((string)($d['location_city'] ?? ''));
+        $uf = trim((string)($d['location_state'] ?? ''));
+        $place = $city !== '' ? $city . ($uf !== '' ? '/' . $uf : '') : $uf;
+        $bairro = trim((string)($d['location_neighborhood'] ?? ''));
+        $parts = array_filter([trim((string)($d['specialty'] ?? '')), $freq]);
+        return 'Sobre a demanda #' . (int)$d['id']
+            . ($parts ? ' – ' . implode(', ', $parts) : '')
+            . ($place !== '' ? ', em ' . $place . ($bairro !== '' ? ' (bairro ' . $bairro . ')' : '') : '')
+            . ': ';
+    };
+    if ($refDemands['interessado'] || $refDemands['abertas']) {
+        $seenRef = [];
+        echo '<select id="demandRefSelect" class="wa-signature-btn" title="Referenciar uma demanda na mensagem" style="max-width:170px;align-self:center">';
+        echo '<option value="">📋 Demanda…</option>';
+        foreach (['interessado' => 'Reagiu / interessado', 'abertas' => 'Captações abertas'] as $grp => $label) {
+            $opts = '';
+            foreach ($refDemands[$grp] as $d) {
+                $id = (int)$d['id'];
+                if (isset($seenRef[$id])) continue;
+                $seenRef[$id] = true;
+                $optLabel = '#' . $id . ' ' . trim((string)($d['specialty'] ?? '')) . ' – ' . trim((string)($d['location_city'] ?? ''));
+                $opts .= '<option value="' . $id . '" data-text="' . h($refText($d)) . '">' . h(mb_strimwidth($optLabel, 0, 70, '…')) . '</option>';
+            }
+            if ($opts !== '') {
+                echo '<optgroup label="' . h($label) . '">' . $opts . '</optgroup>';
+            }
+        }
+        echo '</select>';
+        echo '<script>
+(function(){
+  var sel = document.getElementById("demandRefSelect");
+  if (!sel) return;
+  var lastPrefix = "";
+  sel.addEventListener("change", function(){
+    var opt = sel.options[sel.selectedIndex];
+    var text = opt ? (opt.getAttribute("data-text") || "") : "";
+    var input = document.getElementById("chatMessageInput");
+    sel.value = "";
+    if (!text || !input) return;
+    var current = input.value;
+    // Troca a referência anterior em vez de empilhar duas
+    if (lastPrefix && current.indexOf(lastPrefix) === 0) current = current.slice(lastPrefix.length);
+    input.value = text + current;
+    lastPrefix = text;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+    input.dispatchEvent(new Event("input", {bubbles: true}));
+  });
+})();
+</script>';
+    }
     // Assinatura: liga/desliga o nome do atendente (*Nome*) no início das mensagens
     if ($chatSignatureName !== '') {
         echo '<button type="button" id="signatureToggleBtn" class="wa-signature-btn on" onclick="toggleChatSignature()">✍️ Assinatura: ligada</button>';

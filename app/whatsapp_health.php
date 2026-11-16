@@ -259,7 +259,11 @@ function whatsapp_health_banner_html(): string
     foreach ($problems as $p) {
         $s = $p['status'];
         $red = whatsapp_health_is_blocking($s['level']);
-        $html .= '<div class="alert" style="border:1px solid ' . ($red ? 'hsl(0,84%,60%)' : 'hsl(36,90%,55%)') . ';background:' . ($red ? 'hsla(0,84%,60%,.08)' : 'hsla(36,90%,55%,.10)') . '">';
+        // Chave do aviso: instância + tipo de problema. Fechado, só volta se o
+        // problema mudar ou depois de 12 h (ver script abaixo).
+        $dismissKey = $p['instance_name'] . '|' . $s['title'];
+        $html .= '<div class="alert wa-health-alert" data-dismiss-key="' . h($dismissKey) . '" style="position:relative;padding-right:36px;border:1px solid ' . ($red ? 'hsl(0,84%,60%)' : 'hsl(36,90%,55%)') . ';background:' . ($red ? 'hsla(0,84%,60%,.08)' : 'hsla(36,90%,55%,.10)') . '">';
+        $html .= '<button type="button" class="wa-health-close" title="Fechar aviso" aria-label="Fechar aviso" style="position:absolute;top:6px;right:8px;background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:inherit;opacity:.6">&times;</button>';
         $html .= '<strong>⚠️ WhatsApp "' . h($p['instance_name']) . '": ' . h($s['title']) . '.</strong> ' . h($s['message']);
         if ($s['actions']) {
             $html .= '<div style="margin-top:6px"><strong>O que fazer:</strong><ol style="margin:4px 0 0 18px;padding:0">';
@@ -273,5 +277,21 @@ function whatsapp_health_banner_html(): string
         }
         $html .= '</div>';
     }
+    // Fechar aviso: guarda no navegador por 12 h (por instância + problema)
+    $html .= '<script>(function(){
+  var KEY = "waHealthDismissed", TTL = 12 * 3600 * 1000, now = Date.now(), map = {};
+  try { map = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) {}
+  Object.keys(map).forEach(function(k){ if (now - map[k] > TTL) delete map[k]; });
+  document.querySelectorAll(".wa-health-alert").forEach(function(el){
+    var k = el.getAttribute("data-dismiss-key");
+    if (map[k]) { el.style.display = "none"; return; }
+    var btn = el.querySelector(".wa-health-close");
+    if (btn) btn.addEventListener("click", function(){
+      map[k] = Date.now();
+      try { localStorage.setItem(KEY, JSON.stringify(map)); } catch (e) {}
+      el.style.display = "none";
+    });
+  });
+})();</script>';
     return $html;
 }
