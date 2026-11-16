@@ -443,14 +443,25 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
 {
     $targetId = (string)($reaction['key']['id'] ?? '');
     $emoji = (string)($reaction['text'] ?? '');
+    $traceEvent = 'messages.upsert';
+    $traceInfo = 'emoji=' . ($emoji !== '' ? $emoji : '(removida)') . ' msg=' . $targetId;
     if ($targetId === '') {
+        chat_webhook_trace($traceEvent, $key, 'reação ignorada: sem id da mensagem reagida');
         return;
     }
+    // Quem reagiu: número real; se só vier o LID, tenta o mapa LID -> número
     $reactor = $fromMe ? 'me' : ($participantPn ?: ($participant ?: $rawJid));
+    if (!$fromMe && substr($reactor, -4) === '@lid') {
+        $known = chat_lid_lookup($reactor);
+        if ($known !== '') {
+            $reactor = $known;
+        }
+    }
     $chatJid = chat_store_normalize_jid($rawJid);
 
     if ($emoji === '') {
         db()->prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reactor_jid = ?')->execute([$targetId, $reactor]);
+        chat_webhook_trace($traceEvent, $key, 'reação removida', $reactor, $traceInfo);
         return;
     }
     db()->prepare("INSERT INTO chat_reactions (remote_jid, message_id, reactor_jid, emoji, reaction_timestamp)
@@ -460,6 +471,7 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
 
     // Reação de profissional numa mensagem de CAPTAÇÃO (grupo) = interesse
     if ($fromMe || strpos($rawJid, '@g.us') === false) {
+        chat_webhook_trace($traceEvent, $key, 'reação gravada', $reactor, $traceInfo);
         return;
     }
     try {
@@ -469,28 +481,61 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
                              WHERE dl.external_message_id = ? LIMIT 1");
         $st->execute([$targetId]);
         $dispatch = $st->fetch(PDO::FETCH_ASSOC);
-        if (!$dispatch || in_array((string)$dispatch['demand_status'], ['admitido', 'concluido', 'cancelado'], true)) {
+
+        // Fallback: o disparo pode ter ficado sem o id da mensagem (timeout da
+        // Evolution, resposta sem key.id). Acha a mensagem no chat pelo id e
+        // liga ao disparo pelo token #CAP do texto.
+        if (!$dispatch) {
+            $stM = db()->prepare('SELECT message_text FROM chat_messages WHERE external_message_id = ? LIMIT 1');
+            $stM->execute([$targetId]);
+            $reactedText = (string)($stM->fetchColumn() ?: '');
+            if ($reactedText !== '' && preg_match('/#CAP\d+-[A-F0-9]+/', $reactedText, $tm)) {
+                $stT = db()->prepare("SELECT dl.id, dl.demand_id, d.status AS demand_status
+                                      FROM demand_dispatch_logs dl
+                                      LEFT JOIN demands d ON d.id = dl.demand_id
+                                      WHERE dl.capture_token = ? ORDER BY dl.id DESC LIMIT 1");
+                $stT->execute([$tm[0]]);
+                $dispatch = $stT->fetch(PDO::FETCH_ASSOC);
+                if ($dispatch) {
+                    db()->prepare("UPDATE demand_dispatch_logs SET external_message_id = ?
+                                   WHERE id = ? AND (external_message_id IS NULL OR external_message_id = '')")
+                        ->execute([$targetId, (int)$dispatch['id']]);
+                }
+            }
+        }
+
+        if (!$dispatch) {
+            chat_webhook_trace($traceEvent, $key, 'reação gravada (msg não é captação)', $reactor, $traceInfo);
             return;
         }
-        // Telefone real de quem reagiu (participantPn/participantAlt; LID não é telefone)
-        $phone = (string)preg_replace('/[^0-9]/', '', (string)preg_replace('/[:@].+$/', '', $participantPn ?: ($participant ?: $reactor)));
-        if (strlen($phone) > 13) {
-            $phone = (string)preg_replace('/[^0-9]/', '', (string)preg_replace('/[:@].+$/', '', (string)($key['participantAlt'] ?? '')));
+        if (in_array((string)$dispatch['demand_status'], ['admitido', 'concluido', 'cancelado'], true)) {
+            chat_webhook_trace($traceEvent, $key, 'reação ignorada: captação #' . (int)$dispatch['demand_id'] . ' encerrada', $reactor, $traceInfo);
+            return;
         }
+        // Telefone real de quem reagiu (participantPn/participantAlt ou mapa LID).
+        // Sem número real, guarda o LID (phone_jid @lid) e não tenta achar o usuário.
+        $isLid = substr($reactor, -4) === '@lid';
+        $phone = (string)preg_replace('/[^0-9]/', '', (string)preg_replace('/[:@].+$/', '', $reactor));
+        $phoneJid = $phone !== '' ? $phone . ($isLid ? '@lid' : '@s.whatsapp.net') : '';
         $userId = null;
-        if ($phone !== '') {
+        if ($phone !== '' && !$isLid) {
             $stU = db()->prepare("SELECT id FROM users
                                   WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), ' ', ''), '(', ''), ')', '') LIKE ? LIMIT 1");
             $stU->execute(['%' . substr($phone, -8) . '%']);
             $userId = ($u = $stU->fetchColumn()) ? (int)$u : null;
         }
-        db()->prepare("INSERT IGNORE INTO demand_interested_professionals
+        $ins = db()->prepare("INSERT IGNORE INTO demand_interested_professionals
                        (demand_id, dispatch_log_id, phone, phone_jid, push_name, user_id, emoji, reacted_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())")
-            ->execute([(int)$dispatch['demand_id'], (int)$dispatch['id'], $phone, $phone !== '' ? $phone . '@s.whatsapp.net' : '',
+                       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+        $ins->execute([(int)$dispatch['demand_id'], (int)$dispatch['id'], $phone, $phoneJid,
                 $pushName !== '' ? $pushName : null, $userId, $emoji]);
+        $result = $ins->rowCount() > 0
+            ? 'interesse registrado: captação #' . (int)$dispatch['demand_id'] . ($isLid ? ' (só LID)' : '') . ($userId ? ' user #' . $userId : '')
+            : 'interesse já existia: captação #' . (int)$dispatch['demand_id'];
+        chat_webhook_trace($traceEvent, $key, $result, $reactor, $traceInfo);
     } catch (Throwable $e) {
         error_log('[WEBHOOK] erro ao registrar interesse por reação: ' . $e->getMessage());
+        chat_webhook_trace($traceEvent, $key, 'reação: erro ' . $e->getMessage(), $reactor, $traceInfo);
     }
 }
 
