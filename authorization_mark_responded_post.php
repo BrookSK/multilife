@@ -62,7 +62,12 @@ try {
     // proposalValue passa a ser o valor autorizado informado agora (substitui o valor antigo/zero).
     $proposalValue = $authorizedValueTotal;
 
-    // Validar paciente
+    // Validar paciente (vinculado na própria aba Autorização)
+    if ($patientId <= 0) {
+        flash_set('error', 'Vincule o paciente (selecione ou faça o cadastro rápido) antes de marcar como aprovada.');
+        header('Location: /authorization_view.php?id=' . $authId);
+        exit;
+    }
     $vp = $db->prepare("SELECT id FROM patients WHERE id = :id AND deleted_at IS NULL");
     $vp->execute(['id' => $patientId]);
     if (!$vp->fetch()) {
@@ -153,6 +158,11 @@ try {
     } catch (Throwable $e) {}
 
     $db->commit();
+
+    // Aprovação que estava pendente do paciente foi concluída
+    try {
+        $db->prepare('UPDATE authorization_requests SET pending_patient_approval = 0 WHERE id = :id')->execute(['id' => $authId]);
+    } catch (Throwable $e) { /* coluna ainda não criada */ }
 
     audit_log('update', 'authorization_requests', (string)$authId, null, ['action' => 'marcada_respondida_manual']);
 

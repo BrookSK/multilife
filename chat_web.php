@@ -1640,29 +1640,22 @@ echo '<p style="margin:0;font-size:14px;color:#00a884;font-weight:600">📋 Prop
 echo '<p style="margin:8px 0 0;font-size:13px;color:#667781">O sistema enviará automaticamente um e-mail para a operadora / cliente aguardando autorização.</p>';
 echo '</div>';
 
-echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
-echo '<div>';
-echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Paciente *</label>';
-echo '<select name="patient_id" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
-echo '<option value="">Selecione...</option>';
-$patientsStmt = db()->query("SELECT id, full_name FROM patients WHERE deleted_at IS NULL ORDER BY full_name ASC");
-foreach ($patientsStmt->fetchAll() as $p) {
-    echo '<option value="' . (int)$p['id'] . '">' . h($p['full_name']) . '</option>';
-}
-echo '</select>';
-echo '</div>';
-
-echo '<div>';
+// O paciente NÃO é escolhido aqui: ele é cadastrado/vinculado na aba Autorização,
+// depois que a operadora / cliente autoriza.
+echo '<div style="margin-bottom:16px">';
 echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Profissional *</label>';
 echo '<select name="professional_user_id" id="selectProfModalProfessional" onchange="loadProfessionalSpecialty()" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px">';
 echo '<option value="">Selecione...</option>';
-$profsStmt = db()->query("SELECT u.id, u.name FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE u.status = 'active' AND r.slug = 'profissional' ORDER BY u.name ASC");
+// Nome + telefone + especialidade + cidade na opção, para a busca achar por qualquer um deles
+$profsStmt = db()->query("SELECT DISTINCT u.id, u.name, u.phone, u.specialty, u.city FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE u.status = 'active' AND r.slug = 'profissional' ORDER BY u.name ASC");
 foreach ($profsStmt->fetchAll() as $prof) {
-    echo '<option value="' . (int)$prof['id'] . '">' . h($prof['name']) . '</option>';
+    $profExtra = array_filter([trim((string)($prof['specialty'] ?? '')), trim((string)($prof['city'] ?? '')), trim((string)($prof['phone'] ?? ''))]);
+    echo '<option value="' . (int)$prof['id'] . '">' . h((string)$prof['name'] . ($profExtra ? ' · ' . implode(' · ', $profExtra) : '')) . '</option>';
 }
 echo '</select>';
 echo '</div>';
-echo '</div>';
+echo '<script src="/select_filter.js?v=1"></script>';
+echo '<script>selectFilterAttach(document.getElementById("selectProfModalProfessional"), "Buscar profissional por nome, especialidade, cidade ou telefone...");</script>';
 
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
 echo '<div>';
@@ -3678,6 +3671,11 @@ async function openSelectProfessionalModal(professionalId = null) {
             setTimeout(() => { demandSelect.style.border = ""; }, 2000);
         }
         return;
+    }
+
+    // Limpa a busca do profissional (senão o pré-preenchimento pode não achar a opção)
+    if (typeof selectFilterReset === "function") {
+        selectFilterReset(document.getElementById("selectProfModalProfessional"));
     }
     
     const chatId = window.chatId || "";

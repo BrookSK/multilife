@@ -50,13 +50,11 @@ function process_single_authorization(int $authId, int $emailId): array
         error_log("[PROCESS_SINGLE_AUTH] Agreed Value: $agreedValue");
         error_log("[PROCESS_SINGLE_AUTH] Total Sessions: $totalSessions");
         
+        // Sem paciente (ele é vinculado na aba Autorização): a resposta ainda é
+        // analisada. Negação segue normal; aprovação fica pendente do paciente
+        // (ver bloco 'approved' abaixo).
         if ($patientId <= 0) {
-            error_log("[PROCESS_SINGLE_AUTH] ❌❌❌ ERRO CRÍTICO: Patient ID inválido na autorização #$authId!");
-            error_log("[PROCESS_SINGLE_AUTH] Valor raw: " . var_export($patientIdRaw, true));
-            error_log("[PROCESS_SINGLE_AUTH] Valor convertido: $patientId");
-            error_log("[PROCESS_SINGLE_AUTH] Esta autorização foi criada antes da implementação de patient_id ou houve erro no salvamento");
-            error_log("[PROCESS_SINGLE_AUTH] SOLUÇÃO: Recrie a proposta ou cancele esta autorização");
-            return ['success' => false, 'error' => 'Patient ID inválido na autorização #' . $authId . '. Esta autorização foi criada antes da implementação. Por favor, recrie a proposta.'];
+            error_log("[PROCESS_SINGLE_AUTH] Autorização #$authId sem paciente vinculado (será escolhido na aba Autorização)");
         }
         
         // Buscar e-mail
@@ -173,6 +171,21 @@ function process_single_authorization(int $authId, int $emailId): array
             return ['success' => false, 'error' => 'Confiança baixa'];
         }
         
+        // Aprovada, mas sem paciente: não cria o atendimento agora. Marca como
+        // pendente; na aba Autorização o usuário vincula o paciente e conclui.
+        if ($normalizedDecision === 'approved' && $patientId <= 0) {
+            authorization_requests_ensure_pending_patient_column(); // DDL fora da transação
+            $db->prepare("UPDATE authorization_requests
+                          SET pending_patient_approval = 1, inbound_email_id = COALESCE(inbound_email_id, :eid), ai_analysis = :ai
+                          WHERE id = :id AND status = 'aguardando_autorizacao'")
+                ->execute(['eid' => $emailId, 'ai' => $reason, 'id' => $authId]);
+            $db->prepare("INSERT INTO authorization_request_history (authorization_request_id, action, notes, user_id)
+                          VALUES (:aid, 'response_received', :notes, NULL)")
+                ->execute(['aid' => $authId, 'notes' => 'Operadora / cliente aprovou por e-mail. Vincule o paciente para concluir a aprovação. Motivo: ' . mb_strimwidth($reason, 0, 400, '…')]);
+            error_log("[PROCESS_SINGLE_AUTH] Aprovação #$authId pendente: falta vincular o paciente");
+            return ['success' => true, 'decision' => 'approved_pending_patient', 'reason' => $reason];
+        }
+
         $db->beginTransaction();
         
         if ($normalizedDecision === 'approved') {

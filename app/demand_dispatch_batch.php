@@ -415,6 +415,29 @@ function authorization_requests_ensure_frequency_column(): void
 }
 
 /**
+ * authorization_requests.pending_patient_approval: 1 quando a operadora / cliente
+ * aprovou (resposta por e-mail), mas a autorização ainda não tem paciente. O
+ * paciente é vinculado na aba Autorização e a aprovação é concluída lá.
+ * Idempotente. Chamar FORA de transação (DDL faz commit implícito no MySQL).
+ */
+function authorization_requests_ensure_pending_patient_column(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    try {
+        $col = db()->query("SHOW COLUMNS FROM authorization_requests LIKE 'pending_patient_approval'")->fetch(PDO::FETCH_ASSOC);
+        if (!$col) {
+            db()->exec("ALTER TABLE authorization_requests ADD COLUMN pending_patient_approval TINYINT(1) NOT NULL DEFAULT 0");
+        }
+    } catch (Throwable $e) {
+        error_log('[AUTH_PENDING_PATIENT] ' . $e->getMessage());
+    }
+}
+
+/**
  * CONFIRMAÇÃO DO ENVIO PELO WEBHOOK.
  *
  * Em grupo, a Evolution às vezes entrega a mensagem mas demora (ou nunca

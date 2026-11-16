@@ -127,7 +127,10 @@ foreach ($columns as $col) {
             $emailId = !empty($item['inbound_email_id']) ? (int)$item['inbound_email_id'] : null;
             $demandTitle = h((string)$item['demand_title']);
             $professionalName = h((string)$item['professional_name']);
-            $patientName = !empty($item['patient_name']) ? h((string)$item['patient_name']) : 'Paciente não vinculado';
+            // Paciente é vinculado na tela da autorização (seleção com busca ou cadastro rápido)
+            $patientName = !empty($item['patient_name'])
+                ? h((string)$item['patient_name'])
+                : '<span style="color:hsl(var(--warning));font-weight:700">Paciente não vinculado · abra para vincular</span>';
             $operatorEmail = h((string)$item['operator_email']);
             $proposalValue = (float)$item['proposal_value'];
             $totalSessions = (int)$item['total_sessions'];

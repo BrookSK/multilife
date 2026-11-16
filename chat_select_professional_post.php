@@ -67,7 +67,9 @@ if ($demandId <= 0) {
 }
 error_log("✓ demandId válido");
 
-if ($patientId <= 0 || $professionalUserId <= 0 || $specialtyId <= 0 || $specialtyServiceId <= 0) {
+// O paciente NÃO é mais escolhido no chat: é vinculado depois, na aba Autorização
+// (patient_id = 0 até lá). Ver authorization_set_patient_post.php.
+if ($professionalUserId <= 0 || $specialtyId <= 0 || $specialtyServiceId <= 0) {
     error_log("ERRO: Campos obrigatórios faltando - Patient: $patientId, Prof: $professionalUserId, Spec: $specialtyId, Service: $specialtyServiceId");
     flash_set('error', 'Preencha todos os campos obrigatórios.');
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
@@ -115,30 +117,13 @@ $db = db();
 authorization_requests_ensure_frequency_column();
 
 // ============================================================================
-// VALIDAÇÃO CRÍTICA: PATIENT_ID
-// ============================================================================
-error_log("=== VALIDAÇÃO CRÍTICA: PATIENT_ID ===");
-error_log("Patient ID recebido do formulário: " . var_export($patientId, true));
-error_log("Tipo do Patient ID: " . gettype($patientId));
-
-if ($patientId <= 0) {
-    error_log("❌ ERRO CRÍTICO: Patient ID inválido ou não informado");
-    error_log("Valor recebido: $patientId");
-    flash_set('error', 'Paciente não selecionado. Por favor, selecione um paciente válido.');
-    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
-    exit;
-}
-
-error_log("✓ Patient ID validado: $patientId (tipo: " . gettype($patientId) . ")");
-
-// ============================================================================
 // BUSCAR DADOS NO BANCO
 // ============================================================================
 error_log("=== BUSCANDO DADOS NO BANCO ===");
 
 // Buscar dados da demanda
 error_log("Buscando demanda ID: $demandId");
-$stmt = $db->prepare('SELECT id, title, specialty, location_city, location_state, origin_email, status FROM demands WHERE id = :id');
+$stmt = $db->prepare('SELECT id, title, patient_name, specialty, location_city, location_state, origin_email, status FROM demands WHERE id = :id');
 $stmt->execute(['id' => $demandId]);
 $demand = $stmt->fetch();
 
@@ -150,22 +135,24 @@ if (!$demand) {
 }
 error_log("✓ Demanda encontrada: " . $demand['title'] . " (Status: " . $demand['status'] . ")");
 
-// Buscar dados do paciente (VALIDAÇÃO CRÍTICA)
-error_log("=== VALIDAÇÃO CRÍTICA: VERIFICANDO SE PACIENTE EXISTE NO BANCO ===");
-error_log("Buscando paciente ID: $patientId");
-$stmt = $db->prepare('SELECT id, full_name, email, phone_primary, whatsapp FROM patients WHERE id = :id AND deleted_at IS NULL');
-$stmt->execute(['id' => $patientId]);
-$patient = $stmt->fetch();
-
-if (!$patient) {
-    error_log("❌ ERRO CRÍTICO: Paciente #$patientId NÃO EXISTE no banco de dados");
-    error_log("Query executada: SELECT id, full_name FROM patients WHERE id = $patientId AND deleted_at IS NULL");
-    error_log("Resultado: NULL (paciente não encontrado ou foi deletado)");
-    flash_set('error', 'Paciente não encontrado no sistema. Por favor, verifique se o paciente está cadastrado.');
-    header('Location: /chat_web.php?chat=' . urlencode($chatJid));
-    exit;
+// Paciente: opcional nesta etapa. Se vier (fluxo antigo), usa o cadastro; senão,
+// o e-mail da proposta usa o nome do paciente que está no card da demanda.
+$patient = false;
+if ($patientId > 0) {
+    $stmt = $db->prepare('SELECT id, full_name, email, phone_primary, whatsapp FROM patients WHERE id = :id AND deleted_at IS NULL');
+    $stmt->execute(['id' => $patientId]);
+    $patient = $stmt->fetch();
 }
-error_log("✓ Paciente VALIDADO e ENCONTRADO no banco: " . $patient['full_name'] . " (ID: " . $patient['id'] . ")");
+if (!$patient) {
+    $patientId = 0;
+    $patient = [
+        'id' => 0,
+        'full_name' => (string)($demand['patient_name'] ?? ''),
+        'email' => '',
+        'phone_primary' => '',
+        'whatsapp' => '',
+    ];
+}
 
 // Buscar dados do profissional
 error_log("Buscando profissional ID: $professionalUserId");
@@ -392,11 +379,8 @@ try {
     $verifyResult = $verifyStmt->fetch();
     $savedPatientId = $verifyResult ? (int)$verifyResult['patient_id'] : 0;
     
-    if ($savedPatientId === $patientId) {
-        error_log("✓✓✓ CONFIRMADO: Patient ID $patientId foi salvo corretamente na autorização #$authRequestId");
-    } else {
-        error_log("❌❌❌ ERRO: Patient ID NÃO foi salvo corretamente!");
-        error_log("Esperado: $patientId | Salvo: $savedPatientId");
+    if ($patientId > 0 && $savedPatientId !== $patientId) {
+        error_log("❌❌❌ ERRO: Patient ID NÃO foi salvo corretamente! Esperado: $patientId | Salvo: $savedPatientId");
         throw new Exception("Erro ao salvar patient_id na autorização");
     }
     
@@ -535,14 +519,41 @@ try {
         exit;
     }
     
+    // ------------------------------------------------------------------------
+    // PERFORMANCE: a proposta já está gravada. O envio do e-mail (busca do
+    // e-mail original para manter a conversa + SMTP, que pode levar 30 s ou
+    // mais) roda DEPOIS de responder ao navegador, para o popup não dar timeout.
+    // Resultado do envio fica no histórico da autorização.
+    // ------------------------------------------------------------------------
+    flash_set('success', 'Proposta criada! O e-mail para a operadora / cliente está sendo enviado. Acompanhe o envio no histórico da autorização #' . $authRequestId . '.');
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+    ignore_user_abort(true);
+    @set_time_limit(300);
+    header('Location: /authorization_list.php?status=aguardando_autorizacao');
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        header('Connection: close');
+        header('Content-Length: 0');
+        while (ob_get_level() > 0) {
+            @ob_end_flush();
+        }
+        flush();
+    }
+
     try {
-        error_log("Iniciando envio de e-mail com template...");
+        error_log("Iniciando envio de e-mail com template (após responder ao navegador)...");
         
         // Buscar operadora do paciente para template específico
-        $stmt = $db->prepare('SELECT health_insurer_id FROM patients WHERE id = :pid');
-        $stmt->execute(['pid' => $patientId]);
-        $patientData = $stmt->fetch();
-        $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
+        $healthInsurerId = null;
+        if ($patientId > 0) {
+            $stmt = $db->prepare('SELECT health_insurer_id FROM patients WHERE id = :pid');
+            $stmt->execute(['pid' => $patientId]);
+            $patientData = $stmt->fetch();
+            $healthInsurerId = $patientData ? (int)$patientData['health_insurer_id'] : null;
+        }
         
         // Enviar com template - responder ao email de captacao original para manter na mesma conversa
         $deterministicMsgId = '<proposal-' . $authRequestId . '@multilife.onsolutionsbrasil.com.br>';
@@ -663,16 +674,23 @@ try {
             'notes' => "E-mail enviado para {$operatorEmail}",
             'uid' => $userId
         ]);
+        exit; // resposta já foi enviada ao navegador
         
-        flash_set('success', 'Proposta enviada com sucesso! Aguardando resposta da operadora / cliente.');
-        header('Location: /authorization_list.php?status=aguardando_autorizacao');
-        exit;
-        
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
+        // Já respondemos ao navegador: o erro fica registrado no histórico
+        // (a autorização mostra "Não enviado" e pode ser reenviada).
         error_log('❌ ERRO AO ENVIAR E-MAIL: ' . $e->getMessage());
-        error_log('Stack trace: ' . $e->getTraceAsString());
-        flash_set('warning', 'Solicitação criada, mas houve erro ao enviar e-mail: ' . $e->getMessage());
-        header('Location: /authorization_list.php?status=aguardando_autorizacao');
+        try {
+            $db->prepare(
+                "INSERT INTO authorization_request_history (authorization_request_id, action, proposal_value, notes, user_id)
+                 VALUES (:auth_id, 'created', :proposal, :notes, :uid)"
+            )->execute([
+                'auth_id' => $authRequestId,
+                'proposal' => $proposalValue,
+                'notes' => mb_strimwidth('⚠️ Falha ao enviar o e-mail para ' . $operatorEmail . ': ' . $e->getMessage(), 0, 900, '…'),
+                'uid' => $userId,
+            ]);
+        } catch (Throwable $e2) {}
         exit;
     }
     
@@ -680,7 +698,9 @@ try {
     error_log('❌ ERRO FATAL NA TRANSAÇÃO: ' . $e->getMessage());
     error_log('Stack trace: ' . $e->getTraceAsString());
     error_log('Fazendo rollback...');
-    $db->rollBack();
+    if ($db->inTransaction()) {
+        $db->rollBack();
+    }
     error_log('✓ Rollback executado');
     flash_set('error', 'Erro ao criar solicitação: ' . $e->getMessage());
     header('Location: /chat_web.php?chat=' . urlencode($chatJid));
