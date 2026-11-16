@@ -14,6 +14,7 @@ $typeFilter = isset($_GET['type']) ? trim((string)$_GET['type']) : ''; // equipe
 $specialtyFilter = isset($_GET['specialty']) ? trim((string)$_GET['specialty']) : '';
 $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
+$testFilter = isset($_GET['test']) && in_array((string)$_GET['test'], ['1', '0'], true) ? (string)$_GET['test'] : ''; // 1 = só teste | 0 = sem teste
 
 // ITEM 16: Paginação no backend
 $page = isset($_GET['page']) && ctype_digit((string)$_GET['page']) ? max(1, (int)$_GET['page']) : 1;
@@ -47,6 +48,14 @@ if ($typeFilter === 'profissional') {
 if ($statusFilter !== '' && in_array($statusFilter, ['active', 'inactive'], true)) {
     $where[] = 'u.status = :status';
     $params['status'] = $statusFilter;
+}
+
+// Filtro por profissional de teste (users.is_test_professional)
+if ($testFilter !== '') {
+    // Garantir coluna is_test_professional (fallback, mesmo padrão de users_edit.php)
+    try { db()->exec("ALTER TABLE users ADD COLUMN is_test_professional TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+    $where[] = 'u.is_test_professional = :is_test';
+    $params['is_test'] = (int)$testFilter;
 }
 
 // Filtro por especialidade
@@ -91,10 +100,10 @@ $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
 // Helper para preservar filtros nos links de paginação
-$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter, $specialtyFilter, $dateFrom, $dateTo): string {
+$buildPageUrl = function (int $p) use ($q, $roleFilter, $statusFilter, $typeFilter, $specialtyFilter, $testFilter, $dateFrom, $dateTo): string {
     $qs = array_filter([
         'q' => $q, 'role' => $roleFilter, 'status' => $statusFilter, 'type' => $typeFilter,
-        'specialty' => $specialtyFilter, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'page' => $p,
+        'specialty' => $specialtyFilter, 'test' => $testFilter, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'page' => $p,
     ], fn($v) => $v !== '' && $v !== null);
     return '/users_list.php?' . http_build_query($qs);
 };
@@ -152,6 +161,13 @@ echo '<option value="active"' . ($statusFilter === 'active' ? ' selected' : '') 
 echo '<option value="inactive"' . ($statusFilter === 'inactive' ? ' selected' : '') . '>Inativo</option>';
 echo '</select>';
 
+// Filtro profissional de teste
+echo '<select name="test" style="min-width:170px">';
+echo '<option value="">Teste e reais</option>';
+echo '<option value="1"' . ($testFilter === '1' ? ' selected' : '') . '>Só profissionais de teste</option>';
+echo '<option value="0"' . ($testFilter === '0' ? ' selected' : '') . '>Sem profissionais de teste</option>';
+echo '</select>';
+
 // Período de cadastro
 echo '<label style="font-size:12px;color:hsl(var(--muted-foreground))">De</label>';
 echo '<input type="date" name="date_from" value="' . h($dateFrom) . '" style="width:150px">';
@@ -159,7 +175,7 @@ echo '<label style="font-size:12px;color:hsl(var(--muted-foreground))">Até</lab
 echo '<input type="date" name="date_to" value="' . h($dateTo) . '" style="width:150px">';
 
 echo '<button class="btn btnPrimary" type="submit">Filtrar</button>';
-if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '' || $specialtyFilter !== '' || $dateFrom !== '' || $dateTo !== '') {
+if ($q !== '' || $roleFilter !== '' || $statusFilter !== '' || $typeFilter !== '' || $specialtyFilter !== '' || $testFilter !== '' || $dateFrom !== '' || $dateTo !== '') {
     echo '<a class="btn" href="/users_list.php">Limpar</a>';
 }
 echo '</form>';
