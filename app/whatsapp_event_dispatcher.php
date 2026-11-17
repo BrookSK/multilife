@@ -110,7 +110,7 @@ class WhatsAppEventDispatcher
                     $results['professional'] = $result;
                     
                     // Enviar arquivos anexos
-                    $this->sendEventFiles($event['id'], 'professional', $data['professional_phone']);
+                    $results['professional']['files'] = $this->sendEventFiles((int)$event['id'], 'professional', $data['professional_phone'], (string)($data['professional_name'] ?? ''));
 
                     // ESPELHAR no E-MAIL do profissional (mesmo texto do WhatsApp).
                     $this->sendEmailNotification(
@@ -157,7 +157,7 @@ class WhatsAppEventDispatcher
                     $results['patient'] = $result;
                     
                     // Enviar arquivos anexos
-                    $this->sendEventFiles($event['id'], 'patient', $data['patient_phone']);
+                    $results['patient']['files'] = $this->sendEventFiles((int)$event['id'], 'patient', $data['patient_phone'], (string)($data['patient_name'] ?? ''));
 
                     // ESPELHAR no E-MAIL do paciente (mesmo texto do WhatsApp).
                     $this->sendEmailNotification(
@@ -430,16 +430,18 @@ class WhatsAppEventDispatcher
     }
     
     /**
-     * Envia arquivos anexos do evento
-     * 
-     * @param int $eventId ID do evento
-     * @param string $recipientType Tipo de destinatário
-     * @param string $phone Telefone do destinatário
+     * Envia arquivos anexos do evento.
+     *
+     * O arquivo vai em BASE64 (igual ao chat). Antes ia o caminho do arquivo no
+     * servidor, que a Evolution API não consegue abrir: os anexos não chegavam.
+     * Cada envio fica registrado em whatsapp_event_logs ("[Arquivo] nome").
+     *
+     * @return array{total:int, sent:int, failed:int}
      */
-    private function sendEventFiles(int $eventId, string $recipientType, string $phone): void
+    private function sendEventFiles(int $eventId, string $recipientType, string $phone, string $recipientName = ''): array
     {
+        $summary = ['total' => 0, 'sent' => 0, 'failed' => 0];
         try {
-            // Buscar arquivos do evento
             $stmt = db()->prepare("
                 SELECT * FROM whatsapp_event_files 
                 WHERE event_id = ? 
@@ -449,40 +451,60 @@ class WhatsAppEventDispatcher
             $files = $stmt->fetchAll();
             
             if (empty($files)) {
-                return;
+                return $summary;
             }
             
-            // Normalizar telefone
             $phone = preg_replace('/[^0-9]/', '', $phone);
             if (!str_starts_with($phone, '55')) {
                 $phone = '55' . $phone;
             }
             
-            // Enviar cada arquivo
             foreach ($files as $file) {
+                $summary['total']++;
+                $fileName = (string)($file['file_name'] ?? 'arquivo');
                 $filePath = __DIR__ . '/..' . $file['file_path'];
                 
-                if (!file_exists($filePath)) {
+                if (!is_file($filePath) || !is_readable($filePath)) {
                     error_log("[WHATSAPP_DISPATCHER] Arquivo não encontrado: $filePath");
+                    $summary['failed']++;
+                    $this->logMessage($eventId, $recipientType, $phone, $recipientName, '[Arquivo] ' . $fileName, 'failed', 'Arquivo não encontrado no servidor');
                     continue;
                 }
                 
-                // Determinar tipo de mídia baseado no MIME type
-                $mimeType = $file['file_type'];
-                if (str_starts_with($mimeType, 'image/')) {
-                    $this->api->sendImage($phone, $filePath, $file['file_name']);
-                } elseif (str_starts_with($mimeType, 'application/pdf') || str_starts_with($mimeType, 'application/')) {
-                    $this->api->sendDocument($phone, $filePath, $file['file_name']);
-                } else {
-                    $this->api->sendDocument($phone, $filePath, $file['file_name']);
+                $content = file_get_contents($filePath);
+                if ($content === false || $content === '') {
+                    $summary['failed']++;
+                    $this->logMessage($eventId, $recipientType, $phone, $recipientName, '[Arquivo] ' . $fileName, 'failed', 'Arquivo vazio ou ilegível');
+                    continue;
+                }
+                $base64 = base64_encode($content);
+                $mimeType = trim((string)($file['file_type'] ?? ''));
+                if ($mimeType === '' || $mimeType === 'application/octet-stream') {
+                    $detected = function_exists('mime_content_type') ? (string)@mime_content_type($filePath) : '';
+                    $mimeType = $detected !== '' ? $detected : 'application/octet-stream';
                 }
                 
-                error_log("[WHATSAPP_DISPATCHER] Arquivo enviado: {$file['file_name']} para $phone");
+                try {
+                    $res = str_starts_with($mimeType, 'image/')
+                        ? $this->api->sendMedia($phone, 'image', $fileName, $base64, null, [], $mimeType)
+                        : $this->api->sendMedia($phone, 'document', $fileName, $base64, null, [], $mimeType);
+                    $http = (int)($res['status'] ?? 0);
+                    $ok = $http >= 200 && $http < 300;
+                } catch (Throwable $sendErr) {
+                    $ok = false;
+                    $http = 0;
+                    error_log('[WHATSAPP_DISPATCHER] Falha ao enviar arquivo ' . $fileName . ': ' . $sendErr->getMessage());
+                }
+                
+                $summary[$ok ? 'sent' : 'failed']++;
+                $this->logMessage($eventId, $recipientType, $phone, $recipientName, '[Arquivo] ' . $fileName, $ok ? 'sent' : 'failed', $ok ? null : ('HTTP ' . $http));
+                error_log("[WHATSAPP_DISPATCHER] Arquivo {$fileName} para $phone: " . ($ok ? 'enviado' : 'FALHOU (HTTP ' . $http . ')'));
             }
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("[WHATSAPP_DISPATCHER] Erro ao enviar arquivos: " . $e->getMessage());
         }
+        return $summary;
     }
     
     /**

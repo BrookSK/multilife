@@ -1654,7 +1654,9 @@ foreach ($profsStmt->fetchAll() as $prof) {
 }
 echo '</select>';
 echo '</div>';
-echo '<script src="/select_filter.js?v=1"></script>';
+// Profissional novo: cadastro rápido sem sair do pop-up (volta já selecionado).
+echo '<button type="button" onclick="window._quickProfForSelect=true;openQuickProfModal();" style="margin-top:8px;padding:8px 12px;background:#f0f2f5;border:1px solid #d1d7db;border-radius:8px;font-size:13px;font-weight:600;color:#00a884;cursor:pointer">➕ Cadastro rápido do profissional</button>';
+echo '<script src="/select_filter.js?v=2"></script>';
 echo '<script>selectFilterAttach(document.getElementById("selectProfModalProfessional"), "Buscar profissional por nome, especialidade, cidade ou telefone...");</script>';
 
 echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
@@ -1846,6 +1848,16 @@ function submitQuickProf(force) {
       if (btn) { btn.disabled = false; btn.textContent = 'Salvar pré-cadastro'; }
       if (data && data.ok) {
         closeQuickProfModal();
+        // Aberto pelo pop-up "Selecionar Profissional": já deixa o novo selecionado.
+        var profSel = document.getElementById('selectProfModalProfessional');
+        var selModal = document.getElementById('selectProfessionalModal');
+        if (window._quickProfForSelect && profSel && data.user_id && selModal && selModal.style.display === 'flex') {
+          window._quickProfForSelect = false;
+          var lbl = (data.name || name) + [specialty, city, data.phone || phone].filter(function (x) { return x; }).map(function (x) { return ' · ' + x; }).join('');
+          selectFilterAddOption(profSel, data.user_id, lbl);
+          return;
+        }
+        window._quickProfForSelect = false;
         alert('Profissional pré-cadastrado com sucesso: ' + (data.name || name));
         location.reload();
         return;

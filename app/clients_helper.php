@@ -182,17 +182,39 @@ function polos_seed_list(): array
         ['client' => 'CENEMED', 'name' => 'Presidente Prudente', 'city' => 'Presidente Prudente', 'state' => 'SP', 'source' => $cene],
         ['client' => 'CENEMED', 'name' => 'Ribeirão Preto', 'city' => 'Ribeirão Preto', 'state' => 'SP', 'source' => $cene],
         ['client' => 'CENEMED', 'name' => 'São Paulo', 'city' => 'São Paulo', 'state' => 'SP', 'source' => $cene],
+        // 2026-11-17 (migration 2026-11-17_0001_polos_completos.sql)
+        ['client' => 'GLOBAL', 'name' => 'Brasília', 'city' => 'Brasília', 'state' => 'DF', 'source' => 'Contatos: "Ricardo / Global Brasilia"'],
+        ['client' => 'CENEMED', 'name' => 'Rio Preto', 'city' => 'São José do Rio Preto', 'state' => 'SP', 'source' => 'Contatos: "Cenemed Rio Preto" e "Cenemed - Matriz"'],
+        ['client' => 'CENEMED', 'name' => 'Belo Horizonte', 'city' => 'Belo Horizonte', 'state' => 'MG', 'source' => 'Contatos: "Adm. Fabiana / Polo Belo Horizonte" (mesmo padrão dos administrativos da Cenemed). Confirme o cliente.'],
+        ['client' => 'CENEMED', 'name' => 'Brasília', 'city' => 'Brasília', 'state' => 'DF', 'source' => 'Contatos: "Adm. Claudineia / Polo Brasília" (mesmo padrão dos administrativos da Cenemed). Confirme o cliente.'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Rio Preto', 'city' => 'São José do Rio Preto', 'state' => 'SP', 'source' => 'Contatos: "Unimed Rio Preto"'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Andradina', 'city' => 'Andradina', 'state' => 'SP', 'source' => 'Monitoramento (cliente UNIMED ANDRADINA) e contatos'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Bebedouro', 'city' => 'Bebedouro', 'state' => 'SP', 'source' => 'Monitoramento (cliente UNIMED BEBEDOURO) e contatos'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Birigui', 'city' => 'Birigui', 'state' => 'SP', 'source' => 'Monitoramento (cliente UNIMED BIRIGUI) e contatos'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Londrina', 'city' => 'Londrina', 'state' => 'PR', 'source' => 'Monitoramento (cliente UNIMED LONDRINA) e contatos'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Três Lagoas', 'city' => 'Três Lagoas', 'state' => 'MS', 'source' => 'Monitoramento (cliente UNIMED TRÊS LAGOAS) e contatos'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Lins', 'city' => 'Lins', 'state' => 'SP', 'source' => 'Contatos: "Unimed Lins"'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Catalão', 'city' => 'Catalão', 'state' => 'GO', 'source' => 'Contatos: "Unimed Catalão"'],
+        ['client' => 'UNIMED', 'exact' => true, 'name' => 'Tatuí', 'city' => 'Tatuí', 'state' => 'SP', 'source' => 'Contatos: "Unimed Tatuí"'],
     ];
 }
 
-/** Acha o cliente pelo nome (exato primeiro; depois começando com o nome). */
-function polos_seed_find_client(string $name): ?int
+/**
+ * Acha o cliente pelo nome (exato primeiro; depois começando com o nome).
+ * $exact = true: só nome exato (ex.: "UNIMED" não pode cair em "UNIMED BEBEDOURO").
+ */
+function polos_seed_find_client(string $name, bool $exact = false): ?int
 {
-    $stmt = db()->prepare("SELECT id FROM clients
-        WHERE UPPER(TRIM(name)) = :n OR UPPER(TRIM(name)) LIKE :p
-        ORDER BY (UPPER(TRIM(name)) = :n2) DESC, is_active DESC, id ASC LIMIT 1");
     $up = mb_strtoupper(trim($name));
-    $stmt->execute(['n' => $up, 'p' => $up . '%', 'n2' => $up]);
+    if ($exact) {
+        $stmt = db()->prepare("SELECT id FROM clients WHERE UPPER(TRIM(name)) = :n ORDER BY is_active DESC, id ASC LIMIT 1");
+        $stmt->execute(['n' => $up]);
+    } else {
+        $stmt = db()->prepare("SELECT id FROM clients
+            WHERE UPPER(TRIM(name)) = :n OR UPPER(TRIM(name)) LIKE :p
+            ORDER BY (UPPER(TRIM(name)) = :n2) DESC, is_active DESC, id ASC LIMIT 1");
+        $stmt->execute(['n' => $up, 'p' => $up . '%', 'n2' => $up]);
+    }
     $id = $stmt->fetchColumn();
     return $id !== false ? (int)$id : null;
 }
@@ -209,7 +231,7 @@ function polos_seed_pending(): array
     $noClient = [];
     $exists = db()->prepare('SELECT 1 FROM polos WHERE client_id = :c AND UPPER(TRIM(name)) = :n LIMIT 1');
     foreach (polos_seed_list() as $p) {
-        $cid = polos_seed_find_client($p['client']);
+        $cid = polos_seed_find_client($p['client'], !empty($p['exact']));
         if ($cid === null) {
             $noClient[$p['client']] = $p['client'];
             continue;

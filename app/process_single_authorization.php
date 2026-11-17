@@ -274,27 +274,14 @@ function process_single_authorization(int $authId, int $emailId): array
                 $profStmt->execute(['id' => $professionalUserId]);
                 $profData = $profStmt->fetch();
                 
-                $patStmt = $db->prepare('SELECT full_name, whatsapp, phone_primary, phone_secondary,
-                        address_street, address_number, address_complement, address_neighborhood, address_city, address_state
-                    FROM patients WHERE id = :id');
+                $patStmt = $db->prepare('SELECT ' . PATIENT_CONTACT_COLUMNS . ' FROM patients WHERE id = :id');
                 $patStmt->execute(['id' => $patientId]);
-                $patData = $patStmt->fetch() ?: [];
+                $patData = $patStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-                // Endereço e contatos formatados para o template oficial "novo paciente autorizado".
-                $addrParts = array_filter([
-                    trim((string)($patData['address_street'] ?? '')),
-                    trim((string)($patData['address_number'] ?? '')),
-                    trim((string)($patData['address_complement'] ?? '')),
-                    trim((string)($patData['address_neighborhood'] ?? '')),
-                    trim((string)($patData['address_city'] ?? '')) . (trim((string)($patData['address_state'] ?? '')) !== '' ? '/' . trim((string)$patData['address_state']) : ''),
-                ], fn($p) => $p !== '' && $p !== '/');
-                $patientAddress = implode(', ', $addrParts);
-                $contactParts = array_filter([
-                    trim((string)($patData['whatsapp'] ?? '')),
-                    trim((string)($patData['phone_primary'] ?? '')),
-                    trim((string)($patData['phone_secondary'] ?? '')),
-                ], fn($c) => $c !== '');
-                $patientContacts = implode(' / ', array_unique($contactParts));
+                // Endereço completo e contatos (paciente + família) para o template
+                // oficial "novo paciente autorizado".
+                $patientAddress = patient_format_address($patData);
+                $patientContacts = patient_format_contacts($patData);
 
                 $pendingDispatch = [
                     'professional_id' => $professionalUserId,
@@ -302,7 +289,7 @@ function process_single_authorization(int $authId, int $emailId): array
                     'professional_phone' => preg_replace('/\D+/', '', (string)($profData['phone'] ?? '')),
                     'patient_id' => $patientId,
                     'patient_name' => $patData['full_name'] ?? '',
-                    'patient_phone' => preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? '')),
+                    'patient_phone' => preg_replace('/\D+/', '', (string)(($patData['whatsapp'] ?? '') ?: ($patData['phone_primary'] ?? ''))),
                     'attendance_id' => (string)$assignmentId,
                     'attendance_date' => date('d/m/Y'),
                     'specialty' => (string)($demand['specialty'] ?? ''),

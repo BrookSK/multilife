@@ -21,7 +21,7 @@ if (!in_array($status, $allowedStatuses, true)) {
 }
 
 // Buscar apenas atribuições confirmadas (atendimentos que completaram cadastro de paciente, profissional e serviço)
-$sql = 'SELECT pa.id, pa.demand_id, pa.created_at, pa.status,
+$sql = 'SELECT pa.id, pa.demand_id, pa.patient_id, pa.created_at, pa.status,
                d.title, d.location_city, d.location_state, d.origin_email, d.description,
                pa.specialty, pa.service_type, pa.session_quantity, pa.session_frequency, 
                COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
@@ -391,8 +391,19 @@ if ($selected) {
     
     echo '<div style="background:hsla(var(--primary)/.08);padding:12px;border-radius:8px;margin-bottom:16px">';
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-bottom:8px">Atribuição confirmada</div>';
+    // Endereço e contatos do paciente (vão na mensagem ao profissional ao aprovar).
+    $paContact = patient_contact_fetch((int)($selected['patient_id'] ?? 0));
+    $paAddress = patient_format_address($paContact);
+    $paPhones = patient_format_phones($paContact);
+    $paFamily = patient_format_family($paContact);
+    $paMissing = '<span style="color:hsl(var(--warning));font-weight:600">não informado</span>';
     echo '<div style="font-weight:600">Paciente: ' . h($patientName) . '</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($patientPhone) . '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . ($paPhones !== '' ? h($paPhones) : $paMissing) . '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Endereço: ' . ($paAddress !== '' ? h($paAddress) : $paMissing) . '</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Contato da família: ' . ($paFamily !== '' ? h($paFamily) : $paMissing) . '</div>';
+    if ($paAddress === '' || ($paPhones === '' && $paFamily === '')) {
+        echo '<div style="font-size:12px;margin-top:6px"><a href="/patients_edit.php?id=' . (int)($selected['patient_id'] ?? 0) . '" target="_blank">Completar o cadastro do paciente</a> antes de aprovar: estes dados vão na mensagem ao profissional.</div>';
+    }
     echo '<div style="font-weight:600;margin-top:8px">Profissional: ' . h($professionalName) . '</div>';
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Telefone: ' . h($professionalPhone) . '</div>';
     echo '<div style="font-weight:600;margin-top:8px">Operadora / Cliente: ' . h($detectedInsurer) . '</div>';
@@ -460,17 +471,22 @@ if ($selected) {
     // Pré-carregar dados da proposta (authorization_request) se existirem
     $preStartDate = $authRequest['start_date'] ?? '';
     $preStartTime = !empty($authRequest['start_time']) ? substr($authRequest['start_time'], 0, 5) : '';
-    $preEndTime = !empty($authRequest['end_time']) ? substr($authRequest['end_time'], 0, 5) : '';
     $preFrequency = $authRequest['frequency'] ?? '';
     $preSessionsPerWeek = (int)($authRequest['sessions_per_week'] ?? 1);
     $preDurationWeeks = (int)($authRequest['duration_weeks'] ?? 0);
     $preTotalSessions = (int)($authRequest['total_sessions'] ?? $sessionQty);
     $preIsIndefinite = (int)($authRequest['is_indefinite'] ?? 0);
+    // Término por DATA (antes era "duração em semanas"). Se a proposta já tinha
+    // semanas, sugere a data equivalente; o total de sessões é recalculado.
+    $preEndDate = '';
+    if ($preStartDate !== '' && $preDurationWeeks > 0 && strtotime((string)$preStartDate) !== false) {
+        $preEndDate = date('Y-m-d', strtotime((string)$preStartDate . ' +' . ($preDurationWeeks * 7 - 1) . ' days'));
+    }
     
-    echo '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
-    echo '<label>Data de Início *<input type="date" name="start_date" form="approveForm" value="' . h($preStartDate) . '" required></label>';
+    // Sem "hora fim": o término do atendimento quase nunca é conhecido.
+    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">';
+    echo '<label>Data de Início *<input type="date" name="start_date" id="paStartDate" form="approveForm" value="' . h($preStartDate) . '" required></label>';
     echo '<label>Hora Início *<input type="time" name="start_time" form="approveForm" value="' . h($preStartTime ?: '08:00') . '" required></label>';
-    echo '<label>Hora Fim *<input type="time" name="end_time" form="approveForm" value="' . h($preEndTime ?: '09:00') . '" required></label>';
     echo '</div>';
     
     // Opção de tempo indefinido (toggle switch)
@@ -485,8 +501,8 @@ if ($selected) {
     // Texto
     echo '<span style="display:flex;flex-direction:column;gap:2px">';
     echo '<span style="font-weight:600;font-size:14px">Tempo indefinido</span>';
-    echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.4">Sem data final e sem número fixo de semanas. O atendimento permanece ativo até ser encerrado manualmente.</span>';
-    echo '<span id="paIndefiniteBadge" style="' . ($preIsIndefinite ? '' : 'display:none;') . 'align-self:flex-start;margin-top:6px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:hsl(var(--warning));color:#111">● ATIVADO — duração e semanas desativadas</span>';
+    echo '<span style="font-size:12px;color:hsl(var(--muted-foreground));line-height:1.4">Sem data de término e sem número fixo de sessões. O atendimento permanece ativo até ser encerrado manualmente.</span>';
+    echo '<span id="paIndefiniteBadge" style="' . ($preIsIndefinite ? '' : 'display:none;') . 'align-self:flex-start;margin-top:6px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:hsl(var(--warning));color:#111">● ATIVADO — data de término desativada</span>';
     echo '</span>';
     echo '</label>';
     echo '</div>';
@@ -512,12 +528,14 @@ if ($selected) {
     echo '<input type="hidden" name="sessions_per_week" id="paSessionsPerWeek" form="approveForm" value="' . $preSessionsPerWeek . '">';
     echo '</div>';
     
-    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="paDurationRow">';
-    echo '<label>Duração (semanas) *<input type="number" name="duration_weeks" id="paDurationWeeks" form="approveForm" min="1" value="' . ($preDurationWeeks ?: '') . '" ' . ($preIsIndefinite ? '' : 'required') . '></label>';
+    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px" id="paDurationRow">';
+    echo '<label>Data de término *<input type="date" name="end_date" id="paEndDate" form="approveForm" value="' . h($preEndDate) . '"' . ($preStartDate !== '' ? ' min="' . h((string)$preStartDate) . '"' : '') . ($preIsIndefinite ? '' : ' required') . '></label>';
     echo '<label>Total de Sessões<input type="number" name="total_sessions" id="paTotalSessions" form="approveForm" value="' . $preTotalSessions . '" readonly style="background:hsl(var(--muted));cursor:not-allowed"></label>';
     echo '</div>';
+    // Semanas: calculadas a partir das datas (o servidor recalcula na aprovação).
+    echo '<input type="hidden" name="duration_weeks" id="paDurationWeeks" form="approveForm" value="' . ($preDurationWeeks ?: '') . '">';
     
-    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px" id="paDurationHint">O total de sessões será calculado automaticamente com base na frequência e duração.</div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-top:4px" id="paDurationHint">Informe a data em que o atendimento termina: o total de sessões é calculado pelos dias da frequência entre o início e o término.</div>';
     echo '</div>';
     echo '</div>';
 
@@ -605,6 +623,41 @@ if ($selected) {
     echo '<div id="paOrientationCredHint" style="display:none;font-size:12px;color:hsl(var(--warning));font-weight:600">⚠️ Esta variação exige login/senha de sistema externo. Preencha os campos acima.</div>';
     echo '</div>';
 
+    // O que vai para o profissional ao aprovar (para conferir antes de clicar).
+    $paEvt = null;
+    $paEvtFiles = 0;
+    $paInsurerDocs = 0;
+    try {
+        $paEvt = db()->query("SELECT id, send_to_professional FROM whatsapp_events WHERE system_event = 'preadmission_approved' AND status = 'active' LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($paEvt) {
+            $stF = db()->prepare("SELECT COUNT(*) FROM whatsapp_event_files WHERE event_id = :e AND recipient_type IN ('professional','both')");
+            $stF->execute(['e' => (int)$paEvt['id']]);
+            $paEvtFiles = (int)$stF->fetchColumn();
+        }
+        if ($detectedInsurerId > 0) {
+            $stD = db()->prepare('SELECT COUNT(*) FROM health_insurer_documents WHERE health_insurer_id = :h');
+            $stD->execute(['h' => $detectedInsurerId]);
+            $paInsurerDocs = (int)$stD->fetchColumn();
+        }
+    } catch (Throwable $e) {}
+    $paPortalLink = notifications_should_include_portal_link();
+    echo '<div style="margin-top:6px;padding:12px 14px;background:hsla(var(--secondary)/.5);border:1px solid hsl(var(--border));border-radius:8px;font-size:12px;line-height:1.7">';
+    echo '<div style="font-size:13px;font-weight:700;margin-bottom:4px">O que o profissional recebe ao aprovar</div>';
+    if (!$paEvt || (int)$paEvt['send_to_professional'] !== 1) {
+        echo '<div style="color:hsl(var(--destructive));font-weight:600">⚠️ A mensagem "Pré-admissão aprovada" está desativada para o profissional (Configurações → Eventos WhatsApp).</div>';
+    } else {
+        echo '<div>✅ Mensagem no WhatsApp (e cópia por e-mail) com paciente, endereço, contatos da família e agendamento.</div>';
+        echo '<div>' . ($paEvtFiles > 0 ? '✅ ' . $paEvtFiles . ' arquivo(s) anexado(s) ao evento' : '— Nenhum arquivo anexado ao evento') . '</div>';
+    }
+    if ($paInsurerDocs > 0) {
+        echo '<div>' . ($paPortalLink
+            ? '✅ Link com os ' . $paInsurerDocs . ' documento(s) da operadora'
+            : '<span style="color:hsl(var(--warning));font-weight:600">⚠️ A operadora tem ' . $paInsurerDocs . ' documento(s), mas o link não será enviado: ative "Enviar link de acesso ao portal nas notificações" em Funcionalidades.</span>') . '</div>';
+    } else {
+        echo '<div>— A operadora selecionada não tem documentos cadastrados</div>';
+    }
+    echo '</div>';
+
     echo '</div>';
     echo '</div>';
 
@@ -690,41 +743,55 @@ echo 'var activate=function(key){tabBtns.forEach(function(b){b.classList.toggle(
 echo 'tabBtns.forEach(function(b){b.addEventListener("click", function(){activate(b.getAttribute("data-tab"));});});';
 
 // JS para calcular total de sessões automaticamente na aba Agendamento
+// Total de sessões = dias da frequência entre a data de início e a de término
+// (mesmas regras de frequency_count_sessions_between no servidor).
 echo 'var paFreq=document.getElementById("paFrequency");';
 echo 'var paSPW=document.getElementById("paSessionsPerWeek");';
 echo 'var paDW=document.getElementById("paDurationWeeks");';
 echo 'var paTS=document.getElementById("paTotalSessions");';
+echo 'var paSD=document.getElementById("paStartDate");';
+echo 'var paED=document.getElementById("paEndDate");';
+echo 'var paWeekdays=' . json_encode(FREQUENCY_WEEKDAYS_MAP) . ';';
+echo 'var paLegacy={daily:"7x_semana",weekly:"1x_semana",biweekly:"quinzenal",monthly:"mensal"};';
+echo 'function paParseDate(v){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v||"");return m?new Date(+m[1],+m[2]-1,+m[3]):null;}';
+echo 'function paCountSessions(code,s,e){';
+echo '  if(!s||!e||e<s)return 0;';
+echo '  if(code==="avaliacao"||code==="pontual")return 1;';
+echo '  var n=0,c=new Date(s.getTime());';
+echo '  if(code==="quinzenal"){while(c<=e&&n<240){n++;if(c.getDate()<=15){c.setDate(16);}else{c=new Date(c.getFullYear(),c.getMonth()+1,1);}}return n;}';
+echo '  if(code==="mensal"){while(c<=e&&n<240){n++;c.setMonth(c.getMonth()+1);}return n;}';
+echo '  var days=paWeekdays[code]||[];if(!days.length)return 0;';
+echo '  while(c<=e){var dow=c.getDay()===0?7:c.getDay();if(days.indexOf(dow)!==-1)n++;c.setDate(c.getDate()+1);}';
+echo '  return n;';
+echo '}';
+echo 'function paFmt(d){return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();}';
 echo 'function paCalcSessions(){';
-echo '  if(!paFreq||!paDW||!paTS)return;';
-echo '  var freq=paFreq.value;var dw=parseInt(paDW.value)||0;';
+echo '  if(!paFreq||!paED||!paTS)return;';
+echo '  var freq=paLegacy[paFreq.value]||paFreq.value;';
+echo '  if(paSD&&paSD.value){paED.min=paSD.value;}';
 echo '  if(freq==="avaliacao"||freq==="pontual"){';
 echo '    paTS.value=1;';
-echo '    if(paDW){paDW.value="";paDW.removeAttribute("required");paDW.disabled=true;paDW.style.opacity="0.5";}';
+echo '    paED.value="";paED.removeAttribute("required");paED.disabled=true;paED.style.opacity="0.5";';
+echo '    if(paDW)paDW.value="";';
 echo '    if(paSPW)paSPW.value=1;';
+echo '    if(paDurHint)paDurHint.textContent="Sessão única: não precisa de data de término.";';
 echo '    return;';
-echo '  } else if(paDW && paDW.disabled && (!paIndef || !paIndef.checked)){';
-echo '    paDW.disabled=false;paDW.style.opacity="1";paDW.setAttribute("required","required");';
+echo '  } else if(paED.disabled && (!paIndef || !paIndef.checked)){';
+echo '    paED.disabled=false;paED.style.opacity="1";paED.setAttribute("required","required");';
 echo '  }';
-echo '  var spw=1;';
-echo '  if(freq.indexOf("1x")>=0)spw=1;';
-echo '  else if(freq.indexOf("2x")>=0)spw=2;';
-echo '  else if(freq.indexOf("3x")>=0)spw=3;';
-echo '  else if(freq.indexOf("4x")>=0)spw=4;';
-echo '  else if(freq.indexOf("5x")>=0)spw=5;';
-echo '  else if(freq.indexOf("6x")>=0)spw=6;';
-echo '  else if(freq.indexOf("7x")>=0||freq==="daily")spw=7;';
-echo '  else if(freq==="weekly")spw=1;';
-echo '  if(paSPW)paSPW.value=spw;';
-echo '  var total=0;';
-echo '  if(freq==="daily"||freq==="7x_semana"){total=dw*7;}';
-echo '  else if(freq==="biweekly"||freq==="quinzenal"){total=Math.ceil(dw/2);}';
-echo '  else if(freq==="monthly"||freq==="mensal"){total=Math.ceil(dw/4);}';
-echo '  else{total=dw*spw;}';
-echo '  if(total>0)paTS.value=total;';
+echo '  var days=paWeekdays[freq]||[];';
+echo '  if(paSPW)paSPW.value=days.length?days.length:1;';
+echo '  var s=paParseDate(paSD?paSD.value:""),e=paParseDate(paED.value);';
+echo '  if(!s||!e||!freq){paTS.value="";if(paDurHint)paDurHint.textContent="Informe a data de início, a frequência e a data de término: o total de sessões é calculado automaticamente.";return;}';
+echo '  if(e<s){paTS.value="";if(paDurHint)paDurHint.innerHTML="<span style=\"color:hsl(var(--destructive));font-weight:600\">A data de término é anterior à data de início.</span>";return;}';
+echo '  var total=paCountSessions(freq,s,e);';
+echo '  paTS.value=total>0?total:"";';
+echo '  if(paDW)paDW.value=Math.max(1,Math.ceil((Math.round((e-s)/86400000)+1)/7));';
+echo '  if(paDurHint)paDurHint.textContent=total>0?(total+" sess\u00e3o(\u00f5es) de "+paFmt(s)+" a "+paFmt(e)+"."):"Nenhum dia da frequência cai nesse período. Confira as datas.";';
 echo '}';
 echo 'if(paFreq)paFreq.addEventListener("change",paCalcSessions);';
-echo 'if(paSPW)paSPW.addEventListener("input",paCalcSessions);';
-echo 'if(paDW)paDW.addEventListener("input",paCalcSessions);';
+echo 'if(paSD)paSD.addEventListener("change",paCalcSessions);';
+echo 'if(paED){paED.addEventListener("change",paCalcSessions);paED.addEventListener("input",paCalcSessions);}';
 
 // Tempo indefinido: alterna visual do switch + exigência/visibilidade de duração e semanas
 echo 'var paIndef=document.getElementById("paIndefinite");';
@@ -742,9 +809,9 @@ echo '  if(paIndefThumb){paIndefThumb.style.transform=on?"translateX(20px)":"tra
 echo '  if(paIndefBadge){paIndefBadge.style.display=on?"inline-block":"none";}';
 echo '  if(paIndefBox){paIndefBox.style.background=on?"hsla(var(--warning)/.18)":"hsla(var(--warning)/.10)";paIndefBox.style.borderColor=on?"hsl(var(--warning))":"hsla(var(--warning)/.35)";}';
 echo '  if(paDurRow){paDurRow.style.display=on?"none":"grid";}';
-echo '  if(paDW){';
-echo '    if(on){paDW.removeAttribute("required");paDW.value="";}';
-echo '    else{paDW.setAttribute("required","required");}';
+echo '  if(paED){';
+echo '    if(on){paED.removeAttribute("required");paED.value="";if(paDW)paDW.value="";}';
+echo '    else if(!paED.disabled){paED.setAttribute("required","required");}';
 echo '  }';
 echo '  if(paTS){';
 echo '    if(on){paTS.value="";}else{paCalcSessions();}';

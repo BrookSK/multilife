@@ -62,9 +62,14 @@ try {
     // proposalValue passa a ser o valor autorizado informado agora (substitui o valor antigo/zero).
     $proposalValue = $authorizedValueTotal;
 
-    // Validar paciente (vinculado na própria aba Autorização)
+    // Paciente: escolhido ao lado do valor autorizado (aba Autorização). Se não
+    // vier no formulário, usa o que já estava vinculado à autorização.
+    $postedPatientId = (int)($_POST['patient_id'] ?? 0);
+    if ($postedPatientId > 0) {
+        $patientId = $postedPatientId;
+    }
     if ($patientId <= 0) {
-        flash_set('error', 'Vincule o paciente (selecione ou faça o cadastro rápido) antes de marcar como aprovada.');
+        flash_set('error', 'Selecione o paciente (ou faça o cadastro rápido) antes de marcar como aprovada.');
         header('Location: /authorization_view.php?id=' . $authId);
         exit;
     }
@@ -74,6 +79,12 @@ try {
         flash_set('error', 'Paciente não encontrado no sistema.');
         header('Location: /authorization_view.php?id=' . $authId);
         exit;
+    }
+    if ($patientId !== (int)$request['patient_id']) {
+        $db->prepare("UPDATE authorization_requests SET patient_id = :pid WHERE id = :id AND status = 'aguardando_autorizacao'")
+            ->execute(['pid' => $patientId, 'id' => $authId]);
+        audit_log('update', 'authorization_requests', (string)$authId,
+            ['patient_id' => (int)$request['patient_id']], ['patient_id' => $patientId]);
     }
 
     $db->beginTransaction();

@@ -17,7 +17,7 @@ $healthInsurerId = isset($_POST['health_insurer_id']) ? (int)$_POST['health_insu
 // Campos de agendamento (vindos da aba Agendamento na pré-admissão)
 $formStartDate = trim((string)($_POST['start_date'] ?? ''));
 $formStartTime = trim((string)($_POST['start_time'] ?? ''));
-$formEndTime = trim((string)($_POST['end_time'] ?? ''));
+$formEndDate = trim((string)($_POST['end_date'] ?? ''));
 $formFrequency = trim((string)($_POST['frequency'] ?? ''));
 $formSessionsPerWeek = isset($_POST['sessions_per_week']) ? (int)$_POST['sessions_per_week'] : 0;
 $formDurationWeeks = isset($_POST['duration_weeks']) ? (int)$_POST['duration_weeks'] : 0;
@@ -35,6 +35,45 @@ $orientationId = isset($_POST['orientation_id']) ? (int)$_POST['orientation_id']
 if ($assignmentId <= 0 || $demandId <= 0) {
     flash_set('error', 'Dados inválidos.');
     header('Location: /pre_admissao.php');
+    exit;
+}
+
+// TÉRMINO POR DATA: o total de sessões (e as semanas) é calculado aqui a partir
+// do início, do término e dos dias da frequência. O valor vindo do navegador
+// só é usado em formulários antigos (sem data de término).
+$freqCodeForCount = $formFrequency;
+if ($freqCodeForCount !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$freqCodeForCount])) {
+    $freqCodeForCount = frequency_normalize($freqCodeForCount);
+}
+$isSingleSession = in_array($freqCodeForCount, ['avaliacao', 'pontual'], true);
+if (!$formIsIndefinite && !$isSingleSession && $formEndDate !== '') {
+    $sdObj = DateTime::createFromFormat('!Y-m-d', $formStartDate);
+    $edObj = DateTime::createFromFormat('!Y-m-d', $formEndDate);
+    if (!$sdObj || !$edObj) {
+        flash_set('error', 'Informe datas de início e de término válidas.');
+        header('Location: /pre_admissao.php?id=' . $assignmentId);
+        exit;
+    }
+    if ($edObj < $sdObj) {
+        flash_set('error', 'A data de término não pode ser anterior à data de início.');
+        header('Location: /pre_admissao.php?id=' . $assignmentId);
+        exit;
+    }
+    $countedSessions = frequency_count_sessions_between($freqCodeForCount, $sdObj, $edObj);
+    if ($countedSessions <= 0) {
+        flash_set('error', 'Nenhum dia da frequência escolhida cai entre a data de início e a de término. Confira as datas.');
+        header('Location: /pre_admissao.php?id=' . $assignmentId);
+        exit;
+    }
+    $formTotalSessions = $countedSessions;
+    $formDurationWeeks = max(1, (int)ceil(((int)$sdObj->diff($edObj)->days + 1) / 7));
+    $formSessionsPerWeek = count(FREQUENCY_WEEKDAYS_MAP[$freqCodeForCount] ?? []) ?: max(1, $formSessionsPerWeek);
+} elseif ($isSingleSession) {
+    $formTotalSessions = 1;
+    $formDurationWeeks = 1;
+} elseif (!$formIsIndefinite && $formTotalSessions <= 0) {
+    flash_set('error', 'Informe a data de término do atendimento (ou marque "Tempo indefinido").');
+    header('Location: /pre_admissao.php?id=' . $assignmentId);
     exit;
 }
 
@@ -77,7 +116,8 @@ try {
                pa.session_quantity, pa.session_frequency, 
                COALESCE(pa.agreed_value, pa.payment_value) as payment_value,
                pa.agreed_value, pa.authorized_value, pa.notes,
-               p.full_name as patient_name, u.name as professional_name
+               p.full_name as patient_name, COALESCE(NULLIF(p.whatsapp, ''), p.phone_primary) as patient_phone,
+               u.name as professional_name
         FROM patient_assignments pa
         INNER JOIN patients p ON p.id = pa.patient_id
         LEFT JOIN users u ON u.id = pa.professional_user_id
@@ -173,16 +213,17 @@ try {
             ")->execute([$assignmentSessionQty, $formFrequency, $assignmentId]);
         }
         
-        // Atualizar authorization_request com os dados de agendamento (se existir)
+        // Atualizar authorization_request com os dados de agendamento (se existir).
+        // Sem horário de fim: a pré-admissão não pede mais (end_time fica como estava).
         try {
             $db->prepare("
                 UPDATE authorization_requests 
-                SET start_date = ?, start_time = ?, end_time = ?, frequency = ?, 
+                SET start_date = ?, start_time = ?, frequency = ?, 
                     sessions_per_week = ?, duration_weeks = ?, total_sessions = ?, is_indefinite = ?
                 WHERE demand_id = ? AND patient_id = ?
                 ORDER BY id DESC LIMIT 1
             ")->execute([
-                $formStartDate, $formStartTime ?: '08:00:00', $formEndTime ?: '09:00:00',
+                $formStartDate, $formStartTime ?: '08:00:00',
                 $formFrequency, $formSessionsPerWeek ?: 1,
                 $formIsIndefinite ? 0 : ($formDurationWeeks ?: 4),
                 $formIsIndefinite ? 0 : $formTotalSessions,
@@ -409,15 +450,37 @@ try {
     $db->commit();
     
     // Disparar evento WhatsApp preadmission_approved
+    $dispatchSummary = '';
     try {
         $profStmt = db()->prepare('SELECT phone FROM users WHERE id = :id');
         $profStmt->execute(['id' => $assignment['professional_user_id']]);
         $profPhone = preg_replace('/\D+/', '', (string)($profStmt->fetchColumn() ?: ''));
         
-        $patStmt = db()->prepare('SELECT whatsapp, phone_primary FROM patients WHERE id = :id');
-        $patStmt->execute(['id' => $assignment['patient_id']]);
-        $patData = $patStmt->fetch();
-        $patPhone = preg_replace('/\D+/', '', (string)($patData['whatsapp'] ?? $patData['phone_primary'] ?? ''));
+        // Endereço completo + telefones do paciente + contato da família
+        // (cadastro rápido da aba Autorização / cadastro completo do paciente).
+        $patData = patient_contact_fetch((int)$assignment['patient_id']);
+        $patPhone = preg_replace('/\D+/', '', (string)(($patData['whatsapp'] ?? '') ?: ($patData['phone_primary'] ?? '')));
+        $patAddressText = patient_format_address($patData);
+        $patContactsText = patient_format_contacts($patData);
+
+        // Agendamento: início, frequência e término/total (sem horário de fim).
+        $scheduleParts = [];
+        if ($formStartDate !== '' && strtotime($formStartDate) !== false) {
+            $scheduleParts[] = 'Início em ' . date('d/m/Y', strtotime($formStartDate))
+                . ($formStartTime !== '' ? ' às ' . substr($formStartTime, 0, 5) : '');
+        }
+        $freqLabelMsg = $formFrequency !== '' ? frequency_get_label($freqCodeForCount ?: $formFrequency) : (string)($assignment['session_frequency'] ?? '');
+        $freqDaysMsg = $freqCodeForCount !== '' ? frequency_get_weekday_description($freqCodeForCount) : '-';
+        if ($freqLabelMsg !== '') {
+            $scheduleParts[] = $freqLabelMsg . ($freqDaysMsg !== '-' && $freqDaysMsg !== '' ? ' (' . $freqDaysMsg . ')' : '');
+        }
+        if ($formIsIndefinite) {
+            $scheduleParts[] = 'tempo indefinido';
+        } elseif ($totalSessions > 0) {
+            $scheduleParts[] = $totalSessions . ' sessão(ões)'
+                . ($formEndDate !== '' && strtotime($formEndDate) !== false ? ' até ' . date('d/m/Y', strtotime($formEndDate)) : '');
+        }
+        $scheduleText = implode(' · ', $scheduleParts);
 
         // ============================================================
         // Link PÚBLICO de atualização cadastral (sem login) para o profissional.
@@ -480,8 +543,11 @@ try {
             }
         }
 
+        // Garante (uma vez) o bloco de endereço/contatos no texto ao profissional.
+        preadmission_template_ensure_patient_block();
+
         $dispatcher = new WhatsAppEventDispatcher();
-        $dispatcher->dispatch('preadmission_approved', [
+        $dispatchResult = $dispatcher->dispatch('preadmission_approved', [
             'professional_id' => (int)$assignment['professional_user_id'],
             'professional_name' => $assignment['professional_name'] ?? '',
             'professional_phone' => $profPhone,
@@ -509,7 +575,13 @@ try {
             // Orientação da operadora (usável via {{orientacao_operadora}}) e tabela de dias ({{tabela_dias}}).
             'insurer_orientation' => $insurerOrientationText,
             'attendance_days_table' => $daysTableText,
+            // Dados do paciente para o profissional ({{paciente_endereco}}, {{paciente_contatos}}, {{agendamento}}).
+            'patient_address' => $patAddressText !== '' ? $patAddressText : 'Não informado',
+            'patient_contacts' => $patContactsText !== '' ? $patContactsText : 'Não informado',
+            'schedule' => $scheduleText !== '' ? $scheduleText : 'A combinar',
+            'start_date' => ($formStartDate !== '' && strtotime($formStartDate) !== false) ? date('d/m/Y', strtotime($formStartDate)) : date('d/m/Y'),
         ]);
+        $dispatchSummary = preadmission_dispatch_summary($dispatchResult);
     } catch (Throwable $evtErr) {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao disparar evento: ' . $evtErr->getMessage());
     }
@@ -775,8 +847,14 @@ try {
                 
                 $pBody .= '<div style="background:#f9fafb;padding:18px 20px;margin:20px 0;border-radius:8px">';
                 $pBody .= '<h3 style="margin:0 0 10px;font-size:15px;font-weight:700;color:#374151">Contato do Paciente</h3>';
+                $patContactEmail = patient_contact_fetch((int)$assignment['patient_id']);
+                $patPhonesEmail = patient_format_phones($patContactEmail);
+                $patAddressEmail = patient_format_address($patContactEmail);
+                $patFamilyEmail = patient_format_family($patContactEmail);
                 $pBody .= email_data_row('Nome', $patName);
-                $pBody .= email_data_row('Telefone', $assignment['patient_phone'] ?? '');
+                $pBody .= email_data_row('Telefone', $patPhonesEmail !== '' ? $patPhonesEmail : (string)($assignment['patient_phone'] ?? 'Não informado'));
+                $pBody .= email_data_row('Endereço', $patAddressEmail !== '' ? $patAddressEmail : 'Não informado');
+                $pBody .= email_data_row('Contato da família', $patFamilyEmail !== '' ? $patFamilyEmail : 'Não informado');
                 $pBody .= '</div>';
                 
                 // Documentos da operadora (manuais, formulários, termos)
@@ -871,7 +949,8 @@ try {
         error_log('[PRE_ADMISSAO_APPROVE] Erro ao enviar e-mail para profissional: ' . $profErr->getMessage());
     }
     
-    flash_set('success', 'Atendimento aprovado com sucesso! O card foi movido para "Admitido" na Captação.');
+    flash_set('success', 'Atendimento aprovado com sucesso! O card foi movido para "Admitido" na Captação.'
+        . ($dispatchSummary !== '' ? ' ' . $dispatchSummary : ''));
     header('Location: /pre_admissao.php');
     exit;
     

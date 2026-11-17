@@ -233,6 +233,49 @@ function frequency_generate_session_dates(string $frequencyCode, DateTime $start
 }
 
 /**
+ * Quantas sessões cabem entre a data de início e a data de término (inclusive),
+ * com as MESMAS regras de frequency_generate_session_dates (ex.: 3x/Semana =
+ * seg/qua/sex). Usado na pré-admissão, onde o término é informado por data.
+ *
+ * @return int 0 se a frequência for desconhecida ou o término vier antes do início
+ */
+function frequency_count_sessions_between(string $frequencyCode, DateTime $startDate, DateTime $endDate): int
+{
+    $start = (clone $startDate)->setTime(0, 0);
+    $end = (clone $endDate)->setTime(0, 0);
+    if ($end < $start) {
+        return 0;
+    }
+    if ($frequencyCode === 'avaliacao' || $frequencyCode === 'pontual') {
+        return 1;
+    }
+    // Quinzenal/mensal: gera até passar do término (limite de segurança: 10 anos).
+    if ($frequencyCode === 'quinzenal' || $frequencyCode === 'mensal') {
+        $count = 0;
+        foreach (frequency_generate_session_dates($frequencyCode, $start, 240) as $dt) {
+            if ($dt > $end) {
+                break;
+            }
+            $count++;
+        }
+        return $count;
+    }
+    $days = FREQUENCY_WEEKDAYS_MAP[$frequencyCode] ?? [];
+    if (empty($days)) {
+        return 0;
+    }
+    $count = 0;
+    $cur = clone $start;
+    while ($cur <= $end) {
+        if (in_array((int)$cur->format('N'), $days, true)) {
+            $count++;
+        }
+        $cur->modify('+1 day');
+    }
+    return $count;
+}
+
+/**
  * Converte frequência texto livre (legado) para o código padronizado.
  * Ex: "3x por semana", "3 vezes", "três vezes" → "3x_semana"
  */

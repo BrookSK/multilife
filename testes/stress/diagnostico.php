@@ -60,7 +60,7 @@ $out = static function (string $s = ''): void { echo $s . PHP_EOL; @flush(); };
 $section = static function (string $t) use ($out): void { $out(''); $out(str_repeat('=', 70)); $out($t); $out(str_repeat('=', 70)); };
 $t0 = microtime(true);
 
-$out('DIAGNÓSTICO MultiLife Care — ' . date('d/m/Y H:i:s') . ' — host do banco: ' . ($config['db']['host'] ?? '?') . ' / ' . ($config['db']['name'] ?? '?'));
+$out('DIAGNÓSTICO MultiLife Care — ' . date('d/m/Y H:i:s') . ' — ambiente: ' . strtoupper((string)($config['env'] ?? '?')) . ' — host do banco: ' . ($config['db']['host'] ?? '?') . ' / ' . ($config['db']['name'] ?? '?'));
 
 // ---------------------------------------------------------------- 1) banco
 $section('1) BANCO DE DADOS');

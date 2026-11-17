@@ -3,8 +3,9 @@
 declare(strict_types=1);
 
 /**
- * Cadastro rápido (PRÉ-CADASTRO) de paciente a partir do Chat ao Vivo.
- * Pede apenas o essencial: Nome, Telefone (opcional), Cidade/UF (opcional).
+ * Cadastro rápido (PRÉ-CADASTRO) de paciente (Chat ao Vivo e aba Autorização).
+ * Nome obrigatório; telefone, endereço completo (CEP, rua, número, complemento,
+ * bairro, cidade/UF) e contato da família (nome, parentesco, telefone) opcionais.
  * Cria o paciente marcado como pré-cadastro (admin_status='Pré-cadastro',
  * is_pre_registration=1) para a equipe completar o cadastro longo depois.
  * Responde em JSON (chamado via fetch).
@@ -57,11 +58,39 @@ $state = trim((string)($_POST['state'] ?? ''));
 $pendingItemId = (int)($_POST['pending_item_id'] ?? 0);
 $force = (string)($_POST['force'] ?? '') === '1';
 
+// Endereço completo e contato da família (cadastro rápido da aba Autorização).
+// Opcionais: o pré-cadastro do Chat ao Vivo continua mandando só nome/telefone/cidade.
+$pqcText = static function (string $key, int $max): string {
+    return mb_substr(trim((string)($_POST[$key] ?? '')), 0, $max);
+};
+$zip = preg_replace('/\D+/', '', (string)($_POST['zip'] ?? ''));
+$street = $pqcText('street', 160);
+$number = $pqcText('number', 20);
+$complement = $pqcText('complement', 80);
+$neighborhood = $pqcText('neighborhood', 80);
+$familyName = $pqcText('family_name', 160);
+$familyRelationship = $pqcText('family_relationship', 60);
+$familyPhone = preg_replace('/\D+/', '', (string)($_POST['family_phone'] ?? ''));
+$name = mb_substr($name, 0, 160);
+$city = mb_substr($city, 0, 120);
+
 if ($name === '') {
     pqc_json(false, 'Informe o nome do paciente.');
 }
+if ($zip !== '' && strlen($zip) !== 8) {
+    pqc_json(false, 'CEP inválido: informe os 8 dígitos.');
+}
+if ($state !== '' && !preg_match('/^[A-Za-z]{2}$/', $state)) {
+    pqc_json(false, 'UF inválida: use 2 letras (ex.: SP).');
+}
 
 $phone = preg_replace('/\D+/', '', $phoneRaw);
+if ($phone !== '' && strlen($phone) < 10) {
+    pqc_json(false, 'Telefone do paciente inválido: informe com DDD.');
+}
+if ($familyPhone !== '' && strlen($familyPhone) < 10) {
+    pqc_json(false, 'Telefone da família inválido: informe com DDD.');
+}
 
 $db = db();
 
@@ -139,15 +168,27 @@ if (!$force) {
 $db->beginTransaction();
 try {
     $ins = $db->prepare(
-        "INSERT INTO patients (full_name, phone_primary, whatsapp, address_city, address_state, admin_status, is_pre_registration, created_at)
-         VALUES (:name, :phone1, :phone2, :city, :state, 'Pré-cadastro', 1, NOW())"
+        "INSERT INTO patients (full_name, phone_primary, whatsapp, address_zip, address_street, address_number,
+            address_complement, address_neighborhood, address_city, address_state,
+            emergency_name, emergency_relationship, emergency_phone, admin_status, is_pre_registration, created_at)
+         VALUES (:name, :phone1, :phone2, :zip, :street, :num, :compl, :nb, :city, :state,
+            :ename, :erel, :ephone, 'Pré-cadastro', 1, NOW())"
     );
+    $nul = static fn(string $v): ?string => $v !== '' ? $v : null;
     $ins->execute([
         'name' => $name,
-        'phone1' => $phone !== '' ? $phone : null,
-        'phone2' => $phone !== '' ? $phone : null,
-        'city' => $city !== '' ? $city : null,
+        'phone1' => $nul($phone),
+        'phone2' => $nul($phone),
+        'zip' => $nul($zip),
+        'street' => $nul($street),
+        'num' => $nul($number),
+        'compl' => $nul($complement),
+        'nb' => $nul($neighborhood),
+        'city' => $nul($city),
         'state' => $state !== '' ? strtoupper(substr($state, 0, 2)) : null,
+        'ename' => $nul($familyName),
+        'erel' => $nul($familyRelationship),
+        'ephone' => $nul($familyPhone),
     ]);
     $newId = (int)$db->lastInsertId();
 
@@ -169,6 +210,7 @@ try {
 
     audit_log('create', 'patients_pre_registration', (string)$newId, null, [
         'name' => $name, 'phone' => $phone, 'city' => $city, 'state' => $state,
+        'has_address' => $street !== '', 'has_family_contact' => $familyName !== '' || $familyPhone !== '',
     ]);
 
     pqc_json(true, 'Paciente pré-cadastrado com sucesso.', [

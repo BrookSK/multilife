@@ -161,7 +161,7 @@ if (!empty($seed['missing'])) {
     foreach ($byCli as $cli => $names) {
         echo '<div style="margin-top:4px;font-size:13px"><strong>' . h((string)$cli) . ':</strong> ' . h(implode(', ', $names)) . '</div>';
     }
-    echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">Fonte: orientações da GLOBAL e contatos "Polo … - Cenemed". Depois dá para editar ou desativar cada um.</div></div>';
+    echo '<div style="margin-top:6px;font-size:12px;color:hsl(var(--muted-foreground))">Fonte: orientações da GLOBAL, contatos ("Polo … - Cenemed", "Unimed …") e a planilha de monitoramento. Depois dá para editar ou desativar cada um.</div></div>';
     echo '<form method="post" onsubmit="return confirm(' . h(json_encode('Cadastrar ' . count($seed['missing']) . ' polo(s)?', JSON_UNESCAPED_UNICODE)) . ')"><input type="hidden" name="action" value="seed"><button type="submit" class="btn-primary">Cadastrar estes polos</button></form>';
     echo '</div>';
     echo '</section>';

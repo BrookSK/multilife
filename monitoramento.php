@@ -26,7 +26,8 @@ $sql = "SELECT bdr.id,
         bdr.session_number, bdr.status as session_status,
         pa.id as assignment_id, pa.status as assignment_status,
         COALESCE(pa.agreed_value, pa.payment_value) as value_per_session, pa.authorized_value, pa.created_at,
-        p.id as patient_id, p.full_name as patient_name, p.whatsapp as patient_phone, p.email as patient_email,
+        p.id as patient_id, p.full_name as patient_name, COALESCE(NULLIF(p.whatsapp, ''), p.phone_primary) as patient_phone, p.email as patient_email,
+        p.emergency_name, p.emergency_relationship, p.emergency_phone, p.address_zip,
         p.birth_date, p.cpf, 
         CONCAT_WS(', ', p.address_street, p.address_number, p.address_complement, p.address_neighborhood) as patient_address,
         p.address_city as patient_city, p.address_state as patient_state,
@@ -106,7 +107,8 @@ foreach ($appointments as $apt) {
             'patient_email' => $apt['patient_email'] ?? '',
             'patient_birth_date' => $apt['birth_date'] ?? '',
             'patient_cpf' => $apt['cpf'] ?? '',
-            'patient_address' => $apt['patient_address'] ?? '',
+            'patient_address' => trim(($apt['patient_address'] ?? '') . (trim((string)($apt['address_zip'] ?? '')) !== '' ? ' - CEP ' . trim((string)$apt['address_zip']) : ''), ' -'),
+            'patient_family' => patient_format_family($apt),
             'patient_city' => $apt['patient_city'] ?? '',
             'patient_state' => $apt['patient_state'] ?? '',
             'professional_id' => (int)$apt['professional_id'],
@@ -369,6 +371,7 @@ body{margin:0;padding:0;overflow:hidden}
                 <div class="row"><span class="label">E-mail:</span><span class="value" id="patientEmail">-</span></div>
                 <div class="row"><span class="label">Endereço:</span><span class="value" id="patientAddress">-</span></div>
                 <div class="row"><span class="label">Cidade/Estado:</span><span class="value" id="patientCity">-</span></div>
+                <div class="row"><span class="label">Contato da família:</span><span class="value" id="patientFamily">-</span></div>
             </div>
         </div>
         
@@ -504,6 +507,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('patientCity').textContent = (p.patient_city && p.patient_state)
                 ? p.patient_city + '/' + p.patient_state
                 : 'Não informado';
+            document.getElementById('patientFamily').textContent = p.patient_family || 'Não informado';
             
             // Profissional
             document.getElementById('profName').textContent = p.professional_name;
