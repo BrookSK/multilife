@@ -119,6 +119,17 @@ function checkStatus(){
     if(data.state) state = data.state;
     else if(data.instance && data.instance.state) state = data.instance.state;
     else if(data.instanceState) state = data.instanceState;
+
+    // Número já usado em outra instância: a conexão nova foi desfeita
+    if(data.duplicate && data.duplicate.message){
+      clearInterval(checkInterval);
+      var dv = document.createElement("div");
+      dv.style.cssText = "color:#b91c1c;padding:20px;font-weight:600;line-height:1.5;max-width:420px";
+      dv.textContent = "⛔ " + data.duplicate.message;
+      var qc = document.getElementById("qrcode-container"); qc.innerHTML = ""; qc.appendChild(dv);
+      document.getElementById("status-message").textContent = "";
+      return;
+    }
     
     if(state === "open" || state === "connected"){
       clearInterval(checkInterval);

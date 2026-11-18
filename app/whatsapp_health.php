@@ -100,6 +100,17 @@ function whatsapp_health_handle_webhook(string $event, string $instanceName, arr
     $state = whatsapp_health_normalize_state((string)($payload['state'] ?? ($payload['connection'] ?? '')));
     $reason = $payload['statusReason'] ?? ($payload['lastDisconnect']['error']['output']['statusCode'] ?? null);
     whatsapp_health_record($instanceName, 'connection', $state, $reason !== null ? (string)$reason : null);
+    // QR Code gerado pelo sistema acabou de ser lido: barra número já usado em outra instância
+    if ($state === 'open' && function_exists('wa_pairing_pending') && wa_pairing_pending($instanceName)) {
+        try {
+            $guard = wa_pairing_guard($instanceName, (string)($payload['wuid'] ?? ($payload['owner'] ?? '')));
+            if ($guard && $guard['blocked']) {
+                return true; // conexão desfeita: não marca como conectada
+            }
+        } catch (Throwable $e) {
+            error_log('[WATCHDOG] guard webhook: ' . $e->getMessage());
+        }
+    }
     if ($state !== '' && function_exists('whatsapp_update_connection_status')) {
         try {
             $map = ['open' => 'connected', 'close' => 'disconnected', 'connecting' => 'connecting'];
@@ -240,7 +251,11 @@ function whatsapp_health_problems(): array
     return $out;
 }
 
-/** Faixa de alerta no topo das telas (só para quem cuida de WhatsApp/captação). */
+/**
+ * Faixa de alerta no topo das telas. Saúde (loop/conflito/envios): quem cuida de
+ * WhatsApp/captação. Watchdog (suspeita de queda/aguardando QR): as instâncias
+ * que o usuário vê (admin: todas).
+ */
 function whatsapp_health_banner_html(): string
 {
     $uid = auth_user_id();
@@ -248,14 +263,23 @@ function whatsapp_health_banner_html(): string
         return '';
     }
     $perms = rbac_user_permissions($uid);
-    if (!array_intersect(['demands.manage', 'chat.manage', 'admin.settings.manage'], $perms)) {
+    $problems = array_intersect(['demands.manage', 'chat.manage', 'admin.settings.manage'], $perms)
+        ? whatsapp_health_problems() : [];
+    // Watchdog (conexão real): suspeita de queda / aguardando QR das instâncias
+    // que o usuário vê (admin: todas). Não repete instância que já tem aviso acima.
+    $wdHtml = '';
+    if (function_exists('wa_watchdog_banner_html')) {
+        try {
+            $skip = array_map(static fn($p) => (string)$p['instance_name'], $problems);
+            $wdHtml = wa_watchdog_banner_html((int)$uid, $skip);
+        } catch (Throwable $e) {
+            error_log('[WATCHDOG] banner: ' . $e->getMessage());
+        }
+    }
+    if (!$problems && $wdHtml === '') {
         return '';
     }
-    $problems = whatsapp_health_problems();
-    if (!$problems) {
-        return '';
-    }
-    $html = '';
+    $html = $wdHtml;
     foreach ($problems as $p) {
         $s = $p['status'];
         $red = whatsapp_health_is_blocking($s['level']);

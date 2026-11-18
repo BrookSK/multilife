@@ -2335,6 +2335,11 @@ if (!empty($availableInstances)) {
         }
         $connected = (string)($inst['connection_status'] ?? '') === 'connected';
         $statusDot = $connected ? '🟢 ' : '⚪ ';
+        // Conexão real pelo monitor (watchdog): "conectado" sem eventos = suspeita de queda
+        $instWd = wa_watchdog_get($instName);
+        if ($instWd) {
+            $statusDot = ['healthy' => '🟢 ', 'silent' => '🟠 ', 'awaiting_scan' => '🟡 '][$instWd['verdict']] ?? '⚪ ';
+        }
         $selected = ($instanceFilter === $instName) ? ' selected' : '';
         echo '<option value="' . h($instName) . '"' . $selected . '>' . $statusDot . h($label) . '</option>';
     }

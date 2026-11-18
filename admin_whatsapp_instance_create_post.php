@@ -29,6 +29,17 @@ if ($instanceName === '') {
     exit;
 }
 
+// Mesmo número em duas instâncias faz as conexões disputarem a sessão (mensagens somem)
+if ($number !== '') {
+    $sameNumber = whatsapp_instances_with_number($number, $instanceName);
+    if ($sameNumber) {
+        flash_set('error', 'O número ' . whatsapp_number_display($number) . ' já está na instância "' . $sameNumber[0]['label']
+            . '". Use essa instância (Reconectar) ou remova-a antes de criar outra com o mesmo número.');
+        header('Location: /admin_whatsapp_instances.php');
+        exit;
+    }
+}
+
 $payload = [
     'instanceName' => $instanceName,
     'token' => $token !== '' ? $token : null,

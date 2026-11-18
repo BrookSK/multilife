@@ -123,10 +123,24 @@ try {
     if ($httpCode >= 200 && $httpCode < 300) {
         if ($action === 'status') {
             $decoded = json_decode($response, true);
-            if (is_array($decoded) && isset($decoded['instance']['state'])) {
+            if (!is_array($decoded)) {
+                $decoded = [];
+            }
+            if (isset($decoded['instance']['state'])) {
                 $decoded['state'] = $decoded['instance']['state'];
             }
             $connState = $decoded['state'] ?? ($decoded['instance']['state'] ?? '');
+            // QR Code recém-lido com número que já está em outra instância: conexão desfeita
+            $dupGuard = ($connState === 'open' || $connState === 'connected') && wa_pairing_pending($instanceName)
+                ? wa_pairing_guard($instanceName, (string)($decoded['instance']['owner'] ?? ($decoded['owner'] ?? '')))
+                : null;
+            if ($dupGuard && $dupGuard['blocked']) {
+                $connState = 'close';
+                $decoded['state'] = 'close';
+                if (isset($decoded['instance']) && is_array($decoded['instance'])) {
+                    $decoded['instance']['state'] = 'close';
+                }
+            }
             if ($connState === 'open' || $connState === 'connected') {
                 // Extrair número do owner (quando disponível) e persistir status.
                 $ownerNumber = '';
@@ -150,8 +164,19 @@ try {
             } elseif ($connState === 'connecting') {
                 whatsapp_update_connection_status($instanceName, 'connecting');
             }
+            // Conexão real (watchdog, cache de 60 s) e aviso de número duplicado
+            $decoded['watchdog'] = wa_watchdog_public($instanceName);
+            $dupNote = wa_pairing_duplicate_note($instanceName);
+            if ($dupNote !== null) {
+                $decoded['duplicate'] = ['message' => $dupNote];
+            }
             echo json_encode($decoded);
         } else {
+            // QR Code gerado pelo sistema: confere o número quando for lido
+            $connDecoded = json_decode((string)$response, true);
+            if (is_array($connDecoded) && wa_connect_response_has_qr($connDecoded)) {
+                wa_pairing_mark($instanceName);
+            }
             echo $response;
         }
     } elseif ($httpCode === 404) {

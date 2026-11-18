@@ -83,11 +83,14 @@ foreach ($instances as $inst) {
         $sub .= ' · Número: ' . h($number);
     }
     echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));margin-top:2px">' . $sub . '</div>';
+    // Explicação do monitor de conexão / número duplicado (preenchida via JS)
+    echo '<div class="waWdHint" data-instance="' . h($instName) . '" style="display:none;font-size:12px;margin-top:6px;max-width:560px;line-height:1.5"></div>';
     echo '</div>';
     echo '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
     // Badge de status (preenchido via JS)
     echo '<span class="waBadge waStatusBadge" data-instance="' . h($instName) . '" style="background:#f1f5f9;color:#64748b"><span class="waDot" style="background:#94a3b8"></span>Verificando...</span>';
     // Botões (habilitados conforme status via JS)
+    echo '<button type="button" class="btn waBtnHeal" data-instance="' . h($instName) . '" style="display:none;background:#f97316;color:#fff;border:none" title="Refaz a conexão sem QR Code" onclick=\'mlWaHeal(' . $jsName . ', this)\'>🔄 Reconectar (sem QR)</button>';
     echo '<button type="button" class="btn btnPrimary waBtnReconnect" data-instance="' . h($instName) . '" style="display:none" onclick=\'myWaReconnect(' . $jsName . ')\'>Reconectar</button>';
     echo '<button type="button" class="btn waBtnDisconnect" data-instance="' . h($instName) . '" style="display:none;background:#fee2e2;color:#dc2626;border-color:#fca5a5" onclick=\'myWaDisconnect(' . $jsName . ')\'>Desconectar</button>';
     echo '</div>';
@@ -105,6 +108,9 @@ echo '</div>';
 echo '</section>';
 echo '</div>';
 
+// Botão "Reconectar (sem QR)" da suspeita de queda (monitor de conexão)
+echo wa_watchdog_heal_js();
+
 // JavaScript: verifica status de cada instância, exibe QR e autodetecta conexão.
 echo <<<'MYWAJS'
 <script>
@@ -116,11 +122,47 @@ echo <<<'MYWAJS'
     return "/my_whatsapp_proxy.php?action=" + action + "&instance=" + encodeURIComponent(instance);
   }
 
-  function setBadge(instance, state){
+  function setBadge(instance, state, wd, dup){
     var badges = document.querySelectorAll('.waStatusBadge[data-instance="' + cssEscape(instance) + '"]');
     var btnReconnect = document.querySelector('.waBtnReconnect[data-instance="' + cssEscape(instance) + '"]');
     var btnDisconnect = document.querySelector('.waBtnDisconnect[data-instance="' + cssEscape(instance) + '"]');
+    var btnHeal = document.querySelector('.waBtnHeal[data-instance="' + cssEscape(instance) + '"]');
+    var hint = document.querySelector('.waWdHint[data-instance="' + cssEscape(instance) + '"]');
     var label, bg, color, dot;
+    if(btnHeal) btnHeal.style.display = "none";
+    if(hint){ hint.style.display = "none"; hint.textContent = ""; }
+    if(dup && dup.message && hint){
+      hint.style.display = ""; hint.style.color = "#b91c1c"; hint.style.fontWeight = "600";
+      hint.textContent = "⛔ " + dup.message;
+    }
+    // Monitor de conexão (watchdog): "conectado" sem eventos = suspeita de queda
+    if(wd && (state === "open" || state === "connected") && wd.verdict === "silent"){
+      badges.forEach(function(b){
+        b.style.background = wd.bg; b.style.color = wd.color;
+        b.innerHTML = '<span class="waDot" style="background:' + wd.dot + '"></span>' + wd.label;
+      });
+      if(btnHeal) btnHeal.style.display = "";
+      if(btnReconnect) btnReconnect.style.display = "";
+      if(btnDisconnect) btnDisconnect.style.display = "none";
+      if(hint && !(dup && dup.message)){
+        hint.style.display = ""; hint.style.color = wd.color; hint.style.fontWeight = "400";
+        hint.textContent = "A conexão aparece como conectada, mas nenhum evento chega" + (wd.last_event ? " " + wd.last_event : "") + ". Mensagens recebidas podem não estar entrando no sistema. Clique em \"Reconectar (sem QR)\"; se não resolver em 5 min, use \"Reconectar\" e leia o QR Code." + (wd.auto_heal_at ? " O sistema já tentou reconectar sozinho às " + wd.auto_heal_at + "." : "");
+      }
+      return;
+    }
+    if(wd && wd.verdict === "awaiting_scan" && state !== "open" && state !== "connected"){
+      badges.forEach(function(b){
+        b.style.background = wd.bg; b.style.color = wd.color;
+        b.innerHTML = '<span class="waDot" style="background:' + wd.dot + '"></span>' + wd.label;
+      });
+      if(btnReconnect) btnReconnect.style.display = "";
+      if(btnDisconnect) btnDisconnect.style.display = "none";
+      if(hint && !(dup && dup.message)){
+        hint.style.display = ""; hint.style.color = wd.color; hint.style.fontWeight = "400";
+        hint.textContent = "A conexão caiu e só volta lendo o QR Code: clique em \"Reconectar\" e leia o QR Code com o celular deste número.";
+      }
+      return;
+    }
     if(state === "open" || state === "connected"){
       label = "Conectado"; bg = "#dcfce7"; color = "#166534"; dot = "#22c55e";
       if(btnReconnect) btnReconnect.style.display = "none";
@@ -147,7 +189,7 @@ echo <<<'MYWAJS'
     .then(function(r){ return r.json(); })
     .then(function(d){
       var state = d.state || (d.instance && d.instance.state) || "";
-      setBadge(instance, state);
+      setBadge(instance, state, d.watchdog || null, d.duplicate || null);
     })
     .catch(function(){ setBadge(instance, "disconnected"); });
   }
@@ -204,7 +246,18 @@ echo <<<'MYWAJS'
       .then(function(r){ return r.json(); })
       .then(function(d){
         var state = d.state || (d.instance && d.instance.state) || "";
-        setBadge(instance, state);
+        setBadge(instance, state, null, d.duplicate || null);
+        if(d.duplicate && d.duplicate.message){
+          // Número já usado em outra instância: a conexão nova foi desfeita
+          clearInterval(pollTimer); pollTimer = null;
+          var dc = document.getElementById("myWaQrContainer");
+          var dv = document.createElement("div");
+          dv.style.cssText = "color:#b91c1c;padding:20px;font-weight:600;line-height:1.5;max-width:420px";
+          dv.textContent = "⛔ " + d.duplicate.message;
+          dc.innerHTML = ""; dc.appendChild(dv);
+          document.getElementById("myWaQrMsg").textContent = "";
+          return;
+        }
         if(state === "open" || state === "connected"){
           clearInterval(pollTimer); pollTimer = null;
           var container = document.getElementById("myWaQrContainer");

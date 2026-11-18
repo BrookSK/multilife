@@ -36,6 +36,10 @@ if (is_array($res['json'])) {
     $pairingCode = (string)($res['json']['pairingCode'] ?? '');
     $code = (string)($res['json']['code'] ?? '');
     $count = (string)($res['json']['count'] ?? '');
+    // QR Code gerado pelo sistema: confere o número quando for lido (trava de duplicado)
+    if (wa_connect_response_has_qr($res['json'])) {
+        wa_pairing_mark($instance);
+    }
 }
 
 // Retornar JSON

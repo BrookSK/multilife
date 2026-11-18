@@ -219,6 +219,7 @@ Todas exigem `?token=<cron.token>`.
 | `cron/demand_followup_dispatch.php` | Lembretes de captação. |
 | `cron/chat_unanswered_sla.php` | Alerta de conversas sem resposta. |
 | `cron/documents_validity_monitor.php` | Validade de documentos. |
+| `cron/whatsapp_watchdog.php` | Monitor de conexão real do WhatsApp (watchdog): 1 reconexão automática para conexão "zumbi" e alerta quando não resolve. As telas abertas já rodam isto a cada minuto; o cron cobre os horários sem ninguém logado (agendar a cada 1–2 min). |
 
 Configuração útil: `demands.dispatch_kick_worker = 0` faz a captação depender só do cron (sem acionamento imediato).
 
@@ -230,6 +231,7 @@ Configuração útil: `demands.dispatch_kick_worker = 0` faz a captação depend
 |---|---|
 | `cron.token` | Token das rotinas cron. |
 | `evolution.base_url`, `evolution.api_key`, `evolution.instance` | Evolution API. |
+| `evolution.watchdog_url`, `evolution.watchdog_token`, `evolution.watchdog_auto_heal` | Monitor de conexão real (watchdog, porta 8083). Sem token fica desligado. O token também pode vir da variável de ambiente `EVO_WATCHDOG_TOKEN`. |
 | `openai.api_key`, `openai.model` | IA. |
 | `demands.whatsapp_template` | Modelo da mensagem de captação (placeholders `{title}`, `{street_neighborhood_city}`, `{specialty}`, `{frequency}`, `{ai_summary_block}`, `{captation_note_block}`...). |
 | `demands.captation_filter_enabled` | Triagem de e-mails (padrão `0`). |
@@ -271,6 +273,8 @@ Cards de teste: `testes/seed_cards_cenarios_captacao.sql` (6 cenários; limpeza 
 | Captação parada | Mensagem do quadro de progresso; `SELECT id,status,attempts,last_error,last_run_at FROM integration_jobs WHERE action='demand_dispatch_run' ORDER BY id DESC LIMIT 5;` |
 | Captação "na fila" sem começar | Cron `integration_jobs_run` e `cron.token`. |
 | WhatsApp conectado mas não envia | Aviso de saúde no topo; Configurações → WhatsApp. |
+| WhatsApp "conectado" mas mensagens não chegam | Veredito do watchdog em Configurações → WhatsApp Conexão → Instâncias ("Suspeita de queda" = sem eventos há 30+ min → Reconectar sem QR). Tabela `whatsapp_instance_monitor`; eventos `heal`/`duplicate` em `whatsapp_instance_events`. |
+| QR lido e a conexão "caiu" sozinha | Número já usado em outra instância: a conexão nova é desfeita e o motivo aparece na tela do QR (`whatsapp_instance_monitor.duplicate_note`). |
 | Profissional não entrou no grupo | Especialidade, cidade/UF/bairro do cadastro, telefone e (no modo teste) a marcação de teste. |
 | Grupo de outra cidade | Não deve ocorrer: conferir cidade/UF/zona do card e do grupo (`whatsapp_groups`). |
 | Logs | Log de erros do PHP (prefixos `[DISPATCH]`, `[EVOLUTION]`, `[EMAIL_EXTRACT]`, `[WHATSAPP_HEALTH]`); chamadas às integrações em `integration_jobs_list.php` e `tech_logs_list.php`. |

@@ -46,7 +46,7 @@ try {
             continue;
         }
 
-        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'evolution.api_key', 'council_provider.consultario.api_key', 'council_provider.infosimples.api_token'], true) && $val === '') {
+        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'evolution.api_key', 'evolution.watchdog_token', 'council_provider.consultario.api_key', 'council_provider.infosimples.api_token'], true) && $val === '') {
             continue;
         }
         $stmt->execute(['k' => $key, 'v' => $val, 'uid' => auth_user_id()]);

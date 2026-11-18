@@ -1128,6 +1128,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         $baseUrlWA = admin_setting_get('evolution.base_url', '');
         $apiKeyWA = admin_setting_get('evolution.api_key', '');
         $configOk = !empty($baseUrlWA) && !empty($apiKeyWA) && !empty($instanceNameWA);
+        echo wa_watchdog_heal_js(); // botão "Reconectar (sem QR)" desta aba
         
         echo '<style>';
         echo '.waSubTabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid hsl(var(--border));padding-bottom:6px}';
@@ -1205,6 +1206,23 @@ function waShowConnecting(){
   document.getElementById("wa-status-area").innerHTML = htmlConnecting;
 }
 
+function waEsc(s){ var d = document.createElement("div"); d.textContent = String(s == null ? "" : s); return d.innerHTML; }
+
+// Watchdog: "conectado" sem eventos há mais de 30 min (conexão zumbi)
+function waShowSilent(wd){
+  document.getElementById("wa-status-area").innerHTML = '<div style="padding:30px"><div style="font-size:44px;margin-bottom:10px">⚠️</div><div style="font-size:20px;font-weight:700;color:#c2410c;margin-bottom:8px">Suspeita de queda</div><div style="font-size:14px;color:#666;margin-bottom:6px;max-width:520px;margin-left:auto;margin-right:auto">A instância <strong>' + waEsc(waInstance) + '</strong> aparece como conectada, mas nenhum evento chega' + (wd.last_event ? ' ' + waEsc(wd.last_event) : '') + '. Mensagens recebidas podem não estar entrando no sistema.</div>' + (wd.auto_heal_at ? '<div style="font-size:13px;color:#666;margin-bottom:6px">O sistema já tentou reconectar sozinho às ' + waEsc(wd.auto_heal_at) + '.</div>' : '') + '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn btnPrimary" onclick="mlWaHeal(waInstance, this)">🔄 Reconectar (sem QR)</button><button type="button" class="btn" onclick="waConnect()">Ler QR Code de novo</button></div></div>';
+  document.getElementById("wa-qr-area").style.display = "none";
+}
+
+// Número já usado em outra instância: a conexão nova foi desfeita
+function waShowDuplicate(msg){
+  if(waCheckInterval){ clearInterval(waCheckInterval); waCheckInterval = null; }
+  document.getElementById("wa-qr-area").style.display = "block";
+  document.getElementById("wa-qr-container").innerHTML = '<div style="color:#b91c1c;padding:20px;max-width:420px;font-weight:600;line-height:1.5">⛔ ' + waEsc(msg) + '</div>';
+  document.getElementById("wa-qr-message").textContent = "";
+}
+window.waInstance = waInstance;
+
 function waProvision(){
   if(waProvisioning) return;
   waProvisioning = true;
@@ -1237,7 +1255,15 @@ function waCheckStatus(){
     if(data.state) state = data.state;
     else if(data.instance && data.instance.state) state = data.instance.state;
     else if(data.instanceState) state = data.instanceState;
-    if(state === "open" || state === "connected"){
+    if(data.duplicate && data.duplicate.message){
+      waShowDisconnected();
+      waShowDuplicate(data.duplicate.message);
+      return;
+    }
+    var wd = data.watchdog || null;
+    if((state === "open" || state === "connected") && wd && wd.verdict === "silent"){
+      waShowSilent(wd);
+    } else if(state === "open" || state === "connected"){
       waShowConnected();
     } else {
       waShowDisconnected();
@@ -1277,6 +1303,7 @@ window.waConnect = function(){
         fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
         .then(function(r){ return r.json(); })
         .then(function(d){
+          if(d.duplicate && d.duplicate.message){ waShowDuplicate(d.duplicate.message); return; }
           var s = d.state || (d.instance && d.instance.state) || d.instanceState || null;
           if(s === "open" || s === "connected"){
             waShowConnected();
@@ -1351,6 +1378,35 @@ WAJS;
         
         echo '<label>Nome da Instância<input name="settings[evolution.instance]" value="' . h($instanceVal) . '" placeholder="multilife"><span class="helpText">Nome da instância WhatsApp configurada na Evolution API</span></label>';
         
+        echo '</div>';
+        echo '</div>';
+
+        // Monitor de conexão real (watchdog da Evolution) — app/whatsapp_watchdog.php
+        $wdUrlVal = (string)($settings['evolution.watchdog_url'] ?? '');
+        $wdHasToken = trim((string)($settings['evolution.watchdog_token'] ?? '')) !== '' || (getenv('EVO_WATCHDOG_TOKEN') ?: '') !== '';
+        $wdAutoHeal = (string)($settings['evolution.watchdog_auto_heal'] ?? '1') !== '0';
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Monitor de conexão (watchdog)</div>';
+        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px;font-size:13px;line-height:1.6;color:hsl(var(--muted-foreground))">';
+        echo 'A Evolution pode mostrar "conectado" com a conexão quebrada (as mensagens somem). O watchdog observa os eventos reais de cada número: ';
+        echo 'sem eventos há mais de 30 min, o sistema mostra <strong>Suspeita de queda</strong>, tenta 1 reconexão automática (sem QR Code) e, se não resolver em 5 min, avisa os administradores e os usuários do número.';
+        echo '</div>';
+        echo '<div style="display:grid;gap:12px">';
+        echo '<label>URL do watchdog<input name="settings[evolution.watchdog_url]" value="' . h($wdUrlVal) . '" placeholder="' . h(WA_WATCHDOG_DEFAULT_URL) . '"><span class="helpText">Vazio = ' . h(WA_WATCHDOG_DEFAULT_URL) . '</span></label>';
+        echo '<label>Token do watchdog (x-token)';
+        echo '<input type="password" name="settings[evolution.watchdog_token]" value="" autocomplete="new-password" placeholder="' . ($wdHasToken ? h(str_repeat('•', 24)) . ' (configurado)' : 'Cole aqui o token passado pela infraestrutura') . '">';
+        echo '<span class="helpText">' . ($wdHasToken ? 'Token já configurado. Deixe vazio para manter.' : 'Sem token o monitor fica desligado e o sistema segue como antes.') . ' O token fica só no servidor.</span>';
+        echo '</label>';
+        echo '<input type="hidden" name="settings[evolution.watchdog_auto_heal]" value="0">';
+        echo '<label style="display:flex;align-items:center;gap:8px;font-weight:600"><input type="checkbox" name="settings[evolution.watchdog_auto_heal]" value="1"' . ($wdAutoHeal ? ' checked' : '') . ' style="width:18px;height:18px"> Reconectar sozinho quando houver suspeita de queda (1 vez a cada 3 h por número)</label>';
+        if ($wdHasToken) {
+            $wdGlobal = wa_monitor_row(WA_WATCHDOG_GLOBAL_ROW);
+            $wdChecked = $wdGlobal && $wdGlobal['checked_at'] ? (string)$wdGlobal['checked_at'] : '';
+            $wdDown = $wdGlobal && (string)$wdGlobal['verdict'] === 'down';
+            echo '<div style="font-size:12px;color:' . ($wdDown ? '#b91c1c' : 'hsl(var(--muted-foreground))') . '">';
+            echo $wdDown ? '⚠️ Watchdog sem resposta desde ' . h(date('d/m H:i', strtotime((string)$wdGlobal['verdict_since']))) . '.' : 'Última leitura do watchdog: ' . ($wdChecked !== '' ? h(date('d/m H:i:s', strtotime($wdChecked))) : 'ainda não lido') . '.';
+            echo '</div>';
+        }
         echo '</div>';
         echo '</div>';
         
@@ -1463,6 +1519,15 @@ WAJS;
         echo '    fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(instName))';
         echo '    .then(function(r){ return r.json(); })';
         echo '    .then(function(d){';
+        // Número já usado em outra instância: a conexão nova foi desfeita (app/whatsapp_watchdog.php)
+        echo '      if(d.duplicate && d.duplicate.message){';
+        echo '        clearInterval(waInstInterval);';
+        echo '        var dv = document.createElement("div"); dv.textContent = "⛔ " + d.duplicate.message;';
+        echo '        dv.style.cssText = "color:#b91c1c;padding:16px;font-weight:600;line-height:1.5;max-width:460px;margin:0 auto";';
+        echo '        var qc = document.getElementById("waInstQrContainer"); qc.innerHTML = ""; qc.appendChild(dv);';
+        echo '        document.getElementById("waInstQrMsg").textContent = "";';
+        echo '        return;';
+        echo '      }';
         echo '      var state = d.state || (d.instance && d.instance.state) || "";';
         echo '      if(state === "open" || state === "connected"){';
         echo '        clearInterval(waInstInterval);';
@@ -1577,6 +1642,12 @@ WAJS;
             echo '<th style="text-align:center">Padrão</th>';
             echo '<th style="text-align:right">Ações</th>';
             echo '</tr></thead><tbody>';
+
+            // Conexão real pelo watchdog (cache de 60 s) e números repetidos entre instâncias
+            if (wa_watchdog_enabled()) {
+                wa_watchdog_refresh(true);
+            }
+            $liDupMap = whatsapp_duplicate_number_map();
             
             foreach ($linkedInstances as $li) {
                 $liName = (string)($li['instance_name'] ?? '');
@@ -1584,9 +1655,15 @@ WAJS;
                 $liConnStatus = (string)($li['connection_status'] ?? 'disconnected');
                 $liIsDefault = (int)($li['is_default'] ?? 0);
                 $liId = (int)($li['id'] ?? 0);
+                $liWd = $liName !== '' ? wa_watchdog_get($liName) : null;
+                if ($liWd) {
+                    // Watchdog já leu o estado real: não precisa consultar a Evolution linha a linha
+                    $liWdMap = ['open' => 'connected', 'connecting' => 'connecting'];
+                    $liConnStatus = $liWdMap[$liWd['state']] ?? 'disconnected';
+                }
                 
                 // Verificar status REAL via Evolution API (atualiza banco se diferente)
-                if ($liName !== '') {
+                if ($liName !== '' && !$liWd) {
                     try {
                         $liApi = new EvolutionApiV1($baseUrlWA, $apiKeyWA, $liName);
                         $liConnRes = $liApi->connectionState();
@@ -1615,12 +1692,30 @@ WAJS;
                     }
                 }
                 
-                if ($liConnStatus === 'connected') {
+                if ($liWd) {
+                    // Veredito do watchdog (eventos reais), no lugar do "open" da Evolution
+                    $liV = wa_watchdog_verdict_view($liWd['verdict']);
+                    $liAgo = wa_watchdog_ago($liWd['last_event_seconds']);
+                    $statusBadge = '<span title="' . h($liV['hint']) . '" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap;background:' . $liV['bg'] . ';color:' . $liV['color'] . '"><span style="width:8px;height:8px;border-radius:50%;background:' . $liV['dot'] . '"></span>' . h($liV['label']) . '</span>';
+                    if ($liAgo !== '' && in_array($liWd['verdict'], ['healthy', 'silent'], true)) {
+                        $statusBadge .= '<div style="margin-top:3px;font-size:11px;color:hsl(var(--muted-foreground))">último evento ' . h($liAgo) . '</div>';
+                    }
+                    if ($liWd['verdict'] === 'silent') {
+                        $statusBadge .= '<div style="margin-top:4px"><button type="button" class="btn" style="font-size:11px;padding:3px 10px;background:#f97316;color:#fff;border:none" onclick=\'mlWaHeal(' . h((string)json_encode($liName)) . ', this)\' title="Refaz a conexão sem QR Code">🔄 Reconectar (sem QR)</button></div>';
+                    }
+                } elseif ($liConnStatus === 'connected') {
                     $statusBadge = '<span style="color:hsl(142,76%,36%);font-weight:600">● Conectado</span>';
                 } elseif ($liConnStatus === 'connecting') {
                     $statusBadge = '<span style="color:#f59e0b;font-weight:600">● Conectando</span>';
                 } else {
                     $statusBadge = '<span style="color:#ef4444;font-weight:600">● Desconectado</span>';
+                }
+                if (!empty($liDupMap[$liName])) {
+                    $statusBadge .= '<div style="margin-top:4px;font-size:11px;font-weight:700;color:#b91c1c" title="Duas instâncias com o mesmo número disputam a sessão e as mensagens somem. Desconecte/remova uma delas.">⚠️ Mesmo número de: ' . h(implode(', ', $liDupMap[$liName])) . '</div>';
+                }
+                $liDupNote = wa_pairing_duplicate_note($liName);
+                if ($liDupNote !== null) {
+                    $statusBadge .= '<div style="margin-top:4px;font-size:11px;font-weight:700;color:#b91c1c;max-width:260px;white-space:normal">⛔ ' . h($liDupNote) . '</div>';
                 }
                 // Saúde real (quedas/reconexões/falhas de envio): "Conectado" pode estar em loop.
                 $liHealth = whatsapp_health_status($liName);
@@ -1691,6 +1786,12 @@ WAJS;
             
             echo '</tbody></table>';
             echo '</div>';
+            echo wa_watchdog_heal_js();
+            if (wa_watchdog_enabled()) {
+                echo '<div style="margin-top:10px;font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
+                echo '<strong>Status pelo monitor de conexão:</strong> 🟢 Conectado = recebendo eventos · 🟠 Suspeita de queda = "conectado" sem eventos há mais de 30 min (use Reconectar sem QR) · 🟡 Aguardando QR Code · ⚪ Desativada.';
+                echo '</div>';
+            }
         }
         
         echo '</div>';
@@ -2145,6 +2246,21 @@ view_footer();
       }
     });
   });
+
+  // Link direto (ex.: alerta do monitor de WhatsApp): ?aba=whatsapp-instancias
+  try {
+    var aba = new URLSearchParams(location.search).get("aba") || "";
+    if (aba.indexOf("whatsapp") === 0) {
+      tabs.forEach(function(t){
+        var sp = t.querySelector("span");
+        if (sp && sp.textContent.trim() === "WhatsApp Conexão") { t.click(); }
+      });
+      if (aba === "whatsapp-instancias") {
+        var st = document.querySelector('.waSubTab[data-watab="waInst"]');
+        if (st) { st.click(); }
+      }
+    }
+  } catch (e) {}
 })();
 
 function togglePassword(fieldId){
