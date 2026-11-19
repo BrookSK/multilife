@@ -308,9 +308,18 @@ function frequency_normalize(string $input): string
         return 'mensal';
     }
     
-    // Diário
-    if (str_contains($input, 'diário') || str_contains($input, 'diario') || str_contains($input, '7x')) {
-        return '7x_semana';
+    // Diário (antes de procurar números: "1x ao dia" é todo dia, não 1x/semana)
+    foreach (['diário', 'diario', 'diária', 'diaria', '7x', 'ao dia', 'por dia', 'todos os dias', 'todo dia',
+        '24h', '24 h', '24 horas', '12h', '12 h', '12 horas', 'plantão', 'plantao', 'daily'] as $dailyKey) {
+        if (str_contains($input, $dailyKey)) {
+            return '7x_semana';
+        }
+    }
+    if (str_contains($input, 'bimestral') || str_contains($input, 'trimestral')) {
+        return 'mensal';
+    }
+    if (preg_match('/\bsemanal\b|\bweekly\b/u', $input)) {
+        return '1x_semana';
     }
     
     // Extrair número
@@ -335,6 +344,37 @@ function frequency_normalize(string $input): string
     }
     
     return '';
+}
+
+/**
+ * Frequência de uma especialidade lida pela IA ({specialty, frequency, description}).
+ * Usa o campo frequency; se a IA o deixou vazio ou fora do padrão, procura a
+ * frequência no texto da especialidade/descrição ("fisioterapia 3x por semana",
+ * "técnico de enfermagem 24h", "enfermagem 1x ao dia").
+ */
+function frequency_from_request(array $req): string
+{
+    $raw = trim((string)($req['frequency'] ?? ''));
+    if ($raw !== '' && isset(FREQUENCY_WEEKDAYS_MAP[$raw])) {
+        return $raw;
+    }
+    if ($raw !== '') {
+        $n = frequency_normalize($raw);
+        if ($n !== '') {
+            return $n;
+        }
+    }
+    $pattern = '/\d+\s*x|ao dia|por dia|\d+\s*h\b|\d+\s*horas|di[aá]ri|quinzenal|mensal|semanal|plant[aã]o|vezes/iu';
+    foreach (['specialty', 'description'] as $k) {
+        $text = trim((string)($req[$k] ?? ''));
+        if ($text !== '' && preg_match($pattern, $text)) {
+            $n = frequency_normalize($text);
+            if ($n !== '' && $n !== 'avaliacao' && $n !== 'pontual') {
+                return $n;
+            }
+        }
+    }
+    return $raw; // fora do padrão: mantém o texto da IA
 }
 
 /**

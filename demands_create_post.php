@@ -32,6 +32,7 @@ $db = db();
 $db->beginTransaction();
 try {
     $id = demand_form_persist($data, null, $status);
+    demand_sub_requests_sync($id, $data); // multicaptação (outras especialidades)
 
     $note = 'criação manual';
     if ($missing['blocking']) {

@@ -48,6 +48,7 @@ $db = db();
 $db->beginTransaction();
 try {
     demand_form_persist($data, $id, $newStatus);
+    $subWarnings = demand_sub_requests_sync($id, $data); // multicaptação (outras especialidades)
     if ($newStatus !== null) {
         $note = $newStatus === 'aguardando_captacao'
             ? 'dados completados na edição — liberado para captação'
@@ -88,12 +89,13 @@ foreach ($data as $k => $v) {
 audit_log('update', 'demands', (string)$id, array_intersect_key($old, $changed), $changed);
 page_history_log('/demands_view.php?id=' . $id, 'Demanda', 'update', 'Atualizou demanda: ' . $data['title'], 'demand', $id);
 
+$subNote = !empty($subWarnings) ? ' Atenção: ' . implode('; ', $subWarnings) . '.' : '';
 if ($newStatus === 'aguardando_captacao') {
-    flash_set('success', 'Card atualizado e liberado para captação.');
+    flash_set('success', 'Card atualizado e liberado para captação.' . $subNote);
 } elseif ($missing['blocking']) {
-    flash_set('success', 'Card atualizado. Ainda falta: ' . implode(', ', $missing['blocking']) . '.');
+    flash_set('success', 'Card atualizado. Ainda falta: ' . implode(', ', $missing['blocking']) . '.' . $subNote);
 } else {
-    flash_set('success', 'Card atualizado.');
+    flash_set('success', 'Card atualizado.' . $subNote);
 }
 header('Location: /demands_view.php?id=' . $id);
 exit;

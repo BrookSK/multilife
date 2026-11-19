@@ -262,6 +262,13 @@ function demand_form_from_post(array $p): array
         $data['polo_id'] = (int)($org['polo_id'] ?? 0);
     }
 
+    // Multicaptação: outras especialidades (não são colunas de demands).
+    $data['extra_requests'] = demand_form_extras_from_post($p);
+    $data['main_sub_request_id'] = (int)($p['main_sub_request_id'] ?? 0);
+    if ($data['extra_requests'] && $data['specialty'] === '') {
+        $errors[] = 'Informe a especialidade principal (a primeira) antes das outras especialidades.';
+    }
+
     if ($data['title'] === '') {
         $base = $data['patient_name'] !== '' ? $data['patient_name'] : 'Atendimento';
         $data['title'] = mb_strimwidth($base . ($data['specialty'] !== '' ? ' - ' . $data['specialty'] : ''), 0, 200, '');
@@ -317,6 +324,222 @@ function demand_form_persist(array $data, ?int $id, ?string $status = null): int
     return $id;
 }
 
+/** Colunas de demand_sub_requests (cache por requisição). */
+function demand_sub_requests_columns(): array
+{
+    static $cols = null;
+    if ($cols === null) {
+        $cols = [];
+        try {
+            foreach (db()->query('SHOW COLUMNS FROM demand_sub_requests')->fetchAll(PDO::FETCH_ASSOC) as $c) {
+                $cols[(string)$c['Field']] = true;
+            }
+        } catch (Throwable $e) {}
+    }
+    return $cols;
+}
+
+/** Especialidades (sub-solicitações) do card, na ordem de criação. */
+function demand_sub_requests_list(int $demandId): array
+{
+    if ($demandId <= 0 || !demand_sub_requests_columns()) {
+        return [];
+    }
+    $st = db()->prepare('SELECT * FROM demand_sub_requests WHERE demand_id = :d ORDER BY id ASC');
+    $st->execute(['d' => $demandId]);
+    return $st->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Separa a especialidade PRINCIPAL (a mesma do card) das demais (multicaptação).
+ *
+ * @return array{main_id:int, main_frequency:string, extras:array<int,array>}
+ */
+function demand_sub_requests_split(int $demandId, string $mainSpecialty): array
+{
+    $out = ['main_id' => 0, 'main_frequency' => '', 'extras' => []];
+    $mainKey = specialty_key($mainSpecialty);
+    foreach (demand_sub_requests_list($demandId) as $r) {
+        if ((string)$r['status'] === 'cancelado') {
+            continue;
+        }
+        if ($out['main_id'] === 0 && $mainKey !== '' && specialty_key((string)$r['specialty']) === $mainKey) {
+            $out['main_id'] = (int)$r['id'];
+            $out['main_frequency'] = trim((string)($r['frequency'] ?? ''));
+            continue;
+        }
+        $out['extras'][] = [
+            'id' => (int)$r['id'],
+            'specialty' => (string)$r['specialty'],
+            'frequency' => (string)($r['frequency'] ?? ''),
+            'description' => (string)($r['description'] ?? ''),
+            'status' => (string)$r['status'],
+        ];
+    }
+    return $out;
+}
+
+/** Uma linha da lista "Outras especialidades" do formulário. */
+function demand_form_render_extra_row(array $ex, array $specialties, array $freqOpts): void
+{
+    $spec = (string)($ex['specialty'] ?? '');
+    $freq = (string)($ex['frequency'] ?? '');
+    $status = (string)($ex['status'] ?? 'pendente');
+    $locked = in_array($status, ['em_captacao', 'concluido'], true);
+    echo '<div class="dfExtraRow" style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,2fr) auto;gap:8px;align-items:end;padding:8px;border:1px solid hsl(var(--border));border-radius:8px">';
+    echo '<input type="hidden" name="extra_id[]" value="' . (int)($ex['id'] ?? 0) . '">';
+    echo '<label>Especialidade<select name="extra_specialty[]">';
+    echo '<option value="">Selecione...</option>';
+    $found = false;
+    foreach ($specialties as $sp) {
+        $name = (string)$sp['name'];
+        $sel = $name === $spec ? ' selected' : '';
+        $found = $found || $sel !== '';
+        echo '<option value="' . h($name) . '"' . $sel . '>' . h($name) . '</option>';
+    }
+    if (!$found && $spec !== '') {
+        echo '<option value="' . h($spec) . '" selected>' . h($spec) . ' (do e-mail)</option>';
+    }
+    echo '</select></label>';
+    echo '<label>Frequência<select name="extra_frequency[]">';
+    echo '<option value="">Selecione...</option>';
+    $foundF = false;
+    foreach ($freqOpts as $fo) {
+        $sel = (string)$fo['code'] === $freq ? ' selected' : '';
+        $foundF = $foundF || $sel !== '';
+        echo '<option value="' . h((string)$fo['code']) . '"' . $sel . '>' . h((string)$fo['label']) . '</option>';
+    }
+    if (!$foundF && $freq !== '') {
+        echo '<option value="' . h($freq) . '" selected>' . h($freq) . '</option>';
+    }
+    echo '</select></label>';
+    echo '<label>Observação desta especialidade<input name="extra_description[]" maxlength="1000" value="' . h((string)($ex['description'] ?? '')) . '" placeholder="Opcional"></label>';
+    if ($locked) {
+        echo '<span class="dfHint" style="padding-bottom:10px;white-space:nowrap" title="Já foi para captação: não pode ser removida">' . ($status === 'concluido' ? 'Concluída' : 'Em captação') . '</span>';
+    } else {
+        echo '<button type="button" class="btn dfExtraDel" style="height:38px" title="Remover">✕</button>';
+    }
+    echo '</div>';
+}
+
+/** Lê as "Outras especialidades" do POST. */
+function demand_form_extras_from_post(array $p): array
+{
+    $ids = (array)($p['extra_id'] ?? []);
+    $specs = (array)($p['extra_specialty'] ?? []);
+    $freqs = (array)($p['extra_frequency'] ?? []);
+    $descs = (array)($p['extra_description'] ?? []);
+    $out = [];
+    foreach ($specs as $i => $s) {
+        $s = mb_substr(trim((string)$s), 0, 120);
+        if ($s === '') {
+            continue;
+        }
+        $f = mb_substr(trim((string)($freqs[$i] ?? '')), 0, 120);
+        if ($f !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$f])) {
+            $n = frequency_normalize($f);
+            $f = $n !== '' ? $n : $f;
+        }
+        $out[] = [
+            'id' => (int)($ids[$i] ?? 0),
+            'specialty' => $s,
+            'frequency' => $f,
+            'description' => mb_substr(trim((string)($descs[$i] ?? '')), 0, 1000),
+        ];
+        if (count($out) >= 15) {
+            break;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Grava as especialidades do card (multicaptação). A principal (campos de cima)
+ * + as "Outras especialidades". Com 2 ou mais, o card vira multicaptação (cada uma
+ * é captada separadamente); com 1, volta a ser um card simples. Especialidades já
+ * em captação/concluídas nunca são apagadas.
+ * Chamar dentro da transação de gravação do card (não faz DDL).
+ *
+ * @return string[] avisos para o usuário
+ */
+function demand_sub_requests_sync(int $demandId, array $data): array
+{
+    $cols = demand_sub_requests_columns();
+    if (!$cols || $demandId <= 0) {
+        return [];
+    }
+    $db = db();
+    $warnings = [];
+    $existing = [];
+    foreach (demand_sub_requests_list($demandId) as $r) {
+        $existing[(int)$r['id']] = $r;
+    }
+    $extras = is_array($data['extra_requests'] ?? null) ? $data['extra_requests'] : [];
+
+    $desired = [];
+    $mainSpec = trim((string)($data['specialty'] ?? ''));
+    if ($mainSpec !== '') {
+        $mainId = (int)($data['main_sub_request_id'] ?? 0);
+        $desired[] = ['id' => isset($existing[$mainId]) ? $mainId : 0, 'specialty' => $mainSpec,
+            'frequency' => trim((string)($data['frequency'] ?? '')), 'description' => null];
+    }
+    foreach ($extras as $ex) {
+        $exId = (int)($ex['id'] ?? 0);
+        $desired[] = ['id' => isset($existing[$exId]) ? $exId : 0, 'specialty' => (string)$ex['specialty'],
+            'frequency' => (string)$ex['frequency'], 'description' => (string)$ex['description']];
+    }
+
+    // Local do card copiado para cada especialidade (a captação usa o da especialidade).
+    $loc = [];
+    foreach (['location_city', 'location_state', 'location_street', 'location_neighborhood', 'location_number', 'location_complement'] as $c) {
+        if (isset($cols[$c]) && array_key_exists($c, $data)) {
+            $val = trim((string)$data[$c]);
+            $loc[$c] = $val !== '' ? $val : null;
+        }
+    }
+
+    $keep = [];
+    $isMulti = count($desired) >= 2;
+    if ($isMulti) {
+        foreach ($desired as $row) {
+            $vals = ['specialty' => $row['specialty']] + $loc;
+            if (isset($cols['frequency'])) {
+                $vals['frequency'] = $row['frequency'] !== '' ? $row['frequency'] : null;
+            }
+            if ($row['description'] !== null) {
+                $vals['description'] = $row['description'] !== '' ? $row['description'] : null;
+            }
+            if ($row['id'] > 0) {
+                $sets = array_map(static fn($c) => $c . ' = :' . $c, array_keys($vals));
+                $vals['__id'] = $row['id'];
+                $db->prepare('UPDATE demand_sub_requests SET ' . implode(', ', $sets) . ' WHERE id = :__id')->execute($vals);
+                $keep[$row['id']] = true;
+            } else {
+                $vals['demand_id'] = $demandId;
+                $names = array_keys($vals);
+                $db->prepare('INSERT INTO demand_sub_requests (' . implode(', ', $names) . ') VALUES (:' . implode(', :', $names) . ')')
+                    ->execute($vals);
+                $keep[(int)$db->lastInsertId()] = true;
+            }
+        }
+    }
+    $del = $db->prepare('DELETE FROM demand_sub_requests WHERE id = :id AND status = \'pendente\'');
+    foreach ($existing as $eid => $r) {
+        if (isset($keep[$eid]) || (string)$r['status'] === 'cancelado') {
+            continue;
+        }
+        if ((string)$r['status'] === 'pendente') {
+            $del->execute(['id' => $eid]);
+        } else {
+            $warnings[] = (string)$r['specialty'] . ' já está ' . ((string)$r['status'] === 'concluido' ? 'concluída' : 'em captação') . ' e foi mantida';
+        }
+    }
+    if (isset(demand_form_columns()['has_multiple_requests'])) {
+        $db->prepare('UPDATE demands SET has_multiple_requests = :m WHERE id = :id')->execute(['m' => $isMulti ? 1 : 0, 'id' => $demandId]);
+    }
+    return $warnings;
+}
+
 /**
  * Renderiza o formulário completo.
  *
@@ -349,6 +572,18 @@ function demand_form_render(array $d, string $action, array $opts = []): void
     $freqOpts = function_exists('frequency_get_options') ? frequency_get_options() : [];
     $canQuick = function_exists('quick_register_allowed') ? quick_register_allowed() : false;
 
+    // Especialidades já cadastradas no card (edição): a principal é a de cima;
+    // as demais aparecem na lista de multicaptação.
+    $reqState = ['main_id' => 0, 'extras' => []];
+    if ($isEdit) {
+        $reqState = demand_sub_requests_split((int)$opts['id'], $v('specialty'));
+        // Card multi sem frequência geral: mostra a da especialidade principal.
+        if ($v('frequency') === '' && $reqState['main_frequency'] !== '') {
+            $d['frequency'] = $reqState['main_frequency'];
+            $v = static fn(string $k): string => (string)($d[$k] ?? ''); // arrow fn copia $d: recria
+        }
+    }
+
     echo '<style>';
     echo '.dfSection{border:1px solid hsl(var(--border));border-radius:12px;padding:14px;display:grid;gap:12px}';
     echo '.dfSection h3{margin:0;font-size:15px;font-weight:800}';
@@ -357,6 +592,7 @@ function demand_form_render(array $d, string $action, array $opts = []): void
     echo '[data-missing="blocking"] input,[data-missing="blocking"] select,[data-missing="blocking"] textarea{border:2px solid hsl(0,84%,60%)!important;background:hsla(0,84%,60%,.05)}';
     echo '[data-missing="recommended"] input,[data-missing="recommended"] select,[data-missing="recommended"] textarea{border:2px solid hsl(36,90%,55%)!important}';
     echo '.dfHint{font-size:12px;color:hsl(var(--muted-foreground))}';
+    echo '@media (max-width:640px){.dfExtraRow{grid-template-columns:1fr!important}.dfExtraRow .dfExtraDel{justify-self:end}}';
     echo '#qrModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200;align-items:center;justify-content:center}';
     echo '#qrModal .card{width:520px;max-width:92vw;max-height:90vh;overflow:auto}';
     echo '#qrModal [hidden]{display:none!important}';
@@ -498,6 +734,24 @@ function demand_form_render(array $d, string $action, array $opts = []): void
     echo '</select></label></div>';
     $pv = isset($d['procedure_value']) && $d['procedure_value'] !== null && $d['procedure_value'] !== '' ? number_format((float)$d['procedure_value'], 2, ',', '.') : '';
     echo '<div class="col6"><label>Valor do procedimento (R$) — não vai para o grupo<input name="procedure_value" inputmode="decimal" value="' . h($pv) . '" placeholder="Ex: 150,00"></label></div>';
+
+    // MULTICAPTAÇÃO: outras especialidades do mesmo paciente, cada uma com a sua
+    // frequência. A especialidade de cima é a principal (1ª da lista).
+    $extras = is_array($d['extra_requests'] ?? null) ? $d['extra_requests'] : $reqState['extras'];
+    echo '<input type="hidden" name="main_sub_request_id" value="' . (int)($d['main_sub_request_id'] ?? $reqState['main_id']) . '">';
+    echo '<div class="col12"><div style="border-top:1px dashed hsl(var(--border));padding-top:12px">';
+    echo '<div style="font-weight:800;font-size:14px">Outras especialidades do paciente (multicaptação)</div>';
+    echo '<div class="dfHint" style="margin:2px 0 10px">Ex.: técnico de enfermagem 24h (acima) + fisioterapia 3x/semana + fono 2x/semana aqui. Cada especialidade é captada separadamente, com a sua frequência.</div>';
+    echo '<div id="dfExtras" style="display:grid;gap:8px">';
+    foreach ($extras as $ex) {
+        demand_form_render_extra_row($ex, $specialties, $freqOpts);
+    }
+    echo '</div>';
+    echo '<button type="button" class="btn" id="dfAddExtra" style="margin-top:8px">+ Adicionar especialidade</button>';
+    echo '<template id="dfExtraTpl">';
+    demand_form_render_extra_row([], $specialties, $freqOpts);
+    echo '</template>';
+    echo '</div></div>';
     echo '</div></div>';
 
     // ----------------------------------------------------------- Endereço
@@ -656,6 +910,31 @@ function demand_form_render(array $d, string $action, array $opts = []): void
   document.getElementById('df_address_split').addEventListener('click', splitAddress);
   addrEl.addEventListener('paste', function(){ setTimeout(splitAddress, 50); });
 
+  // Multicaptação: adicionar/remover especialidades.
+  var extrasBox = document.getElementById('dfExtras'), extraTpl = document.getElementById('dfExtraTpl');
+  function addExtra(spec, freq, desc){
+    var row = extraTpl.content.firstElementChild.cloneNode(true);
+    var setSel = function(sel, val){
+      if (!val) return;
+      var opt = Array.prototype.find.call(sel.options, function(o){ return norm(o.value) === norm(val) || norm(o.text) === norm(val); });
+      if (!opt) { opt = new Option(val + ' (não cadastrada)', val); sel.add(opt); }
+      sel.value = opt.value;
+    };
+    setSel(row.querySelector('[name="extra_specialty[]"]'), spec);
+    setSel(row.querySelector('[name="extra_frequency[]"]'), freq);
+    if (desc) row.querySelector('[name="extra_description[]"]').value = desc;
+    extrasBox.appendChild(row);
+    return row;
+  }
+  document.getElementById('dfAddExtra').addEventListener('click', function(){
+    var row = addExtra('', '', '');
+    row.querySelector('select').focus();
+  });
+  extrasBox.addEventListener('click', function(e){
+    var btn = e.target.closest('.dfExtraDel');
+    if (btn) btn.closest('.dfExtraRow').remove();
+  });
+
   // Preencher com IA.
   var aiBtn = document.getElementById('dfAiBtn'), aiMsg = document.getElementById('dfAiMsg');
   aiBtn.addEventListener('click', function(){
@@ -680,8 +959,15 @@ function demand_form_render(array $d, string $action, array $opts = []): void
           filled++;
         });
         var desc = form.querySelector('[name="description"]'); if (desc && !desc.value) desc.value = txt;
+        // Demais especialidades (a 1ª já foi para os campos principais).
+        var added = 0;
+        (j.requests || []).slice(1).forEach(function(r){
+          if (!r || !r.specialty) return;
+          var dup = Array.prototype.some.call(extrasBox.querySelectorAll('[name="extra_specialty[]"]'), function(s){ return norm(s.value) === norm(r.specialty); });
+          if (!dup) { addExtra(r.specialty, r.frequency || '', r.description || ''); added++; }
+        });
         refreshZone();
-        aiMsg.textContent = filled + ' campo(s) preenchido(s). Confira antes de salvar.';
+        aiMsg.textContent = filled + ' campo(s) preenchido(s)' + (added ? ' e ' + added + ' especialidade(s) a mais' : '') + '. Confira antes de salvar.';
       })
       .catch(function(){ aiBtn.disabled = false; aiMsg.textContent = 'Falha de conexão com a IA.'; });
   });

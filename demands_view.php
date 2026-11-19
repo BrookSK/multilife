@@ -171,7 +171,24 @@ if ($urgency === 'urgente') {
 }
 
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Local:</strong> ' . h($locTxt) . '</span>';
-echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-')) . '</span>';
+// Multicaptação: todas as especialidades com a frequência de cada uma.
+$headSubs = (int)($d['has_multiple_requests'] ?? 0) === 1
+    ? array_values(array_filter(demand_sub_requests_list((int)$d['id']), static fn($r) => (string)$r['status'] !== 'cancelado'))
+    : [];
+$freqTxt = static function (?string $f): string {
+    $f = trim((string)$f);
+    return $f === '' ? 'frequência não informada' : (function_exists('frequency_get_label') ? frequency_get_label($f) : $f);
+};
+if (count($headSubs) > 1) {
+    $parts = [];
+    foreach ($headSubs as $hs) {
+        $parts[] = (string)$hs['specialty'] . ' (' . $freqTxt($hs['frequency'] ?? '') . ')';
+    }
+    echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidades (' . count($headSubs) . '):</strong> ' . h(implode(' · ', $parts)) . '</span>';
+} else {
+    echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Especialidade:</strong> ' . h((string)($d['specialty'] ?? '-'))
+        . (trim((string)($d['frequency'] ?? '')) !== '' ? ' (' . h($freqTxt((string)$d['frequency'])) . ')' : '') . '</span>';
+}
 echo '<span style="color:hsl(var(--muted-foreground));font-size:13px"><strong>Responsável:</strong> ' . h($assumedBy) . '</span>';
 echo '</div>';
 
@@ -681,6 +698,7 @@ if (count($subRequests) > 1) {
         echo '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
         echo '<div>';
         echo '<div style="font-weight:700;font-size:15px">' . h((string)$sr['specialty']) . $srBadge . '</div>';
+        echo '<div style="margin-top:4px;font-size:13px;color:hsl(var(--muted-foreground))"><strong>Frequência:</strong> ' . h($freqTxt($sr['frequency'] ?? '')) . '</div>';
         if (trim((string)($sr['description'] ?? '')) !== '') {
             echo '<div style="margin-top:6px;font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5">' . h(mb_strimwidth((string)$sr['description'], 0, 150, '...')) . '</div>';
         }

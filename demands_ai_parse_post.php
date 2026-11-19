@@ -41,11 +41,16 @@ try {
 $sys = "Você extrai dados de UMA solicitação de atendimento domiciliar (home care) para preencher um formulário.\n"
     . "Responda SOMENTE JSON com as chaves: patient_name, specialty, frequency, urgency, procedure_value, "
     . "location_zip, location_street, location_number, location_complement, location_neighborhood, location_city, "
-    . "location_state, ai_summary, origin_email.\n"
+    . "location_state, ai_summary, origin_email, requests.\n"
     . "Regras:\n"
     . "- Use null quando não houver a informação. Não invente.\n"
     . "- specialty: escolha, se possível, exatamente um nome desta lista: " . implode(' | ', $specialtyNames) . ".\n"
-    . "- frequency: um destes códigos: 1x_semana, 2x_semana, 3x_semana, 4x_semana, 5x_semana, 6x_semana, 7x_semana, quinzenal, mensal.\n"
+    . "- frequency: um destes códigos: 1x_semana, 2x_semana, 3x_semana, 4x_semana, 5x_semana, 6x_semana, 7x_semana, quinzenal, mensal. "
+    . "'24h', 'plantão', 'diária' e '1x ao dia' = 7x_semana.\n"
+    . "- requests: lista com TODAS as especialidades pedidas, na ordem do texto, cada uma {specialty, frequency, description}. "
+    . "A 1ª é a principal (a mesma de specialty/frequency). Ex.: 'Técnico de enfermagem 24h + fisioterapia 3x por semana' = "
+    . "[{specialty:'Técnico de Enfermagem', frequency:'7x_semana'}, {specialty:'Fisioterapia', frequency:'3x_semana'}]. "
+    . "Equipamentos e materiais NÃO são especialidades.\n"
     . "- urgency: urgente, normal ou baixa.\n"
     . "- location_state: UF com 2 letras maiúsculas. location_zip: só dígitos.\n"
     . "- procedure_value: número (sem R$).\n"
@@ -100,5 +105,27 @@ $zone = location_zone_for($fields['location_city'] ?? '', $fields['location_stat
 if ($zone !== null) {
     $fields['location_zone'] = $zone;
 }
+if (isset($fields['frequency'])) {
+    $fields['frequency'] = frequency_from_request(['frequency' => $fields['frequency']]);
+}
 
-aip_json(['ok' => true, 'fields' => $fields]);
+// Todas as especialidades (multicaptação), com a frequência de cada uma.
+$requests = [];
+foreach ((is_array($parsed['requests'] ?? null) ? $parsed['requests'] : []) as $r) {
+    if (!is_array($r) || trim((string)($r['specialty'] ?? '')) === '') {
+        continue;
+    }
+    $requests[] = [
+        'specialty' => mb_substr(trim((string)$r['specialty']), 0, 120),
+        'frequency' => frequency_from_request($r),
+        'description' => mb_substr(trim((string)($r['description'] ?? '')), 0, 1000),
+    ];
+    if (count($requests) >= 15) {
+        break;
+    }
+}
+if (!isset($fields['frequency']) && $requests && $requests[0]['frequency'] !== '') {
+    $fields['frequency'] = $requests[0]['frequency'];
+}
+
+aip_json(['ok' => true, 'fields' => $fields, 'requests' => $requests]);

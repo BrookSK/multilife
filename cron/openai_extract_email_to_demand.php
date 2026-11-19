@@ -717,6 +717,9 @@ foreach ($emails as $e) {
         . "- Se houver múltiplos pacientes, retorne cada um como item separado em clients\n"
         . "- Dentro de cada client, se houver múltiplas especialidades, coloque cada uma em requests\n"
         . "- Se houver apenas 1 especialidade para o paciente, coloque 1 item em requests\n"
+        . "- frequency de CADA request é OBRIGATÓRIA quando o e-mail informa (use os CÓDIGOS): 'fisioterapia 3x por semana' = '3x_semana', "
+        . "'fono 2x sem' = '2x_semana', 'enfermagem 1x ao dia' = '7x_semana', 'técnico de enfermagem 24h' = '7x_semana', "
+        . "'médico quinzenal' = 'quinzenal', 'nutri mensal' = 'mensal'. O frequency do client = frequency da especialidade principal (a primeira).\n"
         . "- patient_name: Nome completo do paciente/segurado conforme aparece no e-mail\n"
         . "- DESCONSIDERE itens que NÃO são especialidades de profissionais de saúde (ex: materiais, equipamentos como concentrador O2, aspirador, cama elétrica - estes vão na description do request relevante, NÃO como request separado)\n"
         . "- Equipamentos e materiais devem ser mencionados na description da especialidade principal do paciente\n"
@@ -1224,11 +1227,7 @@ foreach ($emails as $e) {
                         if (!is_array($req)) continue;
                         $reqSpecialty = trim((string)($req['specialty'] ?? ''));
                         if ($reqSpecialty === '') continue;
-                        $reqFreq = trim((string)($req['frequency'] ?? ''));
-                        if ($reqFreq !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$reqFreq])) {
-                            $normFreq = frequency_normalize($reqFreq);
-                            if ($normFreq !== '') $reqFreq = $normFreq;
-                        }
+                        $reqFreq = frequency_from_request($req);
                         $subRequests[] = [
                             'specialty' => $reqSpecialty,
                             'description' => trim((string)($req['description'] ?? '')),
@@ -1245,18 +1244,33 @@ foreach ($emails as $e) {
                             $specialty = trim((string)($singleReq['specialty'] ?? ''));
                         }
                         if ($frequency === '') {
-                            $reqFreq = trim((string)($singleReq['frequency'] ?? ''));
-                            if ($reqFreq !== '' && !isset(FREQUENCY_WEEKDAYS_MAP[$reqFreq])) {
-                                $normFreq = frequency_normalize($reqFreq);
-                                if ($normFreq !== '') $reqFreq = $normFreq;
-                            } else {
-                                $reqFreq = $reqFreq;
-                            }
-                            $frequency = $reqFreq;
+                            $frequency = frequency_from_request($singleReq);
                         }
                     }
                 }
                 $hasMultipleRequests = count($subRequests) > 1;
+                // Várias especialidades: a frequência do card é a da especialidade
+                // principal (antes ficava vazia e o card pedia "Frequência").
+                if ($specialty === '' && $subRequests) {
+                    $specialty = $subRequests[0]['specialty'];
+                }
+                if ($frequency === '' && $subRequests) {
+                    $mainKey = specialty_key($specialty);
+                    foreach ($subRequests as $sr) {
+                        if ($sr['frequency'] !== '' && ($mainKey === '' || specialty_key($sr['specialty']) === $mainKey)) {
+                            $frequency = $sr['frequency'];
+                            break;
+                        }
+                    }
+                    if ($frequency === '') {
+                        foreach ($subRequests as $sr) {
+                            if ($sr['frequency'] !== '') {
+                                $frequency = $sr['frequency'];
+                                break;
+                            }
+                        }
+                    }
+                }
                 
                 // Descrição: para multi-client, gerar descrição específica do paciente (não o email inteiro)
                 if ($isMultiClient) {
