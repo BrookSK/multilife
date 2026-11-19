@@ -702,6 +702,8 @@ foreach ($emails as $e) {
         . "    \"location_number\": string|null,\n"
         . "    \"location_complement\": string|null (apto, bloco, casa, referência),\n"
         . "    \"location_zip\": string|null (CEP, só os 8 dígitos),\n"
+        . "    \"location_district\": string|null (região/distrito maior quando o endereço traz dois nomes de bairro; ex.: 'Parque Vitória do Sol Nascente - Vila Jaraguá' = neighborhood 'Parque Vitória do Sol Nascente', district 'Vila Jaraguá'),\n"
+        . "    \"location_zone\": string|null (SÓ para São Paulo/SP e Rio de Janeiro/RJ: 'Zona Norte', 'Zona Sul', 'Zona Leste', 'Zona Oeste' ou 'Centro', pelo bairro/distrito; null se não tiver certeza),\n"
         . "    \"specialty\": string|null (especialidade principal do paciente),\n"
         . "    \"procedure_value\": number|null,\n"
         . "    \"urgency\": string|null (urgente, normal, baixa),\n"
@@ -718,7 +720,7 @@ foreach ($emails as $e) {
         . "- patient_name: Nome completo do paciente/segurado conforme aparece no e-mail\n"
         . "- DESCONSIDERE itens que NÃO são especialidades de profissionais de saúde (ex: materiais, equipamentos como concentrador O2, aspirador, cama elétrica - estes vão na description do request relevante, NÃO como request separado)\n"
         . "- Equipamentos e materiais devem ser mencionados na description da especialidade principal do paciente\n"
-        . "- Frequência: 'DIARIA' ou '7X/SEM' = '7x_semana', '5X/SEM' = '5x_semana', '3X/SEM' = '3x_semana', '2X/SEM' = '2x_semana', '1X/SEM' = '1x_semana', 'QUINZENAL' = 'quinzenal', 'MENSAL' = 'mensal', 'BIMESTRAL' = 'mensal'\n"
+        . "- Frequência: 'DIARIA', 'DIÁRIO', '24H', 'PLANTÃO 24H', '12H' (todo dia) ou '7X/SEM' = '7x_semana', '5X/SEM' = '5x_semana', '3X/SEM' = '3x_semana', '2X/SEM' = '2x_semana', '1X/SEM' = '1x_semana', 'QUINZENAL' = 'quinzenal', 'MENSAL' = 'mensal', 'BIMESTRAL' = 'mensal'\n"
         . "- UF sempre 2 letras maiúsculas\n"
         . "- O conteúdo pode ter um bloco '=== TEXTO LIDO DOS ANEXOS E IMAGENS DO E-MAIL ===': são imagens, PDFs e planilhas "
         . "enviados junto, e fazem parte da solicitação.\n"
@@ -1320,8 +1322,15 @@ foreach ($emails as $e) {
                     $state = '';
                 }
 
-                // Zona (só em cidades divididas por zona, ex.: São Paulo/Rio), pelo bairro.
-                $zone = location_zone_for($city, $state, $neighborhood) ?? '';
+                // Zona (só em cidades divididas por zona, ex.: São Paulo/Rio): bairro,
+                // distrito ("Vila Jaraguá"), complemento/rua, bairro do CEP e, por último,
+                // a zona que a IA indicou.
+                $zone = location_zone_guess($city, $state, [
+                    $neighborhood,
+                    (string)($client['location_district'] ?? ''),
+                    $locationComplement,
+                    $street,
+                ], $locationZip, (string)($client['location_zone'] ?? '')) ?? '';
 
                 // Determinar status com a MESMA regra do formulário do card: vai para
                 // Tratamento Manual quando falta algo que impede o disparo

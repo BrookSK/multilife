@@ -377,11 +377,21 @@ if ($srcEmailId > 0) {
     echo '<a class="btn" href="/inbound_emails_view.php?id=' . $srcEmailId . '">Ver e-mail</a>';
     echo '<form method="post" action="/demands_fill_from_attachments_post.php" style="display:inline" onsubmit="var b=this.querySelector(\'button\');b.disabled=true;b.textContent=\'Lendo anexos... (pode levar até 1 minuto)\';return true;">';
     echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
-    echo '<button class="btn btnPrimary" type="submit">🔎 Ler anexos e completar o card</button>';
+    echo '<button class="btn btnPrimary" type="submit">🔎 Ler e-mail e anexos e completar o card</button>';
     echo '</form>';
     echo '</div></div>';
-    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:10px">Imagens, PDFs, Word e Excel do e-mail são lidos pela IA. O botão preenche só os campos vazios do card (nunca troca o que já foi preenchido).</div>';
-    echo inbound_attachments_render_list($srcAtts);
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:10px">Relê o texto do e-mail e as imagens, PDFs, Word e Excel anexados. Preenche só os campos vazios do card, inclusive zona e frequência (nunca troca o que já foi preenchido).</div>';
+    $srcFetched = null;
+    try {
+        $sf = db()->prepare('SELECT attachments_fetched_at FROM inbound_emails WHERE id = :id');
+        $sf->execute(['id' => $srcEmailId]);
+        $srcFetched = $sf->fetchColumn();
+    } catch (Throwable $e) {}
+    if (!$srcAtts && ($srcFetched === null || $srcFetched === false)) {
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Os anexos deste e-mail ainda não foram buscados (o card foi criado antes da leitura de imagens). Clique no botão acima para buscar e ler.</div>';
+    } else {
+        echo inbound_attachments_render_list($srcAtts);
+    }
     echo '</section>';
 }
 

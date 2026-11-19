@@ -75,18 +75,20 @@ if (!$hadAtts && !$fetch['ok'] && $fetch['saved'] === 0) {
 }
 $attText = inbound_attachments_extracted_text($emailId, $api, true);
 $atts = inbound_attachments_list($emailId);
-if ($attText === '') {
-    $finish('error', $atts
-        ? 'Os ' . count($atts) . ' anexo(s) foram verificados, mas nenhum tinha dados legíveis. Veja o motivo em "Anexos do e-mail" no card.'
-        : 'Este e-mail não tem anexos nem imagens.');
-}
-
 $em = $db->prepare('SELECT subject, body_text, body_html FROM inbound_emails WHERE id = :id');
 $em->execute(['id' => $emailId]);
 $emailRow = $em->fetch(PDO::FETCH_ASSOC) ?: [];
 $body = trim((string)($emailRow['body_text'] ?? ''));
 if ($body === '') {
     $body = trim(strip_tags((string)($emailRow['body_html'] ?? '')));
+}
+// Sem anexo legível o botão ainda serve: relê o texto do e-mail (ex.: zona e
+// frequência que a primeira leitura não preencheu).
+$attNote = $attText === ''
+    ? ($atts ? ' Os ' . count($atts) . ' anexo(s) não tinham dados legíveis; usei o texto do e-mail.' : ' O e-mail não tem anexos; usei o texto do e-mail.')
+    : '';
+if ($attText === '' && $body === '') {
+    $finish('error', 'O e-mail não tem texto nem anexo legível para completar o card.');
 }
 
 $fields = ['patient_name', 'location_zip', 'location_street', 'location_number', 'location_complement',
@@ -98,8 +100,11 @@ foreach ($fields as $f) {
 
 $system = "Você completa o card de uma solicitação de atendimento domiciliar (home care) a partir do e-mail e dos anexos/imagens.\n"
     . "Responda SOMENTE JSON com as chaves: patient_name, location_zip (8 dígitos), location_street, location_number, "
-    . "location_complement, location_neighborhood, location_city, location_state (UF 2 letras), specialty, "
-    . "frequency (códigos: 1x_semana..7x_semana, quinzenal, mensal, avaliacao, pontual), urgency (urgente|normal|baixa), "
+    . "location_complement, location_neighborhood, location_district (região/distrito maior quando o endereço traz dois "
+    . "nomes, ex.: 'Parque Vitória do Sol Nascente - Vila Jaraguá' = district 'Vila Jaraguá'), location_zone (só São Paulo/SP "
+    . "e Rio de Janeiro/RJ: Zona Norte|Zona Sul|Zona Leste|Zona Oeste|Centro, null se não tiver certeza), "
+    . "location_city, location_state (UF 2 letras), specialty, "
+    . "frequency (códigos: 1x_semana..7x_semana, quinzenal, mensal, avaliacao, pontual; '24h', 'plantão' e 'diária' = 7x_semana), urgency (urgente|normal|baixa), "
     . "ai_summary (quadro clínico em até 3 parágrafos curtos: paciente/diagnóstico, serviço/frequência, observações), "
     . "other_patients (lista com o NOME de cada outro paciente que aparece no e-mail ou nos anexos e NÃO é o paciente deste card).\n"
     . "Regras: use null quando o dado não aparecer. Não invente. Se o e-mail tiver vários pacientes (ex.: um no texto e outro "
@@ -217,7 +222,13 @@ $merged = array_merge($d, $updates);
 // Zona (cidades divididas por zona) pelo bairro.
 if (isset($cols['location_zone']) && trim((string)($d['location_zone'] ?? '')) === ''
     && location_city_has_zones((string)$merged['location_city'], (string)$merged['location_state'])) {
-    $zone = location_zone_for((string)$merged['location_city'], (string)$merged['location_state'], (string)($merged['location_neighborhood'] ?? ''));
+    $zone = location_zone_guess((string)$merged['location_city'], (string)$merged['location_state'], [
+        (string)($merged['location_neighborhood'] ?? ''),
+        is_scalar($parsed['location_district'] ?? null) ? (string)$parsed['location_district'] : '',
+        (string)($merged['location_complement'] ?? ''),
+        (string)($merged['location_street'] ?? ''),
+        (string)($merged['location_raw'] ?? ''),
+    ], (string)($merged['location_zip'] ?? ''), is_scalar($parsed['location_zone'] ?? null) ? (string)$parsed['location_zone'] : '');
     if ($zone !== null) {
         $updates['location_zone'] = $zone;
         $merged['location_zone'] = $zone;
@@ -229,7 +240,7 @@ if (!empty($updates['patient_name']) && trim((string)$d['patient_name']) === '')
 }
 // Texto lido dos anexos fica no card (uma vez).
 $desc = (string)($d['description'] ?? '');
-if (isset($cols['description']) && !str_contains($desc, '=== TEXTO LIDO DOS ANEXOS')) {
+if ($attText !== '' && isset($cols['description']) && !str_contains($desc, '=== TEXTO LIDO DOS ANEXOS')) {
     $updates['description'] = trim($desc . "\n\n" . $attText);
 }
 
@@ -239,7 +250,7 @@ $newStatus = ($oldStatus === 'tratamento_manual' && !$missing['blocking']) ? 'ag
 
 $filled = array_values(array_intersect_key($labels, array_diff_key($updates, ['description' => 1, 'title' => 1])));
 if (!$filled && !isset($updates['description'])) {
-    $finish('success', 'Anexos lidos, mas não havia campo vazio que eles pudessem completar.'
+    $finish('success', 'E-mail e anexos lidos, mas não havia campo vazio que eles pudessem completar.' . $attNote
         . ($otherPatientsWithoutCard ? ' O e-mail também tem ' . implode(', ', $otherPatientsWithoutCard)
             . ', que ainda não tem card: use "Reprocessar" no e-mail para criar (os cards que já existem não são duplicados).' : ''));
 }
@@ -259,7 +270,7 @@ try {
         }
         $db->prepare('UPDATE demands SET ' . implode(', ', $sets) . ' WHERE id = :__id')->execute($params);
     }
-    $note = $filled ? 'completado pelos anexos do e-mail: ' . implode(', ', $filled) : 'texto dos anexos do e-mail incluído';
+    $note = $filled ? 'completado pela leitura do e-mail/anexos: ' . implode(', ', $filled) : 'texto dos anexos do e-mail incluído';
     $db->prepare('INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note) VALUES (:did, :os, :ns, :uid, :note)')
         ->execute([
             'did' => $id, 'os' => $oldStatus, 'ns' => $newStatus ?? $oldStatus, 'uid' => auth_user_id(),
@@ -279,7 +290,7 @@ unset($auditNew['description']);
 audit_log('update', 'demands', (string)$id, array_intersect_key($d, $auditNew), $auditNew + ['_origem' => 'anexos do e-mail #' . $emailId]);
 page_history_log('/demands_view.php?id=' . $id, 'Demanda', 'update', 'Completou o card com os anexos do e-mail', 'demand', $id);
 
-$msg = $filled ? 'Card completado com os anexos: ' . implode(', ', $filled) . '.' : 'Texto dos anexos incluído no card.';
+$msg = ($filled ? 'Card completado: ' . implode(', ', $filled) . '.' : 'Texto dos anexos incluído no card.') . $attNote;
 $otherMsg = $otherPatientsWithoutCard
     ? ' O e-mail também tem ' . implode(', ', $otherPatientsWithoutCard) . ', que ainda não tem card: use "Reprocessar" no e-mail para criar (os cards que já existem não são duplicados).'
     : '';

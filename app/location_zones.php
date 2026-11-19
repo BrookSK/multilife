@@ -218,6 +218,35 @@ function location_zone_for(?string $city, ?string $state, ?string $neighborhood)
     return null;
 }
 
+/**
+ * Zona com várias pistas, em ordem: cada texto do endereço (bairro, distrito,
+ * complemento, rua), o bairro do CEP (ViaCEP) e por fim a zona sugerida pela IA.
+ * Ex.: "Parque Vitória do Sol Nascente" não está na lista, mas "Vila Jaraguá"
+ * (distrito) está: Zona Norte.
+ */
+function location_zone_guess(?string $city, ?string $state, array $texts, string $zip = '', string $aiZone = ''): ?string
+{
+    if (!location_city_has_zones($city, $state)) {
+        return null;
+    }
+    foreach ($texts as $t) {
+        $z = location_zone_for($city, $state, (string)$t);
+        if ($z !== null) {
+            return $z;
+        }
+    }
+    if ($zip !== '' && function_exists('inbound_cep_lookup')) {
+        $cep = inbound_cep_lookup($zip);
+        if ($cep && $cep['neighborhood'] !== '') {
+            $z = location_zone_for($city, $state, $cep['neighborhood']);
+            if ($z !== null) {
+                return $z;
+            }
+        }
+    }
+    return location_normalize_zone($aiZone, $city, $state);
+}
+
 /** UF a partir do DDD de um telefone brasileiro (com ou sem 55). */
 function location_ddd_state(?string $phone): ?string
 {
