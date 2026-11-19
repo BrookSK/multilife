@@ -73,6 +73,17 @@ if ((string)($e['error_message'] ?? '') !== '') {
 echo '</div>';
 echo '</section>';
 
+// Anexos e imagens (lidos pela IA ao montar o card)
+$emailAtts = inbound_attachments_list((int)$e['id']);
+echo '<section class="card col12">';
+echo '<div style="font-weight:900;margin-bottom:10px">📎 Anexos e imagens (' . count($emailAtts) . ')</div>';
+if (!$emailAtts && ($e['attachments_fetched_at'] ?? null) === null) {
+    echo '<div style="font-size:13px;color:hsl(var(--muted-foreground))">Os anexos deste e-mail ainda não foram buscados. Eles são lidos ao reprocessar o e-mail ou pelo botão "Ler anexos e completar o card" no card.</div>';
+} else {
+    echo inbound_attachments_render_list($emailAtts);
+}
+echo '</section>';
+
 $bodyText = (string)($e['body_text'] ?? '');
 $bodyHtml = (string)($e['body_html'] ?? '');
 

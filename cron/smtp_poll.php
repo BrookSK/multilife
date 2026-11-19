@@ -13,7 +13,9 @@ if (!function_exists('imap_open')) {
     exit;
 }
 
-@set_time_limit(25);
+@set_time_limit(60); // anexos aumentam o tempo de download
+$pollStartedAt = microtime(true);
+inbound_attachments_ensure_schema();
 if (function_exists('imap_timeout')) {
     @imap_timeout(IMAP_OPENTIMEOUT, 10);
     @imap_timeout(IMAP_READTIMEOUT, 10);
@@ -382,7 +384,12 @@ try {
                     
                     // Só processar text/plain e text/html
                     if ($type !== 0) {
-                        continue; // Pular imagens, attachments, etc.
+                        continue; // Imagens, PDFs etc. são guardados depois (inbound_attachments_collect_from_imap)
+                    }
+                    // Arquivo de texto ANEXADO (.txt, .csv, .html) não é o corpo do e-mail.
+                    if ((!empty($part->ifdisposition) && strtolower((string)$part->disposition) === 'attachment')
+                        || inbound_att_part_param($part, ['filename']) !== '') {
+                        continue;
                     }
                     
                     $data = imap_fetchbody($imap, $uidInt, $partIndex, FT_UID);
@@ -482,11 +489,25 @@ try {
             }
 
             $ins->execute($insParams);
+            $newEmailId = (int)$db->lastInsertId();
 
             $db->commit();
         } catch (Throwable $e) {
             $db->rollBack();
             throw $e;
+        }
+
+        // ANEXOS E IMAGENS (lidos depois pela IA ao montar o card). Se o tempo do
+        // poll estiver acabando, fica para a extração buscar no IMAP.
+        if ($newEmailId > 0 && (microtime(true) - $pollStartedAt) < 40) {
+            try {
+                $attSaved = inbound_attachments_collect_from_imap($imap, $uidInt, $structure, $newEmailId);
+                $attSaved += inbound_attachments_collect_data_uris($newEmailId, $bodyHtml);
+                inbound_attachments_mark_fetched($newEmailId);
+                smtp_poll_debug("[SMTP_POLL] UID $uid - $attSaved anexo(s)/imagem(ns) guardado(s)");
+            } catch (Throwable $attErr) {
+                error_log('[SMTP_POLL] Anexos do e-mail #' . $newEmailId . ': ' . $attErr->getMessage());
+            }
         }
 
         // Mark as seen + archive

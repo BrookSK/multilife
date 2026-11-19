@@ -16,7 +16,8 @@ if ($id <= 0) {
 }
 
 // Verificar se o e-mail existe
-$stmt = db()->prepare("SELECT id, body_text, body_html FROM inbound_emails WHERE id = :id LIMIT 1");
+inbound_attachments_ensure_schema();
+$stmt = db()->prepare("SELECT id, body_text, body_html, attachments_fetched_at FROM inbound_emails WHERE id = :id LIMIT 1");
 $stmt->execute(['id' => $id]);
 $email = $stmt->fetch();
 
@@ -27,7 +28,9 @@ if (!$email) {
 }
 
 // Verificar se tem body
-$hasBody = (trim((string)($email['body_text'] ?? '')) !== '' || trim((string)($email['body_html'] ?? '')) !== '');
+// E-mail só com imagem/anexo também é processado (o texto vem dos anexos).
+$hasBody = (trim((string)($email['body_text'] ?? '')) !== '' || trim((string)($email['body_html'] ?? '')) !== ''
+    || $email['attachments_fetched_at'] === null || count(inbound_attachments_list($id)) > 0);
 if (!$hasBody) {
     flash_set('error', 'E-mail #' . $id . ' não tem corpo (body vazio). Re-encaminhe o e-mail para capturar novamente.');
     header('Location: /inbound_emails_list.php');

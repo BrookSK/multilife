@@ -126,6 +126,7 @@ require_once __DIR__ . '/whatsapp_health.php';
 require_once __DIR__ . '/whatsapp_watchdog.php';
 require_once __DIR__ . '/clients_helper.php';
 require_once __DIR__ . '/patient_contact_helper.php';
+require_once __DIR__ . '/inbound_email_attachments.php';
 require_once __DIR__ . '/secure_store.php';
 require_once __DIR__ . '/location_zones.php';
 require_once __DIR__ . '/demand_form.php';

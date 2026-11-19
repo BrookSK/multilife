@@ -332,6 +332,18 @@ if ($hasLocationZone) {
     $insDemandCols .= ', location_zone';
     $insDemandVals .= ',:zone';
 }
+// CEP e complemento (também lidos das imagens/anexos).
+$hasLocationZip = (bool)$db->query("SHOW COLUMNS FROM demands LIKE 'location_zip'")->fetch();
+$hasLocationComplement = (bool)$db->query("SHOW COLUMNS FROM demands LIKE 'location_complement'")->fetch();
+if ($hasLocationZip) {
+    $insDemandCols .= ', location_zip';
+    $insDemandVals .= ',:zip';
+}
+if ($hasLocationComplement) {
+    $insDemandCols .= ', location_complement';
+    $insDemandVals .= ',:complement';
+}
+inbound_attachments_ensure_schema(); // DDL fora de transação
 
 if ($hasPatientName) {
     $insDemandCols = 'title, patient_name, ' . substr($insDemandCols, 7); // Insere patient_name após title
@@ -423,10 +435,33 @@ foreach ($emails as $e) {
         }
     }
 
+    // ANEXOS E IMAGENS: o texto lido pela IA (imagens, PDF, Word, Excel...) entra
+    // junto com o corpo. Muitas captações trazem paciente e endereço só na imagem.
+    $attachmentsMerged = false;
+    $mergeAttachments = static function () use (&$content, &$attachmentsMerged, $id, $api, $retryErrors): void {
+        if ($attachmentsMerged) {
+            return;
+        }
+        $attachmentsMerged = true;
+        try {
+            $attText = inbound_attachments_extracted_text($id, $api, $retryErrors);
+        } catch (Throwable $attErr) {
+            error_log("[EMAIL_EXTRACT] E-mail #$id - Falha ao ler anexos: " . $attErr->getMessage());
+            $attText = '';
+        }
+        if ($attText !== '') {
+            $content = trim($content . "\n\n" . $attText);
+            error_log("[EMAIL_EXTRACT] E-mail #$id - Texto dos anexos/imagens incluído: " . mb_strlen($attText) . ' chars');
+        }
+    };
+    if ($content === '') {
+        $mergeAttachments(); // e-mail só com imagem/anexo
+    }
+
     if ($content === '') {
         $errors++;
         $updErr->execute([
-            'err' => 'E-mail sem corpo (body_text/body_html vazio). Refetch do IMAP também falhou.',
+            'err' => 'E-mail sem corpo (body_text/body_html vazio) e sem anexo legível. Refetch do IMAP também falhou.',
             'pa' => date('Y-m-d H:i:s'),
             'id' => $id,
         ]);
@@ -605,6 +640,7 @@ foreach ($emails as $e) {
     // PADRÃO DESLIGADO: a caixa de captação agora recebe SOMENTE e-mails de captação,
     // então a triagem captação/não-captação (e a fila "aguardando revisão") não é mais
     // usada. Para religar em uma caixa mista, grave o setting com '1'.
+    $mergeAttachments(); // não é resposta de autorização: lê anexos e imagens antes da IA
     $captationFilterEnabled = (string)admin_setting_get('demands.captation_filter_enabled', '0') === '1';
     require_once __DIR__ . '/../app/email_classification_helper.php';
     if ($captationFilterEnabled) {
@@ -664,6 +700,8 @@ foreach ($emails as $e) {
         . "    \"location_street\": string|null,\n"
         . "    \"location_neighborhood\": string|null,\n"
         . "    \"location_number\": string|null,\n"
+        . "    \"location_complement\": string|null (apto, bloco, casa, referência),\n"
+        . "    \"location_zip\": string|null (CEP, só os 8 dígitos),\n"
         . "    \"specialty\": string|null (especialidade principal do paciente),\n"
         . "    \"procedure_value\": number|null,\n"
         . "    \"urgency\": string|null (urgente, normal, baixa),\n"
@@ -682,6 +720,9 @@ foreach ($emails as $e) {
         . "- Equipamentos e materiais devem ser mencionados na description da especialidade principal do paciente\n"
         . "- Frequência: 'DIARIA' ou '7X/SEM' = '7x_semana', '5X/SEM' = '5x_semana', '3X/SEM' = '3x_semana', '2X/SEM' = '2x_semana', '1X/SEM' = '1x_semana', 'QUINZENAL' = 'quinzenal', 'MENSAL' = 'mensal', 'BIMESTRAL' = 'mensal'\n"
         . "- UF sempre 2 letras maiúsculas\n"
+        . "- O conteúdo pode ter um bloco '=== TEXTO LIDO DOS ANEXOS E IMAGENS DO E-MAIL ===': são imagens, PDFs e planilhas "
+        . "enviados junto. USE esses dados (paciente, endereço, CEP, bairro, cidade, especialidade, frequência) como se estivessem no corpo; "
+        . "quando o corpo não tiver um dado e o anexo tiver, use o do anexo. Não crie paciente a partir de logotipos ou assinaturas.\n"
         . "- Se não encontrar, use null\n"
         . "- Responda SOMENTE com JSON válido";
 
@@ -929,6 +970,12 @@ foreach ($emails as $e) {
                     if (empty($existing['location_number']) && !empty($client['location_number'])) {
                         $existing['location_number'] = $client['location_number'];
                     }
+                    if (empty($existing['location_zip']) && !empty($client['location_zip'])) {
+                        $existing['location_zip'] = $client['location_zip'];
+                    }
+                    if (empty($existing['location_complement']) && !empty($client['location_complement'])) {
+                        $existing['location_complement'] = $client['location_complement'];
+                    }
                     
                     $deduped[$key] = $existing;
                 }
@@ -1101,6 +1148,21 @@ foreach ($emails as $e) {
                 $street = trim((string)($client['location_street'] ?? ''));
                 $neighborhood = trim((string)($client['location_neighborhood'] ?? ''));
                 $locationNumber = trim((string)($client['location_number'] ?? ''));
+                $locationComplement = mb_substr(trim((string)($client['location_complement'] ?? '')), 0, 120);
+                $locationZip = preg_replace('/\D+/', '', (string)($client['location_zip'] ?? '')) ?? '';
+                if (strlen($locationZip) !== 8) {
+                    $locationZip = '';
+                }
+                // CEP sem cidade/rua: completa pelo ViaCEP (só o que estiver vazio).
+                if ($locationZip !== '' && ($city === '' || $state === '' || $street === '' || $neighborhood === '')) {
+                    $cepData = inbound_cep_lookup($locationZip);
+                    if ($cepData) {
+                        if ($street === '') $street = $cepData['street'];
+                        if ($neighborhood === '') $neighborhood = $cepData['neighborhood'];
+                        if ($city === '') $city = $cepData['city'];
+                        if ($state === '') $state = $cepData['state'];
+                    }
+                }
                 $specialty = trim((string)($client['specialty'] ?? ''));
                 $procedureValue = isset($client['procedure_value']) && $client['procedure_value'] !== null ? (float)$client['procedure_value'] : null;
                 $urgency = trim((string)($client['urgency'] ?? ''));
@@ -1164,6 +1226,8 @@ foreach ($emails as $e) {
                         if ($street !== '') $addrParts[] = $street . ($locationNumber !== '' ? ', ' . $locationNumber : '');
                         if ($neighborhood !== '') $addrParts[] = $neighborhood;
                         if ($city !== '') $addrParts[] = $city . ($state !== '' ? '/' . $state : '');
+                        if ($locationComplement !== '') $addrParts[] = $locationComplement;
+                        if ($locationZip !== '') $addrParts[] = 'CEP ' . substr($locationZip, 0, 5) . '-' . substr($locationZip, 5);
                         $descParts[] = "Endereço: " . implode(' - ', $addrParts);
                     }
                     if ($specialty !== '') $descParts[] = "Especialidade principal: $specialty";
@@ -1258,6 +1322,12 @@ foreach ($emails as $e) {
                 ];
                 if ($hasLocationZone) {
                     $demandParams['zone'] = $zone !== '' ? $zone : null;
+                }
+                if ($hasLocationZip) {
+                    $demandParams['zip'] = $locationZip !== '' ? $locationZip : null;
+                }
+                if ($hasLocationComplement) {
+                    $demandParams['complement'] = $locationComplement !== '' ? $locationComplement : null;
                 }
                 if ($hasPatientName) {
                     $demandParams['pname'] = $patientName !== '' ? $patientName : null;

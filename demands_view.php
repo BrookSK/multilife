@@ -356,6 +356,35 @@ if ($description !== '') {
 echo '</div>';
 echo '</section>';
 
+// Anexos e imagens do e-mail de origem (lidos pela IA). Botão para cards já
+// criados: lê os anexos e completa os campos vazios.
+$srcEmailId = (int)($d['source_email_id'] ?? 0);
+if ($srcEmailId <= 0) {
+    try {
+        $qe = db()->prepare('SELECT id FROM inbound_emails WHERE linked_demand_id = :d ORDER BY id ASC LIMIT 1');
+        $qe->execute(['d' => $id]);
+        $srcEmailId = (int)($qe->fetchColumn() ?: 0);
+    } catch (Throwable $e) {
+        $srcEmailId = 0;
+    }
+}
+if ($srcEmailId > 0) {
+    $srcAtts = inbound_attachments_list($srcEmailId);
+    echo '<section class="card col12">';
+    echo '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
+    echo '<div style="font-weight:900">📎 Anexos e imagens do e-mail (' . count($srcAtts) . ')</div>';
+    echo '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    echo '<a class="btn" href="/inbound_emails_view.php?id=' . $srcEmailId . '">Ver e-mail</a>';
+    echo '<form method="post" action="/demands_fill_from_attachments_post.php" style="display:inline" onsubmit="var b=this.querySelector(\'button\');b.disabled=true;b.textContent=\'Lendo anexos... (pode levar até 1 minuto)\';return true;">';
+    echo '<input type="hidden" name="id" value="' . (int)$d['id'] . '">';
+    echo '<button class="btn btnPrimary" type="submit">🔎 Ler anexos e completar o card</button>';
+    echo '</form>';
+    echo '</div></div>';
+    echo '<div style="font-size:12px;color:hsl(var(--muted-foreground));margin-bottom:10px">Imagens, PDFs, Word e Excel do e-mail são lidos pela IA. O botão preenche só os campos vazios do card (nunca troca o que já foi preenchido).</div>';
+    echo inbound_attachments_render_list($srcAtts);
+    echo '</section>';
+}
+
 // Logs
 
 echo '<section class="card col12">';
