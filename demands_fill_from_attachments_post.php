@@ -66,12 +66,12 @@ try {
     $finish('error', 'IA (OpenAI) não configurada: ' . $e->getMessage());
 }
 
-// Botão = pedido explícito: busca de novo no IMAP se nada foi guardado antes.
-if (!inbound_attachments_list($emailId)) {
-    $fetch = inbound_attachments_fetch_for_email($emailId);
-    if (!$fetch['ok'] && $fetch['saved'] === 0) {
-        $finish('error', 'Não consegui buscar os anexos: ' . $fetch['message']);
-    }
+// Botão = pedido explícito: busca de novo no IMAP (não duplica o que já foi
+// guardado e pega o que uma busca anterior não reconheceu).
+$hadAtts = (bool)inbound_attachments_list($emailId);
+$fetch = inbound_attachments_fetch_for_email($emailId);
+if (!$hadAtts && !$fetch['ok'] && $fetch['saved'] === 0) {
+    $finish('error', 'Não consegui buscar os anexos: ' . $fetch['message']);
 }
 $attText = inbound_attachments_extracted_text($emailId, $api, true);
 $atts = inbound_attachments_list($emailId);
@@ -100,9 +100,11 @@ $system = "Você completa o card de uma solicitação de atendimento domiciliar 
     . "Responda SOMENTE JSON com as chaves: patient_name, location_zip (8 dígitos), location_street, location_number, "
     . "location_complement, location_neighborhood, location_city, location_state (UF 2 letras), specialty, "
     . "frequency (códigos: 1x_semana..7x_semana, quinzenal, mensal, avaliacao, pontual), urgency (urgente|normal|baixa), "
-    . "ai_summary (quadro clínico em até 3 parágrafos curtos: paciente/diagnóstico, serviço/frequência, observações).\n"
-    . "Regras: use null quando o dado não aparecer. Não invente. Se o e-mail tiver vários pacientes, use SOMENTE os dados do "
-    . "paciente deste card (veja 'CARD ATUAL'). Ignore logotipos e assinaturas.";
+    . "ai_summary (quadro clínico em até 3 parágrafos curtos: paciente/diagnóstico, serviço/frequência, observações), "
+    . "other_patients (lista com o NOME de cada outro paciente que aparece no e-mail ou nos anexos e NÃO é o paciente deste card).\n"
+    . "Regras: use null quando o dado não aparecer. Não invente. Se o e-mail tiver vários pacientes (ex.: um no texto e outro "
+    . "na imagem), use SOMENTE os dados do paciente deste card (veja 'CARD ATUAL'; se o nome estiver vazio, o do corpo do e-mail) "
+    . "e NUNCA misture endereço, convênio ou serviços de outro paciente. Ignore logotipos e assinaturas.";
 $user = "CARD ATUAL (campos vazios precisam ser completados):\n" . json_encode($current, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
     . "\n\nASSUNTO: " . (string)($emailRow['subject'] ?? '')
     . "\n\nCORPO DO E-MAIL:\n" . mb_substr($body, 0, 8000)
@@ -119,6 +121,29 @@ $parsed = $status >= 200 && $status < 300
     : null;
 if (!is_array($parsed)) {
     $finish('error', 'A IA não conseguiu interpretar os anexos (HTTP ' . $status . '). Tente de novo em instantes.');
+}
+
+// Outros pacientes do e-mail (ex.: um no texto e outro na imagem) que ainda não
+// têm card vindo deste e-mail: o aviso orienta a reprocessar.
+$otherPatientsWithoutCard = [];
+$others = is_array($parsed['other_patients'] ?? null) ? $parsed['other_patients'] : [];
+if ($others) {
+    $haveKeys = [inbound_patient_name_key((string)($d['patient_name'] ?? '')) => true];
+    try {
+        $ex = $db->prepare("SELECT patient_name FROM demands WHERE (source_email_id = :e OR id = :d) AND status <> 'cancelado'");
+        $ex->execute(['e' => $emailId, 'd' => $id]);
+        foreach ($ex->fetchAll(PDO::FETCH_COLUMN) as $pn) {
+            $haveKeys[inbound_patient_name_key((string)$pn)] = true;
+        }
+    } catch (Throwable $e) {}
+    foreach ($others as $o) {
+        $o = is_scalar($o) ? trim((string)$o) : '';
+        $k = inbound_patient_name_key($o);
+        if ($k !== '' && !isset($haveKeys[$k])) {
+            $otherPatientsWithoutCard[] = mb_substr($o, 0, 80);
+            $haveKeys[$k] = true;
+        }
+    }
 }
 
 // Normaliza o que a IA devolveu.
@@ -214,7 +239,9 @@ $newStatus = ($oldStatus === 'tratamento_manual' && !$missing['blocking']) ? 'ag
 
 $filled = array_values(array_intersect_key($labels, array_diff_key($updates, ['description' => 1, 'title' => 1])));
 if (!$filled && !isset($updates['description'])) {
-    $finish('success', 'Anexos lidos, mas não havia campo vazio que eles pudessem completar.');
+    $finish('success', 'Anexos lidos, mas não havia campo vazio que eles pudessem completar.'
+        . ($otherPatientsWithoutCard ? ' O e-mail também tem ' . implode(', ', $otherPatientsWithoutCard)
+            . ', que ainda não tem card: use "Reprocessar" no e-mail para criar (os cards que já existem não são duplicados).' : ''));
 }
 
 $db->beginTransaction();
@@ -253,6 +280,10 @@ audit_log('update', 'demands', (string)$id, array_intersect_key($d, $auditNew), 
 page_history_log('/demands_view.php?id=' . $id, 'Demanda', 'update', 'Completou o card com os anexos do e-mail', 'demand', $id);
 
 $msg = $filled ? 'Card completado com os anexos: ' . implode(', ', $filled) . '.' : 'Texto dos anexos incluído no card.';
+$otherMsg = $otherPatientsWithoutCard
+    ? ' O e-mail também tem ' . implode(', ', $otherPatientsWithoutCard) . ', que ainda não tem card: use "Reprocessar" no e-mail para criar (os cards que já existem não são duplicados).'
+    : '';
+$msg .= $otherMsg;
 if ($newStatus !== null) {
     $msg .= ' O card foi liberado para captação.';
 } elseif ($missing['blocking']) {

@@ -39,7 +39,9 @@ if (!$hasBody) {
 
 // Resetar status — inclui também e-mails presos em 'processing' (travados por
 // falha/timeout em execução anterior; o filtro normal do cron só pega received/error).
-db()->prepare("UPDATE inbound_emails SET status = 'received', error_message = NULL, processed_at = NULL WHERE id = :id")
+// attachments_fetched_at = NULL: busca os anexos de novo no IMAP (não duplica os
+// que já foram guardados; pega os que a versão anterior não reconhecia).
+db()->prepare("UPDATE inbound_emails SET status = 'received', error_message = NULL, processed_at = NULL, attachments_fetched_at = NULL WHERE id = :id")
     ->execute(['id' => $id]);
 
 $cronToken = trim((string)admin_setting_get('cron.token', ''));

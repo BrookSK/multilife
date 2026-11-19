@@ -721,8 +721,14 @@ foreach ($emails as $e) {
         . "- Frequência: 'DIARIA' ou '7X/SEM' = '7x_semana', '5X/SEM' = '5x_semana', '3X/SEM' = '3x_semana', '2X/SEM' = '2x_semana', '1X/SEM' = '1x_semana', 'QUINZENAL' = 'quinzenal', 'MENSAL' = 'mensal', 'BIMESTRAL' = 'mensal'\n"
         . "- UF sempre 2 letras maiúsculas\n"
         . "- O conteúdo pode ter um bloco '=== TEXTO LIDO DOS ANEXOS E IMAGENS DO E-MAIL ===': são imagens, PDFs e planilhas "
-        . "enviados junto. USE esses dados (paciente, endereço, CEP, bairro, cidade, especialidade, frequência) como se estivessem no corpo; "
-        . "quando o corpo não tiver um dado e o anexo tiver, use o do anexo. Não crie paciente a partir de logotipos ou assinaturas.\n"
+        . "enviados junto, e fazem parte da solicitação.\n"
+        . "  * Paciente do anexo com NOME DIFERENTE dos pacientes do corpo = OUTRO paciente: crie OUTRO item em clients "
+        . "com os dados do anexo (nome, endereço, CEP, convênio, serviços). Ex.: corpo com GABRIEL e imagem com HENRIQUE = 2 clients.\n"
+        . "  * Paciente do anexo com o MESMO nome de um paciente do corpo: é o mesmo client; complete os dados que faltam.\n"
+        . "  * NUNCA misture endereço, convênio ou serviços de um paciente com outro.\n"
+        . "  * Ex.: 'Serviços Solicitados: Técnico de Enfermagem 24h + Enf 1x sem + Fisio diária + Fono 2x sem' = 4 requests "
+        . "(Técnico de Enfermagem, Enfermagem 1x_semana, Fisioterapia 7x_semana, Fonoaudiologia 2x_semana).\n"
+        . "  * Não crie paciente a partir de logotipos, cabeçalhos ou assinaturas.\n"
         . "- Se não encontrar, use null\n"
         . "- Responda SOMENTE com JSON válido";
 
@@ -1132,6 +1138,39 @@ foreach ($emails as $e) {
         }
 
         // ====================================================================
+        // REPROCESSAR SEM DUPLICAR: pacientes que já têm card (não cancelado)
+        // vindo deste mesmo e-mail são pulados. Assim "Reprocessar" só cria os
+        // cards que faltam (ex.: o paciente que estava só na imagem).
+        // ====================================================================
+        $existingByName = [];
+        $existingAny = [];
+        if ($hasSourceEmailId) {
+            try {
+                $exSt = $db->prepare("SELECT id, " . ($hasPatientName ? 'patient_name' : "'' AS patient_name") . " FROM demands
+                    WHERE source_email_id = :eid AND status <> 'cancelado' ORDER BY id ASC");
+                $exSt->execute(['eid' => $id]);
+                foreach ($exSt->fetchAll(PDO::FETCH_ASSOC) as $ex) {
+                    $existingAny[] = (int)$ex['id'];
+                    $k = inbound_patient_name_key((string)($ex['patient_name'] ?? ''));
+                    if ($k !== '') {
+                        $existingByName[$k] = (int)$ex['id'];
+                    }
+                }
+            } catch (Throwable $eEx) {
+                error_log("[EMAIL_EXTRACT] E-mail #$id - Falha ao checar cards existentes: " . $eEx->getMessage());
+            }
+        }
+        if ($existingAny) {
+            $clients = array_values(array_filter($clients, static function ($c) use ($existingByName): bool {
+                $k = inbound_patient_name_key((string)($c['patient_name'] ?? ''));
+                return $k !== '' && !isset($existingByName[$k]); // sem nome: já existe card deste e-mail
+            }));
+            // $isMultiClient fica como estava: com vários pacientes no e-mail, cada card
+            // novo continua com a descrição só do seu paciente.
+            error_log("[EMAIL_EXTRACT] E-mail #$id - Já tinha " . count($existingAny) . " card(s); novos pacientes a criar: " . count($clients));
+        }
+
+        // ====================================================================
         // CRIAR DEMANDS: 1 demand por cliente
         // ====================================================================
         
@@ -1437,7 +1476,7 @@ foreach ($emails as $e) {
                 'id' => $id,
             ];
             if ($hasLinkedDemandId) {
-                $updParams['did'] = $createdDemandIds[0] ?? null;
+                $updParams['did'] = $createdDemandIds[0] ?? ($existingAny[0] ?? null);
             }
             $updOk->execute($updParams);
 

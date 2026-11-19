@@ -305,21 +305,51 @@ function inbound_attachments_collect_from_imap($imap, int $uid, $structure, int 
     $types = [0 => 'text', 1 => 'multipart', 2 => 'message', 3 => 'application', 4 => 'audio', 5 => 'image', 6 => 'video', 7 => 'other', 8 => 'model'];
     $saved = 0;
 
-    $walk = function (object $part, string $index) use (&$walk, &$saved, $imap, $uid, $emailId, $types): void {
+    // $nested = dentro de um e-mail ANEXADO/encaminhado como anexo: o texto dele
+    // também é guardado (não é o corpo do e-mail principal).
+    $walk = function (object $part, string $index, bool $nested = false, bool $siblingHasPlain = false) use (&$walk, &$saved, $imap, $uid, $emailId, $types): void {
         $type = (int)($part->type ?? 0);
+        $subtype = strtolower((string)($part->subtype ?? ''));
         if ($type === 1 && !empty($part->parts)) {
+            $hasPlain = false;
+            foreach ($part->parts as $sub) {
+                if ((int)($sub->type ?? 0) === 0 && strtolower((string)($sub->subtype ?? '')) === 'plain') {
+                    $hasPlain = true;
+                }
+            }
             foreach ($part->parts as $i => $sub) {
-                $walk($sub, ($index === '' ? '' : $index . '.') . ($i + 1));
+                $walk($sub, ($index === '' ? '' : $index . '.') . ($i + 1), $nested, $hasPlain);
+            }
+            return;
+        }
+        // E-mail anexado (message/rfc822): entra nele para pegar imagens, PDFs e o texto.
+        if ($type === 2 && !empty($part->parts)) {
+            $children = $part->parts;
+            if (count($children) === 1 && (int)($children[0]->type ?? 0) === 1 && !empty($children[0]->parts)) {
+                $children = $children[0]->parts; // corpo multipart do e-mail anexado
+            }
+            $hasPlain = false;
+            foreach ($children as $sub) {
+                if ((int)($sub->type ?? 0) === 0 && strtolower((string)($sub->subtype ?? '')) === 'plain') {
+                    $hasPlain = true;
+                }
+            }
+            $base = $index === '' ? '1' : $index;
+            foreach ($children as $i => $sub) {
+                $walk($sub, $base . '.' . ($i + 1), true, $hasPlain);
             }
             return;
         }
         $disposition = !empty($part->ifdisposition) ? strtolower((string)$part->disposition) : '';
         $fileName = inbound_att_part_param($part, ['filename', 'name']);
-        $subtype = strtolower((string)($part->subtype ?? ''));
 
         // Texto sem nome de arquivo e sem "attachment" = corpo do e-mail (já lido).
+        // Dentro de e-mail anexado é guardado (o html só quando não há versão texto).
         if ($type === 0 && $disposition !== 'attachment' && $fileName === '') {
-            return;
+            if (!$nested || ($subtype === 'html' && $siblingHasPlain) || !in_array($subtype, ['plain', 'html'], true)) {
+                return;
+            }
+            $fileName = 'email-anexado-' . str_replace('.', '-', $index) . ($subtype === 'html' ? '.html' : '.txt');
         }
         if ($type === 4 || $type === 6) {
             return; // áudio e vídeo: não há o que ler
@@ -369,6 +399,132 @@ function inbound_attachments_collect_data_uris(int $emailId, string $html): int
             if (inbound_attachments_save($emailId, 'html-' . ($i + 1), 'imagem-no-corpo-' . ($i + 1) . '.' . $ext, $mime, $data, null, true, 'html') !== null) {
                 $saved++;
             }
+        }
+    }
+    return $saved;
+}
+
+/** true se o host resolve só para IPs públicos (evita o servidor buscar endereços internos). */
+function inbound_att_public_ip(string $host): ?string
+{
+    if ($host === '' || strcasecmp($host, 'localhost') === 0) {
+        return null;
+    }
+    $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (@gethostbynamel($host) ?: []);
+    if (!$ips) {
+        return null;
+    }
+    foreach ($ips as $ip) {
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return null;
+        }
+    }
+    return $ips[0];
+}
+
+/**
+ * Baixa uma imagem de link (http/https) com limites: só IP público, até 3
+ * redirecionamentos, 15 MB, 10 s e Content-Type de imagem.
+ *
+ * @return array{data:string, mime:string}|null
+ */
+function inbound_att_download_image(string $url): ?array
+{
+    for ($hop = 0; $hop < 4; $hop++) {
+        $p = parse_url($url);
+        $scheme = strtolower((string)($p['scheme'] ?? ''));
+        $host = (string)($p['host'] ?? '');
+        if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return null;
+        }
+        $ip = inbound_att_public_ip($host);
+        if ($ip === null) {
+            return null;
+        }
+        $port = (int)($p['port'] ?? ($scheme === 'https' ? 443 : 80));
+        $data = '';
+        $tooBig = false;
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_RESOLVE => [$host . ':' . $port . ':' . $ip], // usa o IP já validado
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (MultiLife Care)',
+            CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$data, &$tooBig): int {
+                $data .= $chunk;
+                if (strlen($data) > INBOUND_ATT_MAX_BYTES) {
+                    $tooBig = true;
+                    return 0; // interrompe
+                }
+                return strlen($chunk);
+            },
+        ]);
+        @curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $type = strtolower((string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
+        $location = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        if ($tooBig) {
+            return null;
+        }
+        if ($code >= 300 && $code < 400 && $location !== '') {
+            $url = $location;
+            continue;
+        }
+        if ($code !== 200 || $data === '') {
+            return null;
+        }
+        $mime = trim(explode(';', $type)[0]);
+        if (!str_starts_with($mime, 'image/')) {
+            $dims = @getimagesizefromstring($data);
+            if (!is_array($dims) || empty($dims['mime'])) {
+                return null;
+            }
+            $mime = (string)$dims['mime'];
+        }
+        return ['data' => $data, 'mime' => $mime];
+    }
+    return null;
+}
+
+/**
+ * Imagens do corpo HTML que não vêm anexadas: coladas como data:image (Outlook
+ * web) e as que vêm por LINK (ex.: ficha "Em Prospecção" hospedada no sistema da
+ * operadora). Idempotente: link já baixado não é baixado de novo.
+ */
+function inbound_attachments_collect_from_html(int $emailId, string $html): int
+{
+    $saved = inbound_attachments_collect_data_uris($emailId, $html);
+    if ($html === '' || !function_exists('curl_init')
+        || !preg_match_all('~<img\b[^>]*?\bsrc\s*=\s*(["\'])(https?://[^"\']+)\1[^>]*>~i', $html, $m, PREG_SET_ORDER)) {
+        return $saved;
+    }
+    $exists = db()->prepare('SELECT 1 FROM inbound_email_attachments WHERE inbound_email_id = :e AND part_index = :p LIMIT 1');
+    $tried = 0;
+    foreach ($m as $hit) {
+        $tag = $hit[0];
+        $url = html_entity_decode($hit[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Pixel de rastreio declarado no próprio HTML
+        if (preg_match('~\b(width|height)\s*=\s*["\']?\s*[01](?![0-9])~i', $tag)) {
+            continue;
+        }
+        $part = 'url-' . substr(sha1($url), 0, 16);
+        $exists->execute(['e' => $emailId, 'p' => $part]);
+        if ($exists->fetchColumn()) {
+            continue;
+        }
+        if (++$tried > 8) {
+            break;
+        }
+        $img = inbound_att_download_image($url);
+        if ($img === null) {
+            continue;
+        }
+        $base = basename((string)parse_url($url, PHP_URL_PATH));
+        $name = $base !== '' && preg_match('/\.(png|jpe?g|gif|webp|bmp)$/i', $base) ? rawurldecode($base) : 'imagem-link-' . substr(sha1($url), 0, 6) . '.png';
+        if (inbound_attachments_save($emailId, $part, $name, $img['mime'], $img['data'], null, true, 'link') !== null) {
+            $saved++;
         }
     }
     return $saved;
@@ -759,14 +915,23 @@ function inbound_attachments_extracted_text(int $emailId, ?OpenAiApi $api, bool 
 {
     inbound_attachments_ensure_schema();
     try {
-        $st = db()->prepare('SELECT attachments_fetched_at FROM inbound_emails WHERE id = :id');
+        $st = db()->prepare('SELECT attachments_fetched_at, body_html FROM inbound_emails WHERE id = :id');
         $st->execute(['id' => $emailId]);
-        if ($st->fetchColumn() === null) {
+        $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (($row['attachments_fetched_at'] ?? null) === null) {
             $r = inbound_attachments_fetch_for_email($emailId);
             error_log('[INBOUND_ATT] e-mail #' . $emailId . ' busca no IMAP: ' . $r['message'] . ' (' . $r['saved'] . ' anexo(s))');
         }
+        // Imagens por link no corpo (e coladas como data:image). Não repete downloads.
+        $html = (string)($row['body_html'] ?? '');
+        if ($html !== '') {
+            $n = inbound_attachments_collect_from_html($emailId, $html);
+            if ($n > 0) {
+                error_log('[INBOUND_ATT] e-mail #' . $emailId . ': ' . $n . ' imagem(ns) do corpo (link/colada) guardada(s)');
+            }
+        }
     } catch (Throwable $e) {
-        error_log('[INBOUND_ATT] busca IMAP #' . $emailId . ': ' . $e->getMessage());
+        error_log('[INBOUND_ATT] busca de anexos #' . $emailId . ': ' . $e->getMessage());
     }
     inbound_attachments_process($emailId, $api, $retryErrors);
 
@@ -821,6 +986,23 @@ function inbound_cep_lookup(string $zip): ?array
     } catch (Throwable $e) {
         return null;
     }
+}
+
+/**
+ * Chave para comparar nomes de paciente: maiúsculas, sem acento/pontuação,
+ * 3 primeiras palavras (mesma regra da deduplicação da extração do e-mail).
+ */
+function inbound_patient_name_key(string $name): string
+{
+    $name = mb_strtoupper(trim($name));
+    if ($name === '') {
+        return '';
+    }
+    $name = strtr($name, ['Á' => 'A', 'À' => 'A', 'Â' => 'A', 'Ã' => 'A', 'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Í' => 'I', 'Ì' => 'I',
+        'Ó' => 'O', 'Ò' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ú' => 'U', 'Ù' => 'U', 'Ü' => 'U', 'Ç' => 'C', 'Ñ' => 'N']);
+    $name = preg_replace('/[^A-Z0-9\s]/', '', $name) ?? '';
+    $words = preg_split('/\s+/', trim($name)) ?: [];
+    return implode(' ', array_slice($words, 0, 3));
 }
 
 /** Rótulo do status do anexo para as telas. */

@@ -34,6 +34,8 @@ echo '<a class="btn" href="/inbound_emails_list.php">Voltar</a>';
 if (($e['linked_demand_id'] ?? null) !== null) {
     echo '<a class="btn btnPrimary" href="/demands_view.php?id=' . (int)$e['linked_demand_id'] . '">Abrir demanda</a>';
 }
+// Lê o e-mail e os anexos de novo. Pacientes que já têm card deste e-mail não são duplicados.
+echo '<a class="btn" href="/inbound_emails_reprocess.php?id=' . (int)$e['id'] . '" onclick="return confirm(\'Ler de novo o e-mail e os anexos? Só são criados cards para pacientes que ainda não têm card deste e-mail.\')">🔄 Reprocessar (cria só os cards que faltam)</a>';
 echo '</div>';
 echo '</div>';
 
