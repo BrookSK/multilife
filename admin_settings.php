@@ -1656,6 +1656,23 @@ WAJS;
                 $liIsDefault = (int)($li['is_default'] ?? 0);
                 $liId = (int)($li['id'] ?? 0);
                 $liWd = $liName !== '' ? wa_watchdog_get($liName) : null;
+                // O watchdog pode estar atrasado logo depois de ler o QR Code: se ele diz
+                // desconectada/aguardando QR, confere direto na Evolution antes de mostrar.
+                if ($liWd && in_array($liWd['verdict'], ['dormant', 'awaiting_scan'], true)) {
+                    try {
+                        $liProbe = (new EvolutionApiV1($baseUrlWA, $apiKeyWA, $liName))->connectionState();
+                        $liProbeState = strtolower(trim((string)($liProbe['json']['instance']['state'] ?? ($liProbe['json']['state'] ?? ''))));
+                        if (in_array($liProbeState, ['open', 'connected'], true)) {
+                            $liWd['verdict'] = 'warming_up';
+                            $liWd['state'] = 'open';
+                            if ($liConnStatus !== 'connected') {
+                                whatsapp_update_connection_status($liName, 'connected');
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        // Evolution não respondeu: mantém o veredito do watchdog
+                    }
+                }
                 if ($liWd) {
                     // Watchdog já leu o estado real: não precisa consultar a Evolution linha a linha
                     $liWdMap = ['open' => 'connected', 'connecting' => 'connecting'];
@@ -1789,7 +1806,7 @@ WAJS;
             echo wa_watchdog_heal_js();
             if (wa_watchdog_enabled()) {
                 echo '<div style="margin-top:10px;font-size:12px;color:hsl(var(--muted-foreground));line-height:1.6">';
-                echo '<strong>Status pelo monitor de conexão:</strong> 🟢 Conectado = recebendo eventos · 🟠 Suspeita de queda = "conectado" sem eventos há mais de 30 min (use Reconectar sem QR) · 🟡 Aguardando QR Code · ⚪ Desativada.';
+                echo '<strong>Status pelo monitor de conexão:</strong> 🟢 Conectado = recebendo eventos · 🟠 Suspeita de queda = "conectado" sem eventos há mais de 30 min (use Reconectar sem QR) · 🟡 Aguardando QR Code · ⚪ Desconectada (sem sessão do WhatsApp; a instância continua ativa, use Reconectar).';
                 echo '</div>';
             }
         }

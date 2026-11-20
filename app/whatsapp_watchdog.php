@@ -461,8 +461,10 @@ function wa_watchdog_verdict_view(string $verdict): array
             return ['label' => 'Aguardando QR Code', 'color' => '#854d0e', 'bg' => '#fef9c3', 'dot' => '#eab308',
                 'hint' => 'A conexão caiu e só volta lendo o QR Code com o celular deste número.'];
         case 'dormant':
-            return ['label' => 'Desativada', 'color' => '#475569', 'bg' => '#f1f5f9', 'dot' => '#94a3b8',
-                'hint' => 'Desconectada na Evolution. Para usar, conecte lendo o QR Code.'];
+            // "dormant" do watchdog = sessão fechada na Evolution. A instância continua
+            // ativa no sistema; só não há WhatsApp conectado nela.
+            return ['label' => 'Desconectada', 'color' => '#475569', 'bg' => '#f1f5f9', 'dot' => '#94a3b8',
+                'hint' => 'Sem sessão do WhatsApp na Evolution (o celular não está conectado). A instância continua ativa no sistema: use Reconectar e leia o QR Code.'];
         case 'warming_up':
             return ['label' => 'Monitorando', 'color' => '#475569', 'bg' => '#f1f5f9', 'dot' => '#94a3b8',
                 'hint' => 'Conexão recém-iniciada ou reconectada: o monitor ainda está coletando dados.'];
