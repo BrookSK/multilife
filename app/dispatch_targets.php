@@ -375,3 +375,98 @@ function dispatch_precheck_professionals(array $loc, bool $testMode): array
     }
     return ['ok' => false, 'city_count' => 0, 'state_count' => $stateCount, 'message' => $msg];
 }
+
+/**
+ * Especialidades citadas num texto (chaves: tecenf, enf, fisio, fono, psico,
+ * psicoped, nutri, to). "Técnico de Enfermagem" não conta também como "enf".
+ *
+ * @return string[]
+ */
+function dispatch_specialties_in_text(string $text): array
+{
+    $found = [];
+    $rest = $text;
+    $tec = '/(?<!\p{L})t[ée]cnic[oa]s?\s+(?:de\s+|em\s+)?enfermagem(?!\p{L})/iu';
+    if (preg_match($tec, $rest)) {
+        $found[] = 'tecenf';
+        $rest = (string)preg_replace($tec, ' ', $rest);
+    }
+    $patterns = [
+        'enf' => '/(?<!\p{L})(?:enfermag|enfermeir)\p{L}*/iu',
+        'fisio' => '/(?<!\p{L})fisio\p{L}*/iu',
+        'fono' => '/(?<!\p{L})fono\p{L}*/iu',
+        'psicoped' => '/(?<!\p{L})psicopedag\p{L}*/iu',
+        'psico' => '/(?<!\p{L})psic[oó]log\p{L}*/iu',
+        'nutri' => '/(?<!\p{L})(?:nutri[cç][aã]o|nutricionista\p{L}*)(?!\p{L})/iu',
+        'to' => '/(?<!\p{L})(?:terapia|terapeuta)\s+ocupacional(?!\p{L})/iu',
+    ];
+    foreach ($patterns as $key => $re) {
+        if (preg_match($re, $rest)) {
+            $found[] = $key;
+        }
+    }
+    return $found;
+}
+
+/**
+ * Quadro clínico da mensagem de captação só com a especialidade captada.
+ *
+ * A captação é feita por especialidade (card multidisciplinar = uma captação para
+ * cada uma), então trechos sobre OUTRA especialidade saem do texto. Ex., captando
+ * Fisioterapia: "Serviços: Fisioterapia 3x por semana, Enfermagem 1x por semana."
+ * vira "Serviços: Fisioterapia 3x por semana.". Trechos sem especialidade ficam.
+ * Se a especialidade captada não for reconhecida, o texto volta igual.
+ */
+function dispatch_summary_only_specialty(string $text, string $specialty): string
+{
+    $current = dispatch_specialties_in_text($specialty);
+    if ($text === '' || !$current) {
+        return $text;
+    }
+    // Item fica se não cita especialidade ou se cita a captada.
+    $keep = static function (string $piece) use ($current): bool {
+        $m = dispatch_specialties_in_text($piece);
+        return !$m || (bool)array_intersect($m, $current);
+    };
+    $specStart = '(?:t[ée]cnic|enferm|fisio|fono|psic|nutri|terapia\s+ocup|terapeuta\s+ocup)';
+
+    $outLines = [];
+    foreach (preg_split('/\R/u', $text) as $line) {
+        $outSentences = [];
+        foreach (preg_split('/(?<=[.!?;])\s+/u', trim($line)) as $sentence) {
+            if ($sentence === '') {
+                continue;
+            }
+            if (!array_diff(dispatch_specialties_in_text($sentence), $current)) {
+                $outSentences[] = $sentence; // não cita outra especialidade
+                continue;
+            }
+            $end = preg_match('/[.!?;]$/u', $sentence) ? mb_substr($sentence, -1) : '';
+            $body = $end !== '' ? rtrim(mb_substr($sentence, 0, -1)) : $sentence;
+            // Rótulo no começo ("Serviços:", "Solicitado:") fica se sobrar algum item.
+            $prefix = '';
+            if (preg_match('/^([^:]{1,40}:)\s*(.*)$/us', $body, $pm) && !dispatch_specialties_in_text($pm[1])) {
+                $prefix = $pm[1] . ' ';
+                $body = $pm[2];
+            }
+            $items = [];
+            foreach (preg_split('/\s*,\s*/u', $body) as $chunk) {
+                // "Fonoaudiologia 2x por semana e Psicologia 1x" -> dois itens
+                foreach (preg_split('/\s+e\s+(?=(?:a\s+|o\s+|de\s+)?' . $specStart . ')/iu', $chunk) as $item) {
+                    $item = trim($item);
+                    if ($item !== '' && $keep($item)) {
+                        $items[] = $item;
+                    }
+                }
+            }
+            if ($items) {
+                $outSentences[] = $prefix . implode(', ', $items) . $end;
+            }
+        }
+        $outLines[] = implode(' ', $outSentences);
+    }
+    $out = implode("\n", $outLines);
+    $out = (string)preg_replace('/[ \t]{2,}/u', ' ', $out);
+    $out = (string)preg_replace("/\n{3,}/u", "\n\n", $out);
+    return trim($out);
+}

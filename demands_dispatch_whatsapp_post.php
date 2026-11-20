@@ -1208,6 +1208,9 @@ if ($aiSummarySanitized !== '') {
             // Remove menções simples como "especialidade X vezes/semana"
             $aiSummarySanitized = preg_replace('/,?\s*(?:e\s+)?' . preg_quote($otherSpec, '/') . '\s+\d+[x×]\s*[\/\\\\]\s*\w+/iu', '', $aiSummarySanitized);
         }
+        // Qualquer outro trecho que cite outra especialidade (ex.: "Enfermagem 1x por semana",
+        // "Nutrição quinzenal", "acompanhada por fonoaudiologia"): a captação é de UMA especialidade.
+        $aiSummarySanitized = dispatch_summary_only_specialty($aiSummarySanitized, $specialty);
         
         // Ajustar "incluindo fisioterapia (3x/semana)" → limpar "incluindo" se sobrou só uma especialidade
         $aiSummarySanitized = preg_replace('/incluindo\s+(' . preg_quote(explode(' ', $specialty)[0], '/') . ')/iu', '$1', $aiSummarySanitized);
@@ -1273,7 +1276,7 @@ if ($aiSummarySanitized !== '' && strpos($tpl, '{ai_summary') === false) {
         $ctaPos = mb_strpos($msg, '*Tem interesse');
     }
     if ($ctaPos !== false) {
-        $msg = mb_substr($msg, 0, $ctaPos) . $clinicalBlock . "\n\n" . mb_substr($msg, $ctaPos);
+        $msg = rtrim(mb_substr($msg, 0, $ctaPos)) . $clinicalBlock . "\n\n" . mb_substr($msg, $ctaPos);
     } else {
         $msg .= $clinicalBlock;
     }
@@ -1288,7 +1291,8 @@ if ($captationNote !== '' && strpos($tpl, '{captation_note') === false) {
         $ctaPos = mb_strpos($msg, '*Tem interesse');
     }
     if ($ctaPos !== false) {
-        $msg = mb_substr($msg, 0, $ctaPos) . $noteBlock . "\n\n" . mb_substr($msg, $ctaPos);
+        // rtrim: o bloco anterior já termina com linha em branco (evita 3 linhas vazias)
+        $msg = rtrim(mb_substr($msg, 0, $ctaPos)) . $noteBlock . "\n\n" . mb_substr($msg, $ctaPos);
     } else {
         $msg .= $noteBlock;
     }

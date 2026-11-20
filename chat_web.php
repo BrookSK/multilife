@@ -3066,6 +3066,11 @@ if (empty($selectedChat)) {
                 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
                 echo '</div>';
                 echo '</a>';
+                // Legenda escrita junto com o arquivo (fica gravada no texto da mensagem)
+                $docCaption = trim((string)$messageText);
+                if ($docCaption !== '' && $docCaption !== '[Documento]' && $docCaption !== trim((string)$docFilename)) {
+                    echo '<div class="whatsapp-message-text" style="margin-top:6px">' . chat_wa_format($docCaption) . '</div>';
+                }
             } elseif ($messageType === 'sticker' && !empty($mediaUrl)) {
                 echo '<div style="margin-bottom:4px">';
                 echo '<img src="' . h($mediaUrl) . '" alt="Sticker" style="max-width:150px;max-height:150px" onerror="this.alt=\'[Sticker]\';this.style.display=\'none\'">';
