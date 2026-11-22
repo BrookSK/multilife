@@ -438,6 +438,104 @@ function wa_wh_upsert_contact(string $jid, string $instance, bool $isGroup, bool
     }
 }
 
+/** Disparo de captação pelo token #CAP...; grava o id da mensagem no disparo. */
+function wa_wh_dispatch_by_token(string $text, string $targetId): ?array
+{
+    if (!preg_match('/#CAP\d+-[A-F0-9]+/', $text, $tm)) {
+        return null;
+    }
+    $stT = db()->prepare("SELECT dl.id, dl.demand_id, d.status AS demand_status
+                          FROM demand_dispatch_logs dl
+                          LEFT JOIN demands d ON d.id = dl.demand_id
+                          WHERE dl.capture_token = ? ORDER BY dl.id DESC LIMIT 1");
+    $stT->execute([$tm[0]]);
+    $dispatch = $stT->fetch(PDO::FETCH_ASSOC) ?: null;
+    if ($dispatch) {
+        db()->prepare("UPDATE demand_dispatch_logs SET external_message_id = ?
+                       WHERE id = ? AND (external_message_id IS NULL OR external_message_id = '')")
+            ->execute([$targetId, (int)$dispatch['id']]);
+    }
+    return $dispatch;
+}
+
+/**
+ * Disparo de captação da mensagem reagida (id = key.id da mensagem), nesta ordem:
+ *  1. id gravado no disparo (demand_dispatch_logs.external_message_id);
+ *  2. texto da mensagem no chat do sistema, pelo token #CAP;
+ *  3. GRUPO: texto da mensagem direto no WhatsApp (Evolution, últimas mensagens
+ *     do grupo), pelo token #CAP. Cobre o disparo que ficou sem o id da mensagem
+ *     (timeout da Evolution) e cuja cópia no chat também ficou sem o id: antes a
+ *     reação era gravada como "msg não é captação" e o interesse se perdia.
+ */
+function wa_wh_find_dispatch_for_message(string $targetId, string $chatJid, string $instanceName): ?array
+{
+    $st = db()->prepare("SELECT dl.id, dl.demand_id, d.status AS demand_status
+                         FROM demand_dispatch_logs dl
+                         LEFT JOIN demands d ON d.id = dl.demand_id
+                         WHERE dl.external_message_id = ? LIMIT 1");
+    $st->execute([$targetId]);
+    $dispatch = $st->fetch(PDO::FETCH_ASSOC);
+    if ($dispatch) {
+        return $dispatch;
+    }
+
+    $stM = db()->prepare('SELECT message_text FROM chat_messages WHERE external_message_id = ? LIMIT 1');
+    $stM->execute([$targetId]);
+    $dispatch = wa_wh_dispatch_by_token((string)($stM->fetchColumn() ?: ''), $targetId);
+    if ($dispatch) {
+        return $dispatch;
+    }
+
+    if (strpos($chatJid, '@g.us') === false || $instanceName === '') {
+        return null;
+    }
+    // Só grupos que o sistema usa em captação (evita consultar a Evolution à toa).
+    $stG = db()->prepare("SELECT 1 FROM whatsapp_groups WHERE evolution_group_jid = ? LIMIT 1");
+    $stG->execute([$chatJid]);
+    if (!$stG->fetchColumn()) {
+        return null;
+    }
+    try {
+        $api = new EvolutionApiV1(
+            (string)admin_setting_get('evolution.base_url', ''),
+            (string)admin_setting_get('evolution.api_key', ''),
+            $instanceName
+        );
+        $res = $api->findRecentMessages($chatJid, 60, 6);
+    } catch (Throwable $e) {
+        error_log('[WEBHOOK] reação: falha ao buscar a mensagem na Evolution: ' . $e->getMessage());
+        return null;
+    }
+    $j = is_array($res['json'] ?? null) ? $res['json'] : [];
+    $records = $j['messages']['records'] ?? ($j['records'] ?? (isset($j[0]) ? $j : []));
+    foreach (is_array($records) ? $records : [] as $rec) {
+        if (!is_array($rec) || (string)($rec['key']['id'] ?? '') !== $targetId) {
+            continue;
+        }
+        $msg = is_array($rec['message'] ?? null) ? $rec['message'] : [];
+        foreach (['ephemeralMessage', 'deviceSentMessage', 'viewOnceMessage'] as $w) {
+            if (isset($msg[$w]['message']) && is_array($msg[$w]['message'])) {
+                $msg = $msg[$w]['message'];
+            }
+        }
+        $text = (string)($msg['conversation'] ?? ($msg['extendedTextMessage']['text'] ?? ''));
+        $dispatch = wa_wh_dispatch_by_token($text, $targetId);
+        if ($dispatch) {
+            // A cópia da mensagem no chat do sistema também passa a ter o id.
+            if (preg_match('/#CAP\d+-[A-F0-9]+/', $text, $tm) && chat_msg_find_by_external_id($targetId) === 0) {
+                try {
+                    db()->prepare("UPDATE chat_messages SET external_message_id = ?
+                                   WHERE remote_jid = ? AND from_me = 1 AND external_message_id IS NULL AND message_text LIKE ?
+                                   ORDER BY id DESC LIMIT 1")
+                        ->execute([$targetId, $chatJid, '%' . $tm[0] . '%']);
+                } catch (Throwable $e) { /* só a cópia do chat; o interesse segue */ }
+            }
+        }
+        return $dispatch;
+    }
+    return null;
+}
+
 /** Reação: grava em chat_reactions e, se for numa captação, registra o interesse. */
 function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, string $participant, string $participantPn, string $pushName, int $ts, array $key): void
 {
@@ -479,34 +577,7 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
         return;
     }
     try {
-        $st = db()->prepare("SELECT dl.id, dl.demand_id, d.status AS demand_status
-                             FROM demand_dispatch_logs dl
-                             LEFT JOIN demands d ON d.id = dl.demand_id
-                             WHERE dl.external_message_id = ? LIMIT 1");
-        $st->execute([$targetId]);
-        $dispatch = $st->fetch(PDO::FETCH_ASSOC);
-
-        // Fallback: o disparo pode ter ficado sem o id da mensagem (timeout da
-        // Evolution, resposta sem key.id). Acha a mensagem no chat pelo id e
-        // liga ao disparo pelo token #CAP do texto.
-        if (!$dispatch) {
-            $stM = db()->prepare('SELECT message_text FROM chat_messages WHERE external_message_id = ? LIMIT 1');
-            $stM->execute([$targetId]);
-            $reactedText = (string)($stM->fetchColumn() ?: '');
-            if ($reactedText !== '' && preg_match('/#CAP\d+-[A-F0-9]+/', $reactedText, $tm)) {
-                $stT = db()->prepare("SELECT dl.id, dl.demand_id, d.status AS demand_status
-                                      FROM demand_dispatch_logs dl
-                                      LEFT JOIN demands d ON d.id = dl.demand_id
-                                      WHERE dl.capture_token = ? ORDER BY dl.id DESC LIMIT 1");
-                $stT->execute([$tm[0]]);
-                $dispatch = $stT->fetch(PDO::FETCH_ASSOC);
-                if ($dispatch) {
-                    db()->prepare("UPDATE demand_dispatch_logs SET external_message_id = ?
-                                   WHERE id = ? AND (external_message_id IS NULL OR external_message_id = '')")
-                        ->execute([$targetId, (int)$dispatch['id']]);
-                }
-            }
-        }
+        $dispatch = wa_wh_find_dispatch_for_message($targetId, $chatJid, (string)($GLOBALS['_webhookInstanceName'] ?? ''));
 
         if (!$dispatch) {
             chat_webhook_trace($traceEvent, $key, 'reação gravada (msg não é captação)', $reactor, $traceInfo);

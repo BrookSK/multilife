@@ -2809,7 +2809,11 @@ if (empty($selectedChat)) {
 
     // Para GRUPOS: resolver o nome pela tabela chat_groups (grupo não tem telefone,
     // então a busca por contato/usuário abaixo não funciona).
-    if ($isGroup && ($chatName === $selectedChat || preg_match('/^\d+@/', $chatName) || $chatName === '')) {
+    // Nome "não resolvido" = o próprio JID, só números (ex.: "120363414027918396",
+    // como a conversa do grupo fica gravada quando chega antes do cadastro) ou vazio.
+    $grpUnresolved = static fn(string $n): bool => $n === '' || $n === $selectedChat
+        || (bool)preg_match('/^[\d\-]+(@\S*)?$/', $n);
+    if ($isGroup && $grpUnresolved((string)$chatName)) {
         try {
             $stmtGrpName = db()->prepare("SELECT group_name, group_picture_url FROM chat_groups WHERE group_jid = ? LIMIT 1");
             $stmtGrpName->execute([$selectedChat]);
@@ -2822,7 +2826,7 @@ if (empty($selectedChat)) {
             }
         } catch (Exception $e) {}
         // Fallback: nome do grupo salvo em whatsapp_groups (criado na captação)
-        if ($chatName === $selectedChat || $chatName === '') {
+        if ($grpUnresolved((string)$chatName)) {
             try {
                 $stmtWg = db()->prepare("SELECT name FROM whatsapp_groups WHERE evolution_group_jid = ? LIMIT 1");
                 $stmtWg->execute([$selectedChat]);
