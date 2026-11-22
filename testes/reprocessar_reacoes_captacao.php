@@ -45,6 +45,83 @@ $st = db()->prepare("SELECT cr.remote_jid, cr.message_id, cr.reactor_jid, cr.emo
                      ORDER BY cr.created_at ASC");
 $st->execute(['dias' => $days]);
 $reactions = $st->fetchAll(PDO::FETCH_ASSOC);
+foreach ($reactions as &$rx) {
+    $rx['fonte'] = 'sistema';
+}
+unset($rx);
+
+// 2a fonte: reações direto no WhatsApp (Evolution) dos grupos que receberam captação no
+// período. Pega as reações que o sistema não recebeu (ex.: WhatsApp com "Suspeita de
+// queda": a reação acontece, mas o aviso não chega ao sistema).
+$seenReaction = [];
+foreach ($reactions as $rx) {
+    $seenReaction[$rx['message_id'] . '|' . substr(preg_replace('/\D+/', '', (string)$rx['reactor_jid']), -8)] = true;
+}
+$evoGroups = db()->prepare("SELECT DISTINCT wg.evolution_group_jid, wg.instance_name, wg.name
+                            FROM demand_dispatch_logs dl
+                            INNER JOIN whatsapp_groups wg ON wg.id = dl.group_id
+                            WHERE dl.created_at >= DATE_SUB(NOW(), INTERVAL :dias2 DAY)
+                              AND wg.evolution_group_jid LIKE '%@g.us'");
+$evoGroups->execute(['dias2' => $days]);
+$evoInfo = ['grupos' => 0, 'sem_resposta' => 0, 'reacoes' => 0];
+$evoBase = (string)admin_setting_get('evolution.base_url', '');
+$evoKey = (string)admin_setting_get('evolution.api_key', '');
+$sinceTs = time() - $days * 86400;
+foreach ($evoGroups->fetchAll(PDO::FETCH_ASSOC) as $g) {
+    $evoInfo['grupos']++;
+    $gJid = (string)$g['evolution_group_jid'];
+    // Instância dona do grupo primeiro; se não responder, as outras conectadas.
+    $names = array_values(array_unique(array_filter(array_merge(
+        [(string)($g['instance_name'] ?? '')],
+        db()->query("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected'")->fetchAll(PDO::FETCH_COLUMN)
+    ))));
+    $records = null;
+    $usedInst = '';
+    foreach ($names as $inst) {
+        try {
+            $res = (new EvolutionApiV1($evoBase, $evoKey, (string)$inst))->findRecentMessages($gJid, 200, 10);
+        } catch (Throwable $e) {
+            continue;
+        }
+        $j = is_array($res['json'] ?? null) ? $res['json'] : [];
+        $recs = $j['messages']['records'] ?? ($j['records'] ?? (isset($j[0]) ? $j : null));
+        if (is_array($recs) && (int)($res['status'] ?? 0) < 300) {
+            $records = $recs;
+            $usedInst = (string)$inst;
+            break;
+        }
+    }
+    if ($records === null) {
+        $evoInfo['sem_resposta']++;
+        continue;
+    }
+    foreach ($records as $rec) {
+        $react = $rec['message']['reactionMessage'] ?? null;
+        if (!is_array($react) || !empty($rec['key']['fromMe'])) {
+            continue;
+        }
+        $emoji = (string)($react['text'] ?? '');
+        $targetId = (string)($react['key']['id'] ?? '');
+        $ts = (int)($rec['messageTimestamp'] ?? 0);
+        if ($emoji === '' || $targetId === '' || ($ts > 0 && $ts < $sinceTs)) {
+            continue;
+        }
+        $k = $rec['key'] ?? [];
+        $reactor = (string)($k['participantPn'] ?? ($k['participantAlt'] ?? ($k['participant'] ?? '')));
+        if ($reactor === '') {
+            continue;
+        }
+        $seenKey = $targetId . '|' . substr(preg_replace('/\D+/', '', $reactor), -8);
+        if (isset($seenReaction[$seenKey])) {
+            continue;
+        }
+        $seenReaction[$seenKey] = true;
+        $evoInfo['reacoes']++;
+        $reactions[] = ['remote_jid' => $gJid, 'message_id' => $targetId, 'reactor_jid' => $reactor, 'emoji' => $emoji,
+                        'reaction_timestamp' => $ts > 0 ? $ts : time(), 'instance_name' => $usedInst,
+                        'group_name' => (string)$g['name'], 'fonte' => 'WhatsApp', 'push_name' => (string)($rec['pushName'] ?? '')];
+    }
+}
 
 // Números dos WhatsApps do sistema: reação deles não é interesse de profissional.
 $ownKeys = [];
@@ -86,8 +163,8 @@ foreach ($reactions as $r) {
     }
     $isLid = substr($reactor, -4) === '@lid';
     $phone = (string)preg_replace('/[^0-9]/', '', (string)preg_replace('/[:@].+$/', '', $reactor));
-    $row = ['quando' => date('d/m H:i', (int)$r['reaction_timestamp']), 'grupo' => (string)$r['group_name'], 'emoji' => (string)$r['emoji'],
-            'quem' => $phone, 'card' => '', 'situacao' => ''];
+    $row = ['ts' => (int)$r['reaction_timestamp'], 'quando' => date('d/m H:i', (int)$r['reaction_timestamp']), 'grupo' => (string)$r['group_name'],
+            'emoji' => (string)$r['emoji'], 'quem' => $phone, 'card' => '', 'situacao' => '', 'fonte' => (string)$r['fonte']];
 
     if (!$dispatch) {
         $row['situacao'] = 'mensagem não é de captação';
@@ -116,10 +193,22 @@ foreach ($reactions as $r) {
                     $userName = (string)$u['name'];
                 }
             }
+            if (!$userName && trim((string)($r['push_name'] ?? '')) !== '') {
+                $userName = trim((string)$r['push_name']);
+            }
             if ($userName) {
                 $row['quem'] = $userName;
             }
             if ($apply) {
+                if ($r['fonte'] === 'WhatsApp') {
+                    // Também no chat do sistema (a reação aparece na mensagem)
+                    try {
+                        db()->prepare("INSERT INTO chat_reactions (remote_jid, message_id, reactor_jid, emoji, reaction_timestamp)
+                                       VALUES (?, ?, ?, ?, ?)
+                                       ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), reaction_timestamp = VALUES(reaction_timestamp)")
+                            ->execute([(string)$r['remote_jid'], $mid, $reactor, (string)$r['emoji'], (int)$r['reaction_timestamp']]);
+                    } catch (Throwable $e) { /* o interesse segue */ }
+                }
                 $ins->execute([(int)$dispatch['demand_id'], (int)$dispatch['id'], $phone,
                     $phone !== '' ? $phone . ($isLid ? '@lid' : '@s.whatsapp.net') : '',
                     $userName, $userId, (string)$r['emoji'], date('Y-m-d H:i:s', (int)$r['reaction_timestamp'])]);
@@ -151,17 +240,21 @@ if ($apply) {
 }
 echo $count['ja_existe'] . ' já estavam registradas · ' . $count['nao_captacao'] . ' não são de captação · '
    . $count['encerrada'] . ' em card encerrado · ' . $count['whatsapp_sistema'] . ' do próprio WhatsApp do sistema.';
+echo '<br><small>Conferido direto no WhatsApp: ' . $evoInfo['grupos'] . ' grupo(s) com captação no período, '
+   . $evoInfo['reacoes'] . ' reação(ões) que o sistema não tinha recebido'
+   . ($evoInfo['sem_resposta'] > 0 ? ', ' . $evoInfo['sem_resposta'] . ' grupo(s) sem resposta do WhatsApp' : '') . '.</small>';
 echo '</div>';
 if (!$apply && $count['registrar'] > 0) {
     echo '<form method="post"><input type="hidden" name="nonce" value="' . h($nonce) . '"><input type="hidden" name="dias" value="' . $days . '">';
     echo '<button type="submit">Registrar interesses (' . $count['registrar'] . ')</button></form>';
 }
-echo '<div class="wrap"><table><tr><th>Quando</th><th>Grupo</th><th>Reação</th><th>Quem</th><th>Card</th><th>Situação</th></tr>';
-foreach (array_reverse($rows) as $row) {
+echo '<div class="wrap"><table><tr><th>Quando</th><th>Grupo</th><th>Reação</th><th>Quem</th><th>Card</th><th>Situação</th><th>Veio de</th></tr>';
+usort($rows, static fn($a, $b) => $b['ts'] <=> $a['ts']);
+foreach ($rows as $row) {
     echo '<tr><td>' . h($row['quando']) . '</td><td>' . h($row['grupo']) . '</td><td>' . h($row['emoji']) . '</td><td>' . h($row['quem'])
-       . '</td><td>' . h($row['card']) . '</td><td>' . h($row['situacao']) . '</td></tr>';
+       . '</td><td>' . h($row['card']) . '</td><td>' . h($row['situacao']) . '</td><td>' . h($row['fonte']) . '</td></tr>';
 }
 if (!$rows) {
-    echo '<tr><td colspan="6">Nenhuma reação em grupo de captação nesse período.</td></tr>';
+    echo '<tr><td colspan="7">Nenhuma reação em grupo de captação nesse período.</td></tr>';
 }
 echo '</table></div></body></html>';
