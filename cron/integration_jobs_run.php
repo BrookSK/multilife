@@ -865,6 +865,11 @@ foreach ($jobs as $j) {
                     demand_dispatch_run_finish($ddRunId, 'failed', 'Erro inesperado no disparo: ' . mb_strimwidth($e->getMessage(), 0, 300, ''));
                 }
             } finally {
+                // Erro inesperado no meio da criação do grupo: solta a trava do grupo
+                // (a conexão do banco segue aberta para os próximos jobs).
+                if (function_exists('dispatch_group_lock_release')) {
+                    dispatch_group_lock_release();
+                }
                 unset($GLOBALS['__dispatch_worker'], $GLOBALS['__dispatch_run_id']);
                 $id = $ddJobId;
             }

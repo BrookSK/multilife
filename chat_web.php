@@ -2307,7 +2307,8 @@ if ($chatType === 'contatos') {
     echo '(function(){var input=document.getElementById("contactSearchInput");if(!input||!input.form)return;var t;input.addEventListener("input",function(){clearTimeout(t);t=setTimeout(function(){input.form.submit();},350);});})();';
     echo '</script>';
 } else {
-    echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="Pesquisar conversas">';
+    $searchPlaceholder = $chatType === 'lista_espera' ? 'Pesquisar captação (nº, paciente, nome)' : 'Pesquisar conversas';
+    echo '<input type="text" name="q" value="' . h($searchQuery ?? '') . '" placeholder="' . h($searchPlaceholder) . '">';
 }
 echo '</form>';
 echo '</div>';
@@ -2445,8 +2446,42 @@ if ($chatType === 'grupos') {
         echo '</div>';
     }
 } elseif ($chatType === 'lista_espera') {
-    // Aba Lista de Espera: profissionais que reagiram mas ainda não foram selecionados
+    // Aba Lista de Espera: profissionais que reagiram mas ainda não foram selecionados.
+    // Ordem: reação mais recente primeiro (antes era pelo número do card, com limite
+    // fixo de 100, e as reações novas de cards mais antigos não apareciam).
+    // A busca ("Pesquisar captação") procura no nº do card, título/paciente,
+    // especialidade, grupo, nome e telefone de quem reagiu.
+    $waitStep = 200;
+    $waitLimit = isset($_GET['wl']) ? (int)$_GET['wl'] : $waitStep;
+    $waitLimit = max($waitStep, min(5000, $waitLimit));
+    $waitWhere = "dip.status = 'interested'";
+    $waitParams = [];
+    $waitQ = trim((string)($searchQuery ?? ''));
+    if ($waitQ !== '') {
+        $waitLike = '%' . $waitQ . '%';
+        $waitDigits = preg_replace('/\D+/', '', $waitQ);
+        $waitWhere .= ' AND (d.title LIKE :wq1 OR d.specialty LIKE :wq2 OR wg.name LIKE :wq3 OR dip.push_name LIKE :wq4 OR dip.phone LIKE :wq5';
+        $waitParams = ['wq1' => $waitLike, 'wq2' => $waitLike, 'wq3' => $waitLike, 'wq4' => $waitLike, 'wq5' => $waitLike];
+        if ($waitDigits !== '' && strlen($waitDigits) <= 9) {
+            // "#20759" ou "20759": número do card
+            $waitWhere .= ' OR d.id = :wqid';
+            $waitParams['wqid'] = (int)$waitDigits;
+        }
+        $waitWhere .= ')';
+    }
+    $waitTotal = 0;
     try {
+        $stmtWaitCount = db()->prepare("
+            SELECT COUNT(*)
+            FROM demand_interested_professionals dip
+            INNER JOIN demands d ON d.id = dip.demand_id
+            LEFT JOIN demand_dispatch_logs dl ON dl.id = dip.dispatch_log_id
+            LEFT JOIN whatsapp_groups wg ON wg.id = dl.group_id
+            WHERE $waitWhere
+        ");
+        $stmtWaitCount->execute($waitParams);
+        $waitTotal = (int)$stmtWaitCount->fetchColumn();
+
         $stmtWait = db()->prepare("
             SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty,
                    dl.id as dispatch_id, wg.name as group_name
@@ -2454,16 +2489,23 @@ if ($chatType === 'grupos') {
             INNER JOIN demands d ON d.id = dip.demand_id
             LEFT JOIN demand_dispatch_logs dl ON dl.id = dip.dispatch_log_id
             LEFT JOIN whatsapp_groups wg ON wg.id = dl.group_id
-            WHERE dip.status = 'interested'
-            ORDER BY d.id DESC, dip.reacted_at DESC
-            LIMIT 100
+            WHERE $waitWhere
+            ORDER BY dip.reacted_at DESC, dip.id DESC
+            LIMIT $waitLimit
         ");
-        $stmtWait->execute();
+        $stmtWait->execute($waitParams);
         $waitingPros = $stmtWait->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
+        error_log('[CHAT] Lista de espera: ' . $e->getMessage());
         $waitingPros = [];
     }
-    
+
+    if (!empty($waitingPros)) {
+        echo '<div style="padding:6px 16px;font-size:12px;color:#667781;border-bottom:1px solid #e5e7eb">'
+            . ($waitQ !== '' ? 'Resultado para "' . h($waitQ) . '": ' : '')
+            . 'mostrando ' . count($waitingPros) . ' de ' . $waitTotal . ' reação(ões), mais recentes primeiro</div>';
+    }
+
     if (!empty($waitingPros)) {
         // Agrupar por grupo primeiro, depois por demanda
         $byGroup = [];
@@ -2547,6 +2589,17 @@ if ($chatType === 'grupos') {
                 }
             }
         }
+        if ($waitTotal > count($waitingPros)) {
+            $moreUrl = '/chat_web.php?type=lista_espera' . $instanceQS . $attendantQS . $searchQS . '&wl=' . ($waitLimit + $waitStep);
+            echo '<div style="padding:12px 16px;text-align:center">';
+            echo '<a href="' . h($moreUrl) . '" style="display:inline-block;padding:8px 16px;border:1px solid #d1d7db;border-radius:18px;font-size:13px;font-weight:600;color:#00a884;text-decoration:none">Mostrar mais (' . ($waitTotal - count($waitingPros)) . ' restantes)</a>';
+            echo '</div>';
+        }
+    } elseif ($waitQ !== '') {
+        echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
+        echo '<p style="margin:0;font-weight:600">Nada encontrado para "' . h($waitQ) . '"</p>';
+        echo '<p style="margin:8px 0 0;font-size:13px">Pesquise pelo nº do card, paciente, especialidade, grupo ou nome de quem reagiu</p>';
+        echo '</div>';
     } else {
         echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
         echo '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;opacity:0.3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';

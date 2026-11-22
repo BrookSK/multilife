@@ -48,10 +48,76 @@ if (!function_exists('dispatch_stop')) {
      */
     function dispatch_stop(): void
     {
+        // O cron reaproveita a conexão do banco entre jobs: a trava do grupo tem que
+        // ser solta aqui, senão as próximas captações do mesmo grupo ficariam esperando.
+        dispatch_group_lock_release();
         if (!empty($GLOBALS['__dispatch_worker'])) {
             throw new DispatchWorkerDone('dispatch worker done');
         }
         exit;
+    }
+}
+
+if (!function_exists('dispatch_group_lock_acquire')) {
+    /**
+     * Trava (GET_LOCK do MySQL) da criação do grupo de especialidade + cidade/UF + zona.
+     * "Fisioterapia" e "Fisioterapia Domiciliar" usam a mesma trava, porque caem no
+     * mesmo grupo (mesma regra de dispatch_find_group).
+     *
+     * @return int|false segundos esperados (0 = estava livre), false = outra captação
+     *                   segurou além do limite. Erro do banco: segue sem trava (0).
+     */
+    function dispatch_group_lock_acquire(string $specialty, string $city, string $state, ?string $zone, int $timeoutSec = 180)
+    {
+        $spec = specialty_key($specialty);
+        if ($spec === '') {
+            $spec = location_normalize($specialty);
+        }
+        $name = 'ml_dispgrp_' . md5($spec . '|' . location_normalize($city) . '|' . strtoupper(trim($state)) . '|' . location_normalize((string)$zone));
+        $runId = (int)($GLOBALS['__dispatch_run_id'] ?? 0);
+        $started = time();
+        $waited = false;
+        try {
+            $st = db()->prepare('SELECT GET_LOCK(:lname, 0)');
+            $st->execute(['lname' => $name]);
+            $got = $st->fetchColumn();
+            if ((string)$got !== '1' && $got !== null) {
+                $waited = true;
+                if ($runId > 0 && function_exists('demand_dispatch_run_set_phase')) {
+                    demand_dispatch_run_set_phase($runId, 'creating_group', 'Outra captação está criando o grupo de ' . $specialty . ' — aguardando para usar o mesmo grupo...');
+                }
+                $st = db()->prepare('SELECT GET_LOCK(:lname2, :tmo)');
+                $st->execute(['lname2' => $name, 'tmo' => $timeoutSec]);
+                $got = $st->fetchColumn();
+            }
+        } catch (Throwable $e) {
+            error_log('[DISPATCH] GET_LOCK falhou, seguindo sem trava: ' . $e->getMessage());
+            return 0;
+        }
+        if ($got === null) {
+            return 0; // erro interno do MySQL: não trava a captação
+        }
+        if ((string)$got !== '1') {
+            return false;
+        }
+        $GLOBALS['__dispatch_group_lock'] = $name;
+        return $waited ? max(1, time() - $started) : 0;
+    }
+}
+
+if (!function_exists('dispatch_group_lock_release')) {
+    /** Solta a trava do grupo, se esta captação tiver uma. Pode ser chamada várias vezes. */
+    function dispatch_group_lock_release(): void
+    {
+        $name = (string)($GLOBALS['__dispatch_group_lock'] ?? '');
+        if ($name === '') {
+            return;
+        }
+        unset($GLOBALS['__dispatch_group_lock']);
+        try {
+            $st = db()->prepare('SELECT RELEASE_LOCK(:lname)');
+            $st->execute(['lname' => $name]);
+        } catch (Throwable $e) { /* conexão encerrada já solta a trava */ }
     }
 }
 
@@ -543,7 +609,21 @@ $professionalPhones = [];
 // grupo de outra cidade.
 $groups = [];
 $foundGroup = dispatch_find_group($specialty, $city, $state, $zone, $captadorInstanceName);
+if ($foundGroup === null) {
+    // Ninguém cria o MESMO grupo ao mesmo tempo: duas captações simultâneas da mesma
+    // especialidade + cidade + zona criavam dois grupos. Quem chega depois espera a
+    // primeira terminar e usa o grupo que ela criou.
+    $lockWait = dispatch_group_lock_acquire($specialty, $city, $state, $zone);
+    if ($lockWait === false) {
+        dispatch_abort('Outra captação de ' . $specialty . ' em ' . $locationLabel . ' ainda está criando o grupo. Aguarde 1 minuto e clique em "Realizar Captação" de novo.');
+    }
+    if ($lockWait > 0) {
+        // Esperou outra captação: o grupo pode ter acabado de ser criado.
+        $foundGroup = dispatch_find_group($specialty, $city, $state, $zone, $captadorInstanceName);
+    }
+}
 if ($foundGroup !== null) {
+    dispatch_group_lock_release();
     $groups = [$foundGroup];
     error_log("[DISPATCH] Grupo encontrado para '$specialty' em '$locationLabel': " . $foundGroup['name'] . ' (' . $foundGroup['evolution_group_jid'] . ')');
 }
@@ -1050,6 +1130,8 @@ if (count($groups) === 0) {
         dispatch_abort('Erro ao criar grupo: ' . $e->getMessage());
     }
 }
+// Grupo criado e gravado em whatsapp_groups: libera as captações que estavam esperando.
+dispatch_group_lock_release();
 
 $tpl = trim((string)admin_setting_get(
     'demands.whatsapp_template',
