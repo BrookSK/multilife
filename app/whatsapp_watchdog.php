@@ -197,14 +197,14 @@ function wa_monitor_set(string $instanceName, array $fields): void
 // --------------------------------------------------------------------------
 
 /** @return array{ok:bool, status:int, json:?array, error:string} */
-function wa_watchdog_request(string $method, string $path, int $timeoutSeconds): array
+function wa_watchdog_request(string $method, string $path, int $timeoutSeconds, ?array $body = null): array
 {
     $cfg = wa_watchdog_config();
     if ($cfg['token'] === '') {
         return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'watchdog sem token configurado'];
     }
     try {
-        $res = http_json_request($method, $cfg['url'] . $path, ['x-token' => $cfg['token']], null, $timeoutSeconds);
+        $res = http_json_request($method, $cfg['url'] . $path, ['x-token' => $cfg['token']], $body, $timeoutSeconds);
     } catch (Throwable $e) {
         return ['ok' => false, 'status' => 0, 'json' => null, 'error' => $e->getMessage()];
     }
@@ -264,6 +264,128 @@ function wa_watchdog_heal(string $instanceName): array
         whatsapp_health_record($instanceName, 'heal', $ok ? 'restart' : 'refused', mb_strimwidth($reason, 0, 250, ''));
     }
     return ['ok' => $ok, 'message' => $reason, 'status' => (int)$res['status']];
+}
+
+// --------------------------------------------------------------------------
+// Sincronizar (redispatch): reenviar ao webhook eventos já salvos na Evolution
+// --------------------------------------------------------------------------
+
+/**
+ * Espera depois de reconectar antes de liberar o "Sincronizar" (segundos): no
+ * pareamento novo o WhatsApp repõe na Evolution o que ficou para trás; reenviar
+ * antes disso perde o que ainda não chegou.
+ */
+const WA_REDISPATCH_WAIT_SEC = 15 * 60;
+
+/**
+ * Situação da instância para o "Sincronizar".
+ *
+ * Reconexão = primeira vez que ficou "open" depois de uma queda, QR Code ou
+ * reconexão pelo monitor (histórico de whatsapp_instance_events, 7 dias).
+ * Sem nenhuma queda registrada no período, conta como conectada há tempo.
+ *
+ * @return array{connected:bool, reconnect_ago:?int, wait_seconds:int, message:string}
+ */
+function wa_redispatch_status(string $instanceName): array
+{
+    $connected = false;
+    try {
+        $st = db()->prepare("SELECT connection_status FROM whatsapp_instances WHERE instance_name = ? AND status = 'active' LIMIT 1");
+        $st->execute([$instanceName]);
+        $connected = (string)($st->fetchColumn() ?: '') === 'connected';
+    } catch (Throwable $e) {}
+    $wd = wa_watchdog_get($instanceName);
+    if ($wd && in_array((string)$wd['verdict'], ['awaiting_scan', 'dormant'], true)) {
+        $connected = false;
+    }
+
+    // Percorre o histórico: queda/QR/reconexão -> marca; próximo "open" = reconexão.
+    $reconnectAgo = null;
+    $pendingAgo = null;
+    $isOpen = null;
+    try {
+        if (function_exists('whatsapp_health_ensure_schema')) {
+            whatsapp_health_ensure_schema();
+        }
+        $st = db()->prepare("SELECT event_type, state, TIMESTAMPDIFF(SECOND, created_at, NOW()) AS age
+                             FROM whatsapp_instance_events
+                             WHERE instance_name = ? AND event_type IN ('connection','probe','qrcode','heal')
+                               AND created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+                             ORDER BY id ASC");
+        $st->execute([$instanceName]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $ev) {
+            $type = (string)$ev['event_type'];
+            $state = (string)($ev['state'] ?? '');
+            $age = max(0, (int)$ev['age']);
+            if ($type === 'qrcode' || ($type === 'heal' && $state === 'restart')) {
+                $isOpen = false;
+                $pendingAgo = $age;
+            } elseif ($state === 'open') {
+                if ($isOpen === false) {
+                    $reconnectAgo = $age;
+                    $pendingAgo = null;
+                }
+                $isOpen = true;
+            } elseif (in_array($state, ['close', 'connecting'], true)) {
+                // (consulta sem resposta / estados estranhos não contam como queda)
+                $isOpen = false;
+                $pendingAgo = $age;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[WATCHDOG] redispatch_status: ' . $e->getMessage());
+    }
+    // Reconexão sem QR (restart) nem sempre gera um "open" novo no histórico:
+    // se está conectada agora, conta a partir do último evento de queda/reconexão.
+    if ($pendingAgo !== null && $connected) {
+        $reconnectAgo = $pendingAgo;
+    }
+    // Reconexão feita pelo próprio monitor (não passa pelo sistema): última recuperação dele.
+    $mon = wa_monitor_row($instanceName);
+    if ($mon && $mon['last_heal_seconds'] !== null && $mon['checked_at']) {
+        $healAgo = (int)$mon['last_heal_seconds'] + max(0, time() - (int)strtotime((string)$mon['checked_at']));
+        if ($reconnectAgo === null || $healAgo < $reconnectAgo) {
+            $reconnectAgo = $healAgo;
+        }
+    }
+
+    $wait = $reconnectAgo === null ? 0 : max(0, WA_REDISPATCH_WAIT_SEC - $reconnectAgo);
+    if (!$connected) {
+        $msg = 'A conexão não está ativa. Conecte o WhatsApp (leia o QR Code) e aguarde ' . (int)(WA_REDISPATCH_WAIT_SEC / 60) . ' minutos para sincronizar.';
+    } elseif ($wait > 0) {
+        $msg = 'Reconectado ' . wa_watchdog_ago($reconnectAgo) . '. Aguarde mais ' . (int)ceil($wait / 60)
+            . ' min: o WhatsApp ainda está repondo o que ficou para trás.';
+    } else {
+        $msg = '';
+    }
+    return ['connected' => $connected, 'reconnect_ago' => $reconnectAgo, 'wait_seconds' => $wait, 'message' => $msg];
+}
+
+/**
+ * Chama POST /redispatch/{instancia} do watchdog.
+ * $fromUtc/$toUtc: "Y-m-d H:i:s" em UTC (horário original das mensagens).
+ * $types vazio = todos os tipos. dryRun = só conta.
+ *
+ * @return array{ok:bool, status:int, json:?array, error:string}
+ */
+function wa_watchdog_redispatch(string $instanceName, string $fromUtc, string $toUtc, bool $dryRun, array $types = [], int $limit = 200): array
+{
+    $body = [
+        'from' => $fromUtc,
+        'to' => $toUtc,
+        'dryRun' => $dryRun,
+        'limit' => max(1, min(500, $limit)),
+    ];
+    if ($types) {
+        $body['types'] = array_values($types);
+    }
+    // O reenvio espera 200 ms por evento: 200 eventos ~ 40 s + o processamento no webhook.
+    $res = wa_watchdog_request('POST', '/redispatch/' . rawurlencode($instanceName), $dryRun ? 40 : 170, $body);
+    try {
+        integration_log('evolution', 'POST /redispatch/' . $instanceName . ($dryRun ? ' (prévia)' : '') . ' (watchdog)',
+            $res['ok'] ? 'success' : 'error', $res['status'] ?: null, $body, $res['json'], $res['ok'] ? null : mb_strimwidth($res['error'], 0, 250, ''), 1);
+    } catch (Throwable $e) {}
+    return $res;
 }
 
 // --------------------------------------------------------------------------

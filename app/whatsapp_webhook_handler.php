@@ -561,14 +561,19 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
     $reactedJid = (string)($reaction['key']['remoteJid'] ?? '');
     $chatJid = chat_store_normalize_jid(strpos($reactedJid, '@g.us') !== false ? $reactedJid : $rawJid);
 
+    // Eventos podem chegar de novo e fora de hora (botão "Sincronizar" reenvia o que
+    // ficou na Evolution): uma reação/remoção ANTIGA nunca desfaz uma mais nova.
     if ($emoji === '') {
-        db()->prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reactor_jid = ?')->execute([$targetId, $reactor]);
+        db()->prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reactor_jid = ?
+                       AND (reaction_timestamp IS NULL OR reaction_timestamp <= ?)')->execute([$targetId, $reactor, $ts]);
         chat_webhook_trace($traceEvent, $key, 'reação removida', $reactor, $traceInfo);
         return;
     }
     db()->prepare("INSERT INTO chat_reactions (remote_jid, message_id, reactor_jid, emoji, reaction_timestamp)
                    VALUES (?, ?, ?, ?, ?)
-                   ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), reaction_timestamp = VALUES(reaction_timestamp)")
+                   ON DUPLICATE KEY UPDATE
+                       emoji = IF(VALUES(reaction_timestamp) >= COALESCE(reaction_timestamp, 0), VALUES(emoji), emoji),
+                       reaction_timestamp = GREATEST(COALESCE(reaction_timestamp, 0), VALUES(reaction_timestamp))")
         ->execute([$chatJid, $targetId, $reactor, $emoji, $ts]);
 
     // Reação de profissional numa mensagem de CAPTAÇÃO = interesse. Não depende
@@ -600,11 +605,14 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
             $stU->execute(['%' . substr($phone, -8) . '%']);
             $userId = ($u = $stU->fetchColumn()) ? (int)$u : null;
         }
+        // Hora da reação = hora original (reação reenviada pelo "Sincronizar" chega horas
+        // depois). Calculada no relógio do banco, igual às demais.
+        $reactAge = max(0, min(30 * 86400, time() - $ts));
         $ins = db()->prepare("INSERT IGNORE INTO demand_interested_professionals
                        (demand_id, dispatch_log_id, phone, phone_jid, push_name, user_id, emoji, reacted_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+                       VALUES (?, ?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? SECOND))");
         $ins->execute([(int)$dispatch['demand_id'], (int)$dispatch['id'], $phone, $phoneJid,
-                $pushName !== '' ? $pushName : null, $userId, $emoji]);
+                $pushName !== '' ? $pushName : null, $userId, $emoji, $reactAge]);
         $result = $ins->rowCount() > 0
             ? 'interesse registrado: captação #' . (int)$dispatch['demand_id'] . ($isLid ? ' (só LID)' : '') . ($userId ? ' user #' . $userId : '')
             : 'interesse já existia: captação #' . (int)$dispatch['demand_id'];

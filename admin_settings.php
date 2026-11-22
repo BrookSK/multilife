@@ -1768,6 +1768,18 @@ WAJS;
                 // Botão Reconectar (para qualquer instância, inclusive a padrão)
                 echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="waInstReconnect(\'' . h($liName) . '\')">🔄 Reconectar</button>';
 
+                // Sincronizar: reenvia ao sistema o que ficou só na Evolution (watchdog
+                // /redispatch). Liberado 15 min depois da última reconexão/QR Code.
+                if (wa_watchdog_enabled()) {
+                    $liSync = wa_redispatch_status($liName);
+                    if ($liSync['connected'] && $liSync['wait_seconds'] <= 0) {
+                        echo '<a class="btn" href="/admin_whatsapp_sincronizar.php?instance=' . rawurlencode($liName) . '" style="font-size:11px;padding:4px 10px;margin-right:6px" title="Reenvia ao sistema reações e mensagens que o WhatsApp recebeu e não apareceram aqui">🔁 Sincronizar</a>';
+                    } else {
+                        $liSyncTxt = $liSync['connected'] ? '⏳ Sincronizar em ' . (int)ceil($liSync['wait_seconds'] / 60) . ' min' : '🔁 Sincronizar';
+                        echo '<button type="button" class="btn" disabled style="font-size:11px;padding:4px 10px;margin-right:6px;opacity:.55;cursor:not-allowed" title="' . h($liSync['message']) . '">' . h($liSyncTxt) . '</button>';
+                    }
+                }
+
                 // Botão Desconectar (logout sem remover o vínculo) — só quando conectada
                 if ($liConnStatus === 'connected') {
                     echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:#f59e0b;color:white;border:none" onclick="waInstDisconnect(\'' . h($liName) . '\')">⏸ Desconectar</button>';
