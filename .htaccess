@@ -1,6 +1,8 @@
-# Limites de upload
-php_value upload_max_filesize 50M
-php_value post_max_size 55M
+# Limites de upload e do webhook da Evolution (mídia em base64 no corpo).
+# Os mesmos valores estão em .user.ini (usado quando o PHP roda como FPM/CGI).
+php_value upload_max_filesize 64M
+php_value post_max_size 64M
+php_value memory_limit 256M
 php_value max_execution_time 120
 php_value max_input_time 120
 

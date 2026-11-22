@@ -39,6 +39,44 @@ echo '<div class="box"><strong>Servidor:</strong> PHP ' . $e(PHP_VERSION) . ' ('
     . ($earlyOk ? '<span class="ok">ATIVA</span>' : '<span class="bad">INDISPONÍVEL</span> (a Evolution espera o processamento terminar; pode gerar fila e atraso)')
     . '</div>';
 
+// Limites efetivos do PHP (o webhook recebe mídia em base64; abaixo de 64M dá 413/corpo descartado)
+$iniBytes = static function (string $v): int {
+    $v = trim($v);
+    $n = (int)$v;
+    switch (strtolower(substr($v, -1))) {
+        case 'g': return $n * 1024 * 1024 * 1024;
+        case 'm': return $n * 1024 * 1024;
+        case 'k': return $n * 1024;
+    }
+    return $n;
+};
+$limits = [];
+foreach (['post_max_size' => 64, 'upload_max_filesize' => 64, 'memory_limit' => 256] as $k => $minMb) {
+    $v = (string)ini_get($k);
+    $ok = $v === '-1' || $iniBytes($v) >= $minMb * 1024 * 1024;
+    $limits[] = $e($k) . ' = ' . ($ok ? '<span class="ok">' . $e($v) . '</span>' : '<span class="bad">' . $e($v) . ' (mínimo ' . $minMb . 'M)</span>');
+}
+$limits[] = 'max_execution_time = ' . $e(ini_get('max_execution_time'));
+echo '<div class="box"><strong>Limites do PHP:</strong> ' . implode(' · ', $limits) . '</div>';
+
+// Fila de entrada do webhook (chat_webhook_inbox)
+try {
+    require_once __DIR__ . '/app/whatsapp_webhook_handler.php';
+    require_once __DIR__ . '/app/whatsapp_webhook_inbox.php';
+    $qs = wa_inbox_stats();
+    $oldPending = (int)db()->query("SELECT COUNT(*) FROM chat_webhook_inbox WHERE status IN ('pending','processing')
+                                    AND received_at < (NOW() - INTERVAL 5 MINUTE)")->fetchColumn();
+    echo '<div class="box"><strong>Fila do webhook (24h):</strong> '
+        . (int)$qs['done'] . ' concluído(s) · '
+        . ($oldPending > 0 ? '<span class="bad">' . $oldPending . ' pendente(s) há mais de 5 min</span>' : (int)$qs['pending'] . ' pendente(s)') . ' · '
+        . (int)$qs['processing'] . ' em processamento · '
+        . ((int)$qs['failed'] > 0 ? '<span class="bad">' . (int)$qs['failed'] . ' com falha</span>' : '0 com falha')
+        . ($oldPending > 0 ? ' — confira o cron <code>cron/chat_webhook_inbox.php</code>.' : '')
+        . '</div>';
+} catch (Throwable $ex) {
+    echo '<div class="box bad">Fila do webhook indisponível: ' . $e($ex->getMessage()) . '</div>';
+}
+
 $instances = [];
 try {
     $instances = whatsapp_list_all_instances();

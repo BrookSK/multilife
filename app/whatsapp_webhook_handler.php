@@ -8,7 +8,8 @@ declare(strict_types=1);
  * Fluxo: o webhook decodifica o evento e chama wa_webhook_handle(). Cada mensagem
  * passa por UM processamento (wa_wh_process_message): identifica o tipo, grava a
  * mídia, deduplica pelo id da mensagem do WhatsApp e grava em chat_messages e
- * chat_contacts. Tudo síncrono e direto, como no helpdeskON.
+ * chat_contacts. Roda depois que o webhook já respondeu 200 à Evolution (fila
+ * em app/whatsapp_webhook_inbox.php).
  *
  * Particularidades do multilife mantidas:
  *  - WhatsApp de cada mensagem (instance_name) para separar as conversas;
