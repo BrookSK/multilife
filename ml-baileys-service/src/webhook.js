@@ -5,10 +5,106 @@
 // os envios saem em paralelo limitado, com timeout de 10 s e até 5 tentativas
 // com espera crescente. Fila cheia descarta os mais antigos (as mensagens ficam
 // guardadas no banco e podem ser reenviadas pelo "Sincronizar").
+import http from 'node:http';
+import https from 'node:https';
+import net from 'node:net';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { ev } from './events.js';
 import { nowIso, sleep } from './util.js';
+
+// Erros de rede em que vale tentar o endereço interno do servidor
+const ROUTE_ERRORS = new Set(['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'TIMEOUT']);
+const ROUTE_RECHECK_MS = 10 * 60 * 1000;
+/** Rota que funcionou por domínio: host -> {ip, at}. ip null = DNS normal. */
+const routes = new Map();
+
+/**
+ * POST JSON. Com `ip`, conecta nesse IP mas mantém o domínio da URL (SNI,
+ * certificado e cabeçalho Host): é o mesmo site, só que pelo caminho interno.
+ * @returns {Promise<{status:number, bodyStart:string}>}
+ */
+function postJson(url, body, headers, timeoutMs, ip = null) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = u.protocol === 'https:' ? https : http;
+    const family = ip && net.isIPv6(ip) ? 6 : 4;
+    const req = lib.request(u, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...(headers ?? {}) },
+      agent: false,
+      ...(ip ? {
+        lookup: (_host, opts, cb) => (opts && opts.all ? cb(null, [{ address: ip, family }]) : cb(null, ip, family)),
+        servername: u.hostname,
+      } : {}),
+    }, (res) => {
+      const chunks = [];
+      let size = 0;
+      res.on('data', (c) => {
+        if (size < 2000) chunks.push(c);
+        size += c.length;
+      });
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, bodyStart: Buffer.concat(chunks).toString('utf8', 0, 500) }));
+      res.on('error', reject);
+    });
+    req.setTimeout(timeoutMs, () => {
+      const e = new Error('timeout ' + timeoutMs + ' ms');
+      e.code = 'TIMEOUT';
+      req.destroy(e);
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+const errText = (e) => (e.code === 'TIMEOUT' ? e.message : `${e.message}${e.code && !String(e.message).includes(e.code) ? ' (' + e.code + ')' : ''}`);
+
+/**
+ * Entrega uma vez, escolhendo o caminho: o que funcionou da última vez; se o
+ * endereço público recusar, tenta os endereços internos e lembra o que deu certo.
+ * @returns {Promise<{res?:{status:number, bodyStart:string}, error?:Error, via:string|null}>}
+ */
+async function postWithRoute(url, body, headers, timeoutMs, instanceName) {
+  const host = new URL(url).hostname;
+  const known = routes.get(host);
+  const tryLocalFirst = known && known.ip && Date.now() - known.at < ROUTE_RECHECK_MS;
+  const order = tryLocalFirst
+    ? [known.ip, null, ...config.webhook.localIps.filter((ip) => ip !== known.ip)]
+    : [null, ...config.webhook.localIps];
+  if (net.isIP(host)) order.splice(1); // URL já é um IP: sem caminho alternativo
+  let lastErr = null;
+  const tried = [];
+  for (let i = 0; i < order.length; i++) {
+    const ip = order[i];
+    try {
+      const res = await postJson(url, body, headers, ip ? Math.min(timeoutMs, 8000) : timeoutMs, ip);
+      const before = routes.get(host)?.ip ?? null;
+      routes.set(host, { ip, at: Date.now() });
+      if (before !== ip) {
+        ev(ip ? 'warn' : 'info', 'webhook', ip ? 'rota_interna' : 'rota_publica_voltou', {
+          instance: instanceName,
+          http: res.status,
+          summary: ip
+            ? `O endereço público do sistema (${host}) recusou a conexão; as entregas passaram a ir pelo endereço interno do servidor (${ip}), com o mesmo domínio.`
+            : `O endereço público do sistema (${host}) voltou a responder: entregas por ele de novo.`,
+          details: { host, ip, erroAntes: lastErr ? errText(lastErr) : null },
+        });
+      }
+      return { res, via: ip };
+    } catch (e) {
+      lastErr = e;
+      tried.push((ip ? 'interno ' + ip : 'público') + ': ' + errText(e));
+      // Só erro de rede justifica trocar de caminho (erro HTTP é resposta do site)
+      if (!ROUTE_ERRORS.has(e.code)) break;
+    }
+  }
+  if (lastErr && tried.length > 1) {
+    const combined = new Error(tried.join(' | '));
+    combined.code = lastErr.code;
+    return { error: combined, via: null };
+  }
+  return { error: lastErr, via: null };
+}
 
 /** Eventos internos -> nome da Evolution usado na lista "events" do webhook. */
 export const EVENT_NAMES = {
@@ -179,33 +275,27 @@ export class WebhookDispatcher {
     let last = { ok: false, status: 0, error: '' };
     const t0 = Date.now();
     let attempts = 0;
+    let via = null;
     const errors = [];
     for (let attempt = 0; attempt < Math.max(1, retries); attempt++) {
       if (attempt > 0) await sleep(Math.min(30000, 1000 * 2 ** (attempt - 1)));
       attempts++;
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), config.webhook.timeoutMs);
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(c.headers ?? {}) },
-          body,
-          signal: ctrl.signal,
-        });
-        // Corpo só interessa no erro (mostra o que o PHP respondeu); consumir libera a conexão
-        const buf = await res.arrayBuffer().catch(() => null);
-        last = { ok: res.ok, status: res.status, error: res.ok ? '' : 'HTTP ' + res.status };
-        if (!res.ok && buf) last.bodyStart = Buffer.from(buf).toString('utf8', 0, 500);
-        if (res.ok) break;
+      const { res, error, via: v } = await postWithRoute(url, body, c.headers, config.webhook.timeoutMs, this.instance.name);
+      if (res) {
+        const ok = res.status >= 200 && res.status < 300;
+        via = v;
+        last = { ok, status: res.status, error: ok ? '' : 'HTTP ' + res.status };
+        // Corpo só interessa no erro (mostra o que o PHP respondeu)
+        if (!ok) last.bodyStart = res.bodyStart;
+        if (ok) break;
         errors.push(last.error);
+        // Redirecionamento: o endereço do webhook está errado (ex.: http -> https)
+        if (res.status >= 300 && res.status < 400) break;
         // 4xx (fora 408/429) não melhora tentando de novo
         if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) break;
-      } catch (e) {
-        const cause = e.cause?.code || e.cause?.message;
-        last = { ok: false, status: 0, error: e.name === 'AbortError' ? 'timeout ' + config.webhook.timeoutMs + ' ms' : e.message + (cause ? ' (' + cause + ')' : '') };
+      } else {
+        last = { ok: false, status: 0, error: errText(error) };
         errors.push(last.error);
-      } finally {
-        clearTimeout(t);
       }
     }
     const ms = Date.now() - t0;
@@ -224,7 +314,7 @@ export class WebhookDispatcher {
       if (attempts > 1 || !NOISY_EVENTS.has(item.event)) ev(attempts > 1 ? 'warn' : 'debug', 'webhook', attempts > 1 ? 'entregue_apos_tentativas' : 'entregue', {
         ...base,
         summary: `${item.event} entregue ao sistema (HTTP ${last.status}) em ${ms} ms${attempts > 1 ? ` depois de ${attempts} tentativas` : ''}`,
-        details: attempts > 1 ? { tentativas: attempts, erros: errors } : { kb: Math.round(body.length / 1024) },
+        details: { ...(attempts > 1 ? { tentativas: attempts, erros: errors } : {}), kb: Math.round(body.length / 1024), caminho: via ? 'interno ' + via : 'público' },
       });
     } else {
       this.stats.failed++;
@@ -235,7 +325,10 @@ export class WebhookDispatcher {
         ...base,
         summary: `${item.event} NÃO chegou ao sistema depois de ${attempts} tentativa(s): ${last.error}`,
         error: last.error,
-        details: { url, tentativas: attempts, erros: errors, kb: Math.round(body.length / 1024), respostaInicio: last.bodyStart ?? null },
+        details: {
+          url, tentativas: attempts, erros: errors, kb: Math.round(body.length / 1024), respostaInicio: last.bodyStart ?? null,
+          enderecosInternosTentados: config.webhook.localIps,
+        },
       });
     }
     return last;

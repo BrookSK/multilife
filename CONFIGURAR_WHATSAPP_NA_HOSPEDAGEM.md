@@ -220,6 +220,7 @@ Em **Configurações → WhatsApp Conexão → Credenciais**:
 | "iniciando: aguardando configuração" por mais de 2 min | Abra de novo **Credenciais** e salve. Se continuar, a pasta `ml-baileys-service` não tem permissão de escrita: peça à hospedagem para dar permissão de escrita ao usuário do site nessa pasta. |
 | "Último erro: banco: ..." | O serviço não conseguiu entrar no banco do sistema. Peça à hospedagem: *"liberar conexão MySQL por 127.0.0.1 para o usuário do banco do site"*. |
 | Mensagens não chegam no chat | **"App - Base URL pública"** precisa ser o endereço atual do sistema. Depois, Webhook Debug → **Aplicar padrão em todos**. |
+| Eventos do WhatsApp: "NÃO chegou ao sistema ... **ECONNREFUSED**" | A hospedagem não deixa o servidor abrir o próprio endereço público. O serviço passa sozinho a entregar pelo endereço interno do servidor (aviso **rota_interna**). O sistema descobre esse endereço quando alguém usa o sistema logado; se o erro continuar, abra qualquer tela do sistema e espere 1 min. Se ainda assim falhar, a linha do erro mostra os endereços tentados: peça à hospedagem para *"liberar o acesso do servidor ao próprio IP público na porta 443"*. |
 | Número em "Suspeita de queda" | Use **Reconectar (sem QR)**. Se não resolver, ler o QR Code de novo. |
 
 ---

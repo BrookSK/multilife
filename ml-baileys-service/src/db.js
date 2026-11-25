@@ -47,7 +47,7 @@ export async function exec(sql, params = []) {
 const SETTING_KEYS = [
   'baileys.api_key', 'baileys.base_url', 'baileys.detected_url', 'baileys.webhook_url',
   'baileys.message_retention_days', 'baileys.status_retention_days', 'app.public_base_url',
-  'baileys.event_log_retention_days', 'baileys.event_log_debug',
+  'baileys.event_log_retention_days', 'baileys.event_log_debug', 'baileys.system_local_ip',
 ];
 
 /**

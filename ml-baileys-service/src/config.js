@@ -117,6 +117,16 @@ function build(rt) {
       retries: num(pick('WEBHOOK_RETRIES', null, '5'), 5),
       concurrency: Math.max(1, num(pick('WEBHOOK_CONCURRENCY', null, '3'), 3)),
       queueMax: Math.max(100, num(pick('WEBHOOK_QUEUE_MAX', null, '5000'), 5000)),
+      /**
+       * Endereços internos do servidor do sistema. Quando o endereço público do
+       * webhook recusa a conexão (hospedagem que não deixa o servidor acessar o
+       * próprio IP público), a entrega vai por eles, com o mesmo domínio e certificado.
+       * O PHP informa o IP em que o site atende (SERVER_ADDR).
+       */
+      localIps: [...new Set([
+        ...String(pick('WEBHOOK_LOCAL_IP', first(s['baileys.system_local_ip'], r.system_local_ip), '')).split(/[\s,;]+/),
+        '127.0.0.1',
+      ].map((v) => v.trim()).filter((v) => /^[0-9a-f.:]+$/i.test(v)))],
     },
 
     /**

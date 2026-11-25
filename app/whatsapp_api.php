@@ -149,6 +149,7 @@ function wa_service_runtime_payload(): array
         'status_retention_days' => max(0, (int)wa_setting('status_retention_days', '90')),
         'event_log_retention_days' => function_exists('wa_event_log_retention_days') ? wa_event_log_retention_days() : 90,
         'event_log_debug' => (string)admin_setting_get('baileys.event_log_debug', '1') === '0' ? '0' : '1',
+        'system_local_ip' => (string)admin_setting_get('baileys.system_local_ip', ''),
     ];
 }
 
@@ -263,6 +264,7 @@ function wa_service_keepalive(bool $force = false): ?array
         return null;
     }
     $ran = true;
+    wa_system_local_ip_remember();
     try {
         $last = (int)admin_setting_get('baileys.keepalive_at', '0');
         if (!$force && time() - $last < 50) {
@@ -294,6 +296,29 @@ function wa_service_keepalive(bool $force = false): ?array
         } catch (Throwable $e) {}
     }
     return $h;
+}
+
+/**
+ * Guarda o IP em que o site atende neste servidor (SERVER_ADDR). O serviço
+ * WhatsApp usa esse IP para entregar o webhook quando a hospedagem não deixa o
+ * servidor abrir o próprio endereço público (conexão recusada).
+ */
+function wa_system_local_ip_remember(): void
+{
+    if (PHP_SAPI === 'cli') {
+        return;
+    }
+    $ip = trim((string)($_SERVER['SERVER_ADDR'] ?? ''));
+    if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+        return;
+    }
+    try {
+        if ((string)admin_setting_get('baileys.system_local_ip', '') !== $ip) {
+            wa_setting_save('baileys.system_local_ip', $ip);
+            wa_service_runtime_sync(true);
+        }
+    } catch (Throwable $e) {
+    }
 }
 
 /**
