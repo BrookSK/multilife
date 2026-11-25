@@ -198,6 +198,17 @@ function wa_service_runtime_sync(bool $force = false): bool
     }
 }
 
+/** Cria no serviço a instância do sistema que ainda não existe lá. */
+function wa_service_ensure_instance(string $instanceName): bool
+{
+    try {
+        return (new WhatsAppApi(null, null, $instanceName))->ensureInstance($instanceName);
+    } catch (Throwable $e) {
+        error_log('[WHATSAPP_API] ' . $e->getMessage());
+        return false;
+    }
+}
+
 /** Lê o runtime-config.php atual (ou []). */
 function wa_service_runtime_read(): array
 {
@@ -415,14 +426,54 @@ final class WhatsAppApi
         return $this->request('POST', '/instance/create', [], $payload, 40);
     }
 
-    /** QR Code (e código de pareamento se vier o número). */
+    /**
+     * QR Code (e código de pareamento se vier o número). Instância que existe no
+     * sistema mas ainda não no serviço (ex.: vinda da Evolution) é criada na hora.
+     */
     public function connectInstance(?string $instanceName = null, ?string $number = null): array
     {
         $query = [];
         if ($number !== null && $number !== '') {
             $query['number'] = $number;
         }
-        return $this->request('GET', '/instance/connect/' . $this->inst($instanceName), $query, null, 40);
+        $path = '/instance/connect/' . $this->inst($instanceName);
+        $res = $this->request('GET', $path, $query, null, 40);
+        if ((int)($res['status'] ?? 0) === 404 && $this->ensureInstance($instanceName)) {
+            $res = $this->request('GET', $path, $query, null, 40);
+        }
+        return $res;
+    }
+
+    /**
+     * Garante que a instância existe no serviço WhatsApp (cria se faltar) e
+     * grava o webhook do sistema nela. true = existe/foi criada.
+     */
+    public function ensureInstance(?string $instanceName = null): bool
+    {
+        $name = (string)($instanceName ?? $this->instance);
+        if ($name === '') {
+            return false;
+        }
+        try {
+            $found = $this->fetchInstances($name);
+            $j = $found['json'] ?? null;
+            if ((int)($found['status'] ?? 0) >= 200 && (int)($found['status'] ?? 0) < 300 && is_array($j) && count($j) > 0) {
+                return true;
+            }
+            $created = $this->createInstanceBasic(['instanceName' => $name, 'qrcode' => false, 'integration' => 'WHATSAPP-BAILEYS']);
+            $st = (int)($created['status'] ?? 0);
+            $ok = ($st >= 200 && $st < 300) || $st === 403; // 403 = já existe
+            if ($ok && function_exists('whatsapp_webhook_configure')) {
+                whatsapp_webhook_configure($name);
+            }
+            if (!$ok) {
+                error_log('[WHATSAPP_API] não foi possível criar a instância ' . $name . ' no serviço: HTTP ' . $st . ' ' . mb_substr((string)($created['body_raw'] ?? ''), 0, 200));
+            }
+            return $ok;
+        } catch (Throwable $e) {
+            error_log('[WHATSAPP_API] ensureInstance ' . $name . ': ' . $e->getMessage());
+            return false;
+        }
     }
 
     public function connectionState(?string $instanceName = null, int $timeoutSeconds = 10): array

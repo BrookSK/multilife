@@ -56,6 +56,8 @@ try {
     switch ($action) {
 
         case 'connect':
+            // Instância que ainda não existe no serviço (ex.: vinda da Evolution): cria
+            wa_service_ensure_instance($instanceName);
             // Configurar webhook antes de conectar
             configureWebhook($baseUrl, $apiKey, $instanceName);
             // Gerar QR Code

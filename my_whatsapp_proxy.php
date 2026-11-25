@@ -100,6 +100,8 @@ try {
     }
 
     if ($action === 'connect') {
+        // Instância que ainda não existe no serviço (ex.: vinda da Evolution): cria
+        wa_service_ensure_instance($instanceName);
         // Configurar webhook antes de gerar o QR.
         myWaConfigureWebhook($baseUrl, $apiKey, $instanceName);
         $url = $baseUrl . '/instance/connect/' . urlencode($instanceName);
