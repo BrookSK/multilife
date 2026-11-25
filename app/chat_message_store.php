@@ -292,7 +292,12 @@ function chat_wa_fetch_media(array $rec, string $instanceName): ?array
         if (@file_put_contents($dir . '/' . $name, $bin) === false) {
             return null;
         }
-        return ['url' => '/uploads/chat_media/' . date('Y-m') . '/' . $name, 'mime' => $mime];
+        $url = '/uploads/chat_media/' . date('Y-m') . '/' . $name;
+        if (function_exists('wa_media_log_saved')) {
+            $t = strtolower(explode('/', $baseMime)[0]);
+            wa_media_log_saved($rec, ['type' => $t === 'image' ? ($baseMime === 'image/webp' ? 'sticker' : 'image') : $t, 'mime' => $mime], $bin, $url, 'serviço');
+        }
+        return ['url' => $url, 'mime' => $mime];
     } catch (Throwable $e) {
         error_log('[CHAT_STORE] erro ao baixar mídia da API do WhatsApp: ' . $e->getMessage());
         return null;

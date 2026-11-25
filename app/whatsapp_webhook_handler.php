@@ -281,7 +281,9 @@ function wa_wh_store_media(string $instance, array $msg, array $message, array $
             }
             $name = uniqid('chat_', true) . '.' . $ext;
             if (@file_put_contents($dir . '/' . $name, $bin) !== false) {
-                return '/uploads/chat_media/' . date('Y-m') . '/' . $name;
+                $url = '/uploads/chat_media/' . date('Y-m') . '/' . $name;
+                wa_media_log_saved($msg, $parsed, $bin, $url, 'webhook');
+                return $url;
             }
             wa_event_log('error', 'midia', 'gravar_arquivo_falhou', [
                 'jid' => $msg['key']['remoteJid'] ?? null, 'message_id' => $msg['key']['id'] ?? null, 'status' => (string)$parsed['type'],
@@ -306,6 +308,32 @@ function wa_wh_store_media(string $instance, array $msg, array $message, array $
         'details' => ['mime' => $parsed['mime'] ?? null, 'arquivo' => $parsed['filename'] ?? null, 'tamanho' => $parsed['size'] ?? null],
     ]);
     return $url;
+}
+
+/**
+ * Log da mídia gravada: tamanho, tipo real pelo conteúdo e se a imagem abre.
+ * Imagem que não abre (conteúdo que não é imagem) vira aviso, com os primeiros bytes.
+ */
+function wa_media_log_saved(array $msg, array $parsed, string $bin, string $url, string $via): void
+{
+    if (!function_exists('wa_event_log')) {
+        return;
+    }
+    $real = '';
+    if (function_exists('finfo_open')) {
+        $fi = @finfo_open(FILEINFO_MIME_TYPE);
+        $real = $fi ? (string)@finfo_buffer($fi, $bin) : '';
+    }
+    $isImage = in_array((string)$parsed['type'], ['image', 'sticker'], true);
+    $opens = !$isImage || @getimagesizefromstring($bin) !== false || str_starts_with($real, 'image/');
+    wa_event_log($opens ? 'debug' : 'warn', 'midia', $opens ? 'midia_gravada' : 'imagem_invalida', [
+        'jid' => $msg['key']['remoteJid'] ?? null, 'message_id' => $msg['key']['id'] ?? null, 'status' => (string)$parsed['type'],
+        'summary' => $opens
+            ? 'Mídia gravada (' . round(strlen($bin) / 1024) . ' KB, ' . ($real !== '' ? $real : (string)$parsed['mime']) . ', via ' . $via . '): ' . $url
+            : 'A imagem recebida foi gravada mas NÃO é uma imagem válida (' . ($real !== '' ? $real : 'tipo desconhecido') . ', ' . round(strlen($bin) / 1024) . ' KB): ' . $url,
+        'details' => ['url' => $url, 'bytes' => strlen($bin), 'tipoReal' => $real, 'tipoInformado' => $parsed['mime'] ?? null, 'via' => $via,
+            'inicio' => bin2hex(substr($bin, 0, 16))],
+    ]);
 }
 
 function wa_wh_media_ext(string $mime, string $filename, string $type): string

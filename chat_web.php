@@ -2994,12 +2994,9 @@ if (empty($selectedChat)) {
             $senderName = $msg['senderName'] ?? '';
             $msgReactions = $msg['reactions'] ?? [];
             
-            // Converter URL relativa para absoluta
-            if (!empty($mediaUrl) && $mediaUrl[0] === '/' && strpos($mediaUrl, 'http') !== 0) {
-                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
-                $mediaUrl = $protocol . '://' . $host . $mediaUrl;
-            }
+            // URL da mídia fica RELATIVA ("/uploads/..."): o navegador usa o protocolo e o
+            // domínio da tela. Montar "http://host/..." quebrava as imagens quando o PHP fica
+            // atrás do proxy da hospedagem (ele acha que é http e a página é https).
             
             // Mesma chave usada pelo polling (external_message_id ou "row-<id>") para não duplicar
             $domMsgKey = !empty($msg['externalMessageId']) ? (string)$msg['externalMessageId'] : (!empty($msg['id']) ? 'row-' . (int)$msg['id'] : '');
