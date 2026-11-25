@@ -34,14 +34,14 @@ $envInt = static function (string $key, int $default): int {
  *   3) Branch atual lida em <raiz>/.git/HEAD (só leitura do arquivo, sem Git).
  * Na dúvida, PRODUÇÃO. As variáveis DB_* continuam valendo por cima de qualquer
  * ambiente (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS).
+ *
+ * Escolha manual (Configurações → Ambiente / Banco): arquivo
+ * storage/db_environment.json desta instalação ({"env":"beta"} ou
+ * {"env":"production"}). Vale logo depois do APP_ENV e antes da detecção
+ * automática. Sem o arquivo, o comportamento é o de sempre.
  * Sem funções nomeadas: este arquivo é carregado mais de uma vez por requisição.
  */
-$appEnvironment = (static function (): string {
-    $forced = strtolower(trim((string)(getenv('APP_ENV') ?: '')));
-    if (in_array($forced, ['local', 'beta', 'production'], true)) {
-        return $forced;
-    }
-
+$appEnvironmentAuto = (static function (): string {
     $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? ''));
     // Sem a porta: "[::1]:8080" -> "::1", "localhost:8000" -> "localhost"
     $hostName = str_starts_with($host, '[')
@@ -65,6 +65,22 @@ $appEnvironment = (static function (): string {
         }
     }
     return 'production';
+})();
+
+[$appEnvironment, $appEnvironmentSource] = (static function () use ($appEnvironmentAuto): array {
+    $forced = strtolower(trim((string)(getenv('APP_ENV') ?: '')));
+    if (in_array($forced, ['local', 'beta', 'production'], true)) {
+        return [$forced, 'variavel'];
+    }
+    $chosenFile = dirname(__DIR__) . '/storage/db_environment.json';
+    if (is_file($chosenFile)) {
+        $chosen = json_decode((string)@file_get_contents($chosenFile), true);
+        $chosenEnv = is_array($chosen) ? strtolower(trim((string)($chosen['env'] ?? ''))) : '';
+        if (in_array($chosenEnv, ['beta', 'production'], true)) {
+            return [$chosenEnv, 'escolhido'];
+        }
+    }
+    return [$appEnvironmentAuto, 'automatico'];
 })();
 
 // Banco de cada ambiente. PRODUÇÃO é o mesmo de antes (não mudou nada).
@@ -92,6 +108,9 @@ $dbDefaults = $dbByEnvironment[$appEnvironment];
 
 return [
     'env' => $appEnvironment,
+    // De onde veio o ambiente (tela Configurações → Ambiente / Banco)
+    'env_source' => $appEnvironmentSource,
+    'env_auto' => $appEnvironmentAuto,
     'db' => [
         'host' => $env('DB_HOST', $dbDefaults['host']),
         'port' => $envInt('DB_PORT', 3306),

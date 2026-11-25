@@ -181,6 +181,10 @@ $sections = [
         'keys' => ['_roles_manage_']
     ],
 
+    'Ambiente / Banco' => [
+        'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
+        'keys' => ['_db_environment_']
+    ],
     'Logs Técnicos' => [
         'icon' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
         'keys' => ['_logs_technical_']
@@ -540,6 +544,55 @@ foreach ($sections as $sectionTitle => $sectionData) {
             echo '</div>';
         }
         
+        echo '</div>';
+    } elseif ($sectionTitle === 'Ambiente / Banco') {
+        // Qual banco esta instalação usa (admin_db_environment_post.php grava storage/db_environment.json).
+        // Os campos usam form="dbEnvForm": o formulário fica fora do formulário principal.
+        $envCfg = require __DIR__ . '/config/config.php';
+        $envNow = (string)($envCfg['env'] ?? 'production');
+        $envSource = (string)($envCfg['env_source'] ?? 'automatico');
+        $envAuto = (string)($envCfg['env_auto'] ?? 'production');
+        $envLabels = ['beta' => 'BETA', 'production' => 'PRODUÇÃO', 'local' => 'LOCAL'];
+        $envColors = ['beta' => '#2563eb', 'production' => '#dc2626', 'local' => '#6b7280'];
+        $chosen = $envSource === 'escolhido' ? $envNow : 'auto';
+        $sourceText = [
+            'escolhido' => 'escolhido nesta tela',
+            'automatico' => 'detecção automática (pelo endereço ou pela branch do código)',
+            'variavel' => 'variável de ambiente APP_ENV do servidor',
+        ][$envSource] ?? $envSource;
+
+        echo '<div class="formSection">';
+        echo '<div class="formSectionTitle">Qual banco este sistema usa</div>';
+        echo '<div style="padding:14px;border:2px solid ' . $envColors[$envNow] . ';border-radius:10px;margin-bottom:16px;line-height:1.7;font-size:14px;overflow-wrap:anywhere;word-break:break-word">';
+        echo 'Agora: <strong style="color:' . $envColors[$envNow] . ';font-size:16px">' . h($envLabels[$envNow] ?? $envNow) . '</strong>'
+            . ' · banco <code>' . h((string)($envCfg['db']['name'] ?? '')) . '</code>'
+            . '<br><span style="color:hsl(var(--muted-foreground));font-size:13px">Definido por: ' . h($sourceText)
+            . ' · endereço desta tela: <code>' . h((string)($_SERVER['HTTP_HOST'] ?? '')) . '</code>'
+            . ' · a detecção automática daria: ' . h($envLabels[$envAuto] ?? $envAuto) . '</span>';
+        echo '</div>';
+
+        if ($envSource === 'variavel') {
+            echo '<div class="alertError" style="margin-bottom:12px">O banco está fixado pela variável de ambiente <code>APP_ENV</code> no servidor. Enquanto ela existir, a escolha abaixo não vale.</div>';
+        }
+        $dis = $envSource === 'variavel' ? ' disabled' : '';
+        $opts = [
+            'auto' => ['Automático', 'Como sempre foi: endereço com "beta" ou "plesk.page" usa BETA; senão, a branch do código (main = PRODUÇÃO). Hoje daria <strong>' . h($envLabels[$envAuto] ?? $envAuto) . '</strong>.'],
+            'beta' => ['BETA', 'Banco de testes (<code>multilife_beta</code>), em qualquer endereço desta instalação.'],
+            'production' => ['PRODUÇÃO', 'Banco real (<code>multilife</code>), em qualquer endereço desta instalação.'],
+        ];
+        echo '<div style="display:grid;gap:10px;max-width:760px">';
+        foreach ($opts as $val => [$title, $desc]) {
+            echo '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid hsl(var(--border));border-radius:8px;cursor:pointer;font-weight:400">'
+                . '<input type="radio" form="dbEnvForm" name="db_environment" value="' . $val . '"' . ($chosen === $val ? ' checked' : '') . $dis
+                . ' style="width:18px;height:18px;margin-top:2px;flex:0 0 auto">'
+                . '<span><strong>' . h($title) . '</strong><span style="display:block;font-size:13px;color:hsl(var(--muted-foreground));line-height:1.5">' . $desc . '</span></span></label>';
+        }
+        echo '</div>';
+        echo '<div style="margin-top:12px;font-size:13px;line-height:1.6;color:hsl(var(--muted-foreground));max-width:760px">'
+            . 'Antes de trocar, o sistema testa se o banco escolhido abre. Depois da troca você é <strong>deslogado</strong> e entra de novo com um usuário desse banco. '
+            . 'O serviço WhatsApp passa a usar o mesmo banco sozinho, em até 1 minuto. '
+            . 'A escolha vale para <strong>todos os endereços que usam esta pasta do sistema neste servidor</strong>.</div>';
+        echo '<div style="margin-top:12px"><button class="btn btnPrimary" type="submit" form="dbEnvForm"' . $dis . '>Usar este banco</button></div>';
         echo '</div>';
     } elseif ($sectionTitle === 'Logs Técnicos') {
         // Aba Logs Técnicos - Conteúdo completo
@@ -2296,6 +2349,9 @@ echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
 echo '<button class="btn btnPrimary" type="button" onclick="document.getElementById(\'mainSettingsForm\').submit()">Salvar Configurações</button>';
 echo '</div>';
 echo '</form>';
+// Formulário da aba Ambiente / Banco (fora do principal: os campos usam form="dbEnvForm")
+echo '<form id="dbEnvForm" method="post" action="/admin_db_environment_post.php" onsubmit="var c=this.querySelector(\'[name=db_environment]:checked\')||document.querySelector(\'[form=dbEnvForm][name=db_environment]:checked\');'
+    . 'return confirm(\'Trocar o banco do sistema para \' + (c ? c.parentNode.querySelector(\'strong\').textContent : \'?\') + \'?\\n\\nVocê será deslogado e vai entrar de novo com um usuário desse banco.\');"></form>';
 
 echo '</section>';
 echo '</div>';
