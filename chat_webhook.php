@@ -32,16 +32,37 @@ ignore_user_abort(true);
 @set_time_limit(120);
 @ini_set('memory_limit', '512M'); // mídia em base64 no corpo
 
+$t0 = microtime(true);
 $raw = (string)file_get_contents('php://input');
 if ($raw === '' && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
     // Corpo descartado pelo PHP: maior que post_max_size
     error_log('[WEBHOOK] corpo de ' . (int)$_SERVER['CONTENT_LENGTH'] . ' bytes descartado (post_max_size=' . ini_get('post_max_size') . ')');
+    wa_event_log('error', 'webhook', 'corpo_descartado', [
+        'summary' => 'Evento do WhatsApp PERDIDO: o corpo de ' . round((int)$_SERVER['CONTENT_LENGTH'] / 1048576, 1) . ' MB passou do limite do PHP (post_max_size=' . ini_get('post_max_size') . ')',
+        'details' => ['bytes' => (int)$_SERVER['CONTENT_LENGTH'], 'post_max_size' => ini_get('post_max_size'), 'ip' => $_SERVER['REMOTE_ADDR'] ?? null],
+    ]);
 }
 $payload = $raw !== '' ? json_decode($raw, true) : null;
+if ($raw !== '' && !is_array($payload)) {
+    wa_event_log('error', 'webhook', 'json_invalido', [
+        'summary' => 'Chamada ao webhook com corpo que não é JSON válido (' . strlen($raw) . ' bytes): ignorada',
+        'error' => json_last_error_msg(),
+        'details' => ['inicio' => mb_substr($raw, 0, 300), 'ip' => $_SERVER['REMOTE_ADDR'] ?? null, 'userAgent' => $_SERVER['HTTP_USER_AGENT'] ?? null],
+    ]);
+}
 
 $inboxId = 0;
 $processNow = false;
 if (is_array($payload)) {
+    $whEvent = wa_inbox_event($payload);
+    $whInstance = trim((string)($payload['instance'] ?? ($payload['instanceName'] ?? '')));
+    $whIds = wa_inbox_message_ids($payload);
+    $whBase = [
+        'instance' => $whInstance !== '' ? $whInstance : null,
+        'message_id' => $whIds[0] ?? null,
+        'jid' => (string)(wa_wh_message_list($payload['data'] ?? [])[0]['key']['remoteJid'] ?? '') ?: null,
+        'status' => $whEvent,
+    ];
     try {
         $stored = wa_inbox_store($raw, $payload);
         if ($stored['status'] === 'queued') {
@@ -49,8 +70,25 @@ if (is_array($payload)) {
         } elseif ($stored['status'] === 'unavailable') {
             $processNow = true;
         }
+        // Presença/contatos/conversas chegam aos montes: só os eventos que importam
+        if (!in_array($whEvent, ['presence.update', 'contacts.upsert', 'contacts.update', 'chats.upsert', 'chats.update', 'chats.delete'], true)) {
+            wa_event_log($stored['status'] === 'unavailable' ? 'warn' : 'debug', 'webhook',
+                ['queued' => 'recebido', 'duplicate' => 'recebido_repetido', 'unavailable' => 'fila_indisponivel'][$stored['status']] ?? 'recebido', $whBase + [
+                'ms' => (microtime(true) - $t0) * 1000,
+                'summary' => [
+                    'queued' => 'Sistema recebeu ' . $whEvent . ' e colocou na fila (#' . (int)$stored['id'] . ')',
+                    'duplicate' => 'Sistema recebeu ' . $whEvent . ' REPETIDO (já estava na fila #' . (int)$stored['id'] . '): ignorado',
+                    'unavailable' => 'Sistema recebeu ' . $whEvent . ', mas a fila está indisponível (pasta/banco): processando direto',
+                ][$stored['status']] ?? $whEvent,
+                'details' => ['fila' => (int)$stored['id'], 'kb' => round(strlen($raw) / 1024, 1), 'mensagens' => array_slice($whIds, 0, 20)],
+            ]);
+        }
     } catch (Throwable $e) {
         error_log('[WEBHOOK] fila indisponível, processando direto: ' . $e->getMessage());
+        wa_event_log('warn', 'webhook', 'fila_indisponivel', $whBase + [
+            'summary' => 'Fila do webhook com erro: processando o evento direto (' . $whEvent . ')',
+            'error' => $e,
+        ]);
         $processNow = true;
     }
 }
@@ -83,6 +121,11 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[WEBHOOK] erro: ' . $e->getMessage());
+    wa_event_log('error', 'processamento', 'erro_webhook', ($whBase ?? []) + [
+        'summary' => 'Erro ao processar o evento recebido: ' . mb_substr($e->getMessage(), 0, 250),
+        'error' => $e,
+        'details' => ['trace' => mb_substr($e->getTraceAsString(), 0, 3000)],
+    ]);
 }
 unset($payload);
 
@@ -94,4 +137,5 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[WEBHOOK] fila (pendentes): ' . $e->getMessage());
+    wa_event_log('error', 'processamento', 'erro_fila_pendentes', ['summary' => 'Erro ao processar pendentes da fila do webhook', 'error' => $e]);
 }

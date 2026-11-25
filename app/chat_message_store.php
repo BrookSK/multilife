@@ -448,6 +448,10 @@ function chat_import_wa_record(array $rec, string $instanceName, string $convers
 
 function chat_webhook_trace(string $event, array $key, string $result, string $resolvedJid = '', string $text = ''): void
 {
+    // Também no log detalhado do WhatsApp (/admin_whatsapp_eventos.php), que guarda por mais tempo
+    if (function_exists('wa_event_log_from_trace')) {
+        wa_event_log_from_trace($event, $key, $result, $resolvedJid, $text);
+    }
     try {
         static $ready = false;
         if (!$ready) {

@@ -7,6 +7,7 @@
 // guardadas no banco e podem ser reenviadas pelo "Sincronizar").
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { ev } from './events.js';
 import { nowIso, sleep } from './util.js';
 
 /** Eventos internos -> nome da Evolution usado na lista "events" do webhook. */
@@ -53,6 +54,18 @@ export function normalizeWebhookConfig(body, current = null) {
     headers: typeof pick('headers') === 'object' && pick('headers') !== null ? pick('headers') : (current?.headers ?? {}),
   };
   return cfg;
+}
+
+const NOISY_EVENTS = new Set(['presence.update', 'contacts.upsert', 'contacts.update', 'chats.upsert', 'chats.update', 'chats.delete']);
+
+/** Id e conversa da mensagem dentro do payload do evento (para o log). */
+function idOf(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+  return d.key?.id ?? d.keyId ?? d.messageId ?? (typeof d.id === 'string' && !d.id.includes('@') ? d.id : null);
+}
+function jidOf(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+  return d.key?.remoteJid ?? d.remoteJid ?? null;
 }
 
 export class WebhookDispatcher {
@@ -102,11 +115,32 @@ export class WebhookDispatcher {
    * @param {object} [opts] prepare: função async chamada antes da entrega (ex.: anexar base64 da mídia)
    */
   enqueue(event, data, opts = {}) {
-    if (!this.wants(event)) return false;
+    if (!this.wants(event)) {
+      const c = this.config;
+      // Sem webhook (ou desligado): nada chega no sistema. Avisa no log a cada 10 min.
+      if ((!c || !c.url || !c.enabled) && Date.now() - (this.noWebhookWarnAt ?? 0) > 600000) {
+        this.noWebhookWarnAt = Date.now();
+        ev('error', 'webhook', 'sem_webhook', {
+          instance: this.instance.name,
+          summary: !c || !c.url
+            ? 'A instância não tem URL de webhook: os eventos do WhatsApp NÃO estão chegando no sistema'
+            : 'O webhook da instância está desligado: os eventos do WhatsApp NÃO estão chegando no sistema',
+          details: { evento: event },
+        });
+      }
+      return false;
+    }
     if (this.queue.length >= config.webhook.queueMax) {
-      this.queue.shift();
+      const lost = this.queue.shift();
       this.stats.dropped++;
       if (this.stats.dropped % 100 === 1) this.log.warn({ dropped: this.stats.dropped }, 'fila do webhook cheia: descartando os eventos mais antigos');
+      ev('warn', 'webhook', 'descartado_fila_cheia', {
+        instance: this.instance.name,
+        messageId: idOf(lost?.data),
+        status: lost?.event,
+        summary: `Fila do webhook cheia (${config.webhook.queueMax}): evento ${lost?.event} descartado sem ir ao sistema (use Sincronizar)`,
+        details: { descartadosAteAgora: this.stats.dropped },
+      });
     }
     this.queue.push({ event, data, prepare: opts.prepare ?? null });
     this.pump();
@@ -135,6 +169,7 @@ export class WebhookDispatcher {
       try {
         data = (await item.prepare(data)) ?? data;
       } catch (e) {
+        // O evento "midia/download_falhou" já foi registrado em attachBase64
         this.log.warn({ err: e.message }, 'falha ao preparar mídia (segue sem base64)');
       }
     }
@@ -142,8 +177,12 @@ export class WebhookDispatcher {
     if (c.byEvents) url = url.replace(/\/+$/, '') + '/' + item.event.replace(/\./g, '-').toLowerCase();
     const body = JSON.stringify(this.envelope(item.event, data, c.url));
     let last = { ok: false, status: 0, error: '' };
+    const t0 = Date.now();
+    let attempts = 0;
+    const errors = [];
     for (let attempt = 0; attempt < Math.max(1, retries); attempt++) {
       if (attempt > 0) await sleep(Math.min(30000, 1000 * 2 ** (attempt - 1)));
+      attempts++;
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), config.webhook.timeoutMs);
       try {
@@ -153,26 +192,51 @@ export class WebhookDispatcher {
           body,
           signal: ctrl.signal,
         });
-        // Corpo da resposta não interessa; consumir libera a conexão
-        await res.arrayBuffer().catch(() => null);
+        // Corpo só interessa no erro (mostra o que o PHP respondeu); consumir libera a conexão
+        const buf = await res.arrayBuffer().catch(() => null);
         last = { ok: res.ok, status: res.status, error: res.ok ? '' : 'HTTP ' + res.status };
+        if (!res.ok && buf) last.bodyStart = Buffer.from(buf).toString('utf8', 0, 500);
         if (res.ok) break;
+        errors.push(last.error);
         // 4xx (fora 408/429) não melhora tentando de novo
         if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) break;
       } catch (e) {
-        last = { ok: false, status: 0, error: e.name === 'AbortError' ? 'timeout ' + config.webhook.timeoutMs + ' ms' : e.message };
+        const cause = e.cause?.code || e.cause?.message;
+        last = { ok: false, status: 0, error: e.name === 'AbortError' ? 'timeout ' + config.webhook.timeoutMs + ' ms' : e.message + (cause ? ' (' + cause + ')' : '') };
+        errors.push(last.error);
       } finally {
         clearTimeout(t);
       }
     }
+    const ms = Date.now() - t0;
+    const base = {
+      instance: this.instance.name,
+      jid: jidOf(data),
+      messageId: idOf(data),
+      status: item.event,
+      http: last.status || undefined,
+      ms,
+    };
     if (last.ok) {
       this.stats.delivered++;
       this.stats.lastDeliveredAt = Date.now();
+      // Presença/contatos/conversas chegam aos montes: só registra se precisou repetir
+      if (attempts > 1 || !NOISY_EVENTS.has(item.event)) ev(attempts > 1 ? 'warn' : 'debug', 'webhook', attempts > 1 ? 'entregue_apos_tentativas' : 'entregue', {
+        ...base,
+        summary: `${item.event} entregue ao sistema (HTTP ${last.status}) em ${ms} ms${attempts > 1 ? ` depois de ${attempts} tentativas` : ''}`,
+        details: attempts > 1 ? { tentativas: attempts, erros: errors } : { kb: Math.round(body.length / 1024) },
+      });
     } else {
       this.stats.failed++;
       this.stats.lastError = `${item.event}: ${last.error}`;
       this.stats.lastErrorAt = Date.now();
       this.log.warn({ event: item.event, err: last.error }, 'webhook não entregue');
+      ev('error', 'webhook', 'nao_entregue', {
+        ...base,
+        summary: `${item.event} NÃO chegou ao sistema depois de ${attempts} tentativa(s): ${last.error}`,
+        error: last.error,
+        details: { url, tentativas: attempts, erros: errors, kb: Math.round(body.length / 1024), respostaInicio: last.bodyStart ?? null },
+      });
     }
     return last;
   }

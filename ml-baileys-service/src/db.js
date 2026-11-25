@@ -4,6 +4,7 @@
 import mysql from 'mysql2/promise';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { SCHEMA_EVENT_LOG } from './events.js';
 
 let pool = null;
 
@@ -46,6 +47,7 @@ export async function exec(sql, params = []) {
 const SETTING_KEYS = [
   'baileys.api_key', 'baileys.base_url', 'baileys.detected_url', 'baileys.webhook_url',
   'baileys.message_retention_days', 'baileys.status_retention_days', 'app.public_base_url',
+  'baileys.event_log_retention_days', 'baileys.event_log_debug',
 ];
 
 /**
@@ -205,7 +207,7 @@ const SCHEMA = [
 ];
 
 export async function ensureSchema() {
-  for (const sql of SCHEMA) {
+  for (const sql of [...SCHEMA, SCHEMA_EVENT_LOG]) {
     await getPool().query(sql);
   }
   logger.info('banco pronto');

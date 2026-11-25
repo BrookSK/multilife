@@ -206,6 +206,7 @@ function wa_inbox_process(int $id, ?array $payload = null): bool
             }
         }
 
+        $t0 = microtime(true);
         wa_webhook_handle($payload);
 
         db()->prepare("UPDATE chat_webhook_inbox
@@ -214,11 +215,31 @@ function wa_inbox_process(int $id, ?array $payload = null): bool
         if ($path !== '') {
             @unlink($path);
         }
+        $ev = wa_inbox_event($payload);
+        $ms = (microtime(true) - $t0) * 1000;
+        if ((int)($row['attempts'] ?? 1) > 1 || $ms > 20000) {
+            wa_event_log('warn', 'processamento', (int)($row['attempts'] ?? 1) > 1 ? 'processado_apos_tentativas' : 'processamento_lento', [
+                'instance' => trim((string)($payload['instance'] ?? '')) ?: null,
+                'message_id' => wa_inbox_message_ids($payload)[0] ?? null,
+                'status' => $ev, 'ms' => $ms,
+                'summary' => 'Fila #' . $id . ' (' . $ev . ') processada' . ((int)($row['attempts'] ?? 1) > 1 ? ' na tentativa ' . (int)$row['attempts'] : '') . ' em ' . round($ms / 1000, 1) . ' s',
+            ]);
+        }
         return true;
     } catch (Throwable $e) {
         $final = (int)($row['attempts'] ?? 0) >= WA_INBOX_MAX_ATTEMPTS
             || $e instanceof WaInboxPayloadError;
         error_log('[WEBHOOK] fila #' . $id . ' erro: ' . $e->getMessage());
+        wa_event_log($final ? 'error' : 'warn', 'processamento', $final ? 'fila_falhou_definitivo' : 'fila_vai_tentar_de_novo', [
+            'instance' => is_array($payload) ? (trim((string)($payload['instance'] ?? '')) ?: null) : null,
+            'message_id' => is_array($payload) ? (wa_inbox_message_ids($payload)[0] ?? null) : null,
+            'status' => is_array($payload) ? wa_inbox_event($payload) : null,
+            'summary' => $final
+                ? 'Fila #' . $id . ': evento NÃO processado (desistiu depois de ' . (int)($row['attempts'] ?? 0) . ' tentativa(s)): ' . mb_substr($e->getMessage(), 0, 200)
+                : 'Fila #' . $id . ': erro na tentativa ' . (int)($row['attempts'] ?? 0) . ', vai tentar de novo: ' . mb_substr($e->getMessage(), 0, 200),
+            'error' => $e,
+            'details' => ['fila' => $id, 'tentativas' => (int)($row['attempts'] ?? 0), 'maximo' => WA_INBOX_MAX_ATTEMPTS, 'trace' => mb_substr($e->getTraceAsString(), 0, 3000)],
+        ]);
         db()->prepare("UPDATE chat_webhook_inbox SET status = ?, last_error = ? WHERE id = ?")
             ->execute([$final ? 'failed' : 'pending', mb_substr($e->getMessage(), 0, 500), $id]);
         return false;
@@ -237,9 +258,15 @@ function wa_inbox_process_pending(int $limit = 50, int $timeBudgetSeconds = 50):
     $deadline = time() + max(1, $timeBudgetSeconds);
 
     // Travados que já esgotaram as tentativas: falha definitiva
-    db()->prepare("UPDATE chat_webhook_inbox SET status = 'failed', last_error = COALESCE(last_error, 'tempo esgotado no processamento')
-                   WHERE status = 'processing' AND attempts >= ? AND claimed_at < (NOW() - INTERVAL ? SECOND)")
-        ->execute([WA_INBOX_MAX_ATTEMPTS, WA_INBOX_STUCK_SECONDS]);
+    $stuck = db()->prepare("UPDATE chat_webhook_inbox SET status = 'failed', last_error = COALESCE(last_error, 'tempo esgotado no processamento')
+                   WHERE status = 'processing' AND attempts >= ? AND claimed_at < (NOW() - INTERVAL ? SECOND)");
+    $stuck->execute([WA_INBOX_MAX_ATTEMPTS, WA_INBOX_STUCK_SECONDS]);
+    if ($stuck->rowCount() > 0) {
+        wa_event_log('error', 'processamento', 'fila_travada', [
+            'summary' => $stuck->rowCount() . ' evento(s) da fila travaram no processamento (PHP caiu/tempo esgotado) e foram marcados como falha',
+            'details' => ['quantidade' => $stuck->rowCount()],
+        ]);
+    }
 
     $st = db()->prepare("SELECT id FROM chat_webhook_inbox
                          WHERE attempts < ?

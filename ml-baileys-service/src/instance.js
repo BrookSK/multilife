@@ -13,8 +13,9 @@ import * as store from './store.js';
 import { WebhookDispatcher } from './webhook.js';
 import { downloadMedia, mediaContent } from './media.js';
 import { toEvolutionMessage, toProtoMessage } from './format.js';
+import { disconnectReasonName, ev } from './events.js';
 import {
-  HttpError, MEDIA_TYPES, TtlCache, brVariants, isGroupJid, isLid, isPn, messageTypeOf, onlyDigits, sleep, toJid,
+  HttpError, MEDIA_TYPES, TtlCache, brVariants, isGroupJid, isLid, isPn, messageTypeOf, onlyDigits, sleep, toJid, tsToNumber,
 } from './util.js';
 
 // Versão do WhatsApp Web: buscada e PINADA (diferença-chave para a Evolution).
@@ -87,6 +88,31 @@ export class Instance {
 
     this.webhook_ = new WebhookDispatcher(this);
     this.log = logger.child({ instance: this.name });
+    /** Envios ainda sem confirmação do servidor do WhatsApp: id -> {jid, at, type} */
+    this.pendingAcks = new Map();
+  }
+
+  /** Evento do log detalhado desta instância. */
+  ev(level, category, event, f = {}) {
+    ev(level, category, event, { instance: this.name, ...f });
+  }
+
+  /**
+   * Envios que o servidor do WhatsApp não confirmou em 2 min: o envio "saiu" do
+   * serviço mas pode não ter chegado. Chamado pelo manager a cada 30 s.
+   */
+  checkPendingAcks() {
+    const now = Date.now();
+    for (const [id, p] of this.pendingAcks) {
+      if (now - p.at < 120000) continue;
+      this.pendingAcks.delete(id);
+      this.ev('warn', 'enviada', 'sem_confirmacao', {
+        jid: p.jid,
+        messageId: id,
+        summary: `Envio sem confirmação do WhatsApp há ${Math.round((now - p.at) / 1000)} s (${p.type}). Pode não ter chegado.`,
+        details: { tipo: p.type, socket: this.state },
+      });
+    }
   }
 
   get dispatcher() {
@@ -139,9 +165,18 @@ export class Instance {
         await this.onEvents(sock, events);
       } catch (e) {
         this.log.error({ err: e.message, stack: e.stack }, 'erro ao tratar eventos');
+        this.ev('error', 'sistema', 'erro_ao_tratar_eventos', {
+          summary: 'Erro ao tratar eventos do WhatsApp: ' + e.message,
+          error: e.stack || e.message,
+          details: { eventos: Object.keys(events) },
+        });
       }
     });
     this.log.info({ registered: this.registered }, 'conectando');
+    this.ev('info', 'conexao', 'conectando', {
+      summary: this.registered ? 'Conectando com a sessão salva (sem QR Code)' : 'Iniciando conexão nova (vai gerar QR Code)',
+      details: { registrado: this.registered, versaoWhatsAppWeb: version ? version.join('.') : 'padrão', tentativa: this.reconnectAttempts },
+    });
   }
 
   scheduleReconnect(immediate = false) {
@@ -149,10 +184,15 @@ export class Instance {
     const delay = immediate ? 300 : RECONNECT_DELAYS[Math.min(this.reconnectAttempts, RECONNECT_DELAYS.length - 1)] * 1000;
     this.reconnectAttempts++;
     this.log.info({ delayMs: delay, attempt: this.reconnectAttempts }, 'reconexão agendada');
+    this.ev(this.reconnectAttempts > 3 ? 'warn' : 'info', 'conexao', 'reconexao_agendada', {
+      summary: `Reconexão automática em ${Math.round(delay / 1000)} s (tentativa ${this.reconnectAttempts})`,
+      details: { esperaMs: delay, tentativa: this.reconnectAttempts },
+    });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.start().catch((e) => {
         this.log.error({ err: e.message }, 'falha ao reconectar');
+        this.ev('error', 'conexao', 'reconexao_falhou', { summary: 'Falha ao reconectar: ' + e.message, error: e.stack || e.message });
         this.scheduleReconnect();
       });
     }, delay);
@@ -169,6 +209,7 @@ export class Instance {
       return;
     }
     this.stopping = 'restart';
+    this.ev('info', 'conexao', 'reinicio', { summary: 'Reiniciando a conexão com a sessão salva (sem QR Code)', status: this.state });
     await this.auth?.flush();
     try {
       sock.end(new Error('restart'));
@@ -177,6 +218,7 @@ export class Instance {
     setTimeout(() => {
       if (this.sock === sock) {
         this.log.warn('socket não fechou no restart: forçando');
+        this.ev('warn', 'conexao', 'reinicio_forcado', { summary: 'A conexão antiga não fechou em 10 s: troca forçada' });
         this.sock = null;
         this.state = 'close';
         this.start().catch((e) => this.log.error({ err: e.message }, 'falha no restart forçado'));
@@ -193,6 +235,7 @@ export class Instance {
   async logout() {
     clearTimeout(this.reconnectTimer);
     this.stopping = 'logout';
+    this.ev('warn', 'conexao', 'logout', { summary: 'Desconexão pedida pelo sistema: a sessão foi apagada (vai precisar de QR Code)', status: this.state });
     const sock = this.sock;
     this.sock = null;
     if (sock) {
@@ -300,8 +343,10 @@ export class Instance {
         this.pairingCode = await this.sock.requestPairingCode(digits);
         if (this.qr) this.qr.pairingCode = this.pairingCode;
         this.log.info('código de pareamento gerado');
+        this.ev('info', 'conexao', 'codigo_pareamento', { summary: 'Código de pareamento gerado para o número ' + digits });
       } catch (e) {
         this.log.warn({ err: e.message }, 'falha ao gerar código de pareamento');
+        this.ev('error', 'conexao', 'codigo_pareamento_falhou', { summary: 'Falha ao gerar o código de pareamento', error: e.message });
       }
     }
     if (!this.qr) {
@@ -352,6 +397,27 @@ export class Instance {
       for (const { key, update } of updates) {
         if (update.status !== undefined && update.status !== null) {
           if (Number(update.status) >= 3) activity = true;
+          const stName = ['ERROR', 'PENDING', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED'][Number(update.status)] ?? String(update.status);
+          const pend = this.pendingAcks.get(key.id);
+          if (Number(update.status) >= 2 && pend) {
+            this.pendingAcks.delete(key.id);
+            this.ev('debug', 'enviada', 'confirmada_servidor', {
+              jid: key.remoteJid, messageId: key.id, status: stName, ms: Date.now() - pend.at,
+              summary: `WhatsApp confirmou o envio (${stName}) em ${Date.now() - pend.at} ms`,
+            });
+          } else if (Number(update.status) === 0) {
+            this.pendingAcks.delete(key.id);
+            this.ev('error', 'enviada', 'falha_entrega', {
+              jid: key.remoteJid, messageId: key.id, status: stName,
+              summary: 'O WhatsApp marcou a mensagem com ERRO (não entregue)',
+              details: { update: update.messageStubParameters ?? null },
+            });
+          } else if (key.fromMe) {
+            this.ev('debug', 'enviada', 'status_' + stName.toLowerCase(), {
+              jid: key.remoteJid, messageId: key.id, status: stName,
+              summary: { DELIVERY_ACK: 'Entregue no aparelho', READ: 'Lida', PLAYED: 'Áudio ouvido', SERVER_ACK: 'Recebida pelo servidor do WhatsApp', PENDING: 'Pendente' }[stName] ?? stName,
+            });
+          }
           this.dispatcher.enqueue('messages.update', {
             messageId: key.id,
             keyId: key.id,
@@ -365,7 +431,11 @@ export class Instance {
         // Mensagem apagada para todos
         if (update.message === null && Number(update.messageStubType) === 1) {
           activity = true;
+          this.ev('info', 'recebida', 'apagada_para_todos', { jid: key.remoteJid, messageId: key.id, summary: 'Mensagem apagada para todos' + (key.fromMe ? ' (por nós)' : ' pelo contato') });
           this.dispatcher.enqueue('messages.delete', { ...key, instanceId: this.name });
+        }
+        if (update.message && !update.status) {
+          this.ev('debug', 'recebida', 'mensagem_atualizada', { jid: key.remoteJid, messageId: key.id, summary: 'Mensagem atualizada (edição/enquete)', details: { campos: Object.keys(update) } });
         }
       }
     }
@@ -373,7 +443,20 @@ export class Instance {
     const deleted = events['messages.delete'];
     if (deleted && 'keys' in deleted) {
       activity = true;
-      for (const key of deleted.keys) this.dispatcher.enqueue('messages.delete', { ...key, instanceId: this.name });
+      for (const key of deleted.keys) {
+        this.ev('info', 'recebida', 'apagada', { jid: key.remoteJid, messageId: key.id, summary: 'Mensagem apagada' });
+        this.dispatcher.enqueue('messages.delete', { ...key, instanceId: this.name });
+      }
+    } else if (deleted && deleted.all) {
+      this.ev('info', 'recebida', 'conversa_limpa', { jid: deleted.jid, summary: 'Todas as mensagens da conversa foram apagadas' });
+    }
+
+    const receipts = events['message-receipt.update'];
+    if (receipts?.length) {
+      this.ev('debug', 'enviada', 'recibos', {
+        summary: `${receipts.length} recibo(s) de entrega/leitura`,
+        details: { amostra: receipts.slice(0, 5).map((r) => ({ id: r.key?.id, jid: r.key?.remoteJid, de: r.receipt?.userJid, lido: !!r.receipt?.readTimestamp })) },
+      });
     }
 
     if (events['message-receipt.update']?.length) activity = true;
@@ -384,47 +467,67 @@ export class Instance {
       this.dispatcher.enqueue('presence.update', events['presence.update']);
     }
 
-    for (const ev of ['contacts.upsert', 'contacts.update']) {
-      const list = events[ev];
+    for (const evName of ['contacts.upsert', 'contacts.update']) {
+      const list = events[evName];
       if (!list?.length) continue;
       activity = true;
       store.saveContacts(this.name, list).catch(() => {});
-      this.dispatcher.enqueue(ev, list.map((c) => this.contactPayload(c)));
+      this.dispatcher.enqueue(evName, list.map((c) => this.contactPayload(c)));
+      this.ev('debug', 'contato', evName === 'contacts.upsert' ? 'contatos_novos' : 'contatos_atualizados', { summary: `${list.length} contato(s) ${evName === 'contacts.upsert' ? 'recebidos' : 'atualizados'}` });
     }
 
     if (events['lid-mapping.update']) {
       const m = events['lid-mapping.update'];
       const pairs = Array.isArray(m) ? m : [m];
       store.saveContacts(this.name, pairs.filter((p) => p?.pn && p?.lid).map((p) => ({ id: jidNormalizedUser(p.pn), lid: p.lid, phoneNumber: jidNormalizedUser(p.pn) }))).catch(() => {});
+      this.ev('debug', 'contato', 'lid_numero', { summary: `${pairs.length} par(es) LID ↔ número aprendidos`, details: { pares: pairs.slice(0, 10) } });
     }
 
-    for (const ev of ['chats.upsert', 'chats.update', 'chats.delete']) {
-      if (events[ev]) {
+    for (const evName of ['chats.upsert', 'chats.update', 'chats.delete']) {
+      if (events[evName]) {
         activity = true;
-        this.dispatcher.enqueue(ev, events[ev]);
+        this.dispatcher.enqueue(evName, events[evName]);
       }
     }
 
     if (events['groups.upsert']) {
       activity = true;
-      for (const g of events['groups.upsert']) this.groupCache.set(g.id, g);
+      for (const g of events['groups.upsert']) {
+        this.groupCache.set(g.id, g);
+        this.ev('info', 'grupo', 'entrou_no_grupo', { jid: g.id, summary: `Número entrou/foi adicionado no grupo "${g.subject ?? ''}"`, details: { participantes: g.participants?.length ?? null } });
+      }
       this.dispatcher.enqueue('groups.upsert', events['groups.upsert']);
     }
     if (events['groups.update']) {
       activity = true;
-      for (const g of events['groups.update']) if (g.id) this.groupCache.del(g.id);
+      for (const g of events['groups.update']) {
+        if (g.id) this.groupCache.del(g.id);
+        this.ev('info', 'grupo', 'grupo_alterado', { jid: g.id, summary: 'Grupo alterado: ' + Object.keys(g).filter((k) => k !== 'id').join(', '), details: g });
+      }
       this.dispatcher.enqueue('groups.update', events['groups.update']);
     }
     if (events['group-participants.update']) {
       activity = true;
       const u = events['group-participants.update'];
       this.groupCache.del(u.id);
+      const nomes = { add: 'entraram', remove: 'saíram/foram removidos', promote: 'viraram admin', demote: 'deixaram de ser admin', modify: 'mudaram' };
+      const ids = (u.participants ?? []).map((p) => (typeof p === 'string' ? p : (p.phoneNumber || p.id)));
+      this.ev('info', 'grupo', 'participantes_' + u.action, {
+        jid: u.id,
+        summary: `${ids.length} participante(s) ${nomes[u.action] ?? u.action}`,
+        details: { participantes: ids.slice(0, 50), autor: u.authorPn || u.author || null },
+      });
       this.dispatcher.enqueue('group-participants.update', u);
     }
 
     if (events.call) {
       activity = true;
-      for (const call of events.call) await this.onCall(call);
+      for (const call of events.call) {
+        if (call.status === 'offer') {
+          this.ev('info', 'ligacao', 'ligacao_recebida', { jid: call.from, summary: `Ligação ${call.isVideo ? 'de vídeo ' : ''}recebida${call.isGroup ? ' (grupo)' : ''}`, details: { status: call.status } });
+        }
+        await this.onCall(call);
+      }
       this.dispatcher.enqueue('call', events.call);
     }
 
@@ -439,6 +542,7 @@ export class Instance {
       this.qrCount++;
       if (this.qrCount > config.qrLimit) {
         this.log.info({ count: this.qrCount - 1 }, 'QR Code não lido: desistindo (chame /instance/connect de novo)');
+        this.ev('warn', 'conexao', 'qr_nao_lido', { summary: `${this.qrCount - 1} QR Code(s) gerados e nenhum foi lido: conexão parada até clicar em Reconectar de novo` });
         this.stopping = 'qrlimit';
         try { sock.end(new Error('QR Code não lido')); } catch {}
         return;
@@ -455,10 +559,17 @@ export class Instance {
       this.dispatcher.enqueue('qrcode.updated', {
         qrcode: { instance: this.name, pairingCode: this.pairingCode ?? null, code: qr, base64 },
       });
+      this.ev('info', 'conexao', 'qr_gerado', { summary: `QR Code ${this.qrCount} de ${config.qrLimit} gerado (vale ~20 s)` });
     }
 
     if (connection === 'connecting' && current) {
       this.state = 'connecting';
+    }
+    if (u.isNewLogin && current) {
+      this.ev('info', 'conexao', 'qr_lido', { summary: 'QR Code/código lido no celular: aparelho novo pareado' });
+    }
+    if (u.receivedPendingNotifications && current) {
+      this.ev('info', 'conexao', 'pendentes_recebidas', { summary: 'WhatsApp terminou de entregar o que ficou pendente enquanto estava fora' });
     }
 
     if (connection === 'open' && current) {
@@ -475,6 +586,12 @@ export class Instance {
       this.resolveQrWaiters();
       await this.saveMeta();
       this.log.info({ owner: this.ownerJid }, 'conectado');
+      this.ev('info', 'conexao', 'conectado', {
+        jid: this.ownerJid,
+        status: 'open',
+        summary: `Conectado: ${this.ownerJid ? onlyDigits(this.ownerJid.split('@')[0]) : '?'}${this.profileName ? ' (' + this.profileName + ')' : ''}`,
+        details: { plataforma: sock.user?.platform ?? null, lid: sock.user?.lid ?? null },
+      });
       this.dispatcher.enqueue('connection.update', this.connectionPayload('open', 200));
       if (this.ownerJid) {
         sock.profilePictureUrl(this.ownerJid, 'image')
@@ -497,6 +614,7 @@ export class Instance {
     const err = lastDisconnect?.error;
     const code = err?.output?.statusCode ?? err?.statusCode ?? null;
     const reason = this.stopping;
+    const openedFor = this.openedAt ? Math.round((Date.now() - this.openedAt) / 1000) : null;
     this.sock = null;
     this.state = 'close';
     this.qr = null;
@@ -507,8 +625,20 @@ export class Instance {
     this.statusReason = code;
     this.lastDisconnectAt = Date.now();
     this.log.info({ code, reason, err: err?.message }, 'conexão fechada');
+    {
+      const planned = reason === 'restart' || reason === 'qrlimit' || code === DisconnectReason.restartRequired;
+      const grave = [DisconnectReason.loggedOut, DisconnectReason.connectionReplaced, DisconnectReason.forbidden, DisconnectReason.badSession].includes(code);
+      this.ev(planned ? 'info' : (grave ? 'error' : 'warn'), 'conexao', 'desconectado', {
+        status: 'close',
+        http: Number.isFinite(code) ? code : undefined,
+        summary: `Conexão fechada: ${disconnectReasonName(code)}${reason ? ' (motivo interno: ' + reason + ')' : ''}`,
+        error: err?.message ?? null,
+        details: { codigo: code, motivo: reason, ficouConectadoSeg: openedFor, dados: err?.data ?? null },
+      });
+    }
 
     if (code === DisconnectReason.loggedOut) {
+      this.ev('error', 'conexao', 'sessao_encerrada_no_celular', { summary: 'O aparelho foi desconectado pelo celular (ou o WhatsApp encerrou a sessão). Precisa ler o QR Code de novo.' });
       // Aparelho removido no celular: a sessão não vale mais
       this.auth?.discard();
       await deleteSession(this.name).catch(() => {});
@@ -529,10 +659,12 @@ export class Instance {
     if (reason === 'qrlimit' || !this.registered) return; // QR Code não lido: espera novo /connect
     if (code === DisconnectReason.connectionReplaced) {
       this.log.warn('outra sessão abriu com este número (440): não reconecta sozinho');
+      this.ev('error', 'conexao', 'outra_sessao', { summary: 'Outra sessão abriu com este número (440): o mesmo número está conectado em outro lugar (outra instância, Evolution antiga, outro sistema). Não reconecta sozinho.' });
       return;
     }
     if (code === DisconnectReason.forbidden) {
       this.log.warn('WhatsApp recusou a conexão (403): não reconecta sozinho');
+      this.ev('error', 'conexao', 'recusado_whatsapp', { summary: 'O WhatsApp recusou a conexão (403): número possivelmente bloqueado/banido. Não reconecta sozinho.' });
       return;
     }
     this.scheduleReconnect();
@@ -543,7 +675,27 @@ export class Instance {
     const key = msg?.key;
     if (!key?.remoteJid || !key.id) return false;
     if (isJidStatusBroadcast(key.remoteJid) || key.remoteJid.endsWith('@newsletter')) return false;
-    if (!msg.message) return false;
+    const group = isGroupJid(key.remoteJid);
+    const who = key.participantAlt || key.participant || key.remoteJidAlt || key.remoteJid;
+    if (!msg.message) {
+      // Mensagem que chegou mas não pôde ser lida (criptografia). O Baileys pede
+      // o reenvio ao aparelho do contato; se der certo, chega de novo com o mesmo id.
+      if (msg.messageStubType) {
+        const params = msg.messageStubParameters ?? [];
+        const isCipher = Number(msg.messageStubType) === 2;
+        this.ev(isCipher ? 'error' : 'debug', isCipher ? 'criptografia' : 'recebida', isCipher ? 'nao_descriptografada' : 'aviso_sistema', {
+          jid: key.remoteJid,
+          messageId: key.id,
+          summary: isCipher
+            ? `Mensagem ${group ? 'no grupo' : 'privada'} chegou mas NÃO pôde ser lida (${params[0] ?? 'falha de criptografia'}). O serviço pediu o reenvio ao aparelho de quem mandou.`
+            : `Aviso do WhatsApp (tipo ${msg.messageStubType})`,
+          details: { de: who, tipo: msg.messageStubType, parametros: params, pushName: msg.pushName ?? null },
+        });
+        if (!key.fromMe) this.lastInboundAt = Date.now();
+        return !key.fromMe;
+      }
+      return false;
+    }
 
     store.saveMessage(this.name, msg);
 
@@ -562,13 +714,61 @@ export class Instance {
     }
 
     const type = messageTypeOf(msg.message);
-    if (IGNORED_TYPES.has(type)) return !isEcho;
+    const base = { jid: key.remoteJid, messageId: key.id };
+    if (IGNORED_TYPES.has(type)) {
+      this.ev('debug', 'recebida', 'ignorada_tipo_tecnico', { ...base, summary: `Pacote técnico do WhatsApp ignorado (${type})` });
+      return !isEcho;
+    }
     if (type === 'protocolMessage') {
       const pt = msg.message.protocolMessage?.type ?? msg.message.ephemeralMessage?.message?.protocolMessage?.type;
-      if (!KEPT_PROTOCOL_TYPES.has(pt)) return false;
+      if (!KEPT_PROTOCOL_TYPES.has(pt)) {
+        this.ev('debug', 'recebida', 'ignorada_protocolo', { ...base, summary: `Mensagem de protocolo ignorada (${pt})` });
+        return false;
+      }
     }
-    if (isEcho) return false; // o envio pela API já gerou o SEND_MESSAGE
-    if (this.settings.groupsIgnore && isGroupJid(key.remoteJid)) return true;
+    if (isEcho) {
+      this.ev('debug', 'enviada', 'eco_do_envio', { ...base, summary: 'Eco do envio feito pelo sistema (já registrado)' });
+      return false; // o envio pela API já gerou o SEND_MESSAGE
+    }
+
+    // Registro da mensagem
+    const inner = msg.message?.[type] ?? null;
+    const preview = typeof msg.message?.conversation === 'string' ? msg.message.conversation
+      : (msg.message?.extendedTextMessage?.text ?? inner?.caption ?? '');
+    if (type === 'reactionMessage') {
+      const r = msg.message.reactionMessage;
+      this.ev('info', 'reacao', r?.text ? 'reacao_recebida' : 'reacao_removida', {
+        ...base,
+        summary: r?.text
+          ? `${key.fromMe ? 'Nós reagimos' : 'Reação'} ${r.text} ${group ? 'no grupo' : 'na conversa'} à mensagem ${r.key?.id ?? '?'}`
+          : `Reação removida da mensagem ${r?.key?.id ?? '?'}`,
+        details: { de: who, pushName: msg.pushName ?? null, mensagemReagida: r?.key?.id ?? null, conversaDaMensagem: r?.key?.remoteJid ?? null, tipoEntrega: upsertType },
+      });
+    } else {
+      this.ev('info', key.fromMe ? 'enviada' : 'recebida', key.fromMe ? 'enviada_pelo_celular' : (group ? 'recebida_grupo' : 'recebida_privada'), {
+        ...base,
+        status: type,
+        summary: `${key.fromMe ? 'Enviada pelo celular' : 'Recebida'} ${group ? 'no grupo' : ''} · ${type}${preview ? ' · "' + String(preview).slice(0, 80) + '"' : ''}`,
+        details: {
+          de: key.fromMe ? 'nós' : who,
+          pushName: msg.pushName ?? null,
+          tipo: type,
+          tipoEntrega: upsertType,
+          tamanho: inner?.fileLength ? Number(inner.fileLength) : null,
+          mime: inner?.mimetype ?? null,
+          temCitacao: !!inner?.contextInfo?.stanzaId,
+          horario: tsToNumber(msg.messageTimestamp),
+        },
+      });
+    }
+    if (upsertType && upsertType !== 'notify') {
+      this.ev('debug', 'recebida', 'entrega_atrasada', { ...base, summary: `Mensagem entregue depois (tipo "${upsertType}": estava pendente ou veio do celular)` });
+    }
+
+    if (this.settings.groupsIgnore && group) {
+      this.ev('debug', 'recebida', 'grupo_ignorado', { ...base, summary: 'Grupo ignorado pela configuração da instância' });
+      return true;
+    }
 
     if (this.settings.readMessages && !key.fromMe && upsertType === 'notify' && this.sock) {
       this.sock.readMessages([key]).catch(() => {});
@@ -582,10 +782,31 @@ export class Instance {
 
   /** Mídia em base64 dentro do message (como a Evolution com webhook base64 ligado). */
   async attachBase64(data, msg) {
-    const media = await downloadMedia(this.sock, msg);
+    const t0 = Date.now();
+    let media;
+    try {
+      media = await downloadMedia(this.sock, msg);
+    } catch (e) {
+      this.ev('error', 'midia', 'download_falhou', {
+        jid: msg.key?.remoteJid, messageId: msg.key?.id, ms: Date.now() - t0,
+        summary: 'Não foi possível baixar a mídia recebida (o sistema recebe a mensagem sem o arquivo e tenta baixar depois)',
+        error: e.message,
+      });
+      throw e;
+    }
     if (!media) return data;
     // Corpo do webhook precisa caber no post_max_size do PHP (base64 = +33%)
-    if (media.buffer.length > Math.min(config.maxMediaBytes, 45 * 1024 * 1024)) return data;
+    if (media.buffer.length > Math.min(config.maxMediaBytes, 45 * 1024 * 1024)) {
+      this.ev('warn', 'midia', 'grande_demais_para_webhook', {
+        jid: msg.key?.remoteJid, messageId: msg.key?.id,
+        summary: `Mídia de ${Math.round(media.buffer.length / 1048576)} MB grande demais para ir junto no webhook: o sistema baixa depois`,
+      });
+      return data;
+    }
+    this.ev('debug', 'midia', 'baixada', {
+      jid: msg.key?.remoteJid, messageId: msg.key?.id, ms: Date.now() - t0, status: media.type,
+      summary: `Mídia baixada (${media.mimetype}, ${Math.round(media.buffer.length / 1024)} KB) em ${Date.now() - t0} ms`,
+    });
     return { ...data, message: { ...(data.message ?? {}), base64: media.buffer.toString('base64') } };
   }
 
@@ -608,8 +829,10 @@ export class Instance {
     try {
       await this.sock.rejectCall(call.id, call.from);
       if (this.settings.msgCall) await this.sock.sendMessage(call.from, { text: String(this.settings.msgCall) });
+      this.ev('info', 'ligacao', 'ligacao_recusada', { jid: call.from, summary: 'Ligação recusada automaticamente' + (this.settings.msgCall ? ' (com mensagem)' : '') });
     } catch (e) {
       this.log.warn({ err: e.message }, 'falha ao recusar ligação');
+      this.ev('error', 'ligacao', 'recusar_falhou', { jid: call.from, summary: 'Falha ao recusar a ligação', error: e.message });
     }
   }
 
@@ -645,22 +868,30 @@ export class Instance {
     const digits = onlyDigits(jid);
     const cached = this.waCache.get(digits);
     if (cached) return cached;
-    if (cached === false) throw new HttpError(400, [{ exists: false, jid, number: digits }]);
+    if (cached === false) {
+      this.ev('warn', 'enviada', 'numero_sem_whatsapp', { jid, summary: `O número ${digits} não tem WhatsApp (conferido há pouco): envio recusado` });
+      throw new HttpError(400, [{ exists: false, jid, number: digits }]);
+    }
     const sock = this.ensureOpen();
     let res;
     try {
       res = await sock.onWhatsApp(...brVariants(digits));
     } catch (e) {
       this.log.warn({ err: e.message }, 'consulta onWhatsApp falhou: enviando para o número como veio');
+      this.ev('warn', 'enviada', 'consulta_numero_falhou', { jid, summary: `Não foi possível conferir se ${digits} tem WhatsApp: enviando para o número como veio`, error: e.message });
       return jid;
     }
     const found = (res ?? []).find((r) => r.exists);
     if (found?.jid) {
       const real = jidNormalizedUser(found.jid);
       this.waCache.set(digits, real);
+      if (onlyDigits(real.split('@')[0]) !== digits) {
+        this.ev('debug', 'enviada', 'numero_corrigido', { jid: real, summary: `Número ${digits} corrigido para ${onlyDigits(real.split('@')[0])} (nono dígito)` });
+      }
       return real;
     }
     this.waCache.set(digits, false, 10 * 60 * 1000);
+    this.ev('warn', 'enviada', 'numero_sem_whatsapp', { jid, summary: `O número ${digits} não tem WhatsApp: envio recusado`, details: { variantesTestadas: brVariants(digits) } });
     throw new HttpError(400, [{ exists: false, jid, number: digits }]);
   }
 
@@ -772,10 +1003,36 @@ export class Instance {
     if (quoted) sendOpts.quoted = quoted;
     if (opts.statusJidList) sendOpts.statusJidList = opts.statusJidList;
 
-    const msg = await sock.sendMessage(jid, content, sendOpts);
-    if (!msg) throw new HttpError(500, 'O WhatsApp não confirmou o envio');
+    const kind = Object.keys(content).filter((k) => !['mentions', 'caption', 'mimetype', 'fileName', 'ptt', 'seconds'].includes(k))[0] ?? 'mensagem';
+    const t0 = Date.now();
+    let msg;
+    try {
+      msg = await sock.sendMessage(jid, content, sendOpts);
+    } catch (e) {
+      this.apiSent.del(messageId);
+      this.ev('error', 'enviada', 'envio_falhou', {
+        jid, messageId, ms: Date.now() - t0, status: kind,
+        summary: `Falha ao enviar ${kind} para ${jid}: ${e.message}`,
+        error: e.stack || e.message,
+        details: { tipo: kind, grupo: isGroupJid(jid), comCitacao: !!quoted, mencoes: content.mentions?.length ?? 0, socket: this.state, dados: e.data ?? null },
+      });
+      throw e;
+    }
+    if (!msg) {
+      this.ev('error', 'enviada', 'envio_sem_retorno', { jid, messageId, status: kind, summary: 'O WhatsApp não confirmou o envio (retorno vazio)' });
+      throw new HttpError(500, 'O WhatsApp não confirmou o envio');
+    }
     this.apiSent.set(msg.key.id, 1);
     this.lastOutboundAt = Date.now();
+    this.pendingAcks.set(msg.key.id, { jid, at: Date.now(), type: kind });
+    {
+      const txt = content.text ?? content.caption ?? (content.react ? content.react.text : '') ?? '';
+      this.ev('info', 'enviada', content.react ? 'reacao_enviada' : (content.delete ? 'apagada_pelo_sistema' : 'enviada_pelo_sistema'), {
+        jid, messageId: msg.key.id, ms: Date.now() - t0, status: kind,
+        summary: `Enviada pelo sistema ${isGroupJid(jid) ? 'no grupo' : 'para ' + onlyDigits(jid.split('@')[0])} · ${kind}${txt ? ' · "' + String(txt).slice(0, 80) + '"' : ''}`,
+        details: { tipo: kind, grupo: isGroupJid(jid), comCitacao: !!quoted, mencoes: content.mentions?.length ?? 0, atrasoDigitandoMs: delay || 0, numeroPedido: String(number).slice(0, 80) },
+      });
+    }
     store.saveMessage(this.name, msg);
     const rec = await toEvolutionMessage(msg, this.name, (lid) => this.lidToPn(lid));
     this.dispatcher.enqueue('send.message', rec);
@@ -817,6 +1074,9 @@ export class Instance {
       lastOutboundAt: this.lastOutboundAt ? new Date(this.lastOutboundAt).toISOString() : null,
       uptime: this.openedAt ? sec(this.openedAt) : 0,
       statusReason: this.statusReason ?? null,
+      registered: this.registered,
+      pendingAcks: this.pendingAcks.size,
+      reconnectAttempts: this.reconnectAttempts,
       webhook: {
         queued: this.dispatcher.queue.length,
         delivered: this.dispatcher.stats.delivered,
@@ -844,6 +1104,12 @@ export class Instance {
       return { status: 409, body: { ok: false, ...base, reason: 'instância saudável — heal não aplicado' } };
     }
     this.lastHealAt = Date.now();
+    this.ev('warn', 'monitor', force ? 'reconexao_forcada' : 'reconexao_por_silencio', {
+      summary: force
+        ? 'Reconexão sem QR Code pedida manualmente pelo sistema'
+        : `Conexão "muda" (sem eventos há ${st.lastEventSecondsAgo ?? '?'} s): reconectando sem QR Code`,
+      details: st,
+    });
     await this.restart();
     return { status: 200, body: { ok: true, action: 'restart', ...base } };
   }

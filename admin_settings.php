@@ -1405,6 +1405,16 @@ WAJS;
             . '<input type="number" min="0" step="1" name="settings[baileys.message_retention_days]" value="' . h($retVal !== '' ? $retVal : '0') . '" style="max-width:160px">'
             . '<span class="helpText"><strong>0 = guardar para sempre</strong> (padrão: nenhuma mensagem é apagada). Com um número de dias, o serviço apaga as mensagens mais antigas que isso. '
             . 'As conversas do chat do sistema não são afetadas; isto vale para a cópia que o serviço usa para baixar mídia antiga e para o botão Sincronizar.</span></label>';
+
+        // Log detalhado (/admin_whatsapp_eventos.php)
+        $evRetVal = (string)($settings['baileys.event_log_retention_days'] ?? '90');
+        echo '<label>Guardar o log de eventos do WhatsApp por (dias)'
+            . '<input type="number" min="0" step="1" name="settings[baileys.event_log_retention_days]" value="' . h($evRetVal !== '' ? $evRetVal : '90') . '" style="max-width:160px">'
+            . '<span class="helpText">Padrão: 90 dias. <strong>0 = guardar para sempre</strong>. É o log da tela <a href="/admin_whatsapp_eventos.php">Eventos do WhatsApp</a> (não apaga mensagens).</span></label>';
+        $evDebug = (string)($settings['baileys.event_log_debug'] ?? '1') !== '0';
+        echo '<input type="hidden" name="settings[baileys.event_log_debug]" value="0">';
+        echo '<label style="display:flex;align-items:flex-start;gap:8px;font-weight:600"><input type="checkbox" name="settings[baileys.event_log_debug]" value="1"' . ($evDebug ? ' checked' : '') . ' style="width:18px;height:18px;margin-top:2px">'
+            . '<span>Gravar também os eventos de detalhe no log<span class="helpText" style="display:block;font-weight:400">Cada entrega ao sistema, confirmação de envio, mensagem gravada no chat, mídia baixada. Deixa a viagem de cada mensagem completa; desligue só se o banco crescer demais.</span></span></label>';
         
         echo '</div>';
 
@@ -1432,7 +1442,7 @@ WAJS;
         echo 'Uma conexão pode aparecer como "conectada" e mesmo assim parar de receber mensagens. O serviço WhatsApp observa os eventos reais de cada número: ';
         echo 'sem eventos há mais de 30 min, o sistema mostra <strong>Suspeita de queda</strong>, tenta 1 reconexão automática (sem QR Code) e, se não resolver em 5 min, avisa os administradores e os usuários do número. ';
         echo 'O monitor usa a mesma URL e API Key acima; não há outra configuração. ';
-        echo '<a href="/admin_whatsapp_monitor.php">Ver o histórico de 72 h de cada número</a>.';
+        echo '<a href="/admin_whatsapp_monitor.php">Ver o histórico de 72 h de cada número</a> · <a href="/admin_whatsapp_eventos.php"><strong>Eventos do WhatsApp</strong> (log detalhado de tudo o que acontece)</a>.';
         echo '</div>';
         echo '<div style="display:grid;gap:12px">';
         echo '<input type="hidden" name="settings[baileys.watchdog_auto_heal]" value="0">';

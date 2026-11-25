@@ -174,8 +174,37 @@ banco, e o serviço novo reconecta sozinho.
 |---|---|
 | Configurações → WhatsApp Conexão → Credenciais | Situação do serviço |
 | Configurações → WhatsApp Conexão → Instâncias | Situação de cada número (Conectado / Suspeita de queda / Aguardando QR) |
-| `/admin_whatsapp_monitor.php` | Gráfico de 72 h de cada número e **log do serviço** |
+| **`/admin_whatsapp_eventos.php`** | **Eventos do WhatsApp**: log detalhado de tudo (ver abaixo) |
+| `/admin_whatsapp_monitor.php` | Gráfico de 72 h de cada número e log do serviço |
 | `/admin_webhook_debug.php` | Webhook de cada número e o que chegou |
+
+### Eventos do WhatsApp (`/admin_whatsapp_eventos.php`)
+
+Uma linha para cada coisa que acontece, gravada pelo **serviço** (WhatsApp) e pelo
+**sistema** (o que ele fez com cada evento):
+
+- **Agora, por número** (topo): o que está parado e o motivo. Desconectado (com o
+  código), aguardando QR Code, conexão "muda", sem receber há muito tempo,
+  mensagens que chegam no serviço mas não no sistema, entregas ao sistema que
+  falharam, envios sem confirmação do WhatsApp, mensagens que não puderam ser
+  lidas (criptografia), mídias perdidas e quedas nas últimas 24 h.
+- **Filtros**: período, número, nível (erros, avisos...), categoria (conexão,
+  recebidas, enviadas, reações, captação, entrega ao sistema, mídia, grupos...),
+  origem, busca por texto e **id da mensagem ou conversa**.
+- **Viagem da mensagem**: clique no `msg ...` de uma linha para ver, do mais antigo
+  ao mais novo, tudo o que aconteceu com ela. Exemplo: recebida no serviço →
+  entregue ao sistema → colocada na fila → gravada no chat. Para uma reação, a
+  viagem mostra também se virou interesse na captação ou por que não virou.
+- **O que mais deu problema no período**: os erros que mais se repetem.
+- **Baixar planilha**: os eventos filtrados num arquivo CSV (para mandar ao suporte).
+- **Atualizar sozinho**: recarrega a cada 15 s (não recarrega com um detalhe aberto).
+
+Em **Configurações → WhatsApp Conexão → Credenciais**:
+- **Guardar o log de eventos por (dias)**: padrão 90. 0 = para sempre. As
+  mensagens não são apagadas por isso.
+- **Gravar também os eventos de detalhe**: ligado por padrão. Registra cada
+  entrega, confirmação, gravação no chat e mídia baixada. Desligue só se o banco
+  crescer demais.
 
 ---
 

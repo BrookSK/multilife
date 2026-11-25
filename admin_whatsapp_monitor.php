@@ -100,7 +100,8 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
     . 'Minutos sem receber nenhuma mensagem (registro a cada 5 min pelo serviço WhatsApp). '
     . 'Verde até 30 min; laranja acima de 30 min; vermelho acima de 2 h; cinza = desconectado; amarelo = aguardando QR Code. '
     . 'Socket aberto com barra subindo sem parar = o número parou de receber.</div></div>';
-echo '<a class="btn" href="/admin_settings.php?aba=whatsapp-instancias">Voltar</a>';
+echo '<div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn btnPrimary" href="/admin_whatsapp_eventos.php">Eventos do WhatsApp (log detalhado)</a>';
+echo '<a class="btn" href="/admin_settings.php?aba=whatsapp-instancias">Voltar</a></div>';
 echo '</div>';
 echo '<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">';
 echo '<select name="instance" style="padding:6px 10px"><option value="">Todos os números</option>';

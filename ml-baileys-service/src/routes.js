@@ -11,6 +11,7 @@ import { toEvolutionGroup, toEvolutionMessage } from './format.js';
 import { currentWaVersion } from './instance.js';
 import { query } from './db.js';
 import { state } from './state.js';
+import { ev } from './events.js';
 import {
   HttpError, isGroupJid, isLid, isPn, mediaInput, onlyDigits, safeEqual, toJid,
 } from './util.js';
@@ -28,10 +29,13 @@ const wrap = (fn, okStatus = 200) => async (req, res) => {
     }
     res.status(okStatus).json(out ?? {});
   } catch (e) {
+    // O registro da chamada (middleware apiEventLog) usa o motivo do erro
+    res.locals.errMsg = typeof e?.message === 'string' ? e.message : JSON.stringify(e?.message ?? e);
     if (e instanceof HttpError) {
       res.status(e.status).json(e.toJSON());
       return;
     }
+    res.locals.errStack = e?.stack ?? null;
     const boomStatus = e?.output?.statusCode;
     const status = boomStatus && boomStatus >= 400 && boomStatus < 600 ? (boomStatus === 428 ? 400 : boomStatus) : 500;
     logger.warn({ path: req.path, err: e?.message }, 'erro na rota');
@@ -41,6 +45,50 @@ const wrap = (fn, okStatus = 200) => async (req, res) => {
 
 const param = (req, name) => req.body?.[name] ?? req.query?.[name];
 const truthy = (v) => v === true || v === 'true' || v === '1' || v === 1;
+
+// Rotas consultadas o tempo todo pelo monitor: só entram no log se derem erro
+const QUIET_PATHS = /^\/(health|status|service\/logs|instance\/connectionState|instance\/fetchInstances|webhook\/find|settings\/find)(\/|$)/;
+// Ações que mudam algo: entram como "info" (as demais chamadas que deram certo, "debug")
+const ACTION_PATHS = /^\/(instance\/(create|connect|restart|logout|delete)|webhook\/set|settings\/set|heal|redispatch|group\/(create|leaveGroup|updateParticipant|updateSetting))(\/|$)/;
+
+/** Cada chamada da API (rota, resposta, tempo, erro) no log detalhado. */
+function apiEventLog(req, res, next) {
+  const t0 = Date.now();
+  res.on('finish', () => {
+    const st = res.statusCode;
+    const quiet = QUIET_PATHS.test(req.path);
+    if (quiet && st < 400) return;
+    const segs = req.path.split('/').filter(Boolean).map((s) => {
+      try { return decodeURIComponent(s); } catch { return s; }
+    });
+    const instName = segs.length >= 3 ? segs[2] : (segs[0] === 'heal' || segs[0] === 'redispatch' || segs[0] === 'status' ? segs[1] : null);
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const number = b.number ?? b.groupJid ?? b.key?.remoteJid ?? b.remoteJid ?? req.query?.groupJid ?? null;
+    const route = `${req.method} /${segs.slice(0, 2).join('/')}`;
+    const level = st === 503 ? 'warn' : st >= 500 ? 'error' : (st === 401 ? 'warn' : (st >= 400 ? 'warn' : (ACTION_PATHS.test(req.path) ? 'info' : 'debug')));
+    const err = res.locals.errMsg ?? null;
+    ev(level, st === 401 ? 'seguranca' : 'api', st === 401 ? 'chave_invalida' : (st >= 400 ? 'api_erro' : 'api_ok'), {
+      instance: instName && manager.get(instName) ? instName : (instName ? String(instName).slice(0, 100) : null),
+      jid: number ? String(number).slice(0, 150) : null,
+      http: st,
+      ms: Date.now() - t0,
+      status: route.slice(0, 40),
+      summary: st === 401
+        ? `Chamada recusada: chave da API inválida (${route}, de ${req.ip})`
+        : `${route} → HTTP ${st} em ${Date.now() - t0} ms${err ? ' · ' + String(err).slice(0, 300) : ''}`,
+      error: st >= 400 ? (res.locals.errStack ?? err) : null,
+      details: {
+        rota: req.method + ' ' + req.path,
+        ip: req.ip,
+        corpoKB: Math.round(Number(req.get('content-length') || 0) / 1024),
+        campos: Object.keys(b).slice(0, 30),
+        ...(b.text ? { texto: String(b.text).slice(0, 200) } : {}),
+        ...(b.mediatype ? { midia: b.mediatype } : {}),
+      },
+    });
+  });
+  next();
+}
 
 /** Antes de ficar pronto (configuração, banco, trava de líder), só /health responde. */
 function readyMiddleware(req, res, next) {
@@ -67,10 +115,12 @@ function authMiddleware(req, res, next) {
 export function buildApp() {
   const app = express();
   app.disable('x-powered-by');
+  app.use(apiEventLog);
   app.use(express.json({ limit: '100mb' }));
   app.use((err, req, res, next) => {
     // JSON inválido no corpo
     if (err) {
+      res.locals.errMsg = 'JSON inválido: ' + err.message;
       res.status(400).json(new HttpError(400, 'JSON inválido: ' + err.message).toJSON());
       return;
     }

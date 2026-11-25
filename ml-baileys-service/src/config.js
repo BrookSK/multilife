@@ -126,6 +126,10 @@ function build(rt) {
     messageRetentionDays: Math.max(0, num(pick('MESSAGE_RETENTION_DAYS', first(s['baileys.message_retention_days'], r.message_retention_days), '0'), 0)),
     maxMediaBytes: Math.max(1, num(pick('MAX_MEDIA_MB', null, '64'), 64)) * 1024 * 1024,
 
+    /** Log detalhado (baileys_event_log): dias guardados (0 = para sempre) e se grava o nível "debug". */
+    eventLogRetentionDays: Math.max(0, num(pick('EVENT_LOG_RETENTION_DAYS', first(s['baileys.event_log_retention_days'], r.event_log_retention_days), '90'), 90)),
+    eventLogDebug: pick('EVENT_LOG_DEBUG', first(s['baileys.event_log_debug'], r.event_log_debug), '1') !== '0',
+
     monitor: {
       /** Sem eventos há mais que isso com o socket aberto = "silent" (suspeita de queda). */
       silentSec: Math.max(60, num(pick('SILENT_THRESHOLD_SEC', null, '1800'), 1800)),

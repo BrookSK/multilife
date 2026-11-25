@@ -1,6 +1,7 @@
 // Registro das instâncias em memória + tabela baileys_instances.
 import { exec, query } from './db.js';
 import { logger } from './logger.js';
+import { ev } from './events.js';
 import { deleteSession, hasLogin } from './authState.js';
 import { Instance } from './instance.js';
 import * as store from './store.js';
@@ -29,12 +30,18 @@ export async function loadAll() {
   const rows = await query('SELECT * FROM baileys_instances ORDER BY created_at ASC');
   for (const row of rows) instances.set(row.name, new Instance(row));
   logger.info({ total: rows.length }, 'instâncias carregadas');
+  ev('info', 'sistema', 'instancias_carregadas', { summary: `${rows.length} instância(s) carregadas do banco`, details: { nomes: rows.map((r) => r.name) } });
   // Reconecta uma de cada vez (evita rajada de conexões do mesmo IP)
   (async () => {
     for (const inst of instances.values()) {
       if (await hasLogin(inst.name).catch(() => false)) {
-        inst.start().catch((e) => inst.log.error({ err: e.message }, 'falha ao iniciar'));
+        inst.start().catch((e) => {
+          inst.log.error({ err: e.message }, 'falha ao iniciar');
+          inst.ev('error', 'conexao', 'falha_ao_iniciar', { summary: 'Falha ao iniciar a conexão com a sessão salva: ' + e.message, error: e.stack || e.message });
+        });
         await sleep(1500);
+      } else {
+        inst.ev('warn', 'conexao', 'sem_sessao', { summary: 'Instância sem sessão salva: fica desconectada até ler o QR Code (Reconectar)' });
       }
     }
   })();
@@ -79,6 +86,7 @@ export async function create(body) {
   const inst = new Instance(row);
   instances.set(name, inst);
   logger.info({ instance: name }, 'instância criada');
+  inst.ev('info', 'conexao', 'instancia_criada', { summary: 'Instância criada no serviço', details: { webhook: webhook?.url ?? '(padrão do serviço)', opcoes: settings } });
 
   let qrcode = null;
   if (body.qrcode === true || body.qrcode === 'true' || body.number) {
@@ -86,6 +94,7 @@ export async function create(body) {
       qrcode = await inst.connect(body.number ? String(body.number) : '');
     } catch (e) {
       inst.log.warn({ err: e.message }, 'falha ao gerar QR Code na criação');
+      inst.ev('error', 'conexao', 'qr_na_criacao_falhou', { summary: 'Falha ao gerar o QR Code na criação', error: e.message });
     }
   }
   const out = {
@@ -121,6 +130,12 @@ export async function remove(name) {
   await store.purgeInstance(name).catch(() => {});
   await exec('DELETE FROM baileys_instances WHERE name = ?', [name]);
   logger.info({ instance: name }, 'instância apagada');
+  ev('warn', 'conexao', 'instancia_apagada', { instance: name, summary: 'Instância apagada do serviço (sessão e mensagens guardadas dela removidas)' });
+}
+
+/** Envios sem confirmação do WhatsApp (chamado a cada 30 s). */
+export function checkPendingAcks() {
+  for (const inst of instances.values()) inst.checkPendingAcks();
 }
 
 export async function shutdownAll() {

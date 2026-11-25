@@ -1876,6 +1876,11 @@ foreach ($toSend as $row) {
             // Timeout/erro de rede: a API do WhatsApp pode ter enviado mesmo assim.
             // NÃO reenvia (duplicaria); confere pelo token no histórico do grupo.
             error_log("[DISPATCH] Envio para $jid via '$sendInstName' sem resposta: " . $sendErr->getMessage() . " — verificando se a mensagem chegou...");
+            wa_event_log('warn', 'captacao', 'disparo_sem_resposta', [
+                'instance' => (string)$sendInstName, 'jid' => $jid,
+                'summary' => 'Envio da captação sem resposta do serviço: conferindo no grupo se a mensagem chegou (até 40 s)',
+                'error' => $sendErr,
+            ]);
             $capToken = preg_match('/#CAP\d+-[A-F0-9]+/', $msgRow, $tm) ? $tm[0] : '';
             $foundId = null;
             for ($chk = 0; $chk < 4 && $foundId === null; $chk++) {
@@ -1890,6 +1895,10 @@ foreach ($toSend as $row) {
                 throw $sendErr; // não chegou: trata como erro (catch externo)
             }
             error_log("[DISPATCH] ✅ Mensagem confirmada no grupo $jid apesar do timeout (id=" . ($foundId !== '' ? $foundId : '?') . ").");
+            wa_event_log('info', 'captacao', 'disparo_confirmado_apos_timeout', [
+                'instance' => (string)$sendInstName, 'jid' => $jid, 'message_id' => $foundId !== '' ? $foundId : null,
+                'summary' => 'A captação chegou no grupo apesar da falta de resposta (achada pelo token)',
+            ]);
             $res = ['status' => 201, 'json' => $foundId !== '' ? ['key' => ['id' => $foundId]] : null];
         }
         $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
@@ -1952,6 +1961,12 @@ foreach ($toSend as $row) {
             
             $sent++;
             whatsapp_health_record((string)$sendInstName, 'send_ok', 'open', null);
+            wa_event_log('info', 'captacao', 'disparo_enviado', [
+                'instance' => (string)$sendInstName, 'jid' => $jid, 'message_id' => $externalMsgId,
+                'status' => preg_match('/#CAP\d+-[A-F0-9]+/', $msgRow, $tmEv) ? $tmEv[0] : null,
+                'summary' => 'Captação enviada ao grupo' . ($externalMsgId ? '' : ' (SEM o id da mensagem: reações dependem da busca pelo token)'),
+                'details' => ['disparo' => $logId ?? null, 'instanciaPadrao' => $apiInstanceName ?? null],
+            ]);
             
             // Salvar na chat_messages para aparecer no chat
             // O webhook pode ter gravado esta mensagem antes (mesmo key.id): não duplicar.
@@ -1977,9 +1992,19 @@ foreach ($toSend as $row) {
             $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($errText, 0, 255, '...'), 'id' => $logId]);
             $errCount++;
             whatsapp_health_record((string)$sendInstName, 'send_error', null, $errText);
+            wa_event_log('error', 'captacao', 'disparo_falhou', [
+                'instance' => (string)$sendInstName, 'jid' => $jid, 'http' => (int)($res['status'] ?? 0) ?: null,
+                'summary' => 'Captação NÃO enviada ao grupo: ' . mb_substr($errText, 0, 250),
+                'error' => $errText, 'details' => ['disparo' => $logId ?? null],
+            ]);
         }
     } catch (Throwable $e) {
         $lastDispatchError = $e->getMessage();
+        wa_event_log('error', 'captacao', 'disparo_falhou', [
+            'instance' => isset($sendInstName) ? (string)$sendInstName : null, 'jid' => $jid ?? null,
+            'summary' => 'Captação NÃO enviada ao grupo: ' . mb_substr($e->getMessage(), 0, 250),
+            'error' => $e, 'details' => ['disparo' => $logId ?? null],
+        ]);
         if (isset($sendInstName) && $sendInstName !== '') {
             whatsapp_health_record((string)$sendInstName, 'send_error', null, $e->getMessage());
         }

@@ -56,6 +56,30 @@ arquivo a cada 30 s; se os dados do banco mudarem, reinicia sozinho.
 (`message_retention_days = 0`). Prazo configurável no sistema em Configurações →
 WhatsApp Conexão → Credenciais (ou `MESSAGE_RETENTION_DAYS` no `.env`).
 
+**Log detalhado (`baileys_event_log`):** `src/events.js`. `ev(level, category,
+event, {instance, jid, messageId, status, http, ms, summary, error, details})`
+coloca a linha num buffer em memória. O buffer é gravado em lote a cada 2 s ou
+200 linhas e guarda até 10.000 linhas se o banco cair (o descarte também é
+registrado). O PHP grava na mesma tabela com `source = 'sistema'`
+(`app/whatsapp_event_log.php`). A tela é `/admin_whatsapp_eventos.php`.
+Prazo: `baileys.event_log_retention_days` (padrão 90, 0 = para sempre) ou
+`EVENT_LOG_RETENTION_DAYS`. Nível debug: `baileys.event_log_debug` ou
+`EVENT_LOG_DEBUG=0` para desligar.
+
+O que é registrado:
+- conexão, QR Code, pareamento, quedas com o código e o motivo, reconexões e reinícios;
+- mensagens recebidas, enviadas pelo sistema e pelo celular, apagadas e editadas;
+- reações, falhas de descriptografia e avisos do WhatsApp;
+- mídia baixada ou falha, grupos e participantes, ligações;
+- cada entrega ao webhook (ok, após tentativas, falha com HTTP e início da resposta,
+  fila cheia, instância sem webhook);
+- envios sem confirmação do servidor do WhatsApp em 2 min, número sem WhatsApp,
+  troca do nono dígito;
+- cada chamada da API (rota, HTTP, tempo, erro; as consultas do monitor só entram
+  quando dão erro), chave inválida;
+- situação de cada número a cada 5 min, memória do processo;
+- avisos e erros internos do Baileys e erros não tratados do processo.
+
 ## Comportamento para rodar sem ninguém por perto
 
 - O HTTP abre na hora; até ficar pronto, as rotas respondem 503 "iniciando"

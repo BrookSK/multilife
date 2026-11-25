@@ -480,6 +480,12 @@ function demand_dispatch_confirm_from_webhook(string $event, array $data): void
         if ($upd->rowCount() === 0) {
             return; // já estava confirmado
         }
+        if (function_exists('wa_event_log')) {
+            wa_event_log('info', 'captacao', 'disparo_confirmado', [
+                'jid' => $remoteJid, 'message_id' => $externalId !== '' ? $externalId : null, 'status' => $token,
+                'summary' => 'Captação #' . $demandId . ' confirmada no grupo pelo WhatsApp (' . $token . ')',
+            ]);
+        }
         // Encerra o acompanhamento que ainda estiver esperando a resposta do envio.
         db()->prepare("UPDATE demand_dispatch_runs
             SET status = 'completed', phase = 'done',
@@ -490,5 +496,11 @@ function demand_dispatch_confirm_from_webhook(string $event, array $data): void
             ->execute(['d' => $demandId]);
     } catch (Throwable $e) {
         error_log('[DISPATCH_CONFIRM] ' . $e->getMessage());
+        if (function_exists('wa_event_log')) {
+            wa_event_log('error', 'captacao', 'confirmar_disparo_falhou', [
+                'jid' => $remoteJid, 'message_id' => $externalId !== '' ? $externalId : null, 'status' => $token,
+                'summary' => 'Captação #' . $demandId . ': erro ao marcar o envio como confirmado', 'error' => $e,
+            ]);
+        }
     }
 }

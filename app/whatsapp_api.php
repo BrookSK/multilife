@@ -147,6 +147,8 @@ function wa_service_runtime_payload(): array
             ? $wh : ($system !== '' ? $system . '/chat_webhook.php' : ''),
         'message_retention_days' => wa_message_retention_days(),
         'status_retention_days' => max(0, (int)wa_setting('status_retention_days', '90')),
+        'event_log_retention_days' => function_exists('wa_event_log_retention_days') ? wa_event_log_retention_days() : 90,
+        'event_log_debug' => (string)admin_setting_get('baileys.event_log_debug', '1') === '0' ? '0' : '1',
     ];
 }
 
@@ -284,6 +286,7 @@ function wa_service_keepalive(bool $force = false): ?array
             }
         }
     }
+    wa_service_keepalive_log($h);
     if ($h['ok'] && !wa_api_base_url_is_manual() && $h['url'] !== rtrim((string)admin_setting_get('baileys.detected_url', ''), '/')) {
         try {
             wa_setting_save('baileys.detected_url', $h['url']);
@@ -291,6 +294,53 @@ function wa_service_keepalive(bool $force = false): ?array
         } catch (Throwable $e) {}
     }
     return $h;
+}
+
+/**
+ * Log do keepalive: registra quando o serviço sai do ar, enquanto continua
+ * fora (a cada 30 min) e quando volta. Não registra cada verificação boa.
+ */
+function wa_service_keepalive_log(array $h): void
+{
+    if (!function_exists('wa_event_log')) {
+        return;
+    }
+    try {
+        $since = (int)admin_setting_get('baileys.keepalive_fail_since', '0');
+        $lastLog = (int)admin_setting_get('baileys.keepalive_fail_logged', '0');
+        $d = is_array($h['data'] ?? null) ? $h['data'] : [];
+        if ($h['ok']) {
+            if ($since > 0) {
+                wa_setting_save('baileys.keepalive_fail_since', '0');
+                wa_event_log('info', 'sistema', 'servico_voltou', [
+                    'summary' => 'O serviço WhatsApp voltou a responder (ficou fora ' . max(1, (int)round((time() - $since) / 60)) . ' min)',
+                    'details' => ['url' => $h['url'], 'fase' => $d['phase'] ?? null],
+                ]);
+            } elseif (empty($d['ready']) && time() - $lastLog > 1800) {
+                // No ar, mas parado numa fase (aguardando chave, banco, outro processo...)
+                wa_setting_save('baileys.keepalive_fail_logged', (string)time());
+                wa_event_log('warn', 'sistema', 'servico_nao_pronto', [
+                    'summary' => 'O serviço WhatsApp está no ar mas ainda não ficou pronto: ' . (string)($d['phase'] ?? '?'),
+                    'error' => $d['error'] ?? null,
+                    'details' => ['url' => $h['url'], 'fase' => $d['phase'] ?? null, 'ligadoHaSeg' => $d['uptimeSec'] ?? null],
+                ]);
+            }
+            return;
+        }
+        if ($since <= 0) {
+            wa_setting_save('baileys.keepalive_fail_since', (string)time());
+        }
+        if ($since <= 0 || time() - $lastLog > 1800) {
+            wa_setting_save('baileys.keepalive_fail_logged', (string)time());
+            wa_event_log('error', 'sistema', 'servico_fora_do_ar', [
+                'summary' => 'O serviço WhatsApp NÃO respondeu ' . ($since > 0 ? '(fora há ' . (int)round((time() - $since) / 60) . ' min)' : '') . ': ' . (string)$h['error'] . '. Sem ele nada é enviado nem recebido.',
+                'http' => (int)($h['http'] ?? 0) ?: null,
+                'error' => (string)$h['error'],
+                'details' => ['url' => $h['url'], 'urlManual' => wa_api_base_url_is_manual(), 'candidatas' => wa_service_candidate_urls()],
+            ]);
+        }
+    } catch (Throwable $e) {
+    }
 }
 
 /**
@@ -373,6 +423,7 @@ final class WhatsAppApi
         if (count($query) > 0) {
             $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
         }
+        $t0 = microtime(true);
 
         try {
             $res = http_json_request($method, $url, ['apikey' => $this->apiKey], $body, $timeoutSeconds);
@@ -384,10 +435,12 @@ final class WhatsAppApi
             }
         } catch (Throwable $e) {
             integration_log('whatsapp', $method . ' ' . $path, 'error', null, ['query' => $query, 'body' => $body], null, mb_strimwidth($e->getMessage(), 0, 250, ''), 1);
+            $this->logEvent($method, $path, $body, null, $t0, $e);
             throw $e;
         }
 
         $ok = $res['status'] >= 200 && $res['status'] < 300;
+        $this->logEvent($method, $path, $body, $res, $t0, null);
         integration_log(
             'whatsapp',
             $method . ' ' . $path,
@@ -400,6 +453,69 @@ final class WhatsAppApi
         );
 
         return $res;
+    }
+
+    /**
+     * Log detalhado (/admin_whatsapp_eventos.php): erro em qualquer chamada ao
+     * serviço (inclusive serviço fora do ar, que o serviço não tem como registrar)
+     * e cada pedido de envio, com a parte do sistema que pediu.
+     */
+    private function logEvent(string $method, string $path, $body, ?array $res, float $t0, ?Throwable $e): void
+    {
+        if (!function_exists('wa_event_log')) {
+            return;
+        }
+        try {
+            $ms = (int)round((microtime(true) - $t0) * 1000);
+            $status = $res ? (int)$res['status'] : 0;
+            $route = $method . ' ' . preg_replace('#/[^/]+$#', '', parse_url($path, PHP_URL_PATH) ?: $path);
+            $isSend = (bool)preg_match('#^/?(message/send|chat/(deleteMessageForEveryone|updateMessage)|group/sendInvite)#', ltrim($path, '/'));
+            $b = is_array($body) ? $body : [];
+            $number = (string)($b['number'] ?? ($b['groupJid'] ?? ($b['key']['remoteJid'] ?? ($b['remoteJid'] ?? ''))));
+            $j = $res && is_array($res['json'] ?? null) ? $res['json'] : [];
+            $msgId = (string)($j['key']['id'] ?? '');
+            $base = [
+                'instance' => $this->instance,
+                'jid' => $number !== '' ? $number : null,
+                'message_id' => $msgId !== '' ? $msgId : null,
+                'http' => $status ?: null,
+                'ms' => $ms,
+                'status' => mb_substr($route, 0, 40),
+            ];
+            $caller = wa_event_log_caller();
+            if ($e !== null || $status === 0) {
+                wa_event_log('error', 'api', 'servico_inacessivel', $base + [
+                    'summary' => 'O sistema NÃO conseguiu falar com o serviço WhatsApp (' . $route . '): ' . mb_substr($e ? $e->getMessage() : 'sem resposta', 0, 250),
+                    'error' => $e,
+                    'details' => ['url' => $this->baseUrl, 'rota' => $method . ' ' . $path, 'quemChamou' => $caller, 'tempoMs' => $ms],
+                ]);
+                return;
+            }
+            if ($status >= 400) {
+                $msg = $j['response']['message'] ?? ($j['message'] ?? ($j['error'] ?? ''));
+                if (is_array($msg)) {
+                    $msg = json_encode($msg, JSON_UNESCAPED_UNICODE);
+                }
+                $msg = (string)$msg;
+                // 404 de instância na conexão é esperado: o cliente cria a instância e tenta de novo
+                $level = $status >= 500 ? 'error' : ($isSend ? 'error' : 'warn');
+                wa_event_log($level, $isSend ? 'enviada' : 'api', $isSend ? 'envio_recusado' : 'api_erro', $base + [
+                    'summary' => ($isSend ? 'Envio NÃO feito' : 'Chamada ao serviço falhou') . ' (' . $route . ' → HTTP ' . $status . ')' . ($msg !== '' ? ': ' . mb_substr($msg, 0, 250) : ''),
+                    'error' => $msg !== '' ? $msg : 'HTTP ' . $status,
+                    'details' => ['rota' => $method . ' ' . $path, 'quemChamou' => $caller, 'resposta' => mb_substr((string)($res['body_raw'] ?? ''), 0, 1500),
+                        'texto' => isset($b['text']) ? mb_substr((string)$b['text'], 0, 200) : null],
+                ]);
+                return;
+            }
+            if ($isSend) {
+                wa_event_log('debug', 'enviada', 'pedido_envio', $base + [
+                    'summary' => 'Sistema pediu o envio (' . $route . ') · ' . $caller . (isset($b['text']) ? ' · "' . mb_substr((string)$b['text'], 0, 80) . '"' : ''),
+                    'details' => ['quemChamou' => $caller, 'script' => (string)($_SERVER['SCRIPT_NAME'] ?? ''), 'tempoMs' => $ms],
+                ]);
+            }
+        } catch (Throwable $t) {
+            // o log nunca atrapalha o envio
+        }
     }
 
     /** Informações do serviço (versão do Baileys / WhatsApp Web). */

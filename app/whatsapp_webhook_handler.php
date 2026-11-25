@@ -37,7 +37,15 @@ function wa_webhook_handle(array $payload): void
 
     // Confirma o disparo de captação quando o eco da mensagem chega ao grupo
     if (function_exists('demand_dispatch_confirm_from_webhook')) {
-        try { demand_dispatch_confirm_from_webhook($event, $payload); } catch (Throwable $e) {}
+        try {
+            demand_dispatch_confirm_from_webhook($event, $payload);
+        } catch (Throwable $e) {
+            wa_event_log('error', 'captacao', 'confirmar_disparo_falhou', [
+                'instance' => $instance !== '' ? $instance : null, 'status' => $event,
+                'summary' => 'Erro ao confirmar o disparo de captação pelo eco da mensagem: ' . mb_substr($e->getMessage(), 0, 200),
+                'error' => $e,
+            ]);
+        }
     }
 
     switch ($event) {
@@ -275,11 +283,29 @@ function wa_wh_store_media(string $instance, array $msg, array $message, array $
             if (@file_put_contents($dir . '/' . $name, $bin) !== false) {
                 return '/uploads/chat_media/' . date('Y-m') . '/' . $name;
             }
+            wa_event_log('error', 'midia', 'gravar_arquivo_falhou', [
+                'jid' => $msg['key']['remoteJid'] ?? null, 'message_id' => $msg['key']['id'] ?? null, 'status' => (string)$parsed['type'],
+                'summary' => 'Não foi possível gravar a mídia recebida na pasta uploads/chat_media (permissão/espaço em disco)',
+                'details' => ['pasta' => $dir, 'kb' => round(strlen($bin) / 1024)],
+            ]);
+        } else {
+            wa_event_log('warn', 'midia', 'base64_invalido', [
+                'jid' => $msg['key']['remoteJid'] ?? null, 'message_id' => $msg['key']['id'] ?? null,
+                'summary' => 'A mídia veio no webhook com base64 inválido: tentando baixar pelo serviço',
+            ]);
         }
     }
     // Sem base64 no payload: pede o arquivo à API do WhatsApp
     $fetched = chat_wa_fetch_media($msg, $instance);
-    return $fetched['url'] ?? null;
+    $url = $fetched['url'] ?? null;
+    wa_event_log($url ? 'debug' : 'error', 'midia', $url ? 'baixada_pelo_sistema' : 'midia_perdida', [
+        'jid' => $msg['key']['remoteJid'] ?? null, 'message_id' => $msg['key']['id'] ?? null, 'status' => (string)$parsed['type'],
+        'summary' => $url
+            ? 'Mídia baixada do serviço pelo sistema (não veio junto no webhook)'
+            : 'Mídia NÃO ficou disponível: não veio no webhook e o download pelo serviço falhou (a mensagem fica sem o arquivo)',
+        'details' => ['mime' => $parsed['mime'] ?? null, 'arquivo' => $parsed['filename'] ?? null, 'tamanho' => $parsed['size'] ?? null],
+    ]);
+    return $url;
 }
 
 function wa_wh_media_ext(string $mime, string $filename, string $type): string
@@ -335,10 +361,21 @@ function wa_wh_process_message(string $instance, array $msg, string $event): voi
         if ($targetId !== '' && isset($proto['editedMessage']) && is_array($proto['editedMessage'])) {
             $edited = wa_wh_parse_content(wa_wh_unwrap($proto['editedMessage']));
             if ($edited && $edited['type'] === 'text') {
-                db()->prepare('UPDATE chat_messages SET message_text = ? WHERE external_message_id = ?')->execute([$edited['text'], $targetId]);
+                $up = db()->prepare('UPDATE chat_messages SET message_text = ? WHERE external_message_id = ?');
+                $up->execute([$edited['text'], $targetId]);
+                wa_event_log('info', 'processamento', 'mensagem_editada', [
+                    'jid' => $rawJid, 'message_id' => $targetId, 'status' => $event,
+                    'summary' => 'Mensagem editada' . ($fromMe ? ' (por nós)' : ' pelo contato') . ($up->rowCount() ? ': texto atualizado no chat' : ': não estava no chat do sistema'),
+                    'details' => ['novoTexto' => mb_substr((string)$edited['text'], 0, 300)],
+                ]);
             }
         } elseif ($targetId !== '' && (($proto['type'] ?? null) === 'REVOKE' || ($proto['type'] ?? null) === 0)) {
-            db()->prepare('DELETE FROM chat_messages WHERE external_message_id = ?')->execute([$targetId]);
+            $del = db()->prepare('DELETE FROM chat_messages WHERE external_message_id = ?');
+            $del->execute([$targetId]);
+            wa_event_log('info', 'processamento', 'mensagem_apagada', [
+                'jid' => $rawJid, 'message_id' => $targetId, 'status' => $event,
+                'summary' => 'Mensagem apagada para todos' . ($fromMe ? ' (por nós)' : ' pelo contato') . ($del->rowCount() ? ': removida do chat do sistema' : ': não estava no chat do sistema'),
+            ]);
         }
         return;
     }
@@ -505,6 +542,11 @@ function wa_wh_find_dispatch_for_message(string $targetId, string $chatJid, stri
         $res = $api->findRecentMessages($chatJid, 60, 6);
     } catch (Throwable $e) {
         error_log('[WEBHOOK] reação: falha ao buscar a mensagem na API do WhatsApp: ' . $e->getMessage());
+        wa_event_log('error', 'captacao', 'busca_mensagem_reagida_falhou', [
+            'instance' => $instanceName, 'jid' => $chatJid, 'message_id' => $targetId,
+            'summary' => 'Reação em grupo de captação: não deu para buscar a mensagem reagida no serviço (o interesse pode ter se perdido)',
+            'error' => $e,
+        ]);
         return null;
     }
     $j = is_array($res['json'] ?? null) ? $res['json'] : [];
@@ -644,7 +686,13 @@ function wa_wh_handle_delete($data): void
     $ids = array_values(array_unique($ids));
     if ($ids) {
         $ph = implode(',', array_fill(0, count($ids), '?'));
-        db()->prepare("DELETE FROM chat_messages WHERE external_message_id IN ($ph)")->execute($ids);
+        $del = db()->prepare("DELETE FROM chat_messages WHERE external_message_id IN ($ph)");
+        $del->execute($ids);
+        wa_event_log('info', 'processamento', 'mensagem_apagada', [
+            'message_id' => $ids[0], 'jid' => $data['key']['remoteJid'] ?? ($data['remoteJid'] ?? null), 'status' => 'messages.delete',
+            'summary' => count($ids) . ' mensagem(ns) apagada(s) no WhatsApp: ' . $del->rowCount() . ' removida(s) do chat do sistema',
+            'details' => ['ids' => array_slice($ids, 0, 20)],
+        ]);
     }
 }
 

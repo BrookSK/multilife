@@ -9,6 +9,12 @@ import { config } from './config.js';
 const RING_MAX = 400;
 export const recentLogs = [];
 
+/** Destino extra de cada linha (o index.js liga no log detalhado). */
+let sink = null;
+export const setLogSink = (fn) => {
+  sink = typeof fn === 'function' ? fn : null;
+};
+
 const out = new Writable({
   write(chunk, _enc, cb) {
     const s = chunk.toString();
@@ -17,6 +23,11 @@ const out = new Writable({
       if (!line) continue;
       recentLogs.push(line);
       if (recentLogs.length > RING_MAX) recentLogs.shift();
+      if (sink) {
+        try {
+          sink(line);
+        } catch {}
+      }
     }
     cb();
   },
