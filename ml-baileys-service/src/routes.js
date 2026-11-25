@@ -156,7 +156,7 @@ export function buildApp() {
       version: pkgVersion,
       clientName: 'ml-baileys-service',
       provider: 'baileys',
-      baileysVersion: '7.0.0-rc.9',
+      baileysVersion: '7.0.0-rc14',
       waWebVersion: currentWaVersion()?.join('.') ?? null,
     });
   });

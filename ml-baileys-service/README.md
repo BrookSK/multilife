@@ -4,8 +4,11 @@ Conector WhatsApp enxuto que substitui a Evolution API no Multilife. Faz só o
 que o sistema precisa: conexão, sessão, envio, eventos (webhook), QR Code /
 código de pareamento e o monitor de conexão real. Todo o negócio continua no PHP.
 
-Base técnica: documento `multilife-baileys-integracao.md` (modelo do cx-crm,
-Baileys `7.0.0-rc.9`).
+Base técnica: documento `multilife-baileys-integracao.md` (modelo do cx-crm).
+Baileys `7.0.0-rc14`: a rc.9 do documento original tinha uma falha que permitia
+forjar mensagens recebidas (GHSA-qvv5-jq5g-4cgg, corrigida na rc12). Na rc14 o
+histórico RECENTE fica ligado (`shouldSyncHistoryMessage`), porque é dele que o
+Baileys tira o número real dos contatos @lid; só o histórico completo fica desligado.
 
 ## Duas formas de rodar
 

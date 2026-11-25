@@ -13,7 +13,7 @@
     "build": "node scripts/build.mjs"
   },
   "dependencies": {
-    "baileys": "7.0.0-rc.9",
+    "baileys": "7.0.0-rc14",
     "express": "^4.21.2",
     "link-preview-js": "^3.0.13",
     "mysql2": "^3.11.5",

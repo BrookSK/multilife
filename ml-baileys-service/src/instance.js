@@ -3,7 +3,7 @@
 // Conexão, sessão, envio, eventos -> webhook, QR Code / código de pareamento e o
 // monitor de conexão real (veredito healthy/silent/... que o PHP já consome).
 import os from 'node:os';
-import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, generateMessageIDV2, isJidStatusBroadcast, jidNormalizedUser } from 'baileys';
+import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, generateMessageIDV2, isJidStatusBroadcast, jidNormalizedUser, proto } from 'baileys';
 import QRCode from 'qrcode';
 import { config } from './config.js';
 import { exec } from './db.js';
@@ -145,7 +145,12 @@ export class Instance {
       logger: baileysLogger.child({ instance: this.name }),
       browser: [config.browserName, 'Chrome', os.release()],
       markOnlineOnConnect: this.settings.alwaysOnline !== false,
-      shouldSyncHistoryMessage: () => false,
+      // Histórico RECENTE liberado (padrão do Baileys; só o completo fica de fora): é
+      // por ele que o Baileys aprende o número real de cada contato @lid. Desligar tudo
+      // deixa mensagens sem o número e causa erros de sessão (aviso da 7.0.0-rc14).
+      // As mensagens antigas desse histórico NÃO vão para o webhook (o serviço não
+      // trata messaging-history.set).
+      shouldSyncHistoryMessage: ({ syncType }) => syncType !== proto.HistorySync.HistorySyncType.FULL,
       syncFullHistory: false,
       emitOwnEvents: true,
       generateHighQualityLinkPreview: false,
