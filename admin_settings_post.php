@@ -60,6 +60,11 @@ try {
     throw $e;
 }
 
+// Serviço WhatsApp lê chave, URL e retenção do runtime-config.php
+if (function_exists('wa_service_runtime_sync')) {
+    wa_service_runtime_sync(true);
+}
+
 flash_set('success', 'Configurações salvas.');
 header('Location: /admin_settings.php');
 exit;

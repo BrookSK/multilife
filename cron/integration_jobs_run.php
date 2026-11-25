@@ -20,6 +20,12 @@ $now = (new DateTime('now'))->format('Y-m-d H:i:s');
 
 $db = db();
 
+// Serviço WhatsApp: mantém ligado e configurado (no máximo 1 vez a cada 50 s).
+// Este cron já roda a cada minuto, então cobre os horários sem ninguém logado.
+if ($onlyJobId <= 0 && function_exists('wa_service_keepalive')) {
+    try { wa_service_keepalive(); } catch (Throwable $e) { /* nunca atrapalha a fila */ }
+}
+
 // Recuperação de jobs ÓRFÃOS: se o worker morreu no meio (timeout do PHP/cron),
 // o job fica preso em 'running' e nunca mais é reprocessado. Após 10 minutos sem
 // conclusão, devolve para 'error' (dentro do limite de tentativas) para que seja

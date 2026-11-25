@@ -1,32 +1,109 @@
-// Banco do serviço (MySQL/MariaDB). As tabelas são criadas no boot.
+// Banco do serviço (MySQL/MariaDB). As tabelas baileys_* são criadas no boot.
+// Na hospedagem do Multilife é o MESMO banco do sistema (dados vindos do
+// runtime-config.php escrito pelo PHP).
 import mysql from 'mysql2/promise';
 import { config } from './config.js';
 import { logger } from './logger.js';
 
-export const pool = mysql.createPool({
-  host: config.db.host,
-  port: config.db.port,
-  user: config.db.user,
-  password: config.db.password,
-  database: config.db.database,
-  charset: 'utf8mb4',
-  connectionLimit: 10,
-  waitForConnections: true,
-  supportBigNumbers: true,
-  dateStrings: true,
-  enableKeepAlive: true,
-});
+let pool = null;
+
+function connOptions() {
+  const o = {
+    user: config.db.user,
+    password: config.db.password,
+    database: config.db.database,
+    charset: 'utf8mb4',
+    supportBigNumbers: true,
+    dateStrings: true,
+  };
+  if (config.db.socketPath) o.socketPath = config.db.socketPath;
+  else {
+    o.host = config.db.host === 'localhost' ? '127.0.0.1' : config.db.host;
+    o.port = config.db.port;
+  }
+  return o;
+}
+
+export function getPool() {
+  if (!pool) {
+    pool = mysql.createPool({ ...connOptions(), connectionLimit: 8, waitForConnections: true, enableKeepAlive: true });
+  }
+  return pool;
+}
 
 /** SELECT: devolve as linhas. */
 export async function query(sql, params = []) {
-  const [rows] = await pool.query(sql, params);
+  const [rows] = await getPool().query(sql, params);
   return rows;
 }
 
 /** INSERT/UPDATE/DELETE: devolve o resultado (affectedRows etc.). */
 export async function exec(sql, params = []) {
-  const [res] = await pool.execute(sql, params);
+  const [res] = await getPool().execute(sql, params);
   return res;
+}
+
+export async function closePool() {
+  if (pool) await pool.end().catch(() => {});
+  pool = null;
+}
+
+// ---------------------------------------------------------------------------
+// Um processo só por banco ("líder").
+//
+// Em hospedagem com Passenger pode existir, por alguns segundos, mais de um
+// processo do serviço (reinício, pico de acessos). Dois processos com o mesmo
+// número conectado derrubam a sessão no WhatsApp (erro 440). Por isso só o
+// processo que segura a trava do MySQL conecta os números; os outros só
+// respondem "iniciando" até a trava ficar livre.
+// ---------------------------------------------------------------------------
+
+const LOCK_NAME = 'ml_baileys_leader';
+let lockConn = null;
+let lockTimer = null;
+
+/** Tenta pegar a trava. true = este processo é o líder. */
+export async function tryAcquireLeader() {
+  if (lockConn) return true;
+  let conn;
+  try {
+    conn = await mysql.createConnection(connOptions());
+    const [rows] = await conn.query('SELECT GET_LOCK(?, 0) AS ok', [`${LOCK_NAME}_${config.db.database}`.slice(0, 64)]);
+    if (Number(rows?.[0]?.ok) === 1) {
+      lockConn = conn;
+      return true;
+    }
+  } catch (e) {
+    logger.warn({ err: e.message }, 'falha ao pegar a trava de líder');
+  }
+  if (conn) await conn.end().catch(() => {});
+  return false;
+}
+
+/**
+ * Confere a conexão da trava a cada 20 s. Se ela cair, a trava foi perdida:
+ * outro processo pode virar líder, então este precisa parar (onLost).
+ */
+export function watchLeader(onLost) {
+  clearInterval(lockTimer);
+  lockTimer = setInterval(async () => {
+    if (!lockConn) return;
+    try {
+      await lockConn.query('SELECT 1');
+    } catch (e) {
+      logger.error({ err: e.message }, 'conexão da trava de líder caiu');
+      clearInterval(lockTimer);
+      lockConn = null;
+      onLost();
+    }
+  }, 20000);
+  lockTimer.unref?.();
+}
+
+export async function releaseLeader() {
+  clearInterval(lockTimer);
+  if (lockConn) await lockConn.end().catch(() => {});
+  lockConn = null;
 }
 
 const SCHEMA = [
@@ -55,6 +132,7 @@ const SCHEMA = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   // Mensagens recebidas e enviadas (findMessages, download de mídia, Sincronizar).
+  // Guardadas para sempre, a não ser que o sistema configure um prazo.
   `CREATE TABLE IF NOT EXISTS baileys_messages (
     instance VARCHAR(100) CHARACTER SET ascii NOT NULL,
     remote_jid VARCHAR(150) CHARACTER SET ascii NOT NULL,
@@ -104,7 +182,7 @@ const SCHEMA = [
 
 export async function ensureSchema() {
   for (const sql of SCHEMA) {
-    await pool.query(sql);
+    await getPool().query(sql);
   }
   logger.info('banco pronto');
 }

@@ -71,7 +71,7 @@ export class WebhookDispatcher {
     const c = this.instance.webhook;
     if (c && c.url) return c;
     if (config.webhook.defaultUrl) {
-      return { enabled: true, url: config.webhook.defaultUrl, byEvents: false, base64: true, events: DEFAULT_EVENTS, headers: {}, ...(c ?? {}), url: config.webhook.defaultUrl };
+      return { enabled: true, byEvents: false, base64: true, events: DEFAULT_EVENTS, headers: {}, ...(c ?? {}), url: config.webhook.defaultUrl };
     }
     return c ?? null;
   }

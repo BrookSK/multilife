@@ -1348,22 +1348,35 @@ WAJS;
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Credenciais do serviço WhatsApp (Baileys)</div>';
         
-        echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
-        echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo '<strong>ℹ️ Formato das Credenciais:</strong><br>';
-        echo '• <strong>Base URL:</strong> endereço do serviço ml-baileys-service, http://IP:PORTA (ex: http://177.104.185.7:8090)<br>';
-        echo '• <strong>Token (API Key):</strong> o valor de API_KEY do arquivo .env do serviço<br>';
-        echo '• <strong>Instância:</strong> WhatsApp padrão das mensagens automáticas (avisos, aprovações, cron)';
+        // Situação do serviço (também grava a configuração dele e descobre a URL)
+        wa_service_runtime_sync(true);
+        $svcHealth = wa_service_keepalive() ?? wa_service_health(null, 4);
+        $svcData = is_array($svcHealth['data'] ?? null) ? $svcHealth['data'] : [];
+        $svcReady = $svcHealth['ok'] && !empty($svcData['ready']);
+        $svcBox = $svcReady ? ['#f0fdf4', '#bbf7d0', '#166534', '✅ Serviço WhatsApp no ar']
+            : ($svcHealth['ok'] ? ['#fffbeb', '#fde68a', '#854d0e', '⏳ Serviço WhatsApp iniciando']
+            : ['#fef2f2', '#fecaca', '#991b1b', '⚠️ Serviço WhatsApp sem resposta']);
+        echo '<div style="padding:12px;background:' . $svcBox[0] . ';border:1px solid ' . $svcBox[1] . ';border-radius:8px;margin-bottom:16px;font-size:13px;line-height:1.6;color:' . $svcBox[2] . '">';
+        echo '<strong>' . h($svcBox[3]) . '</strong> — ' . h($svcHealth['url'] !== '' ? $svcHealth['url'] : 'endereço desconhecido');
+        if ($svcHealth['ok']) {
+            echo '<br>Situação: ' . h((string)($svcData['phase'] ?? '')) . ' · números: ' . h((string)($svcData['instances'] ?? '-'))
+                . ' · ligado há ' . h(wa_watchdog_ago((int)($svcData['uptimeSec'] ?? 0)));
+            if (!empty($svcData['error'])) {
+                echo '<br>Último erro: ' . h((string)$svcData['error']);
+            }
+        } else {
+            echo '<br>' . h($svcHealth['error']) . '. Confira o guia <strong>CONFIGURAR_WHATSAPP_NA_HOSPEDAGEM.md</strong> (subdomínio "whatsapp" e app Node.js no painel da hospedagem).';
+        }
         echo '</div>';
-        echo '</div>';
-        
+
         echo '<div style="display:grid;gap:12px">';
         
         $baseUrlVal = $settings['baileys.base_url'] ?? '';
         $apiKeyVal = $settings['baileys.api_key'] ?? '';
         $instanceVal = $settings['baileys.instance'] ?? '';
+        $autoUrl = rtrim((string)($settings['baileys.detected_url'] ?? ''), '/') ?: (wa_service_candidate_urls()[0] ?? '');
         
-        echo '<label>Base URL<input name="settings[baileys.base_url]" value="' . h($baseUrlVal) . '" placeholder="http://177.104.185.7:8090"><span class="helpText">URL do serviço WhatsApp (sem barra no final)</span></label>';
+        echo '<label>Endereço do serviço<input name="settings[baileys.base_url]" value="' . h($baseUrlVal) . '" placeholder="' . h($autoUrl !== '' ? 'Automático: ' . $autoUrl : 'https://whatsapp.seu-dominio.com.br') . '"><span class="helpText">Deixe vazio para usar o automático (subdomínio "whatsapp" do sistema). Preencha só se o serviço estiver em outro endereço (ex.: uma VPS).</span></label>';
         
         $hasApiKey = !empty($apiKeyVal);
         echo '<label>Token (API Key)';
@@ -1373,11 +1386,17 @@ WAJS;
             echo '<button type="button" onclick="togglePassword(\'field_wa_apikey\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:hsl(var(--primary));color:white;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Revelar</button>';
         }
         echo '</div>';
-        echo '<span class="helpText">Deixe vazio para manter o valor atual.</span>';
+        echo '<span class="helpText">' . (wa_service_embedded() ? 'Gerada automaticamente e entregue ao serviço sozinha. Só troque se o serviço estiver em outro servidor.' : 'Valor de API_KEY do serviço.') . ' Deixe vazio para manter o valor atual.</span>';
         echo '</label>';
         
         $instanceShown = $instanceVal !== '' ? $instanceVal : wa_default_instance();
         echo '<label>Nome da Instância<input name="settings[baileys.instance]" value="' . h($instanceShown) . '" placeholder="multilife"><span class="helpText">Nome da instância (WhatsApp) usada nas mensagens automáticas</span></label>';
+
+        $retVal = (string)($settings['baileys.message_retention_days'] ?? '0');
+        echo '<label>Guardar o histórico das mensagens no serviço por (dias)'
+            . '<input type="number" min="0" step="1" name="settings[baileys.message_retention_days]" value="' . h($retVal !== '' ? $retVal : '0') . '" style="max-width:160px">'
+            . '<span class="helpText"><strong>0 = guardar para sempre</strong> (padrão: nenhuma mensagem é apagada). Com um número de dias, o serviço apaga as mensagens mais antigas que isso. '
+            . 'As conversas do chat do sistema não são afetadas; isto vale para a cópia que o serviço usa para baixar mídia antiga e para o botão Sincronizar.</span></label>';
         
         echo '</div>';
         echo '</div>';

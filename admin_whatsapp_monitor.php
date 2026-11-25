@@ -152,5 +152,57 @@ foreach ($names as $name) {
     echo '</section>';
 }
 
+// Situação e log do serviço (sem precisar de acesso ao servidor)
+$health = wa_service_health(null, 5);
+echo '<section class="card col12">';
+echo '<div style="font-weight:900">Serviço WhatsApp</div>';
+echo '<div style="margin-top:6px;font-size:13px;line-height:1.6">';
+if ($health['ok']) {
+    $hd = $health['data'] ?? [];
+    echo 'No ar em ' . h($health['url']) . ' · ' . h((string)($hd['phase'] ?? '')) . ' · ligado há ' . h(wa_watchdog_ago((int)($hd['uptimeSec'] ?? 0)))
+        . ' · Node ' . h((string)($hd['node'] ?? '')) . ' · histórico de mensagens: '
+        . ((int)($hd['messageRetentionDays'] ?? 0) > 0 ? h((string)(int)$hd['messageRetentionDays']) . ' dias' : 'para sempre');
+    if (!empty($hd['error'])) {
+        echo '<br><span style="color:#b91c1c">Último erro: ' . h((string)$hd['error']) . '</span>';
+    }
+} else {
+    echo '<span style="color:#b91c1c">Sem resposta em ' . h($health['url'] !== '' ? $health['url'] : '(endereço desconhecido)') . ': ' . h($health['error']) . '</span>';
+}
+echo '</div>';
+$logLines = [];
+if ($health['ok']) {
+    try {
+        $lr = (new WhatsAppApi(null, null, wa_default_instance() !== '' ? wa_default_instance() : 'x'))->request('GET', '/service/logs', ['lines' => 150], null, 8);
+        $logLines = is_array($lr['json']['lines'] ?? null) ? $lr['json']['lines'] : [];
+    } catch (Throwable $e) {
+        $logLines = ['(não foi possível ler o log: ' . $e->getMessage() . ')'];
+    }
+}
+if ($logLines) {
+    $fmt = static function (string $line): string {
+        $j = json_decode($line, true);
+        if (!is_array($j)) {
+            return $line;
+        }
+        $lvl = [10 => 'trace', 20 => 'debug', 30 => 'info', 40 => 'AVISO', 50 => 'ERRO', 60 => 'FATAL'][(int)($j['level'] ?? 30)] ?? '?';
+        $t = isset($j['time']) ? date('d/m H:i:s', (int)strtotime((string)$j['time'])) : '';
+        $extra = [];
+        foreach ($j as $k => $v) {
+            if (in_array($k, ['level', 'time', 'svc', 'msg', 'pid', 'hostname'], true)) {
+                continue;
+            }
+            $extra[] = $k . '=' . (is_scalar($v) ? (string)$v : json_encode($v, JSON_UNESCAPED_UNICODE));
+        }
+        return $t . ' ' . $lvl . ' ' . ($j['msg'] ?? '') . ($extra ? ' (' . implode(', ', $extra) . ')' : '');
+    };
+    echo '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Últimas ' . count($logLines) . ' linhas do log</summary>';
+    echo '<pre style="margin-top:8px;max-height:420px;overflow:auto;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;font-size:11px;white-space:pre-wrap;word-break:break-word">';
+    foreach (array_reverse($logLines) as $line) {
+        echo h($fmt((string)$line)) . "\n";
+    }
+    echo '</pre></details>';
+}
+echo '</section>';
+
 echo '</div>';
 view_footer();

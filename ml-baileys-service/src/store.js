@@ -191,12 +191,22 @@ export async function purgeInstance(instance) {
   await exec('DELETE FROM baileys_status_log WHERE instance = ?', [instance]);
 }
 
-/** Limpeza periódica (mensagens antigas e registro de status). */
+/**
+ * Limpeza periódica. 0 dias = não apaga nada (padrão das mensagens: guardar
+ * para sempre; só apaga se o sistema configurar um prazo).
+ */
 export async function cleanup(messageDays, statusDays) {
-  // Em lotes, para não travar a tabela
-  for (let i = 0; i < 50; i++) {
-    const r = await exec(`DELETE FROM baileys_messages WHERE created_at < (NOW() - INTERVAL ${Number(messageDays)} DAY) LIMIT 5000`);
-    if (!r.affectedRows || r.affectedRows < 5000) break;
+  const md = Math.floor(Number(messageDays) || 0);
+  if (md > 0) {
+    // Em lotes, para não travar a tabela. Pela data da mensagem no WhatsApp.
+    const cut = Math.floor(Date.now() / 1000) - md * 86400;
+    for (let i = 0; i < 50; i++) {
+      const r = await exec('DELETE FROM baileys_messages WHERE msg_ts < ? LIMIT 5000', [cut]);
+      if (!r.affectedRows || r.affectedRows < 5000) break;
+    }
   }
-  await exec(`DELETE FROM baileys_status_log WHERE logged_at < (NOW() - INTERVAL ${Number(statusDays)} DAY)`);
+  const sd = Math.floor(Number(statusDays) || 0);
+  if (sd > 0) {
+    await exec(`DELETE FROM baileys_status_log WHERE logged_at < (UTC_TIMESTAMP() - INTERVAL ${sd} DAY)`);
+  }
 }

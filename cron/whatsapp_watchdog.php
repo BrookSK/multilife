@@ -14,4 +14,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/_bootstrap.php';
 
+// Mantém o serviço WhatsApp ligado/configurado (ver app/whatsapp_api.php)
+$h = wa_service_keepalive(true);
+if (is_array($h)) {
+    echo 'serviço WhatsApp: ' . ($h['ok'] ? 'no ar (' . ($h['data']['phase'] ?? '') . ')' : 'sem resposta: ' . $h['error']) . "\n";
+}
 echo wa_watchdog_tick(true) . "\n";

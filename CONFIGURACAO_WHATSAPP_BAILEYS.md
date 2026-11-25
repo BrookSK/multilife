@@ -5,23 +5,27 @@ O WhatsApp do Multilife passa pelo serviço próprio **ml-baileys-service**
 Evolution API e fala o mesmo contrato de API e de webhook, então o resto do
 sistema não mudou de comportamento.
 
-Instalação e operação do serviço: `ml-baileys-service/README.md`.
+**Passo a passo para colocar no ar sem rodar comando:**
+`CONFIGURAR_WHATSAPP_NA_HOSPEDAGEM.md`. Detalhes técnicos do serviço:
+`ml-baileys-service/README.md`.
 
 ## 1. No sistema (Configurações → WhatsApp Conexão → Credenciais)
 
 | Campo | Valor |
 |---|---|
-| Base URL | URL do serviço, sem barra no final (ex.: `http://177.104.185.7:8090`) |
-| Token (API Key) | `API_KEY` do `.env` do serviço |
+| Endereço do serviço | Vazio = automático (`https://whatsapp.<endereço do sistema>`, conferido sozinho em https e http). Preencha só se o serviço estiver em outro lugar (ex.: VPS). |
+| Token (API Key) | Gerado sozinho quando o serviço roda na mesma hospedagem. Numa VPS: o `API_KEY` do `.env` dela. |
 | Nome da Instância | WhatsApp padrão das mensagens automáticas (avisos, aprovações, cron) |
+| Guardar o histórico das mensagens por (dias) | `0` = para sempre (padrão) |
 
 O monitor de conexão (veredito "Suspeita de queda", reconexão sem QR e o botão
 "Sincronizar") usa a mesma URL e chave. Não há outra configuração.
 
 Chaves em `admin_settings`: `baileys.base_url`, `baileys.api_key`,
-`baileys.instance`, `baileys.watchdog_auto_heal`, `baileys.admin_phone`,
-`baileys.webhook_token`. Migration opcional:
-`migrations/2026-11-24_0001_whatsapp_baileys.sql` (copia os valores antigos).
+`baileys.instance`, `baileys.message_retention_days`, `baileys.watchdog_auto_heal`,
+`baileys.admin_phone`, `baileys.webhook_token`; geradas pelo sistema:
+`baileys.detected_url`, `baileys.keepalive_at`. Nenhuma migration é obrigatória
+(`migrations/2026-11-24_0001_whatsapp_baileys.sql` só copia os valores antigos).
 
 ## 2. Conectar cada número
 
@@ -47,9 +51,9 @@ uma vez. Antes, no celular, apague o aparelho antigo em "Aparelhos conectados".
 
 | Sintoma | Causa provável |
 |---|---|
-| "Serviço WhatsApp (Baileys) não configurado" | URL ou API Key vazias em Credenciais |
-| HTTP 401 | API Key diferente da `API_KEY` do `.env` do serviço |
-| Sem resposta / timeout | Serviço parado (`pm2 list`) ou porta bloqueada para o IP do site |
+| "Serviço WhatsApp (Baileys) não configurado" | Endereço do sistema (`app.public_base_url`) vazio, ou instância padrão vazia |
+| HTTP 401 | Serviço numa VPS com `API_KEY` diferente da chave em Credenciais |
+| Sem resposta / timeout | Veja a tabela "Se algo não funcionar" em `CONFIGURAR_WHATSAPP_NA_HOSPEDAGEM.md` |
 | "Connection Closed" ao enviar | O número não está conectado: Reconectar e ler o QR Code |
 | 400 `exists:false` | O número de destino não tem WhatsApp |
 | Mensagens não chegam no chat | Webhook da instância (Webhook Debug → "Aplicar padrão") e o `app.public_base_url` |

@@ -219,7 +219,7 @@ Todas exigem `?token=<cron.token>`.
 | `cron/demand_followup_dispatch.php` | Lembretes de captação. |
 | `cron/chat_unanswered_sla.php` | Alerta de conversas sem resposta. |
 | `cron/documents_validity_monitor.php` | Validade de documentos. |
-| `cron/whatsapp_watchdog.php` | Monitor de conexão real do WhatsApp (watchdog): 1 reconexão automática para conexão "zumbi" e alerta quando não resolve. As telas abertas já rodam isto a cada minuto; o cron cobre os horários sem ninguém logado (agendar a cada 1–2 min). |
+| `cron/whatsapp_watchdog.php` | Monitor de conexão real do WhatsApp (watchdog): 1 reconexão automática para conexão "zumbi" e alerta quando não resolve. As telas abertas já rodam isto a cada minuto; o cron cobre os horários sem ninguém logado (agendar a cada 1–2 min). O `integration_jobs_run` também mantém o serviço WhatsApp ligado (`wa_service_keepalive()`). |
 
 Configuração útil: `demands.dispatch_kick_worker = 0` faz a captação depender só do cron (sem acionamento imediato).
 
@@ -230,7 +230,8 @@ Configuração útil: `demands.dispatch_kick_worker = 0` faz a captação depend
 | Chave | Uso |
 |---|---|
 | `cron.token` | Token das rotinas cron. |
-| `baileys.base_url`, `baileys.api_key` | Serviço WhatsApp (ml-baileys-service): URL e `API_KEY` do `.env` dele. Também usados pelo monitor de conexão (`/status`, `/heal`, `/redispatch`). |
+| `baileys.base_url`, `baileys.api_key` | Serviço WhatsApp (ml-baileys-service). Vazios = automáticos com o serviço na mesma hospedagem: URL `https://whatsapp.<domínio>` (descoberta grava `baileys.detected_url`) e chave gerada pelo PHP. Entregues ao serviço em `ml-baileys-service/runtime-config.php` (`wa_service_runtime_sync()`). Também usados pelo monitor de conexão (`/status`, `/heal`, `/redispatch`). |
+| `baileys.message_retention_days` | Dias que o serviço guarda as mensagens (mídia antiga e "Sincronizar"). `0` = para sempre (padrão). |
 | `baileys.instance` | WhatsApp padrão das mensagens automáticas. Vazio = usa o valor antigo `evolution.instance`. |
 | `baileys.watchdog_auto_heal` | Reconexão automática quando há suspeita de queda (padrão `1`). |
 | `baileys.admin_phone`, `baileys.webhook_token` | Telefone do admin incluído nos grupos e token do webhook de grupos (`whatsapp_groups_webhook.php`). Vazios = valores antigos `evolution.*`. |

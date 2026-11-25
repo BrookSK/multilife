@@ -2,3 +2,7 @@ node_modules/
 .env
 logs/
 *.log
+*.tmp
+# Escrito sozinho pelo sistema PHP (banco e chave): nunca vai para o git
+runtime-config.php
+# dist/server.cjs É versionado de propósito: a hospedagem roda sem "npm install"

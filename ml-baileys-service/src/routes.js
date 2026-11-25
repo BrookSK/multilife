@@ -2,19 +2,20 @@
 // que o PHP do Multilife já usa, mais as rotas do monitor (/status, /heal, /redispatch).
 import express from 'express';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { logger, recentLogs } from './logger.js';
 import * as manager from './manager.js';
 import * as store from './store.js';
 import { normalizeWebhookConfig } from './webhook.js';
-import { downloadMedia, toVoiceNote } from './media.js';
+import { downloadMedia, prepareVoiceNote } from './media.js';
 import { toEvolutionGroup, toEvolutionMessage } from './format.js';
 import { currentWaVersion } from './instance.js';
 import { query } from './db.js';
+import { state } from './state.js';
 import {
   HttpError, isGroupJid, isLid, isPn, mediaInput, onlyDigits, safeEqual, toJid,
 } from './util.js';
 
-const pkgVersion = '1.0.0';
+const pkgVersion = '1.1.0';
 
 /** Handler async: devolve JSON; erros viram o formato da Evolution. */
 const wrap = (fn, okStatus = 200) => async (req, res) => {
@@ -40,6 +41,13 @@ const wrap = (fn, okStatus = 200) => async (req, res) => {
 
 const param = (req, name) => req.body?.[name] ?? req.query?.[name];
 const truthy = (v) => v === true || v === 'true' || v === '1' || v === 1;
+
+/** Antes de ficar pronto (configuração, banco, trava de líder), só /health responde. */
+function readyMiddleware(req, res, next) {
+  if (req.path === '/health' || req.path === '/service/logs' || state.ready) return next();
+  res.set('Retry-After', '5');
+  res.status(503).json(new HttpError(503, 'Serviço WhatsApp iniciando: ' + state.phase).toJSON());
+}
 
 /** Chave da API: header apikey (Evolution), x-token / Bearer (watchdog) ou ?apikey/?token. */
 function authMiddleware(req, res, next) {
@@ -68,6 +76,27 @@ export function buildApp() {
     }
     next();
   });
+  // /health: sem chave (o sistema usa para saber se o serviço está no ar e para
+  // mantê-lo ligado). Não mostra dados sensíveis.
+  app.get('/health', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      ok: true,
+      clientName: 'ml-baileys-service',
+      version: pkgVersion,
+      ready: state.ready,
+      phase: state.phase,
+      configured: config.apiKey !== '',
+      configSource: config.source,
+      leader: state.leader,
+      instances: state.ready ? manager.list().length : null,
+      messageRetentionDays: config.messageRetentionDays,
+      uptimeSec: Math.floor((Date.now() - state.startedAt) / 1000),
+      node: process.version,
+      error: state.lastError,
+    });
+  });
+  app.use(readyMiddleware);
   app.use(authMiddleware);
 
   app.get('/', (req, res) => {
@@ -81,7 +110,6 @@ export function buildApp() {
       waWebVersion: currentWaVersion()?.join('.') ?? null,
     });
   });
-  app.get('/health', (req, res) => res.json({ ok: true }));
 
   instanceRoutes(app);
   webhookRoutes(app);
@@ -231,17 +259,8 @@ function messageRoutes(app) {
     const inst = manager.must(req.params.instance);
     const b0 = req.body ?? {};
     const b = b0.audioMessage && typeof b0.audioMessage === 'object' ? { ...b0, ...b0.audioMessage } : b0;
-    const input = mediaInput(b.audio);
-    let audio = input;
-    let mimetype = 'audio/ogg; codecs=opus';
-    try {
-      const converted = await toVoiceNote(input);
-      if (converted) audio = converted;
-      else mimetype = b.mimetype || 'audio/ogg; codecs=opus';
-    } catch (e) {
-      logger.warn({ err: e.message }, 'conversão do áudio falhou: enviando como está');
-    }
-    return inst.send(requireNumber(b), { audio, ptt: true, mimetype }, { ...sendOpts(b), presence: 'recording' });
+    const { audio, mimetype, ptt } = await prepareVoiceNote(mediaInput(b.audio), b.mimetype);
+    return inst.send(requireNumber(b), { audio, ptt, mimetype }, { ...sendOpts(b), presence: 'recording' });
   }, 201));
 
   app.post('/message/sendSticker/:instance', wrap(async (req) => {
@@ -777,6 +796,12 @@ function monitorRoutes(app) {
         lastEventSec: r.last_event_sec,
       })),
     };
+  }));
+
+  // Últimas linhas do log (para a tela do sistema; sem acesso ao servidor)
+  app.get('/service/logs', wrap(async (req) => {
+    const n = Math.max(1, Math.min(400, Number(req.query.lines) || 150));
+    return { lines: recentLogs.slice(-n) };
   }));
 
   app.post('/heal/:instance', wrap(async (req) => {

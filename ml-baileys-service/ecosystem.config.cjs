@@ -5,7 +5,7 @@ module.exports = {
   apps: [
     {
       name: 'ml-baileys',
-      script: 'src/index.js',
+      script: 'app.js',
       cwd: __dirname,
       instances: 1,
       exec_mode: 'fork',

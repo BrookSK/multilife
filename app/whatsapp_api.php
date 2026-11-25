@@ -8,22 +8,277 @@ declare(strict_types=1);
  *
  * O serviço fala o MESMO contrato de API e de webhook da Evolution v2 (rotas,
  * corpos e respostas), então os métodos abaixo mantêm os nomes e formatos que
- * o resto do sistema já usa. Configuração em Configurações → WhatsApp Conexão:
- *   baileys.base_url  URL do serviço (ex.: http://177.104.185.7:8090)
- *   baileys.api_key   API_KEY do serviço (.env)
- *   baileys.instance  WhatsApp padrão das mensagens automáticas
+ * o resto do sistema já usa.
+ *
+ * Configuração AUTOMÁTICA quando o serviço roda na mesma hospedagem (painel
+ * Node.js do Plesk/cPanel, guia CONFIGURAR_WHATSAPP_NA_HOSPEDAGEM.md):
+ *   - URL: vazia = https://whatsapp.<domínio do sistema> (conferida sozinha);
+ *   - chave: gerada aqui na primeira vez;
+ *   - o serviço recebe banco, chave, URLs e retenção pelo arquivo
+ *     ml-baileys-service/runtime-config.php, escrito por wa_service_runtime_sync().
+ * Tudo pode ser trocado em Configurações → WhatsApp Conexão (ex.: serviço numa VPS):
+ *   baileys.base_url, baileys.api_key, baileys.instance,
+ *   baileys.message_retention_days (0 = guardar as mensagens para sempre).
  */
 
-/** URL base do serviço WhatsApp (sem barra no final). */
-function wa_api_base_url(): string
+/** Pasta do serviço dentro do sistema. */
+function wa_service_dir(): string
 {
-    return rtrim(trim((string)admin_setting_get('baileys.base_url', '')), '/');
+    return dirname(__DIR__) . '/ml-baileys-service';
 }
 
-/** Chave da API do serviço WhatsApp. */
+/** O serviço está nesta mesma hospedagem (pasta ml-baileys-service do sistema)? */
+function wa_service_embedded(): bool
+{
+    return is_file(wa_service_dir() . '/app.js');
+}
+
+/** Endereço público do sistema (sem barra no final), ou '' se não der para saber. */
+function wa_system_public_url(): string
+{
+    $public = trim((string)admin_setting_get('app.public_base_url', ''));
+    if ($public === '') {
+        $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+        if ($host === '') {
+            return '';
+        }
+        $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        $public = ($https ? 'https' : 'http') . '://' . $host;
+    }
+    return rtrim($public, '/');
+}
+
+/** URLs candidatas do serviço na hospedagem: subdomínio "whatsapp." do sistema. */
+function wa_service_candidate_urls(): array
+{
+    $p = parse_url(wa_system_public_url());
+    $host = strtolower((string)($p['host'] ?? ''));
+    if ($host === '' || $host === 'localhost' || filter_var($host, FILTER_VALIDATE_IP)) {
+        return [];
+    }
+    $host = (string)preg_replace('/^www\./', '', $host);
+    if (str_starts_with($host, 'whatsapp.')) {
+        $host = substr($host, 9);
+    }
+    return ['https://whatsapp.' . $host, 'http://whatsapp.' . $host];
+}
+
+/**
+ * URL base do serviço WhatsApp (sem barra no final). Ordem: a digitada em
+ * Configurações; a descoberta automaticamente (baileys.detected_url); o
+ * subdomínio padrão https://whatsapp.<domínio>.
+ */
+function wa_api_base_url(): string
+{
+    $set = rtrim(trim((string)admin_setting_get('baileys.base_url', '')), '/');
+    if ($set !== '') {
+        return $set;
+    }
+    $detected = rtrim(trim((string)admin_setting_get('baileys.detected_url', '')), '/');
+    if ($detected !== '') {
+        return $detected;
+    }
+    return wa_service_candidate_urls()[0] ?? '';
+}
+
+/** A URL veio de Configurações (e não da detecção automática)? */
+function wa_api_base_url_is_manual(): bool
+{
+    return trim((string)admin_setting_get('baileys.base_url', '')) !== '';
+}
+
+/** Grava uma configuração (admin_settings). */
+function wa_setting_save(string $key, string $value): void
+{
+    db()->prepare('INSERT INTO admin_settings (setting_key, setting_value) VALUES (?, ?)
+                   ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)')->execute([$key, $value]);
+}
+
+/**
+ * Chave da API do serviço WhatsApp. Com o serviço na mesma hospedagem, é
+ * gerada sozinha na primeira vez (e entregue ao serviço pelo runtime-config.php).
+ */
 function wa_api_key(): string
 {
-    return trim((string)admin_setting_get('baileys.api_key', ''));
+    static $cache = null;
+    if ($cache !== null && $cache !== '') {
+        return $cache;
+    }
+    $key = trim((string)admin_setting_get('baileys.api_key', ''));
+    if ($key === '' && wa_service_embedded()) {
+        $key = bin2hex(random_bytes(24));
+        try {
+            wa_setting_save('baileys.api_key', $key);
+            $cache = $key;
+            wa_service_runtime_sync(true);
+        } catch (Throwable $e) {
+            error_log('[WHATSAPP_API] não foi possível gravar a chave gerada: ' . $e->getMessage());
+            return '';
+        }
+    }
+    return $cache = $key;
+}
+
+/** Dias que o serviço guarda as mensagens. 0 = para sempre (padrão). */
+function wa_message_retention_days(): int
+{
+    return max(0, (int)wa_setting('message_retention_days', '0'));
+}
+
+/** Conteúdo do runtime-config.php (o que o serviço precisa para funcionar sozinho). */
+function wa_service_runtime_payload(): array
+{
+    $cfg = require dirname(__DIR__) . '/config/config.php';
+    $db = is_array($cfg['db'] ?? null) ? $cfg['db'] : [];
+    $socket = (string)(ini_get('pdo_mysql.default_socket') ?: (ini_get('mysqli.default_socket') ?: ''));
+    $system = wa_system_public_url();
+    return [
+        'db' => [
+            'host' => (string)($db['host'] ?? 'localhost'),
+            'port' => (int)($db['port'] ?? 3306),
+            'name' => (string)($db['name'] ?? ''),
+            'user' => (string)($db['user'] ?? ''),
+            'pass' => (string)($db['pass'] ?? ''),
+            'socket_hint' => $socket,
+        ],
+        'api_key' => wa_api_key(),
+        'public_url' => wa_api_base_url(),
+        'default_webhook_url' => $system !== '' ? $system . '/chat_webhook.php' : '',
+        'message_retention_days' => wa_message_retention_days(),
+        'status_retention_days' => max(0, (int)wa_setting('status_retention_days', '90')),
+    ];
+}
+
+/**
+ * Escreve ml-baileys-service/runtime-config.php (só se mudou).
+ * 1ª linha PHP que sai na hora: aberto pelo navegador, não mostra nada.
+ */
+function wa_service_runtime_sync(bool $force = false): bool
+{
+    static $done = false;
+    if (!wa_service_embedded() || ($done && !$force)) {
+        return false;
+    }
+    $done = true;
+    $file = wa_service_dir() . '/runtime-config.php';
+    try {
+        $payload = wa_service_runtime_payload();
+        if ($payload['api_key'] === '') {
+            return false;
+        }
+        // Rodando pelo cron (sem endereço do site) não apaga o que já estava gravado
+        if ($payload['public_url'] === '' || $payload['default_webhook_url'] === '') {
+            $old = wa_service_runtime_read();
+            if ($payload['public_url'] === '') {
+                $payload['public_url'] = (string)($old['public_url'] ?? '');
+            }
+            if ($payload['default_webhook_url'] === '') {
+                $payload['default_webhook_url'] = (string)($old['default_webhook_url'] ?? '');
+            }
+        }
+        $content = "<?php http_response_code(404); exit; ?>\n" . json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+        if (is_file($file) && @file_get_contents($file) === $content) {
+            return true;
+        }
+        $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        if (@file_put_contents($tmp, $content) === false) {
+            error_log('[WHATSAPP_API] sem permissão para gravar ' . $file);
+            return false;
+        }
+        @chmod($tmp, 0600);
+        if (!@rename($tmp, $file)) {
+            @unlink($tmp);
+            return false;
+        }
+        return true;
+    } catch (Throwable $e) {
+        error_log('[WHATSAPP_API] runtime-config: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** Lê o runtime-config.php atual (ou []). */
+function wa_service_runtime_read(): array
+{
+    $raw = @file_get_contents(wa_service_dir() . '/runtime-config.php');
+    if (!is_string($raw) || $raw === '') {
+        return [];
+    }
+    $nl = strpos($raw, "\n");
+    $json = $nl !== false && str_starts_with($raw, '<?php') ? substr($raw, $nl + 1) : $raw;
+    $data = json_decode($json, true);
+    return is_array($data) ? $data : [];
+}
+
+/**
+ * /health do serviço (sem chave).
+ *
+ * @return array{ok:bool, url:string, http:int, data:?array, error:string}
+ */
+function wa_service_health(?string $url = null, int $timeoutSeconds = 6): array
+{
+    $url = rtrim($url ?? wa_api_base_url(), '/');
+    if ($url === '') {
+        return ['ok' => false, 'url' => '', 'http' => 0, 'data' => null, 'error' => 'endereço do serviço desconhecido'];
+    }
+    try {
+        $res = http_json_request('GET', $url . '/health', [], null, $timeoutSeconds);
+        $j = is_array($res['json'] ?? null) ? $res['json'] : null;
+        $ok = (int)$res['status'] === 200 && ($j['clientName'] ?? '') === 'ml-baileys-service';
+        return ['ok' => $ok, 'url' => $url, 'http' => (int)$res['status'], 'data' => $j,
+            'error' => $ok ? '' : ((int)$res['status'] === 200 ? 'o endereço não é o serviço WhatsApp' : 'HTTP ' . (int)$res['status'])];
+    } catch (Throwable $e) {
+        return ['ok' => false, 'url' => $url, 'http' => 0, 'data' => null, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Mantém o serviço ligado e configurado. Chamado pelo cron e pelas telas
+ * abertas (no máximo 1 vez a cada 50 s para o sistema todo):
+ *  - grava o runtime-config.php (banco, chave, URLs, retenção);
+ *  - acessa /health: na hospedagem com painel Node.js, é o acesso que liga o
+ *    serviço depois de um reinício do servidor;
+ *  - URL automática: descobre se o subdomínio responde em https ou http.
+ *
+ * @return array|null resultado do /health (null = pulado, rodou há pouco)
+ */
+function wa_service_keepalive(bool $force = false): ?array
+{
+    static $ran = false;
+    if ($ran && !$force) {
+        return null;
+    }
+    $ran = true;
+    try {
+        $last = (int)admin_setting_get('baileys.keepalive_at', '0');
+        if (!$force && time() - $last < 50) {
+            return null;
+        }
+        wa_setting_save('baileys.keepalive_at', (string)time());
+    } catch (Throwable $e) {
+        return null;
+    }
+    wa_service_runtime_sync();
+    $h = wa_service_health(null, 6);
+    if (!$h['ok'] && !wa_api_base_url_is_manual()) {
+        foreach (wa_service_candidate_urls() as $cand) {
+            if ($cand === $h['url']) {
+                continue;
+            }
+            $try = wa_service_health($cand, 5);
+            if ($try['ok']) {
+                $h = $try;
+                break;
+            }
+        }
+    }
+    if ($h['ok'] && !wa_api_base_url_is_manual() && $h['url'] !== rtrim((string)admin_setting_get('baileys.detected_url', ''), '/')) {
+        try {
+            wa_setting_save('baileys.detected_url', $h['url']);
+            wa_service_runtime_sync(true);
+        } catch (Throwable $e) {}
+    }
+    return $h;
 }
 
 /**
@@ -77,7 +332,7 @@ final class WhatsAppApi
         $this->instance = (string)($instance !== null && $instance !== '' ? $instance : wa_default_instance());
 
         if ($this->baseUrl === '' || $this->apiKey === '' || $this->instance === '') {
-            throw new RuntimeException('Serviço WhatsApp (Baileys) não configurado: preencha URL, API Key e instância em Configurações → WhatsApp Conexão.');
+            throw new RuntimeException('Serviço WhatsApp (Baileys) não configurado: confira Configurações → WhatsApp Conexão (endereço do serviço e WhatsApp padrão).');
         }
     }
 
@@ -109,6 +364,12 @@ final class WhatsAppApi
 
         try {
             $res = http_json_request($method, $url, ['apikey' => $this->apiKey], $body, $timeoutSeconds);
+            // 503 = serviço acabando de ligar (painel da hospedagem sobe o app no
+            // primeiro acesso): espera um pouco e tenta de novo uma vez.
+            if ((int)$res['status'] === 503 && $timeoutSeconds >= 8) {
+                sleep(4);
+                $res = http_json_request($method, $url, ['apikey' => $this->apiKey], $body, $timeoutSeconds);
+            }
         } catch (Throwable $e) {
             integration_log('whatsapp', $method . ' ' . $path, 'error', null, ['query' => $query, 'body' => $body], null, mb_strimwidth($e->getMessage(), 0, 250, ''), 1);
             throw $e;

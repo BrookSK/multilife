@@ -7,21 +7,33 @@ código de pareamento e o monitor de conexão real. Todo o negócio continua no 
 Base técnica: documento `multilife-baileys-integracao.md` (modelo do cx-crm,
 Baileys `7.0.0-rc.9`).
 
+## Duas formas de rodar
+
+| Onde | Como | Configuração |
+|---|---|---|
+| **Na hospedagem do sistema** (painel Node.js do Plesk/cPanel) — recomendado | Guia `CONFIGURAR_WHATSAPP_NA_HOSPEDAGEM.md` na raiz do sistema. Só cliques no painel. | Automática: o PHP grava `runtime-config.php` |
+| Numa VPS (pm2) | Seção "Instalação na VPS" abaixo | `.env` |
+
+Nos dois casos **não precisa de `npm install`**: o serviço inteiro (com o
+Baileys e as dependências) está em `dist/server.cjs`, versionado no git.
+Arquivo de início: `app.js`.
+
 ## Como o PHP conversa com ele
 
 O contrato é o mesmo da Evolution v2. O PHP só troca a URL base:
 
 | O que | Como |
 |---|---|
-| Autenticação | header `apikey: <API_KEY>` (o monitor também aceita `x-token`) |
+| Autenticação | header `apikey: <chave>` (o monitor também aceita `x-token`) |
 | Envio | `POST /message/sendText/{instância}` `{ number, text }` (e `textMessage.text`) — devolve `key.id` |
 | Mídia | `POST /message/sendMedia/{instância}` `{ number, mediatype, media (URL ou base64), fileName, caption }` |
-| Áudio (nota de voz) | `POST /message/sendWhatsAppAudio/{instância}` (converte para ogg/opus com ffmpeg) |
+| Áudio (nota de voz) | `POST /message/sendWhatsAppAudio/{instância}`: Ogg vai como está; WebM do navegador vira Ogg sem ffmpeg; outros formatos usam ffmpeg se houver, senão vão como áudio comum |
 | Grupos | `/group/create`, `/group/fetchAllGroups`, `/group/findGroupInfos`, `/group/participants`, `/group/updateParticipant`, `/group/updateSetting`, convites etc. |
 | Conversas | `/chat/findMessages`, `/chat/findChats`, `/chat/findContacts`, `/chat/getBase64FromMediaMessage`, `/chat/fetchProfile`, `/chat/whatsappNumbers`, `/chat/markMessageAsRead` |
 | Instâncias | `/instance/create`, `/instance/connect` (QR + `?number=` = código de pareamento), `/instance/connectionState`, `/instance/restart`, `/instance/logout`, `/instance/delete`, `/instance/fetchInstances` |
 | Webhook | `POST /webhook/set/{instância}`, `GET /webhook/find/{instância}` |
 | Monitor | `GET /status`, `GET /status/{instância}`, `GET /status/{instância}/history?hours=72`, `POST /heal/{instância}`, `POST /redispatch/{instância}` |
+| Situação | `GET /health` (sem chave), `GET /service/logs?lines=150` (últimas linhas do log) |
 
 Eventos enviados ao webhook (mesmo formato da Evolution: `{event, instance, data, ...}`):
 `messages.upsert`, `send.message`, `messages.update`, `messages.delete`,
@@ -30,79 +42,72 @@ Eventos enviados ao webhook (mesmo formato da Evolution: `{event, instance, data
 (lista `events` do `/webhook/set`). Com `base64: true`, a mídia vai em
 `data.message.base64`.
 
+## Configuração
+
+Ordem: variáveis de ambiente / `.env` → `runtime-config.php` → padrão.
+
+`runtime-config.php` é escrito pelo PHP (`wa_service_runtime_sync()` em
+`app/whatsapp_api.php`) com: banco do sistema, chave da API (gerada pelo PHP),
+URL pública do serviço, URL do webhook e prazo do histórico. A primeira linha é
+um PHP que sai na hora (aberto pelo navegador, não mostra nada). O serviço relê o
+arquivo a cada 30 s; se os dados do banco mudarem, reinicia sozinho.
+
+**Histórico das mensagens:** guardado **para sempre** por padrão
+(`message_retention_days = 0`). Prazo configurável no sistema em Configurações →
+WhatsApp Conexão → Credenciais (ou `MESSAGE_RETENTION_DAYS` no `.env`).
+
+## Comportamento para rodar sem ninguém por perto
+
+- O HTTP abre na hora; até ficar pronto, as rotas respondem 503 "iniciando"
+  (o PHP espera e tenta de novo uma vez). `/health` responde sempre.
+- **Um processo por banco**: trava `GET_LOCK` no MySQL. Só o processo dono da
+  trava conecta os números; um segundo processo fica esperando (dois conectados
+  com o mesmo número derrubam a sessão, erro 440).
+- **Versão nova** (`dist/server.cjs` mudou por git pull): o processo encerra em
+  até 1 min; o painel/pm2 sobe a nova na próxima requisição.
+- **Auto-ping** na própria URL pública a cada minuto e acesso do PHP (cron da fila
+  e telas abertas) a cada minuto: o painel não desliga o app parado e, depois de
+  um reinício do servidor, o primeiro acesso liga o serviço, que reconecta os
+  números com a sessão salva.
+
 ## Decisões (lições da Evolution)
 
 - **Versão do WhatsApp Web pinada** no boot (`fetchLatestBaileysVersion`); se a
   busca falhar, sobe com a versão padrão do Baileys.
 - **Sessão = um JSON único por número** (`baileys_session`), gravado inteiro.
-  Sem gravação parcial por chave, sem Redis, sem cache externo. `creds` grava na
-  hora; mudanças de chaves são agrupadas em no máximo 1 gravação por segundo.
-- **Webhook desacoplado**: o evento entra numa fila em memória e é entregue em
-  paralelo limitado (timeout 10 s, 5 tentativas com espera crescente). O
-  processamento do WhatsApp nunca espera o webhook.
+  Sem gravação parcial por chave, sem Redis, sem cache externo.
+- **Webhook desacoplado**: fila em memória, entrega em paralelo limitado
+  (timeout 10 s, 5 tentativas com espera crescente). O WhatsApp nunca espera o webhook.
 - **Sem logout automático em silêncio**: o monitor detecta e avisa; o `heal`
   só reinicia o socket (sem QR) e só quando a instância está `silent`.
-- Mensagens guardadas por 15 dias (`baileys_messages`) para `findMessages`,
-  download de mídia, reenvio de mensagens que o WhatsApp pede de novo e o
-  "Sincronizar" do painel.
 - Número brasileiro: o envio confirma no WhatsApp (`onWhatsApp`) o JID real,
   com e sem o 9. Número sem WhatsApp = HTTP 400 `{exists:false}` (igual à Evolution).
 
-## Instalação na VPS
-
-Requisitos: Node 20+, MySQL/MariaDB, pm2, ffmpeg (recomendado).
+## Desenvolvimento
 
 ```bash
-cd /desenvolvimento/wwwroot
-git clone https://github.com/BrookSK/multilife.git ml-baileys-src   # ou copie só a pasta ml-baileys-service
-cd ml-baileys-src/ml-baileys-service
-npm ci --omit=dev
-cp .env.example .env    # preencha API_KEY, DB_*, PUBLIC_URL
-
-# banco (exemplo)
-mysql -e "CREATE DATABASE ml_baileys CHARACTER SET utf8mb4; CREATE USER 'ml_baileys'@'localhost' IDENTIFIED BY 'senha-forte'; GRANT ALL ON ml_baileys.* TO 'ml_baileys'@'localhost';"
-# max_allowed_packet >= 64M no my.cnf
-
-pm2 install pm2-logrotate
-pm2 set pm2-logrotate:max_size 50M
-pm2 set pm2-logrotate:retain 7
-pm2 start ecosystem.config.cjs
-pm2 save
+npm install        # só na máquina de desenvolvimento
+npm run dev        # roda src/ direto (precisa de .env)
+npm run build      # gera dist/server.cjs — rodar e commitar depois de mudar src/
 ```
 
-Libere a porta (ex.: 8090) **só para o IP do servidor do Multilife** no firewall.
+## Instalação na VPS (alternativa)
 
-Teste: `curl -H "apikey: $API_KEY" http://127.0.0.1:8090/` deve responder
-`clientName: ml-baileys-service`.
+Requisitos: Node 20+, MySQL/MariaDB, pm2. ffmpeg é opcional.
 
-## Ligar no Multilife
+```bash
+git clone https://github.com/BrookSK/multilife.git && cd multilife/ml-baileys-service
+cp .env.example .env    # preencha API_KEY, DB_*, PUBLIC_URL, DEFAULT_WEBHOOK_URL
+pm2 install pm2-logrotate && pm2 set pm2-logrotate:max_size 50M && pm2 set pm2-logrotate:retain 7
+pm2 start ecosystem.config.cjs && pm2 save
+```
 
-1. Configurações → WhatsApp Conexão → Credenciais: **Base URL** do serviço,
-   **Token (API Key)** = `API_KEY` do `.env`, **Instância** padrão.
-2. Em cada WhatsApp: **Reconectar** → ler o QR Code (ou digitar o código de
-   pareamento). A sessão da Evolution não serve no Baileys: todo número precisa
-   ser pareado de novo uma vez. O sistema já grava o webhook da instância ao conectar.
-3. Webhook Debug (`/admin_webhook_debug.php`): conferir "Serviço WhatsApp:
-   ml-baileys-service" e o webhook de cada número.
-4. Monitor (`/admin_whatsapp_monitor.php`): gráfico de 72 h de minutos sem
-   receber mensagens por número.
+Libere a porta (ex.: 8090) só para o IP do servidor do Multilife. No sistema,
+em Credenciais, preencha **Endereço do serviço** e **Token (API Key)**.
 
 ## Piloto (recomendado pela doc antes de migrar todos)
 
-Conecte primeiro só o número de testes e acompanhe 72 h no Monitor.
-Critério: entrada (mensagens 1:1, grupos e reações) sem interrupção maior que
-2 h. Se o silêncio de entrada crescer sem parar com o socket aberto, o problema
-é o número/padrão de uso (H2) e não a stack.
-
-## Operação
-
-| Item | Comando |
-|---|---|
-| Processo | `pm2 list` → `ml-baileys` |
-| Logs | `pm2 logs ml-baileys` (ou `logs/` na pasta) |
-| Reiniciar (as sessões continuam válidas) | `pm2 restart ml-baileys` |
-| Parar | `pm2 stop ml-baileys` |
-
-Variáveis em `.env.example`. Um processo atende todos os números. Não rode
-dois processos com o mesmo banco: o mesmo número conectado duas vezes derruba
-a sessão (erro 440).
+Conecte primeiro só o número de testes e acompanhe 72 h em
+`/admin_whatsapp_monitor.php`. Critério: entrada (mensagens 1:1, grupos e
+reações) sem interrupção maior que 2 h. Se o silêncio de entrada crescer sem
+parar com o socket aberto, o problema é o número/padrão de uso (H2) e não a stack.
