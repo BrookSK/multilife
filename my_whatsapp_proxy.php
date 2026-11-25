@@ -56,12 +56,8 @@ if (!in_array($action, ['status', 'connect', 'logout'], true)) {
  */
 function myWaConfigureWebhook(string $baseUrl, string $apiKey, string $instanceName): bool
 {
-    $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
-    if ($publicUrl === '') {
-        $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-            . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-    }
-    $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
+    // EndereÃ§o configurado em ConfiguraÃ§Ãµes â†’ WhatsApp ConexÃ£o (ou o do sistema)
+    $webhookUrl = whatsapp_webhook_public_url();
 
     // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
     $payload = whatsapp_webhook_payload($webhookUrl);

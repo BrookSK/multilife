@@ -143,7 +143,8 @@ function wa_service_runtime_payload(): array
         ],
         'api_key' => wa_api_key(),
         'public_url' => wa_api_base_url(),
-        'default_webhook_url' => $system !== '' ? $system . '/chat_webhook.php' : '',
+        'default_webhook_url' => ($wh = rtrim(trim((string)admin_setting_get('baileys.webhook_url', '')), '/')) !== ''
+            ? $wh : ($system !== '' ? $system . '/chat_webhook.php' : ''),
         'message_retention_days' => wa_message_retention_days(),
         'status_retention_days' => max(0, (int)wa_setting('status_retention_days', '90')),
     ];

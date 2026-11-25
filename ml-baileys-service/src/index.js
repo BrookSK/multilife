@@ -11,9 +11,9 @@
 //    painel/pm2 sobe a versão nova na próxima requisição;
 //  - auto-ping na própria URL pública para o painel não desligar o app parado.
 import fs from 'node:fs';
-import { config, isConfigured, reloadConfig, RUNTIME_FILE } from './config.js';
+import { config, hasDbConfig, isConfigured, reloadConfig, setDbSettings } from './config.js';
 import { logger } from './logger.js';
-import { closePool, ensureSchema, exec, releaseLeader, tryAcquireLeader, watchLeader } from './db.js';
+import { closePool, ensureSchema, exec, readSystemSettings, releaseLeader, tryAcquireLeader, watchLeader } from './db.js';
 import * as manager from './manager.js';
 import * as store from './store.js';
 import { buildApp } from './routes.js';
@@ -69,9 +69,15 @@ async function selfPing() {
   }
 }
 
+/** Lê admin_settings do sistema e reaplica a configuração. */
+async function refreshSystemSettings() {
+  setDbSettings(await readSystemSettings());
+  return reloadConfig();
+}
+
 async function start() {
-  // 1) Configuração (vem do sistema PHP ou do ambiente)
-  while (!isConfigured()) {
+  // 1) Dados do banco (runtime-config.php escrito pelo sistema, ou ambiente)
+  while (!hasDbConfig()) {
     state.phase = 'aguardando configuração (abra Configurações → WhatsApp Conexão no sistema)';
     await sleep(10000);
     reloadConfig();
@@ -100,6 +106,15 @@ async function start() {
     }
   }
 
+  // 2b) Chave, URLs e retenção: Configurações do sistema (mesmo banco)
+  await refreshSystemSettings();
+  while (!isConfigured()) {
+    state.phase = 'aguardando a chave do serviço (abra Configurações → WhatsApp Conexão no sistema)';
+    await sleep(10000);
+    reloadConfig();
+    await refreshSystemSettings();
+  }
+
   // 3) Um processo só conecta os números
   state.phase = 'aguardando outro processo do serviço terminar';
   while (!(await tryAcquireLeader())) await sleep(3000);
@@ -121,15 +136,9 @@ async function start() {
 
 function watchers() {
   // Configuração escrita pelo PHP: chave, URL e retenção valem sem reiniciar
-  let runtimeMtime = 0;
-  every(30000, () => {
-    let m = 0;
-    try {
-      m = fs.statSync(RUNTIME_FILE).mtimeMs;
-    } catch {}
-    if (m === runtimeMtime && isConfigured()) return;
-    runtimeMtime = m;
-    const r = reloadConfig();
+  // e as Configurações do sistema (admin_settings), relidas a cada 30 s
+  every(30000, async () => {
+    const r = state.ready ? await refreshSystemSettings() : reloadConfig();
     if (r.dbChanged && state.ready) shutdown('dados do banco mudaram');
     else if (r.changed) logger.info('configuração atualizada');
   });

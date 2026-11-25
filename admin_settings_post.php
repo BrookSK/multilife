@@ -34,6 +34,9 @@ foreach ($checkboxDefaults as $cbKey) {
     }
 }
 
+// Endereço do webhook antes de salvar (se mudar, os números conectados são avisados)
+$webhookBefore = function_exists('whatsapp_webhook_public_url') ? whatsapp_webhook_public_url() : '';
+
 $db = db();
 $db->beginTransaction();
 try {
@@ -63,6 +66,33 @@ try {
 // Serviço WhatsApp lê chave, URL e retenção do runtime-config.php
 if (function_exists('wa_service_runtime_sync')) {
     wa_service_runtime_sync(true);
+}
+
+// Endereço do webhook mudou (domínio novo): grava o novo em todos os números
+$webhookAfter = function_exists('whatsapp_webhook_public_url') ? whatsapp_webhook_public_url() : '';
+if ($webhookAfter !== '' && $webhookAfter !== $webhookBefore && function_exists('whatsapp_webhook_configure')) {
+    @set_time_limit(120);
+    $okCount = 0;
+    $total = 0;
+    try {
+        foreach (whatsapp_list_all_instances() as $wi) {
+            $name = (string)($wi['instance_name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $total++;
+            if (whatsapp_webhook_configure($name, $webhookAfter)) {
+                $okCount++;
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[SETTINGS] webhook novo: ' . $e->getMessage());
+    }
+    if ($total > 0) {
+        flash_set('success', 'Configurações salvas. Endereço do webhook atualizado em ' . $okCount . ' de ' . $total . ' WhatsApp(s).');
+        header('Location: /admin_settings.php');
+        exit;
+    }
 }
 
 flash_set('success', 'Configurações salvas.');

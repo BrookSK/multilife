@@ -31,12 +31,8 @@ if (empty($instanceName)) {
  */
 function configureWebhook(string $baseUrl, string $apiKey, string $instanceName): bool
 {
-    $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
-    if ($publicUrl === '') {
-        $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-            . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-    }
-    $webhookUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
+    // EndereÃ§o configurado em ConfiguraÃ§Ãµes â†’ WhatsApp ConexÃ£o (ou o do sistema)
+    $webhookUrl = whatsapp_webhook_public_url();
 
     // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
     $payload = whatsapp_webhook_payload($webhookUrl);
@@ -164,12 +160,7 @@ try {
 
         case 'debug_webhook':
             // Testa o endpoint de webhook e retorna resultado
-            $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
-            if ($publicUrl === '') {
-                $publicUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-                    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-            }
-            $whUrl = rtrim($publicUrl, '/') . '/chat_webhook.php';
+            $whUrl = whatsapp_webhook_public_url();
 
             // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
             $payload = whatsapp_webhook_payload($whUrl);

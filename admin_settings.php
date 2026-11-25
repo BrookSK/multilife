@@ -1376,7 +1376,15 @@ WAJS;
         $instanceVal = $settings['baileys.instance'] ?? '';
         $autoUrl = rtrim((string)($settings['baileys.detected_url'] ?? ''), '/') ?: (wa_service_candidate_urls()[0] ?? '');
         
-        echo '<label>Endereço do serviço<input name="settings[baileys.base_url]" value="' . h($baseUrlVal) . '" placeholder="' . h($autoUrl !== '' ? 'Automático: ' . $autoUrl : 'https://whatsapp.seu-dominio.com.br') . '"><span class="helpText">Deixe vazio para usar o automático (subdomínio "whatsapp" do sistema). Preencha só se o serviço estiver em outro endereço (ex.: uma VPS).</span></label>';
+        echo '<label>Endereço do serviço<input name="settings[baileys.base_url]" value="' . h($baseUrlVal) . '" placeholder="' . h($autoUrl !== '' ? 'Automático: ' . $autoUrl : 'https://whatsapp.seu-dominio.com.br') . '">'
+            . '<span class="helpText">Endereço completo do subdomínio/domínio onde o Node.js do WhatsApp foi ativado no painel (ex.: <code>https://whatsapp.meusite.com.br</code>). '
+            . 'Vazio = tenta sozinho <code>whatsapp.</code> + endereço do sistema. Domínio temporário do Plesk ou outro nome: preencha aqui. Trocou de domínio: é só mudar este campo.</span></label>';
+
+        $whVal = (string)($settings['baileys.webhook_url'] ?? '');
+        $whAuto = (function_exists('whatsapp_webhook_public_url') && $whVal === '') ? whatsapp_webhook_public_url() : '';
+        echo '<label>Endereço que recebe as mensagens (webhook)<input name="settings[baileys.webhook_url]" value="' . h($whVal) . '" placeholder="' . h($whAuto !== '' ? 'Automático: ' . $whAuto : 'https://seu-sistema/chat_webhook.php') . '">'
+            . '<span class="helpText">Para onde o serviço manda as mensagens recebidas. Vazio = endereço do sistema (Configurações → Operacional → "App - Base URL pública") + <code>/chat_webhook.php</code>. '
+            . 'Depois de trocar, use "Aplicar padrão em todos" em Webhook Debug para os números já conectados.</span></label>';
         
         $hasApiKey = !empty($apiKeyVal);
         echo '<label>Token (API Key)';
@@ -1399,6 +1407,21 @@ WAJS;
             . 'As conversas do chat do sistema não são afetadas; isto vale para a cópia que o serviço usa para baixar mídia antiga e para o botão Sincronizar.</span></label>';
         
         echo '</div>';
+
+        // Serviço em outra assinatura/servidor: variáveis para o painel Node.js
+        $envCfg = require dirname(__FILE__) . '/config/config.php';
+        $envDb = is_array($envCfg['db'] ?? null) ? $envCfg['db'] : [];
+        echo '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:700;font-size:13px">O Node.js está em outra assinatura ou servidor? Variáveis para o painel</summary>';
+        echo '<div style="margin-top:8px;font-size:13px;line-height:1.6;color:hsl(var(--muted-foreground))">Só para quando a "Raiz do aplicativo" do Node.js não é a pasta <code>ml-baileys-service</code> deste sistema. '
+            . 'No painel, em Node.js → <strong>Variáveis de ambiente personalizadas</strong>, crie estas (a chave, os endereços e o prazo do histórico o serviço lê sozinho deste banco):</div>';
+        echo '<pre style="margin-top:8px;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;font-size:12px;white-space:pre-wrap">'
+            . h('DB_HOST=' . (($envDb['host'] ?? 'localhost') === 'localhost' ? '127.0.0.1' : (string)$envDb['host']) . "\n"
+            . 'DB_PORT=' . (int)($envDb['port'] ?? 3306) . "\n"
+            . 'DB_NAME=' . (string)($envDb['name'] ?? '') . "\n"
+            . 'DB_USER=' . (string)($envDb['user'] ?? '') . "\n"
+            . 'DB_PASSWORD=(a mesma senha do banco deste sistema)')
+            . '</pre>';
+        echo '</details>';
         echo '</div>';
 
         // Monitor de conexão real (dentro do serviço WhatsApp) — app/whatsapp_watchdog.php

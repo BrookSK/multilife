@@ -67,25 +67,44 @@ const num = (v, d) => {
   return Number.isFinite(n) ? n : d;
 };
 
+/** Primeiro valor preenchido. */
+const first = (...vals) => {
+  for (const v of vals) if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  return undefined;
+};
+
+/**
+ * Configurações gravadas pelo sistema na tabela admin_settings (mesmo banco).
+ * Valem mesmo sem o runtime-config.php: assim o serviço pode rodar em outra
+ * pasta/assinatura só com os dados do banco nas variáveis de ambiente.
+ */
+let dbSettings = {};
+export const setDbSettings = (s) => {
+  dbSettings = s && typeof s === 'object' ? s : {};
+};
+
 function build(rt) {
   const r = rt ?? {};
   const db = r.db ?? {};
+  const s = dbSettings;
+  const sysUrl = first(s['app.public_base_url'])?.replace(/\/+$/, '');
   return {
     root,
     host: pick('HOST', null, '0.0.0.0'),
     // Em hospedagem com Passenger (Plesk/cPanel) a porta é definida por ele.
     port: num(pick('PORT', null, '8090'), 8090),
-    apiKey: pick('API_KEY', r.api_key, ''),
+    // Ordem: ambiente > Configurações do sistema (banco) > runtime-config.php
+    apiKey: pick('API_KEY', first(s['baileys.api_key'], r.api_key), ''),
     /** URL pública deste serviço (campo server_url do webhook e auto-ping). */
-    publicUrl: pick('PUBLIC_URL', r.public_url, '').replace(/\/+$/, ''),
+    publicUrl: pick('PUBLIC_URL', first(s['baileys.base_url'], s['baileys.detected_url'], r.public_url), '').replace(/\/+$/, ''),
     logLevel: pick('LOG_LEVEL', null, 'info'),
 
     db: {
       host: pick('DB_HOST', db.host, '127.0.0.1'),
       port: num(pick('DB_PORT', db.port, '3306'), 3306),
-      user: pick('DB_USER', db.user, 'root'),
+      user: pick('DB_USER', db.user, ''),
       password: pick('DB_PASSWORD', db.pass, ''),
-      database: pick('DB_NAME', db.name, 'ml_baileys'),
+      database: pick('DB_NAME', db.name, ''),
       socketPath: pick('DB_SOCKET', db.socket, ''),
       /** Socket que o PHP usa; tentado se a conexão TCP falhar. */
       socketHint: pick('DB_SOCKET_HINT', db.socket_hint, ''),
@@ -93,7 +112,7 @@ function build(rt) {
 
     webhook: {
       /** Usado quando a instância não tem webhook próprio (POST /webhook/set). */
-      defaultUrl: pick('DEFAULT_WEBHOOK_URL', r.default_webhook_url, ''),
+      defaultUrl: pick('DEFAULT_WEBHOOK_URL', first(s['baileys.webhook_url'], sysUrl ? sysUrl + '/chat_webhook.php' : undefined, r.default_webhook_url), ''),
       timeoutMs: num(pick('WEBHOOK_TIMEOUT_MS', null, '10000'), 10000),
       retries: num(pick('WEBHOOK_RETRIES', null, '5'), 5),
       concurrency: Math.max(1, num(pick('WEBHOOK_CONCURRENCY', null, '3'), 3)),
@@ -104,7 +123,7 @@ function build(rt) {
      * Dias que as mensagens ficam guardadas no serviço. 0 = PARA SEMPRE (padrão):
      * nada é apagado, a não ser que o sistema configure um prazo.
      */
-    messageRetentionDays: Math.max(0, num(pick('MESSAGE_RETENTION_DAYS', r.message_retention_days, '0'), 0)),
+    messageRetentionDays: Math.max(0, num(pick('MESSAGE_RETENTION_DAYS', first(s['baileys.message_retention_days'], r.message_retention_days), '0'), 0)),
     maxMediaBytes: Math.max(1, num(pick('MAX_MEDIA_MB', null, '64'), 64)) * 1024 * 1024,
 
     monitor: {
@@ -115,7 +134,7 @@ function build(rt) {
       /** Intervalo do registro de status para o gráfico do piloto (minutos). */
       logIntervalMin: Math.max(1, num(pick('STATUS_LOG_INTERVAL_MIN', null, '5'), 5)),
       /** Dias do registro de status (0 = para sempre). Não são mensagens. */
-      logRetentionDays: Math.max(0, num(pick('STATUS_LOG_RETENTION_DAYS', r.status_retention_days, '90'), 90)),
+      logRetentionDays: Math.max(0, num(pick('STATUS_LOG_RETENTION_DAYS', first(s['baileys.status_retention_days'], r.status_retention_days), '90'), 90)),
     },
 
     /** Nome do aparelho mostrado em "Aparelhos conectados" no celular. */
@@ -124,7 +143,7 @@ function build(rt) {
     qrLimit: Math.max(1, num(pick('QRCODE_LIMIT', null, '6'), 6)),
     ffmpegPath: pick('FFMPEG_PATH', null, 'ffmpeg'),
     /** De onde veio a configuração (para a tela de status). */
-    source: rt ? 'sistema' : (env('API_KEY') ? 'ambiente' : 'nenhuma'),
+    source: env('DB_NAME') ? 'ambiente' : (rt ? 'sistema' : 'nenhuma'),
   };
 }
 
@@ -149,5 +168,8 @@ export function reloadConfig() {
   return { changed: before !== JSON.stringify(config), dbChanged };
 }
 
-/** Pronta para conectar no banco e atender a API? */
-export const isConfigured = () => config.apiKey !== '' && config.db.user !== '' && config.db.database !== '';
+/** Sabe em qual banco entrar? (a chave pode vir depois, do próprio banco) */
+export const hasDbConfig = () => config.db.user !== '' && config.db.database !== '';
+
+/** Pronta para atender a API? */
+export const isConfigured = () => config.apiKey !== '' && hasDbConfig();

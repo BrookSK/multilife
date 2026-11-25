@@ -20,9 +20,16 @@ const WHATSAPP_WEBHOOK_EVENTS = [
     'QRCODE_UPDATED',    // QR Code novo (aparece no painel)
 ];
 
-/** URL pública do webhook do chat. */
+/**
+ * URL pública do webhook do chat: a de Configurações (baileys.webhook_url) ou
+ * endereço do sistema + /chat_webhook.php.
+ */
 function whatsapp_webhook_public_url(): string
 {
+    $custom = rtrim(trim((string)admin_setting_get('baileys.webhook_url', '')), '/');
+    if ($custom !== '') {
+        return $custom;
+    }
     $publicUrl = trim((string)admin_setting_get('app.public_base_url', ''));
     if ($publicUrl === '') {
         $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
@@ -106,7 +113,8 @@ function whatsapp_webhook_configure(string $instanceName, ?string $url = null): 
 function whatsapp_webhook_optimize(string $instanceName): array
 {
     $before = whatsapp_webhook_find($instanceName);
-    $url = $before['url'] !== '' ? $before['url'] : whatsapp_webhook_public_url();
+    // Sempre o endereço configurado no sistema (troca de domínio passa a valer)
+    $url = whatsapp_webhook_public_url();
     $status = 0;
     $body = '';
     try {

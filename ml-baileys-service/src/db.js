@@ -43,6 +43,30 @@ export async function exec(sql, params = []) {
   return res;
 }
 
+const SETTING_KEYS = [
+  'baileys.api_key', 'baileys.base_url', 'baileys.detected_url', 'baileys.webhook_url',
+  'baileys.message_retention_days', 'baileys.status_retention_days', 'app.public_base_url',
+];
+
+/**
+ * Configurações do sistema (tabela admin_settings), quando o serviço usa o
+ * banco do Multilife. Banco só do serviço (VPS): devolve {} sem erro.
+ */
+export async function readSystemSettings() {
+  try {
+    const rows = await query(
+      `SELECT setting_key, setting_value FROM admin_settings WHERE setting_key IN (${SETTING_KEYS.map(() => '?').join(',')})`,
+      SETTING_KEYS,
+    );
+    const out = {};
+    for (const r of rows) out[r.setting_key] = r.setting_value ?? '';
+    return out;
+  } catch (e) {
+    if (e.code !== 'ER_NO_SUCH_TABLE') logger.warn({ err: e.message }, 'falha ao ler as configurações do sistema');
+    return {};
+  }
+}
+
 export async function closePool() {
   if (pool) await pool.end().catch(() => {});
   pool = null;
