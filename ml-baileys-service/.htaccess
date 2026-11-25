@@ -1,8 +1,12 @@
-# Esta pasta é o serviço Node (roda na VPS). Quando o repositório inteiro vai
-# para a hospedagem do PHP, nada daqui pode ser acessado pelo navegador.
-<IfModule mod_authz_core.c>
-    Require all denied
-</IfModule>
-<IfModule !mod_authz_core.c>
-    Deny from all
-</IfModule>
+# A subpasta public/ é a "Raiz do documento" do subdomínio do WhatsApp no painel
+# (o Plesk exige que ela fique dentro da raiz do aplicativo). Por isso esta pasta
+# NÃO bloqueia tudo: só os arquivos sensíveis. src/, dist/ e scripts/ têm o
+# próprio .htaccess bloqueando o acesso pelo navegador.
+<FilesMatch "^(runtime-config\.php|\.env.*|package(-lock)?\.json|ecosystem\.config\.cjs|app\.js|.*\.log)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Deny from all
+    </IfModule>
+</FilesMatch>

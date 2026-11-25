@@ -50,9 +50,10 @@ sistema está): **Sites e Domínios → Adicionar subdomínio**.
 |---|---|
 | Nome do subdomínio | o que quiser. Sugestão: `whatsapp` |
 | Domínio pai | qualquer domínio dessa assinatura. Hoje: o domínio temporário do Plesk. Depois: o de produção. |
-| **Raiz do documento** | **deixe a pasta nova que o Plesk sugere** (ex.: `/whatsapp.seudominio.com.br`). Ela fica vazia mesmo. **Não** aponte para a pasta do sistema. |
+| **Raiz do documento** | a pasta do sistema + `/ml-baileys-service/public`. Ex.: `/httpdocs/ml-baileys-service/public` (pode deixar a que o Plesk sugere agora e trocar no Passo 3). |
 
-Não precisa colocar código nem fazer deploy nesse subdomínio.
+Não precisa colocar código nem fazer deploy nesse subdomínio: a pasta
+`ml-baileys-service/public` já vem no código do sistema.
 
 Depois, no subdomínio: **SSL/TLS → Let's Encrypt → Proteger** (certificado grátis,
 um clique). Se o domínio temporário do Plesk não aceitar o certificado, pode
@@ -70,10 +71,11 @@ No subdomínio criado, clique em **Node.js** e preencha:
 | Versão do Node.js | **20** ou mais nova (22 se tiver) |
 | Modo do aplicativo (Application Mode) | `production` |
 | **Raiz do aplicativo** (Application Root) | a pasta do sistema + `/ml-baileys-service`. Ex.: `/httpdocs/ml-baileys-service` |
-| Raiz do documento (Document Root) | deixe a do subdomínio (a pasta vazia do Passo 2) |
+| **Raiz do documento** (Document Root) | a raiz do aplicativo + `/public`. Ex.: `/httpdocs/ml-baileys-service/public`. **Precisa** ficar dentro da raiz do aplicativo, senão o Plesk avisa "o documento raiz está fora do diretório raiz do aplicativo" e o app não sobe. |
 | **Arquivo de inicialização** (Application Startup File) | `app.js` |
 
-Clique em **Ativar Node.js** (Enable Node.js).
+Clique em **Ativar Node.js** (Enable Node.js). Se já estava ativado, clique em
+**Reiniciar aplicativo** depois de corrigir a raiz do documento.
 
 - **Não** precisa clicar em "NPM install" (se clicar por engano, não estraga nada).
 - **Não** precisa preencher variáveis de ambiente.
@@ -138,8 +140,10 @@ Pronto. Mensagens, captação, reações e avisos funcionam como antes.
 Nada é fixo no código. Na troca:
 
 1. Crie o subdomínio do WhatsApp no domínio de produção e ligue o Node.js nele
-   (Passos 2 e 3, com a mesma pasta `ml-baileys-service`). Desligue o Node.js do
-   endereço temporário (**Node.js → Desativar**), para não ficarem dois ligados.
+   (Passos 2 e 3, com a mesma pasta `ml-baileys-service` e a raiz do documento
+   `ml-baileys-service/public`). Antes, desative o Node.js do endereço antigo
+   (**Node.js → Desabilitar Node.js**): o Plesk não deixa duas raízes do documento
+   iguais, e dois serviços ligados ao mesmo tempo não são necessários.
 2. No sistema: **"App - Base URL pública"** com o endereço novo do sistema e
    **Endereço do serviço** com o endereço novo do WhatsApp. Salve.
 
@@ -181,6 +185,7 @@ banco, e o serviço novo reconecta sozinho.
 |---|---|
 | "sem resposta" com **Could not resolve host** | O endereço digitado em **Endereço do serviço** não existe. Confira o nome do subdomínio (Passo 2). |
 | "sem resposta" com **HTTP 404 / 403** ou página do Plesk | O Node.js não está ativado nesse subdomínio, ou a raiz do aplicativo está errada (Passo 3). |
+| Plesk: "documento raiz está fora do diretório raiz do aplicativo" e "Cannot find module .../app.js" | A raiz do documento precisa ser `.../ml-baileys-service/public` (Passo 3). Corrija e clique em **Reiniciar aplicativo**. |
 | "sem resposta" com **HTTP 502 / 503** | O app não conseguiu iniciar. No painel: **Node.js → versão 20+** e arquivo `app.js`. O log do painel (Node.js → Logs) mostra o motivo. |
 | "o endereço não é o serviço WhatsApp" | O endereço abre outro site. Confira o **Endereço do serviço** e a raiz do aplicativo. |
 | "iniciando: aguardando configuração" por mais de 2 min | Abra de novo **Credenciais** e salve. Se continuar, a pasta `ml-baileys-service` não tem permissão de escrita: peça à hospedagem para dar permissão de escrita ao usuário do site nessa pasta. |
