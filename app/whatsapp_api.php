@@ -391,6 +391,9 @@ function wa_service_keepalive(bool $force = false): ?array
         }
     }
     wa_service_keepalive_log($h);
+    if ($h['ok']) {
+        wa_webhook_self_heal();
+    }
     if ($h['ok'] && !wa_api_base_url_is_manual() && $h['url'] !== rtrim((string)admin_setting_get('baileys.detected_url', ''), '/')) {
         try {
             wa_setting_save('baileys.detected_url', $h['url']);
@@ -421,6 +424,59 @@ function wa_system_local_ip_remember(): void
         }
     } catch (Throwable $e) {
     }
+}
+
+/**
+ * Confere (a cada 5 min) se cada número entrega no endereço de webhook das
+ * Configurações e corrige o que estiver diferente. Sem isso, trocar o campo
+ * "Endereço que recebe as mensagens" podia não chegar ao número (ex.: a regravação
+ * falhou na hora de salvar) e as mensagens continuavam indo para o endereço antigo.
+ */
+function wa_webhook_self_heal(bool $force = false): array
+{
+    $out = ['checked' => 0, 'fixed' => 0, 'failed' => 0];
+    if (!function_exists('whatsapp_webhook_public_url') || !function_exists('whatsapp_list_all_instances')) {
+        return $out;
+    }
+    try {
+        $last = (int)admin_setting_get('baileys.webhook_check_at', '0');
+        if (!$force && time() - $last < 300) {
+            return $out;
+        }
+        wa_setting_save('baileys.webhook_check_at', (string)time());
+        $want = whatsapp_webhook_public_url();
+        if ($want === '' || !preg_match('#^https?://#i', $want)) {
+            return $out;
+        }
+        foreach (whatsapp_list_all_instances() as $wi) {
+            $name = (string)($wi['instance_name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $cur = whatsapp_webhook_find($name);
+            if (!$cur['ok']) {
+                continue; // número que ainda não existe no serviço
+            }
+            $out['checked']++;
+            if (rtrim($cur['url'], '/') === rtrim($want, '/') && $cur['enabled'] !== false) {
+                continue;
+            }
+            $ok = whatsapp_webhook_configure($name, $want);
+            $out[$ok ? 'fixed' : 'failed']++;
+            if (function_exists('wa_event_log')) {
+                wa_event_log($ok ? 'warn' : 'error', 'webhook', $ok ? 'webhook_corrigido' : 'webhook_nao_corrigido', [
+                    'instance' => $name,
+                    'summary' => $ok
+                        ? 'O número entregava as mensagens em ' . ($cur['url'] !== '' ? $cur['url'] : '(nenhum endereço)') . '; corrigido para ' . $want . ' (Configurações)'
+                        : 'O número entrega as mensagens em ' . ($cur['url'] !== '' ? $cur['url'] : '(nenhum endereço)') . ' e NÃO foi possível trocar para ' . $want,
+                    'details' => ['antes' => $cur['url'], 'depois' => $want, 'ativoAntes' => $cur['enabled']],
+                ]);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[WEBHOOK_HEAL] ' . $e->getMessage());
+    }
+    return $out;
 }
 
 /**

@@ -95,6 +95,15 @@ if ($webhookAfter !== '' && $webhookAfter !== $webhookBefore && function_exists(
     }
 }
 
+// Confere se cada número entrega no endereço de webhook salvo (corrige o que estiver diferente)
+$heal = function_exists('wa_webhook_self_heal') ? wa_webhook_self_heal(true) : ['fixed' => 0, 'failed' => 0];
+if (($heal['fixed'] ?? 0) > 0 || ($heal['failed'] ?? 0) > 0) {
+    flash_set(($heal['failed'] ?? 0) > 0 ? 'error' : 'success', 'Configurações salvas. Endereço do webhook corrigido em ' . (int)$heal['fixed'] . ' número(s)'
+        . (($heal['failed'] ?? 0) > 0 ? '; ' . (int)$heal['failed'] . ' não aceitaram a troca (veja Eventos do WhatsApp)' : '') . '.');
+    header('Location: /admin_settings.php');
+    exit;
+}
+
 flash_set('success', 'Configurações salvas.');
 header('Location: /admin_settings.php');
 exit;
