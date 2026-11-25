@@ -316,19 +316,69 @@ function demand_dispatch_kick_worker(int $jobId): void
         'token' => $cronToken,
         'job_id' => $jobId,
     ]);
-    try {
+    // Vai direto ao IP do servidor que está atendendo esta página (SERVER_ADDR),
+    // mantendo o domínio (Host/SNI). Na hospedagem o nome do próprio domínio,
+    // resolvido de dentro do servidor, recusa a conexão (ECONNREFUSED) e a
+    // captação ficava parada na fila.
+    $hostName = (string)preg_replace('/:\d+$/', '', $host);
+    $port = (int)(parse_url($scheme . '://' . $host, PHP_URL_PORT) ?: ($scheme === 'https' ? 443 : 80));
+    $serverIp = trim((string)($_SERVER['SERVER_ADDR'] ?? ''));
+    $resolve = [];
+    if ($serverIp !== '' && filter_var($serverIp, FILTER_VALIDATE_IP) && !filter_var($hostName, FILTER_VALIDATE_IP)) {
+        $resolve = [$hostName . ':' . $port . ':' . (strpos($serverIp, ':') !== false ? '[' . $serverIp . ']' : $serverIp)];
+    }
+    $attempt = static function (array $resolveList) use ($url): array {
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
             CURLOPT_CONNECTTIMEOUT => 2,
             // Só precisa entregar a requisição; o worker usa ignore_user_abort.
-            CURLOPT_TIMEOUT_MS => 800,
+            CURLOPT_TIMEOUT_MS => 1500,
             CURLOPT_NOSIGNAL => true,
-        ]);
-        curl_exec($ch);
-        curl_close($ch);
+        ];
+        if ($resolveList) {
+            $opts[CURLOPT_RESOLVE] = $resolveList;
+        }
+        curl_setopt_array($ch, $opts);
+        $body = curl_exec($ch);
+        $out = [
+            'errno' => curl_errno($ch),
+            'error' => curl_error($ch),
+            'http' => (int)curl_getinfo($ch, CURLINFO_HTTP_CODE),
+            'body' => is_string($body) ? mb_substr($body, 0, 200) : '',
+            // Conectou e mandou a requisição (o tempo esgotado depois disso é esperado)
+            'sent' => (float)curl_getinfo($ch, CURLINFO_PRETRANSFER_TIME) > 0,
+        ];
+        unset($ch);
+        return $out;
+    };
+    try {
+        $t0 = microtime(true);
+        $r = $attempt($resolve);
+        $via = $resolve ? 'IP do servidor ' . $serverIp : 'endereço público';
+        // Caminho pelo IP não conectou: tenta o endereço público normal
+        if ($resolve && $r['errno'] !== 0 && !$r['sent']) {
+            $r = $attempt([]);
+            $via = 'endereço público';
+        }
+        // 28 = tempo esgotado depois de mandar: esperado (o worker continua sozinho)
+        $delivered = $r['errno'] === 0 || ($r['errno'] === 28 && $r['sent']);
+        $httpOk = $r['errno'] !== 0 || ($r['http'] >= 200 && $r['http'] < 300);
+        if (function_exists('wa_event_log')) {
+            wa_event_log($delivered && $httpOk ? 'debug' : 'error', 'captacao', $delivered && $httpOk ? 'worker_acionado' : 'worker_nao_acionado', [
+                'http' => $r['http'] ?: null,
+                'ms' => (microtime(true) - $t0) * 1000,
+                'summary' => $delivered && $httpOk
+                    ? 'Envio da captação iniciado em segundo plano (job #' . $jobId . ', via ' . $via . ')'
+                    : 'NÃO foi possível iniciar o envio da captação em segundo plano (job #' . $jobId . '): '
+                        . ($r['errno'] ? $r['error'] : 'HTTP ' . $r['http'] . ' ' . $r['body'])
+                        . '. Ela fica esperando o cron integration_jobs_run.',
+                'error' => $delivered && $httpOk ? null : ($r['errno'] ? 'curl ' . $r['errno'] . ': ' . $r['error'] : 'HTTP ' . $r['http']),
+                'details' => ['job' => $jobId, 'via' => $via, 'host' => $hostName, 'ipServidor' => $serverIp, 'resposta' => $r['body']],
+            ]);
+        }
     } catch (Throwable $e) {
         error_log('[DISPATCH] Falha ao acionar worker imediato: ' . $e->getMessage());
     }

@@ -2,6 +2,7 @@
 // conversão de áudio para nota de voz (ogg/opus) via ffmpeg, quando instalado.
 import { spawn } from 'node:child_process';
 import { downloadMediaMessage, normalizeMessageContent, getContentType } from 'baileys';
+import { download } from './net.js';
 import { config } from './config.js';
 import { baileysLogger, logger } from './logger.js';
 import { MEDIA_TYPES, tsToNumber } from './util.js';
@@ -86,9 +87,7 @@ function audioMime(buf, fallback) {
 export async function prepareVoiceNote(input, fallbackMime) {
   let src = input;
   if (!Buffer.isBuffer(input)) {
-    const res = await fetch(input.url);
-    if (!res.ok) throw new Error('download do áudio falhou: HTTP ' + res.status);
-    src = Buffer.from(await res.arrayBuffer());
+    src = (await download(input.url)).buffer;
   }
   if (isOgg(src)) return { audio: src, mimetype: 'audio/ogg; codecs=opus', ptt: true };
   if (isWebm(src)) {

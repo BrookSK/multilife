@@ -12,6 +12,7 @@ import { currentWaVersion } from './instance.js';
 import { query } from './db.js';
 import { state } from './state.js';
 import { ev } from './events.js';
+import { download } from './net.js';
 import {
   HttpError, isGroupJid, isLid, isPn, mediaInput, onlyDigits, safeEqual, toJid,
 } from './util.js';
@@ -42,6 +43,16 @@ const wrap = (fn, okStatus = 200) => async (req, res) => {
     res.status(status).json(new HttpError(status, e?.message || 'erro interno').toJSON());
   }
 };
+
+/**
+ * Mídia da API: URL (baixada aqui, pelo mesmo caminho do webhook, porque a
+ * hospedagem pode recusar o endereço público do próprio sistema), data URI ou base64.
+ */
+async function mediaFrom(value) {
+  const m = mediaInput(value);
+  if (Buffer.isBuffer(m)) return m;
+  return (await download(m.url)).buffer;
+}
 
 const param = (req, name) => req.body?.[name] ?? req.query?.[name];
 const truthy = (v) => v === true || v === 'true' || v === '1' || v === 1;
@@ -288,7 +299,7 @@ function messageRoutes(app) {
     const b0 = req.body ?? {};
     const b = b0.mediaMessage && typeof b0.mediaMessage === 'object' ? { ...b0, ...b0.mediaMessage } : b0;
     const type = String(b.mediatype ?? b.mediaType ?? 'document').toLowerCase();
-    const media = mediaInput(b.media);
+    const media = await mediaFrom(b.media);
     const caption = b.caption ? String(b.caption) : undefined;
     let content;
     if (type === 'image') content = { image: media, caption, ...(b.mimetype ? { mimetype: b.mimetype } : {}) };
@@ -309,14 +320,14 @@ function messageRoutes(app) {
     const inst = manager.must(req.params.instance);
     const b0 = req.body ?? {};
     const b = b0.audioMessage && typeof b0.audioMessage === 'object' ? { ...b0, ...b0.audioMessage } : b0;
-    const { audio, mimetype, ptt } = await prepareVoiceNote(mediaInput(b.audio), b.mimetype);
+    const { audio, mimetype, ptt } = await prepareVoiceNote(await mediaFrom(b.audio), b.mimetype);
     return inst.send(requireNumber(b), { audio, ptt, mimetype }, { ...sendOpts(b), presence: 'recording' });
   }, 201));
 
   app.post('/message/sendSticker/:instance', wrap(async (req) => {
     const inst = manager.must(req.params.instance);
     const b = req.body ?? {};
-    const sticker = mediaInput(b.sticker ?? b.stickerMessage?.image ?? b.image);
+    const sticker = await mediaFrom(b.sticker ?? b.stickerMessage?.image ?? b.image);
     return inst.send(requireNumber(b), { sticker }, sendOpts(b));
   }, 201));
 
@@ -388,9 +399,9 @@ function messageRoutes(app) {
     }
     let content;
     if (type === 'text') content = { text: String(b.content ?? '') };
-    else if (type === 'image') content = { image: mediaInput(b.content), caption: b.caption };
-    else if (type === 'video') content = { video: mediaInput(b.content), caption: b.caption };
-    else if (type === 'audio') content = { audio: mediaInput(b.content), ptt: true, mimetype: 'audio/ogg; codecs=opus' };
+    else if (type === 'image') content = { image: await mediaFrom(b.content), caption: b.caption };
+    else if (type === 'video') content = { video: await mediaFrom(b.content), caption: b.caption };
+    else if (type === 'audio') content = { audio: await mediaFrom(b.content), ptt: true, mimetype: 'audio/ogg; codecs=opus' };
     else throw new HttpError(400, 'type inválido (text, image, video, audio)');
     return inst.send('status@broadcast', content, { statusJidList: jids });
   }, 201));
@@ -676,7 +687,7 @@ function groupRoutes(app) {
   const updatePicture = wrap(async (req) => {
     const inst = manager.must(req.params.instance);
     const jid = groupJidOf(req);
-    await inst.ensureOpen().updateProfilePicture(jid, mediaInput(param(req, 'image')));
+    await inst.ensureOpen().updateProfilePicture(jid, await mediaFrom(param(req, 'image')));
     return { update: 'success' };
   }, 201);
   app.put('/group/updateGroupPicture/:instance', updatePicture);
