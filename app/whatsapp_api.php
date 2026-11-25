@@ -50,7 +50,15 @@ function wa_media_for_api(string $media): string
     if ($limitKb <= 0 || strlen($media) <= $limitKb * 1024) {
         return $media;
     }
+    // O arquivo fica na pasta DESTA instalação: o link usa o endereço da tela em uso
+    // (com duas instalações no mesmo banco, o "endereço público" das Configurações
+    // pode ser o da outra, onde o arquivo não existe).
+    $reqHost = (string)($_SERVER['HTTP_HOST'] ?? '');
     $public = wa_system_public_url();
+    if (PHP_SAPI !== 'cli' && $reqHost !== '' && preg_match('/^[a-z0-9.\-]+(:\d+)?$/i', $reqHost)
+        && strcasecmp((string)parse_url($public, PHP_URL_HOST), (string)preg_replace('/:\d+$/', '', $reqHost)) !== 0) {
+        $public = 'https://' . strtolower($reqHost);
+    }
     if ($public === '') {
         return $media;
     }
