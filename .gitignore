@@ -17,3 +17,4 @@ testes/stress/_resultados/
 # Arquivos internos gerados no servidor: sessões (app/bootstrap.php) e
 # logs arquivados (storage/log_archive, app/integrations.php)
 storage/
+multilife-baileys-integracao.md
