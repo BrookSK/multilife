@@ -1,4 +1,4 @@
-# Limites de upload e do webhook da Evolution (mídia em base64 no corpo).
+# Limites de upload e do webhook do serviço WhatsApp/Baileys (mídia em base64 no corpo).
 # Os mesmos valores estão em .user.ini (usado quando o PHP roda como FPM/CGI).
 php_value upload_max_filesize 64M
 php_value post_max_size 64M

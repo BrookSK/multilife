@@ -10,8 +10,8 @@ $userId = (int)auth_user_id();
 // Buscar TODAS as instâncias vinculadas ao usuário (vínculo N:N + legado).
 $instances = whatsapp_list_user_instances($userId);
 
-$baseUrl = (string)admin_setting_get('evolution.base_url', '');
-$apiKey = (string)admin_setting_get('evolution.api_key', '');
+$baseUrl = (string)wa_api_base_url();
+$apiKey = (string)wa_api_key();
 $configOk = $baseUrl !== '' && $apiKey !== '';
 
 view_header('Meu WhatsApp');

@@ -3,14 +3,16 @@
 declare(strict_types=1);
 
 /**
- * WATCHDOG DE CONEXÃO REAL (Evolution) + TRAVA DE NÚMERO DUPLICADO.
+ * MONITOR DE CONEXÃO REAL (serviço WhatsApp / Baileys) + TRAVA DE NÚMERO DUPLICADO.
  *
- * Problema: a Evolution mostra a instância como "open" lendo o estado em
- * memória. Quando o socket do WhatsApp morre pela metade (zumbi), ela continua
- * "conectada", o envio parece funcionar, mas nada chega (mensagem, reação...).
+ * Problema: o socket do WhatsApp pode morrer pela metade (zumbi): a instância
+ * continua "conectada", o envio parece funcionar, mas nada chega (mensagem,
+ * reação...).
  *
- * O watchdog (serviço da infra, porta 8083, doc watchdog-evolution-multilife.md)
- * observa o fluxo real de eventos de cada instância e devolve um veredito:
+ * O monitor fica dentro do próprio serviço ml-baileys-service (mesma URL e API
+ * Key de Configurações → WhatsApp Conexão; rotas GET /status, POST /heal e
+ * POST /redispatch). Ele observa o fluxo real de eventos de cada instância e
+ * devolve um veredito:
  *   healthy | silent (zumbi) | warming_up | awaiting_scan (QR) | dormant | unknown
  * e uma ação de recuperação (heal = restart sem QR).
  *
@@ -23,15 +25,13 @@ declare(strict_types=1);
  *    quando um QR Code gerado pelo sistema é lido com um número que já está em
  *    outra instância, a conexão nova é desfeita e o motivo aparece na tela.
  *
- * O watchdog atende outras empresas na mesma Evolution: só olhamos/agimos nas
- * instâncias ativas cadastradas em whatsapp_instances.
+ * Só olhamos/agimos nas instâncias ativas cadastradas em whatsapp_instances.
  *
  * Quem roda o fluxo: o polling de notificações (a cada 30 s em qualquer tela
  * aberta, no máximo 1 rodada por minuto para o sistema todo) e, se agendado,
  * cron/whatsapp_watchdog.php (cobre os horários sem ninguém logado).
  */
 
-const WA_WATCHDOG_DEFAULT_URL = 'http://177.104.185.7:8083';
 const WA_WATCHDOG_GLOBAL_ROW = '__watchdog__';
 /** Intervalo mínimo entre rodadas do fluxo automático (segundos). */
 const WA_WATCHDOG_TICK_SEC = 60;
@@ -66,31 +66,21 @@ function wa_watchdog_config(): array
     $token = '';
     $autoHeal = '1';
     try {
-        $url = trim((string)admin_setting_get('evolution.watchdog_url', ''));
-        $token = trim((string)admin_setting_get('evolution.watchdog_token', ''));
-        $autoHeal = trim((string)admin_setting_get('evolution.watchdog_auto_heal', '1'));
+        // O monitor é o próprio serviço WhatsApp (Baileys): mesma URL e chave
+        $url = wa_api_base_url();
+        $token = wa_api_key();
+        $autoHeal = trim((string)wa_setting('watchdog_auto_heal', '1'));
     } catch (Throwable $e) {
         error_log('[WATCHDOG] config: ' . $e->getMessage());
-    }
-    // Variável de ambiente tem prioridade (token fora do banco, se a infra preferir)
-    $envToken = getenv('EVO_WATCHDOG_TOKEN');
-    if (is_string($envToken) && trim($envToken) !== '') {
-        $token = trim($envToken);
-    }
-    $envUrl = getenv('EVO_WATCHDOG_URL');
-    if (is_string($envUrl) && trim($envUrl) !== '') {
-        $url = trim($envUrl);
-    }
-    if ($url === '') {
-        $url = WA_WATCHDOG_DEFAULT_URL;
     }
     return $cfg = ['url' => rtrim($url, '/'), 'token' => $token, 'auto_heal' => $autoHeal !== '0'];
 }
 
-/** Watchdog configurado (tem token)? Sem token o sistema segue como antes. */
+/** Monitor disponível (serviço WhatsApp configurado)? */
 function wa_watchdog_enabled(): bool
 {
-    return wa_watchdog_config()['token'] !== '';
+    $cfg = wa_watchdog_config();
+    return $cfg['token'] !== '' && $cfg['url'] !== '';
 }
 
 function wa_watchdog_ensure_schema(): void
@@ -201,7 +191,7 @@ function wa_watchdog_request(string $method, string $path, int $timeoutSeconds, 
 {
     $cfg = wa_watchdog_config();
     if ($cfg['token'] === '') {
-        return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'watchdog sem token configurado'];
+        return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'serviço WhatsApp (Baileys) não configurado'];
     }
     try {
         $res = http_json_request($method, $cfg['url'] . $path, ['x-token' => $cfg['token']], $body, $timeoutSeconds);
@@ -219,7 +209,7 @@ function wa_watchdog_request(string $method, string $path, int $timeoutSeconds, 
 }
 
 /**
- * Vereditos de todas as instâncias da Evolution (uma chamada só).
+ * Vereditos de todas as instâncias da API do WhatsApp (uma chamada só).
  *
  * @return array<string,array>|null  nome => {verdict,state,lastEventSecondsAgo,lastHealSecondsAgo}; null = falhou
  */
@@ -257,7 +247,7 @@ function wa_watchdog_heal(string $instanceName): array
         $reason = $res['error'] !== '' ? $res['error'] : 'falha desconhecida';
     }
     try {
-        integration_log('evolution', 'POST /heal/' . $instanceName . ' (watchdog)', $ok ? 'success' : 'error', $res['status'] ?: null,
+        integration_log('whatsapp', 'POST /heal/' . $instanceName . ' (watchdog)', $ok ? 'success' : 'error', $res['status'] ?: null,
             ['instance' => $instanceName], $json ?: null, $ok ? null : mb_strimwidth($reason, 0, 250, ''), 1);
     } catch (Throwable $e) {}
     if (function_exists('whatsapp_health_record')) {
@@ -267,12 +257,12 @@ function wa_watchdog_heal(string $instanceName): array
 }
 
 // --------------------------------------------------------------------------
-// Sincronizar (redispatch): reenviar ao webhook eventos já salvos na Evolution
+// Sincronizar (redispatch): reenviar ao webhook eventos já salvos na API do WhatsApp
 // --------------------------------------------------------------------------
 
 /**
  * Espera depois de reconectar antes de liberar o "Sincronizar" (segundos): no
- * pareamento novo o WhatsApp repõe na Evolution o que ficou para trás; reenviar
+ * pareamento novo o WhatsApp repõe na API do WhatsApp o que ficou para trás; reenviar
  * antes disso perde o que ainda não chegou.
  */
 const WA_REDISPATCH_WAIT_SEC = 15 * 60;
@@ -382,7 +372,7 @@ function wa_watchdog_redispatch(string $instanceName, string $fromUtc, string $t
     // O reenvio espera 200 ms por evento: 200 eventos ~ 40 s + o processamento no webhook.
     $res = wa_watchdog_request('POST', '/redispatch/' . rawurlencode($instanceName), $dryRun ? 40 : 170, $body);
     try {
-        integration_log('evolution', 'POST /redispatch/' . $instanceName . ($dryRun ? ' (prévia)' : '') . ' (watchdog)',
+        integration_log('whatsapp', 'POST /redispatch/' . $instanceName . ($dryRun ? ' (prévia)' : '') . ' (watchdog)',
             $res['ok'] ? 'success' : 'error', $res['status'] ?: null, $body, $res['json'], $res['ok'] ? null : mb_strimwidth($res['error'], 0, 250, ''), 1);
     } catch (Throwable $e) {}
     return $res;
@@ -512,7 +502,7 @@ function wa_watchdog_refresh(bool $force = false): bool
         }
         wa_monitor_set($name, $fields);
 
-        // Status gravado no sistema segue o estado real da Evolution
+        // Status gravado no sistema segue o estado real da API do WhatsApp
         $map = ['open' => 'connected', 'close' => 'disconnected', 'connecting' => 'connecting'];
         if (isset($map[$state]) && (string)($inst['connection_status'] ?? '') !== $map[$state]) {
             try {
@@ -521,7 +511,7 @@ function wa_watchdog_refresh(bool $force = false): bool
         }
     }
 
-    // Evolution inteira fora (watchdog responde, mas não conhece nenhuma das nossas)
+    // API do WhatsApp inteira fora (watchdog responde, mas não conhece nenhuma das nossas)
     $globalVerdict = ($instances && $known === 0) ? 'down' : 'ok';
     $gFields = ['checked_at' => $nowSql];
     if (($g['verdict'] ?? '') !== $globalVerdict) {
@@ -583,16 +573,16 @@ function wa_watchdog_verdict_view(string $verdict): array
             return ['label' => 'Aguardando QR Code', 'color' => '#854d0e', 'bg' => '#fef9c3', 'dot' => '#eab308',
                 'hint' => 'A conexão caiu e só volta lendo o QR Code com o celular deste número.'];
         case 'dormant':
-            // "dormant" do watchdog = sessão fechada na Evolution. A instância continua
+            // "dormant" do watchdog = sessão fechada na API do WhatsApp. A instância continua
             // ativa no sistema; só não há WhatsApp conectado nela.
             return ['label' => 'Desconectada', 'color' => '#475569', 'bg' => '#f1f5f9', 'dot' => '#94a3b8',
-                'hint' => 'Sem sessão do WhatsApp na Evolution (o celular não está conectado). A instância continua ativa no sistema: use Reconectar e leia o QR Code.'];
+                'hint' => 'Sem sessão do WhatsApp no serviço (o celular não está conectado). A instância continua ativa no sistema: use Reconectar e leia o QR Code.'];
         case 'warming_up':
             return ['label' => 'Monitorando', 'color' => '#475569', 'bg' => '#f1f5f9', 'dot' => '#94a3b8',
                 'hint' => 'Conexão recém-iniciada ou reconectada: o monitor ainda está coletando dados.'];
         default:
             return ['label' => 'Sem dados', 'color' => '#991b1b', 'bg' => '#fee2e2', 'dot' => '#ef4444',
-                'hint' => 'O monitor não encontrou esta instância ou a Evolution está fora do ar.'];
+                'hint' => 'O monitor não encontrou esta instância ou o serviço WhatsApp está fora do ar.'];
     }
 }
 
@@ -649,7 +639,7 @@ function wa_watchdog_public(string $instanceName): ?array
 function wa_watchdog_tick(bool $force = false): string
 {
     if (!wa_watchdog_enabled()) {
-        return 'watchdog sem token: nada a fazer';
+        return 'serviço WhatsApp não configurado: nada a fazer';
     }
     try {
         wa_watchdog_ensure_schema();
@@ -691,23 +681,23 @@ function wa_watchdog_run_actions(): string
     $cfg = wa_watchdog_config();
     $now = time();
 
-    // Watchdog / Evolution fora do ar há 5 min → avisa os administradores (1 vez)
+    // Watchdog / API do WhatsApp fora do ar há 5 min → avisa os administradores (1 vez)
     $g = wa_monitor_row(WA_WATCHDOG_GLOBAL_ROW);
     if ($g && (string)$g['verdict'] === 'down') {
         $since = $g['verdict_since'] ? strtotime((string)$g['verdict_since']) : $now;
         if ($now - $since >= WA_WATCHDOG_ESCALATE_SEC && (string)($g['alert_kind'] ?? '') !== 'down') {
             wa_watchdog_notify(null, 'down', 'Monitor do WhatsApp sem resposta',
-                'O monitor de conexões da Evolution (watchdog) não responde, ou a Evolution está fora do ar, desde '
+                'O serviço WhatsApp (Baileys) não responde desde '
                 . date('H:i', $since) . '. Avise a equipe de infraestrutura.');
             wa_monitor_set(WA_WATCHDOG_GLOBAL_ROW, ['alert_kind' => 'down', 'alert_sent_at' => date('Y-m-d H:i:s')]);
-            $log[] = 'alerta: watchdog/evolution fora do ar';
+            $log[] = 'alerta: serviço WhatsApp fora do ar';
         }
         return $log ? implode("\n", $log) : 'watchdog sem resposta';
     }
 
     $instances = wa_watchdog_system_instances();
     $heals = 0;
-    $evoList = null; // fetchInstances só se alguma conexão nova precisar de conferência
+    $serviceList = null; // fetchInstances só se alguma conexão nova precisar de conferência
     foreach ($instances as $name => $inst) {
         $r = wa_monitor_row($name);
         if (!$r || !$r['checked_at'] || $now - strtotime((string)$r['checked_at']) > 180) {
@@ -719,10 +709,10 @@ function wa_watchdog_run_actions(): string
 
         // Conexão nova (QR lido) ainda não conferida: trava de número duplicado
         if ((string)$r['evo_state'] === 'open' && wa_pairing_pending($name)) {
-            if ($evoList === null) {
-                $evoList = wa_evolution_instances_list();
+            if ($serviceList === null) {
+                $serviceList = wa_service_instances_list();
             }
-            $guard = wa_pairing_guard($name, null, $evoList);
+            $guard = wa_pairing_guard($name, null, $serviceList);
             if ($guard && $guard['blocked']) {
                 $log[] = $name . ': conexão desfeita (número duplicado)';
                 continue;
@@ -926,15 +916,15 @@ function whatsapp_duplicate_number_map(): array
 }
 
 /**
- * Lista da Evolution (todas as instâncias, inclusive fora do sistema).
+ * Lista da API do WhatsApp (todas as instâncias, inclusive fora do sistema).
  *
  * @return array<int,array{name:string,state:string,key:string}>|null null = não conseguiu ler
  */
-function wa_evolution_instances_list(): ?array
+function wa_service_instances_list(): ?array
 {
     try {
-        $baseUrl = trim((string)admin_setting_get('evolution.base_url', ''));
-        $apiKey = trim((string)admin_setting_get('evolution.api_key', ''));
+        $baseUrl = trim((string)wa_api_base_url());
+        $apiKey = trim((string)wa_api_key());
         if ($baseUrl === '' || $apiKey === '') {
             return null;
         }
@@ -1008,17 +998,17 @@ function wa_pairing_duplicate_note(string $instanceName): ?string
 /**
  * Conferência ao conectar: se esta instância acabou de ler um QR Code gerado
  * pelo sistema com um número que já está em OUTRA instância (do sistema, ou
- * conectado na Evolution), desfaz esta conexão nova.
+ * conectado na API do WhatsApp), desfaz esta conexão nova.
  *
  * Só age quando há marca de QR pendente: reinício/heal de uma instância antiga
  * nunca derruba nada. Instâncias que já dividem número hoje são só avisadas
  * na tela (whatsapp_duplicate_number_map).
  *
  * @param string|null $ownerNumber número/JID conectado, se já conhecido
- * @param array|null  $evoList     lista de wa_evolution_instances_list() já lida
+ * @param array|null  $serviceList     lista de wa_service_instances_list() já lida
  * @return array{blocked:bool, number:string, message:string}|null null = nada a conferir
  */
-function wa_pairing_guard(string $instanceName, ?string $ownerNumber = null, ?array $evoList = null): ?array
+function wa_pairing_guard(string $instanceName, ?string $ownerNumber = null, ?array $serviceList = null): ?array
 {
     if ($instanceName === '' || $instanceName === WA_WATCHDOG_GLOBAL_ROW) {
         return null;
@@ -1035,11 +1025,11 @@ function wa_pairing_guard(string $instanceName, ?string $ownerNumber = null, ?ar
     $markedAt = date('Y-m-d H:i:s');
 
     $key = whatsapp_number_key($ownerNumber);
-    if ($evoList === null) {
-        $evoList = wa_evolution_instances_list();
+    if ($serviceList === null) {
+        $serviceList = wa_service_instances_list();
     }
-    if ($key === '' && is_array($evoList)) {
-        foreach ($evoList as $e) {
+    if ($key === '' && is_array($serviceList)) {
+        foreach ($serviceList as $e) {
             if ($e['name'] === $instanceName) {
                 $key = $e['key'];
                 $ownerNumber = $e['raw_owner'];
@@ -1059,10 +1049,10 @@ function wa_pairing_guard(string $instanceName, ?string $ownerNumber = null, ?ar
         $conflicts[$c['instance']] = 'na instância "' . $c['label'] . '" do sistema';
         $inSystem[] = $c['label'];
     }
-    if (is_array($evoList)) {
-        foreach ($evoList as $e) {
+    if (is_array($serviceList)) {
+        foreach ($serviceList as $e) {
             if ($e['name'] !== $instanceName && $e['key'] === $key && $e['state'] === 'open' && !isset($conflicts[$e['name']])) {
-                $conflicts[$e['name']] = 'na instância "' . $e['name'] . '" da Evolution (fora do sistema)';
+                $conflicts[$e['name']] = 'na instância "' . $e['name'] . '" do serviço WhatsApp (fora do sistema)';
             }
         }
     }
@@ -1082,7 +1072,7 @@ function wa_pairing_guard(string $instanceName, ?string $ownerNumber = null, ?ar
 
     // Desfaz a conexão nova
     try {
-        $api = new EvolutionApiV1(null, null, $instanceName);
+        $api = new WhatsAppApi(null, null, $instanceName);
         $api->logoutInstance($instanceName);
     } catch (Throwable $e) {
         error_log('[WATCHDOG] logout duplicado ' . $instanceName . ': ' . $e->getMessage());

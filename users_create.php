@@ -38,7 +38,7 @@ echo '<div style="height:14px"></div>';
 echo '<form method="post" action="/users_create_post.php" style="display:grid;gap:12px;max-width:680px">';
 echo '<label>Nome<input name="name" required placeholder="Nome" value="' . h($prefName) . '"></label>';
 echo '<label>E-mail<input type="email" name="email" required placeholder="email@empresa.com"></label>';
-echo '<label>Telefone (para WhatsApp/Evolution)<input name="phone" maxlength="30" placeholder="5511999999999" value="' . h($prefPhone) . '"></label>';
+echo '<label>Telefone (para WhatsApp/API do WhatsApp)<input name="phone" maxlength="30" placeholder="5511999999999" value="' . h($prefPhone) . '"></label>';
 echo '<label>Especialidade (para profissionais)<select name="specialty">';
 echo '<option value="">Nenhuma / Não é profissional</option>';
 foreach ($specialties as $spec) {

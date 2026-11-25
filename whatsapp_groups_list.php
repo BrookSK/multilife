@@ -36,9 +36,9 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn btnPrimary" href="/whatsapp_groups_create.php">Novo grupo</a>';
-echo '<a class="btn" href="/whatsapp_groups_create_evolution.php">Criar via Evolution</a>';
-echo '<form method="post" action="/whatsapp_groups_sync_evolution_post.php" style="display:inline">';
-echo '<button class="btn" type="submit" onclick="return confirm(\'Sincronizar grupos com a Evolution?\')">Sincronizar Evolution</button>';
+echo '<a class="btn" href="/whatsapp_groups_create_api.php">Criar via API do WhatsApp</a>';
+echo '<form method="post" action="/whatsapp_groups_sync_api_post.php" style="display:inline">';
+echo '<button class="btn" type="submit" onclick="return confirm(\'Sincronizar grupos com a API do WhatsApp?\')">Sincronizar API do WhatsApp</button>';
 echo '</form>';
 echo '<a class="btn" href="/demands_list.php">Voltar</a>';
 echo '</div>';

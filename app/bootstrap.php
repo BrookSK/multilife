@@ -102,7 +102,7 @@ require_once __DIR__ . '/audit.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/http_client.php';
 require_once __DIR__ . '/integrations.php';
-require_once __DIR__ . '/evolution_api_v1.php';
+require_once __DIR__ . '/whatsapp_api.php';
 require_once __DIR__ . '/openai_api.php';
 require_once __DIR__ . '/zapsign_api.php';
 require_once __DIR__ . '/smtp_client.php';

@@ -47,8 +47,8 @@ if ($mediaType === 'audio' && $audioBase64 !== '') {
         // mandava o áudio pelo número de outra pessoa, ex.: Financeiro).
         $audioInstance = whatsapp_chat_instance_for_user((int)(auth_user_id() ?? 0), $remoteJid, trim((string)($_POST['instance'] ?? '')));
         $api = $audioInstance !== ''
-            ? new EvolutionApiV1((string)admin_setting_get('evolution.base_url'), (string)admin_setting_get('evolution.api_key'), $audioInstance)
-            : new EvolutionApiV1();
+            ? new WhatsAppApi((string)wa_api_base_url(), (string)wa_api_key(), $audioInstance)
+            : new WhatsAppApi();
         
         // Enviar direto como base64 via sendWhatsAppAudio
         $res = $api->sendWhatsAppAudio($remoteJid, $audioBase64);
@@ -210,9 +210,9 @@ try {
         error_log("[$debugId] Áudio detectado - transcrição placeholder adicionada");
     }
     
-    // Buscar configurações da Evolution API
-    $baseUrl = admin_setting_get('evolution.base_url');
-    $apiKey = admin_setting_get('evolution.api_key');
+    // Buscar configurações da API do WhatsApp
+    $baseUrl = wa_api_base_url();
+    $apiKey = wa_api_key();
     $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 
     // Instância: se o front informou uma (filtro de WhatsApp), usa ela;
@@ -221,24 +221,24 @@ try {
     $requestedInstance = whatsapp_chat_instance_for_user($_currentUserId, $remoteJid, trim((string)($_POST['instance'] ?? '')));
     if ($requestedInstance !== '') {
         $instanceName = $requestedInstance;
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $requestedInstance);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $requestedInstance);
     } else {
         $api = whatsapp_get_api_for_user($_currentUserId);
         $instanceName = $api->getInstance();
     }
 
-    error_log("[$debugId] Evolution API - baseUrl: '$baseUrl' | instance: '$instanceName'");
+    error_log("[$debugId] API do WhatsApp - baseUrl: '$baseUrl' | instance: '$instanceName'");
 
     if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
-        error_log("[$debugId] ERRO: Evolution API não configurada");
-        throw new Exception('Evolution API não configurada');
+        error_log("[$debugId] ERRO: API do WhatsApp não configurada");
+        throw new Exception('API do WhatsApp não configurada');
     }
     
-    // Converter para base64 (mais confiável que URL para Evolution v2.3)
+    // Converter para base64 (mais confiável que URL para API do WhatsApp)
     $fileContent = file_get_contents($destinationPath);
     $base64Media = base64_encode($fileContent);
     
-    error_log("[$debugId] Enviando mídia via Evolution API - Tipo: $mediaType | JID: $remoteJid | base64 size: " . strlen($base64Media));
+    error_log("[$debugId] Enviando mídia via API do WhatsApp - Tipo: $mediaType | JID: $remoteJid | base64 size: " . strlen($base64Media));
     
     // Enviar baseado no tipo
     $apiResponse = null;
@@ -285,14 +285,14 @@ try {
     $httpCode = (int)($apiResponse['status'] ?? 0);
     $responseBody = is_string($apiResponse['body_raw'] ?? null) ? $apiResponse['body_raw'] : json_encode($apiResponse['json'] ?? []);
     
-    error_log("[$debugId] Resposta Evolution API - HTTP: $httpCode | Body: " . substr($responseBody, 0, 500));
+    error_log("[$debugId] Resposta API do WhatsApp - HTTP: $httpCode | Body: " . substr($responseBody, 0, 500));
     
     if ($httpCode !== 200 && $httpCode !== 201) {
-        error_log("[$debugId] ERRO: Falha ao enviar via Evolution API");
+        error_log("[$debugId] ERRO: Falha ao enviar via API do WhatsApp");
         throw new Exception('Erro ao enviar mídia via WhatsApp: ' . ($apiResponse['body_raw'] ?? 'Erro desconhecido'));
     }
     
-    error_log("[$debugId] Mídia enviada com sucesso via Evolution API");
+    error_log("[$debugId] Mídia enviada com sucesso via API do WhatsApp");
     
     // Salvar mensagem no banco de dados
     $timestamp = time();

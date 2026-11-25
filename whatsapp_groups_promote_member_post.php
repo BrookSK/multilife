@@ -27,7 +27,7 @@ if (!$groupJid) {
 }
 
 try {
-    $api = new EvolutionApiV1();
+    $api = new WhatsAppApi();
     $api->updateGroupParticipants($groupJid, 'promote', [$memberId]);
     
     flash_set('success', 'Membro promovido a administrador!');

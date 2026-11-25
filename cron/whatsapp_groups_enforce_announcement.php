@@ -40,7 +40,7 @@ foreach ($groups as $g) {
     $jid = (string)$g['evolution_group_jid'];
     
     try {
-        $api = new EvolutionApiV1();
+        $api = new WhatsAppApi();
         $result = $api->updateGroupSetting($jid, 'announcement');
         $httpCode = $result['status'] ?? 0;
         

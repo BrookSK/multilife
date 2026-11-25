@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Diagnóstico ISOLADO de envio para grupo (sem o fluxo de captação).
  * Executa, com cronômetro, cada chamada que o envio depende e mostra a
- * resposta crua da Evolution — para saber exatamente onde trava/falha.
+ * resposta crua da API do WhatsApp — para saber exatamente onde trava/falha.
  */
 
 require_once __DIR__ . '/app/bootstrap.php';
@@ -16,8 +16,8 @@ rbac_require_permission('admin.settings.manage');
 @set_time_limit(400);
 header('Content-Type: text/html; charset=utf-8');
 
-$baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-$apiKey = (string)admin_setting_get('evolution.api_key', '');
+$baseUrl = rtrim((string)wa_api_base_url(), '/');
+$apiKey = (string)wa_api_key();
 
 $groupsList = db()->query("SELECT name, evolution_group_jid, instance_name FROM whatsapp_groups WHERE status = 'active' AND evolution_group_jid LIKE '%@g.us' ORDER BY id DESC LIMIT 200")->fetchAll();
 $instList = db()->query("SELECT instance_name, owner_phone_formatted, owner_number FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC")->fetchAll();
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $jid === '' || $inst === '') {
     exit;
 }
 if ($baseUrl === '' || $apiKey === '') {
-    echo '<p>Evolution não configurada (base_url/api_key).</p>';
+    echo '<p>API do WhatsApp não configurada (base_url/api_key).</p>';
     exit;
 }
 

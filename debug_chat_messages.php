@@ -29,6 +29,6 @@ foreach ($msgs as $m) {
 
 echo "\n\n=== ÚLTIMOS LOGS DE WEBHOOK (error_log) ===\n";
 echo "Verifique o error_log do Apache para entradas [WEBHOOK] recentes.\n";
-echo "Se não houver entradas com 'document' ou 'DOCUMENT', a Evolution não está enviando o webhook para documentos em grupo.\n";
+echo "Se não houver entradas com 'document' ou 'DOCUMENT', a API do WhatsApp não está enviando o webhook para documentos em grupo.\n";
 
 echo '</pre>';

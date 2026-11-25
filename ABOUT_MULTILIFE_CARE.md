@@ -41,7 +41,7 @@ Empresas de home care enfrentam desafios operacionais significativos:
 | Problema | Como o MultiLife Care resolve |
 |----------|-------------------------------|
 | Demandas recebidas por e-mail sem padronização | IA (OpenAI) extrai e estrutura dados automaticamente |
-| Captação manual de profissionais em dezenas de grupos WhatsApp | Disparo automatizado por especialidade, cidade e estado via Evolution API |
+| Captação manual de profissionais em dezenas de grupos WhatsApp | Disparo automatizado por especialidade, cidade e estado via WhatsApp (Baileys) |
 | Comunicação fragmentada entre WhatsApp pessoal e empresa | Chat centralizado na plataforma com histórico completo |
 | Falta de controle sobre prazos de documentação | SLA automatizado com cobranças via WhatsApp e e-mail |
 | Profissionais com registros vencidos atendendo pacientes | Validação automática em conselhos (CRM, COREN, CRP, etc.) com bloqueio |
@@ -115,7 +115,7 @@ Empresas de home care enfrentam desafios operacionais significativos:
 - Timeout para conversas sem resposta (gera pendência)
 - Suporte a mídia (imagens, documentos, áudio)
 - Gerenciamento de status: Atendendo, Aguardando, Finalizado
-- Integração bidirecional com Evolution API
+- Integração bidirecional com o WhatsApp (Baileys)
 
 ### 4.3 Candidatura de Profissionais (Módulo 5)
 
@@ -201,7 +201,7 @@ Empresas de home care enfrentam desafios operacionais significativos:
 
 ## 5. Integrações
 
-### 5.1 Evolution API (WhatsApp)
+### 5.1 WhatsApp (Baileys)
 
 | Caso de Uso | Descrição |
 |-------------|-----------|
@@ -266,7 +266,7 @@ multilife/
 │   ├── auth.php            # Autenticação
 │   ├── rbac.php            # Controle de acesso
 │   ├── db.php              # Conexão com banco
-│   ├── evolution_api_v1.php # Integração WhatsApp
+│   ├── whatsapp_api.php # Integração WhatsApp
 │   ├── openai_api.php      # Integração OpenAI
 │   ├── zapsign_api.php     # Integração ZapSign
 │   └── smtp_client.php     # Envio de e-mails
@@ -319,7 +319,7 @@ multilife/
 | Diferencial | Descrição |
 |-------------|-----------|
 | **IA na captação** | Único no mercado de home care com extração automática de demandas via ChatGPT |
-| **WhatsApp nativo** | Chat integrado + disparo em grupos + automações via Evolution API |
+| **WhatsApp nativo** | Chat integrado + disparo em grupos + automações via WhatsApp (Baileys) |
 | **Validação de conselhos** | Verificação automática de registros profissionais com multi-provedor e fallback |
 | **Ciclo completo** | Da demanda ao faturamento em uma única plataforma |
 | **Automação de SLA** | Cobranças automáticas com escalonamento progressivo |

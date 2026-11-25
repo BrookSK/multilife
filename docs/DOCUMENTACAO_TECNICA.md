@@ -25,7 +25,7 @@ O MultiLife Care organiza o atendimento domiciliar do começo ao fim:
 ## 2. Tecnologia e estrutura
 
 - **Linguagem:** PHP 8 (sem framework), MySQL/MariaDB (PDO, `utf8mb4`).
-- **WhatsApp:** Evolution API (`app/evolution_api_v1.php`), várias instâncias (números) em paralelo.
+- **WhatsApp:** serviço próprio `ml-baileys-service/` (Node + Baileys, roda na VPS com pm2; instalação no `README.md` da pasta). O PHP fala com ele por `app/whatsapp_api.php` (classe `WhatsAppApi`), com o mesmo contrato de API e de webhook que a Evolution v2 usava. Várias instâncias (números) em paralelo.
 - **IA:** OpenAI (`app/openai_api.php`) para ler e-mails e preencher cards.
 - **Hospedagem:** Plesk/Apache, rotas sem `.php` via `.htaccess`.
 
@@ -143,7 +143,7 @@ Quando o captador clica em **Realizar Captação**:
    2. **adiciona ao grupo quem ainda não está** (lotes de 50) — **antes** de enviar;
    3. **envia a mensagem** com o token `#CAP<id>-XXXX`;
    4. muda o card para *Em Captação*.
-3. O WhatsApp confirma o envio pelo webhook (`chat_webhook.php`); o acompanhamento fecha mesmo que a Evolution demore a responder.
+3. O WhatsApp confirma o envio pelo webhook (`chat_webhook.php`); o acompanhamento fecha mesmo que o serviço WhatsApp demore a responder.
 
 **Acompanhamento:** o quadro "Captação em andamento" aparece em todas as telas, volta depois de recarregar a página e some sozinho ao terminar. Se a captação ficar parada (3 min na fila ou 5 min sem avanço), é encerrada com o motivo e pode ser disparada de novo.
 
@@ -230,8 +230,10 @@ Configuração útil: `demands.dispatch_kick_worker = 0` faz a captação depend
 | Chave | Uso |
 |---|---|
 | `cron.token` | Token das rotinas cron. |
-| `evolution.base_url`, `evolution.api_key`, `evolution.instance` | Evolution API. |
-| `evolution.watchdog_url`, `evolution.watchdog_token`, `evolution.watchdog_auto_heal` | Monitor de conexão real (watchdog, porta 8083). Sem token fica desligado. O token também pode vir da variável de ambiente `EVO_WATCHDOG_TOKEN`. |
+| `baileys.base_url`, `baileys.api_key` | Serviço WhatsApp (ml-baileys-service): URL e `API_KEY` do `.env` dele. Também usados pelo monitor de conexão (`/status`, `/heal`, `/redispatch`). |
+| `baileys.instance` | WhatsApp padrão das mensagens automáticas. Vazio = usa o valor antigo `evolution.instance`. |
+| `baileys.watchdog_auto_heal` | Reconexão automática quando há suspeita de queda (padrão `1`). |
+| `baileys.admin_phone`, `baileys.webhook_token` | Telefone do admin incluído nos grupos e token do webhook de grupos (`whatsapp_groups_webhook.php`). Vazios = valores antigos `evolution.*`. |
 | `openai.api_key`, `openai.model` | IA. |
 | `demands.whatsapp_template` | Modelo da mensagem de captação (placeholders `{title}`, `{street_neighborhood_city}`, `{specialty}`, `{frequency}`, `{ai_summary_block}`, `{captation_note_block}`...). |
 | `demands.captation_filter_enabled` | Triagem de e-mails (padrão `0`). |
@@ -261,7 +263,7 @@ Cards de teste: `testes/seed_cards_cenarios_captacao.sql` (6 cenários; limpeza 
 
 - Chamadas em segundo plano (busca de e-mails, polling do chat, notificações, acompanhamento) **liberam a sessão** (`session_release()`) e não travam as outras telas do usuário.
 - Perfis, permissões e usuário logado têm cache por requisição.
-- Chamadas à Evolution têm tempo limite curto (estado: 10 s; grupos: 15–25 s) e o estado das instâncias é reaproveitado durante o disparo.
+- Chamadas ao serviço WhatsApp têm tempo limite curto (estado: 10 s; grupos: 15–25 s) e o estado das instâncias é reaproveitado durante o disparo.
 
 ---
 
@@ -273,8 +275,8 @@ Cards de teste: `testes/seed_cards_cenarios_captacao.sql` (6 cenários; limpeza 
 | Captação parada | Mensagem do quadro de progresso; `SELECT id,status,attempts,last_error,last_run_at FROM integration_jobs WHERE action='demand_dispatch_run' ORDER BY id DESC LIMIT 5;` |
 | Captação "na fila" sem começar | Cron `integration_jobs_run` e `cron.token`. |
 | WhatsApp conectado mas não envia | Aviso de saúde no topo; Configurações → WhatsApp. |
-| WhatsApp "conectado" mas mensagens não chegam | Veredito do watchdog em Configurações → WhatsApp Conexão → Instâncias ("Suspeita de queda" = sem eventos há 30+ min → Reconectar sem QR). Tabela `whatsapp_instance_monitor`; eventos `heal`/`duplicate` em `whatsapp_instance_events`. |
+| WhatsApp "conectado" mas mensagens não chegam | Veredito do monitor em Configurações → WhatsApp Conexão → Instâncias ("Suspeita de queda" = sem eventos há 30+ min → Reconectar sem QR) e gráfico de 72 h em `/admin_whatsapp_monitor.php`. Tabela `whatsapp_instance_monitor`; eventos `heal`/`duplicate` em `whatsapp_instance_events`. |
 | QR lido e a conexão "caiu" sozinha | Número já usado em outra instância: a conexão nova é desfeita e o motivo aparece na tela do QR (`whatsapp_instance_monitor.duplicate_note`). |
 | Profissional não entrou no grupo | Especialidade, cidade/UF/bairro do cadastro, telefone e (no modo teste) a marcação de teste. |
 | Grupo de outra cidade | Não deve ocorrer: conferir cidade/UF/zona do card e do grupo (`whatsapp_groups`). |
-| Logs | Log de erros do PHP (prefixos `[DISPATCH]`, `[EVOLUTION]`, `[EMAIL_EXTRACT]`, `[WHATSAPP_HEALTH]`); chamadas às integrações em `integration_jobs_list.php` e `tech_logs_list.php`. |
+| Logs | Log de erros do PHP (prefixos `[DISPATCH]`, `[WHATSAPP_API]`, `[EMAIL_EXTRACT]`, `[WHATSAPP_HEALTH]`); logs do serviço WhatsApp em `pm2 logs ml-baileys` na VPS; chamadas às integrações em `integration_jobs_list.php` e `tech_logs_list.php`. |

@@ -3,9 +3,9 @@
 
 require_once __DIR__ . '/app/bootstrap.php';
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
+$instanceName = wa_default_instance();
 
 echo "=== TESTE DE BUSCA DE PERFIL ===\n\n";
 echo "Base URL: " . $baseUrl . "\n";

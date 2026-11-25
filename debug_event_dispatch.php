@@ -44,17 +44,17 @@ echo "\n=== TESTE DE DISPARO MANUAL ===\n";
 $testPhone = '5517988358367'; // telefone do lucas augusto que vi antes
 echo "Telefone de teste: $testPhone\n";
 
-// Verificar se Evolution API está configurada
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
-$instanceName = admin_setting_get('evolution.instance');
-echo "Evolution: base=$baseUrl | instance=$instanceName | key=" . substr($apiKey, 0, 8) . "...\n\n";
+// Verificar se API do WhatsApp está configurada
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
+$instanceName = wa_default_instance();
+echo "API do WhatsApp: base=$baseUrl | instance=$instanceName | key=" . substr($apiKey, 0, 8) . "...\n\n";
 
 // Tentar enviar mensagem direta via API
-echo "=== TESTE ENVIO DIRETO VIA EVOLUTION API ===\n";
+echo "=== TESTE ENVIO DIRETO VIA SERVIÇO WHATSAPP (BAILEYS) ===\n";
 try {
-    $api = new EvolutionApiV1();
-    $testMsg = "🧪 TESTE DE EVENTO - " . date('H:i:s') . "\nSe você recebeu esta mensagem, o envio via Evolution API está funcionando.";
+    $api = new WhatsAppApi();
+    $testMsg = "🧪 TESTE DE EVENTO - " . date('H:i:s') . "\nSe você recebeu esta mensagem, o envio via API do WhatsApp está funcionando.";
     echo "Enviando para: $testPhone\n";
     echo "Mensagem: $testMsg\n\n";
     

@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 /**
- * Webhook da Evolution API.
+ * Webhook da API do WhatsApp.
  *
  * 1. Grava o payload cru na fila (app/whatsapp_webhook_inbox.php), ignorando
  *    repetições (evento + WhatsApp + key.id);
- * 2. Responde 200 na hora e fecha a conexão: a Evolution não espera o
- *    processamento (mídia grande, consultas à Evolution, etc.);
+ * 2. Responde 200 na hora e fecha a conexão: a API do WhatsApp não espera o
+ *    processamento (mídia grande, consultas à API do WhatsApp, etc.);
  * 3. Processa o evento (regras em app/whatsapp_webhook_handler.php) e, de
  *    carona, alguns pendentes antigos da fila. O cron cron/chat_webhook_inbox.php
  *    cobre o resto.
@@ -56,7 +56,7 @@ if (is_array($payload)) {
 }
 unset($raw);
 
-// Resposta imediata para a Evolution
+// Resposta imediata para a API do WhatsApp
 $body = (string)json_encode(['status' => 'ok']);
 http_response_code(200);
 header('Content-Type: application/json');

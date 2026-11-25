@@ -105,7 +105,7 @@ function demand_on_admitted(int $demandId, int $selectedProfessionalUserId, ?int
         
         if ($groupRow && !empty($groupRow['evolution_group_jid'])) {
             try {
-                $api = new EvolutionApiV1();
+                $api = new WhatsAppApi();
                 $groupMsg = "✅ *[CAPTAÇÃO FINALIZADA]*\n\n"
                     . "A captação *#$demandId* foi concluída.\n"
                     . "📋 Especialidade: " . ($specialty ?? '') . "\n"
@@ -154,7 +154,7 @@ function demand_on_closed(int $demandId): void
         $demandTitle = $demand ? $demand['title'] : "Captação #$demandId";
         
         try {
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             
             foreach ($interestedPros as $pro) {
                 $phoneJid = $pro['phone_jid'];
@@ -251,7 +251,7 @@ function demand_substitute_professional(int $demandId, int $newProfessionalUserI
             
             $name = $pro['push_name'] ? ", {$pro['push_name']}" : "";
             try {
-                $api = new EvolutionApiV1();
+                $api = new WhatsAppApi();
                 $msg = "🔄 *Você foi selecionado!*\n\n"
                     . "Olá{$name}!\n\n"
                     . "Você foi selecionado para a captação:\n"

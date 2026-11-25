@@ -49,16 +49,16 @@ if ($chatType === '') {
     $chatType = 'all';
 }
 
-// Buscar configurações da Evolution API
+// Buscar configurações da API do WhatsApp
 // MULTI-INSTÂNCIA: Usar a instância do usuário logado (se tiver), senão a padrão
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 
 $currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $userInstance = whatsapp_get_user_instance($currentUserId);
 // Assinatura das mensagens: nome do usuário logado (sem asteriscos, que quebrariam o negrito)
 $chatSignatureName = trim(str_replace(['*', "\n", "\r"], ' ', (string)(auth_user()['name'] ?? '')));
-$instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
+$instanceName = $userInstance ? $userInstance['instance_name'] : wa_default_instance();
 
 // FILTRO POR WHATSAPP: mostrar apenas as instâncias vinculadas ao usuário logado
 $availableInstances = [];
@@ -116,7 +116,7 @@ if ($instanceFromSession && $instanceFilter !== '' && $selectedChat !== '' && st
         $stBelongs->execute([$selectedChat, $instanceFilter, $selectedChat, $instanceFilter]);
         if (!$stBelongs->fetchColumn()) {
             $instanceFilter = '';
-            $instanceName = $userInstance ? $userInstance['instance_name'] : admin_setting_get('evolution.instance');
+            $instanceName = $userInstance ? $userInstance['instance_name'] : wa_default_instance();
         }
     } catch (Throwable $e) {
         error_log('[CHAT] Erro ao validar instancia da conversa: ' . $e->getMessage());
@@ -202,8 +202,8 @@ $success = '';
 $error = '';
 $debugConsole = [];
 
-// Função para formatar telefone no padrão Evolution API
-function format_phone_evolution($phone) {
+// Função para formatar telefone no padrão API do WhatsApp
+function format_phone_whatsapp($phone) {
     if (empty($phone)) return '';
     
     // Remover todos os caracteres não numéricos
@@ -269,19 +269,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             // Se não contém @, formatar como número de telefone individual
             if (strpos($remoteJid, '@') === false) {
-                // Formatar número automaticamente para padrão Evolution API
-                $remoteJid = format_phone_evolution($phoneNumber);
+                // Formatar número automaticamente para padrão API do WhatsApp
+                $remoteJid = format_phone_whatsapp($phoneNumber);
                 $remoteJid .= '@s.whatsapp.net';
             }
             // Se já contém @g.us (grupo) ou @s.whatsapp.net (individual), usar como está
             error_log("[$debugId] remoteJid:'$remoteJid' | baseUrl:'$baseUrl' | instance:'$instanceName'");
             
             // Não fazemos sleep aqui para não bloquear o request
-            file_put_contents(sys_get_temp_dir() . '/evolution_last_send_' . md5($remoteJid), (string)time());
+            file_put_contents(sys_get_temp_dir() . '/wa_last_send_' . md5($remoteJid), (string)time());
 
-            // Enviar via EvolutionApiV1
+            // Enviar via WhatsAppApi
             $isGroupMsg = strpos($remoteJid, '@g.us') !== false;
-            error_log("[$debugId] SEND via EvolutionApiV1 jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
+            error_log("[$debugId] SEND via WhatsAppApi jid:'$remoteJid' isGroup:" . ($isGroupMsg ? 'sim' : 'nao'));
             
             try {
                 // Escolha da instância para o envio:
@@ -291,7 +291,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Sempre um WhatsApp DO USUÁRIO (o filtro, o da conversa ou o dele).
                 $sendInstance = whatsapp_chat_instance_for_user($currentUserId, $remoteJid, $chatInstance !== '' ? $chatInstance : $instanceFilter);
                 if ($sendInstance !== '') {
-                    $api = new EvolutionApiV1($baseUrl, $apiKey, $sendInstance);
+                    $api = new WhatsAppApi($baseUrl, $apiKey, $sendInstance);
                 } else {
                     $api = whatsapp_get_api_for_user($currentUserId);
                 }
@@ -349,7 +349,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if (is_array($res['json'] ?? null)) {
                         $sentExternalId = (string)($res['json']['key']['id'] ?? ($res['json']['data']['key']['id'] ?? ''));
                     }
-                    // Lock + checagem: o webhook da Evolution costuma chegar ANTES da
+                    // Lock + checagem: o webhook da API do WhatsApp costuma chegar ANTES da
                     // resposta do envio; sem isso a mensagem era gravada duas vezes.
                     $sentLocked = $sentExternalId !== '' && chat_msg_lock($sentExternalId, 10);
                     try {
@@ -414,7 +414,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                 ");
                                 $stmtContact->execute([$normalizedJid, $instanceName, $contactName, $isGroup, $timestamp]);
                                 
-                                // Buscar perfil do contato da Evolution API
+                                // Buscar perfil do contato da API do WhatsApp
                                 try {
                                     $profileUrl = $baseUrl . '/chat/fetchProfile/' . urlencode($instanceName);
                                     $profilePayload = json_encode(['number' => $remoteJid]);
@@ -516,7 +516,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if ($isGroup) {
                         $error = '❌ Não foi possível enviar para este grupo. Ele pode estar dentro de uma Comunidade do WhatsApp, o que impede o envio via API. Tente remover o grupo da comunidade ou crie um grupo normal (fora de comunidades).';
                     } else {
-                        $error = '❌ WhatsApp desconectado. Reconecte em Configurações → Evolution API.';
+                        $error = '❌ WhatsApp desconectado. Reconecte em Configurações → API do WhatsApp.';
                     }
                 } elseif (strpos($response, 'Connection Closed') !== false) {
                     $error = '❌ Conexão com WhatsApp fechada. Aguarde e tente novamente.';
@@ -537,7 +537,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (empty($specialty) || empty($location)) {
             $error = 'Especialidade e localização são obrigatórias.';
         } elseif (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
-            $error = 'Evolution API não configurada. Configure em Configurações > Evolution API.';
+            $error = 'API do WhatsApp não configurada. Configure em Configurações > API do WhatsApp.';
         } else {
             // Gerar número sequencial do grupo
             try {
@@ -677,7 +677,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $debugConsole[] = 'console.log("✅ GRUPO CRIADO - Nome: ' . addslashes($groupName) . ' | JID: ' . addslashes($groupJid) . '")';
                     } catch (Exception $e) {
                         error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
-                        $error = 'Grupo criado na Evolution API, mas erro ao salvar no banco: ' . $e->getMessage();
+                        $error = 'Grupo criado na API do WhatsApp, mas erro ao salvar no banco: ' . $e->getMessage();
                         $debugConsole[] = 'console.error("❌ ERRO AO SALVAR NO BANCO: ' . addslashes($e->getMessage()) . '")';
                     }
                 } else {
@@ -692,9 +692,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $isConnClosed = strpos($response . $curlError, 'Connection Closed') !== false
                               || strpos($response . $curlError, 'connection') !== false;
                 if ($httpCode === 0 || $curlError) {
-                    $error = '❌ Sem resposta da Evolution API. Verifique se o servidor ' . $baseUrl . ' está acessível.';
+                    $error = '❌ Sem resposta da API do WhatsApp. Verifique se o servidor ' . $baseUrl . ' está acessível.';
                 } elseif ($isConnClosed) {
-                    $error = '❌ A conexão WhatsApp caiu (Connection Closed). Acesse o painel da Evolution API → instância multilife → Reconnect / QR Code para reconectar, depois tente novamente.';
+                    $error = '❌ A conexão WhatsApp caiu (Connection Closed). Acesse o painel da API do WhatsApp → instância multilife → Reconnect / QR Code para reconectar, depois tente novamente.';
                 } else {
                     $error = '❌ Erro ao criar grupo. HTTP ' . $httpCode . ': ' . substr((string)$rawMsgs ?: $response, 0, 300);
                 }
@@ -1193,14 +1193,14 @@ try {
     error_log("Erro ao buscar contatos: " . $e->getMessage());
 }
 
-// DESABILITADO: API Evolution não retorna mensagens corretas
+// DESABILITADO: API API do WhatsApp não retorna mensagens corretas
 // A API retorna sempre as mesmas mensagens antigas de canais, independente do filtro
 // Até que a API seja corrigida ou sincronizada, mensagens não serão carregadas
 $isPrivateChat = !empty($selectedChat) && strpos($selectedChat, '@g.us') === false;
 if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         // Preparar payload da requisição
-        // NOTA: A API Evolution IGNORA o filtro remoteJid, então buscamos mais mensagens
+        // NOTA: A API API do WhatsApp IGNORA o filtro remoteJid, então buscamos mais mensagens
         // e filtramos no PHP depois para garantir que pegamos as corretas
         $requestPayload = [
             'limit' => 100  // Buscar 100 mensagens para ter certeza de pegar as do chat correto
@@ -2091,7 +2091,7 @@ echo '</script>';
 // DEBUG: Exibir logs na tela
 if (!empty($debugLogs)) {
     echo '<div style="background:#fff3cd;border:1px solid #ffc107;padding:15px;margin:15px;border-radius:5px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;">';
-    echo '<strong style="color:#856404;display:block;margin-bottom:10px;">🔍 DEBUG - Resposta da API Evolution:</strong>';
+    echo '<strong style="color:#856404;display:block;margin-bottom:10px;">🔍 DEBUG - Resposta da API API do WhatsApp:</strong>';
     foreach ($debugLogs as $log) {
         echo '<div style="margin:5px 0;padding:5px;background:#fff;border-left:3px solid #ffc107;">' . htmlspecialchars($log) . '</div>';
     }
@@ -2246,7 +2246,7 @@ if (!empty($debugLogs)) {
 
 echo '<div style="padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
-echo '<button onclick="syncEvolution()" id="syncBtn" class="whatsapp-sync-btn">';
+echo '<button onclick="syncWhatsAppGroups()" id="syncBtn" class="whatsapp-sync-btn">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="syncIcon"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>';
 echo 'Sincronizar';
 echo '</button>';
@@ -2262,7 +2262,7 @@ echo '<a href="/chat_groups.php" style="padding:10px 18px;background:#fff;color:
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/></svg>';
 echo 'Gerenciar Grupos';
 echo '</a>';
-echo '<a href="/evolution_qrcode.php" style="padding:10px 18px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;transition:all .2s">';
+echo '<a href="/whatsapp_qrcode.php" style="padding:10px 18px;background:#fff;color:#54656f;border:1px solid #d1d7db;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;text-decoration:none;transition:all .2s">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
 echo 'QR Code';
 echo '</a>';
@@ -2777,7 +2777,7 @@ if ($chatType === 'grupos') {
         echo '<div style="padding:40px 20px;text-align:center;color:#667781">';
         echo '<p>Nenhuma conversa encontrada.</p>';
         if (empty($baseUrl) || empty($apiKey)) {
-            echo '<p style="margin-top:12px;font-size:13px">Configure as credenciais da Evolution API em Configurações.</p>';
+            echo '<p style="margin-top:12px;font-size:13px">Configure as credenciais da API do WhatsApp em Configurações.</p>';
         }
         echo '</div>';
     }
@@ -2882,7 +2882,7 @@ if (empty($selectedChat)) {
     echo '<div class="whatsapp-chat-header">';
     echo '<div class="whatsapp-chat-header-info">';
     // Indicador de fonte de dados
-    echo '<div style="position:absolute;top:4px;right:4px;font-size:9px;color:#00a884;background:#e7f8f4;padding:2px 6px;border-radius:4px;font-weight:600">EVOLUTION API</div>';
+    echo '<div style="position:absolute;top:4px;right:4px;font-size:9px;color:#00a884;background:#e7f8f4;padding:2px 6px;border-radius:4px;font-weight:600">WHATSAPP</div>';
     $initials = strtoupper(substr($chatName, 0, 2));
     if (!empty($profilePic)) {
         echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';

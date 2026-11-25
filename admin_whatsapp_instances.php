@@ -7,35 +7,35 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp.manage');
 
-// Verificar se Evolution API está configurada
-$baseUrl = admin_setting_get('evolution.base_url', '');
-$apiKey = admin_setting_get('evolution.api_key', '');
-$instance = admin_setting_get('evolution.instance', '');
+// Verificar se API do WhatsApp está configurada
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
+$instance = wa_default_instance();
 
 if ($baseUrl === '' || $apiKey === '' || $instance === '') {
-    flash_set('error', 'Evolution API não configurada. Configure em Configurações.');
+    flash_set('error', 'API do WhatsApp não configurada. Configure em Configurações.');
     header('Location: /admin_settings.php');
     exit;
 }
 
 $instanceFilter = isset($_GET['instance']) ? trim((string)$_GET['instance']) : '';
 
-$evo = new EvolutionApiV1();
-$res = $evo->fetchInstances($instanceFilter !== '' ? $instanceFilter : null);
+$waApi = new WhatsAppApi();
+$res = $waApi->fetchInstances($instanceFilter !== '' ? $instanceFilter : null);
 
 $instances = [];
 if (is_array($res['json'])) {
     $instances = $res['json'];
 }
 
-view_header('WhatsApp (Evolution)');
+view_header('WhatsApp (API do WhatsApp)');
 
 echo '<div class="grid">';
 
 echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
-echo '<div style="font-size:22px;font-weight:900">WhatsApp (Evolution)</div>';
+echo '<div style="font-size:22px;font-weight:900">WhatsApp (API do WhatsApp)</div>';
 echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Instâncias, QR code, status e ações.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';

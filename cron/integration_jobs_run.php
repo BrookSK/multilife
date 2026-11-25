@@ -101,6 +101,10 @@ $dead = 0;
 foreach ($jobs as $j) {
     $id = (int)$j['id'];
     $provider = (string)$j['provider'];
+    // Jobs enfileirados antes da troca para o Baileys usavam o nome antigo
+    if ($provider === 'evolution') {
+        $provider = 'whatsapp';
+    }
     $action = (string)$j['action'];
 
     $attempts = (int)$j['attempts'];
@@ -129,7 +133,7 @@ foreach ($jobs as $j) {
             'id' => $id,
         ]);
 
-        if ($provider === 'evolution' && $action === 'patient_notify_appointment') {
+        if ($provider === 'whatsapp' && $action === 'patient_notify_appointment') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -211,11 +215,11 @@ foreach ($jobs as $j) {
                 '{feedback_url}' => $feedbackUrl,
             ]);
 
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
             if (!$ok) {
-                throw new RuntimeException('Evolution HTTP ' . (string)($res['status'] ?? '')); 
+                throw new RuntimeException('API do WhatsApp HTTP ' . (string)($res['status'] ?? '')); 
             }
 
             $updRun->execute([
@@ -231,7 +235,7 @@ foreach ($jobs as $j) {
             continue;
         }
 
-        if ($provider === 'evolution' && $action === 'professional_docs_approved_notify') {
+        if ($provider === 'whatsapp' && $action === 'professional_docs_approved_notify') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -294,11 +298,11 @@ foreach ($jobs as $j) {
                 '{name}' => (string)($row['professional_name'] ?? ''),
             ]);
 
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
             if (!$ok) {
-                throw new RuntimeException('Evolution HTTP ' . (string)($res['status'] ?? ''));
+                throw new RuntimeException('API do WhatsApp HTTP ' . (string)($res['status'] ?? ''));
             }
 
             $updRun->execute([
@@ -467,7 +471,7 @@ foreach ($jobs as $j) {
             continue;
         }
 
-        if ($provider === 'evolution' && $action === 'professional_application_notify') {
+        if ($provider === 'whatsapp' && $action === 'professional_application_notify') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -511,11 +515,11 @@ foreach ($jobs as $j) {
                 '{application_id}' => (string)$applicationId,
             ]);
 
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
             if (!$ok) {
-                throw new RuntimeException('Evolution HTTP ' . (string)($res['status'] ?? ''));
+                throw new RuntimeException('API do WhatsApp HTTP ' . (string)($res['status'] ?? ''));
             }
 
             $updRun->execute([
@@ -698,7 +702,7 @@ foreach ($jobs as $j) {
         }
 
         // ITEM 17: Adicionar profissionais a um grupo de captação em lote (background)
-        if ($provider === 'evolution' && $action === 'demand_dispatch_add_members') {
+        if ($provider === 'whatsapp' && $action === 'demand_dispatch_add_members') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -717,15 +721,15 @@ foreach ($jobs as $j) {
                 db()->prepare("UPDATE demand_dispatch_runs SET status = 'processing' WHERE id = ? AND status = 'queued'")->execute([$runId]);
             } catch (Throwable $e) {}
 
-            // Instanciar Evolution com a instância resolvida (evita re-probing custoso)
+            // Instanciar API do WhatsApp com a instância resolvida (evita re-probing custoso)
             try {
-                $api = new EvolutionApiV1(
-                    (string)admin_setting_get('evolution.base_url', ''),
-                    (string)admin_setting_get('evolution.api_key', ''),
-                    $instanceName !== '' ? $instanceName : (string)admin_setting_get('evolution.instance', '')
+                $api = new WhatsAppApi(
+                    (string)wa_api_base_url(),
+                    (string)wa_api_key(),
+                    $instanceName !== '' ? $instanceName : (string)wa_default_instance()
                 );
             } catch (Throwable $e) {
-                throw new RuntimeException('Evolution API não configurada: ' . $e->getMessage());
+                throw new RuntimeException('API do WhatsApp não configurada: ' . $e->getMessage());
             }
 
             // Idempotência: processar apenas os que ainda estão pendentes
@@ -741,14 +745,14 @@ foreach ($jobs as $j) {
             $errorInBatch = 0;
 
             if (!empty($toProcess)) {
-                // Montar JIDs para a Evolution
+                // Montar JIDs para a API do WhatsApp
                 $jids = array_map(fn($p) => $p . '@s.whatsapp.net', $toProcess);
                 $addOk = false;
                 $addErrMsg = null;
                 try {
                     // Só adiciona quem AINDA NÃO é membro: re-adicionar membros
                     // existentes (ou o próprio número) derruba a sessão do
-                    // WhatsApp na Evolution. Sem conseguir ler os membros, não adiciona.
+                    // WhatsApp na API do WhatsApp. Sem conseguir ler os membros, não adiciona.
                     $present = dispatch_group_member_keys($api, $groupJid);
                     if ($present === null) {
                         throw new RuntimeException('Não foi possível ler os membros do grupo (instância desconectada?) — adição não realizada.');
@@ -828,7 +832,7 @@ foreach ($jobs as $j) {
         // sincronizar membros, enviar a mensagem) incluindo o próprio
         // demands_dispatch_whatsapp_post.php em "modo worker". O progresso é
         // reportado em demand_dispatch_runs (lido pelo popup da tela).
-        if ($provider === 'evolution' && $action === 'demand_dispatch_run') {
+        if ($provider === 'whatsapp' && $action === 'demand_dispatch_run') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -891,7 +895,7 @@ foreach ($jobs as $j) {
             continue;
         }
 
-        if ($provider === 'evolution' && $action === 'professional_onboarding_credentials') {
+        if ($provider === 'whatsapp' && $action === 'professional_onboarding_credentials') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -921,11 +925,11 @@ foreach ($jobs as $j) {
                 '{login_url}' => $loginUrl,
             ]);
 
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
             if (!$ok) {
-                throw new RuntimeException('Evolution HTTP ' . (string)($res['status'] ?? ''));
+                throw new RuntimeException('API do WhatsApp HTTP ' . (string)($res['status'] ?? ''));
             }
 
             $updRun->execute([
@@ -991,7 +995,7 @@ foreach ($jobs as $j) {
             continue;
         }
 
-        if ($provider === 'evolution' && $action === 'professional_doc_reminder') {
+        if ($provider === 'whatsapp' && $action === 'professional_doc_reminder') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }
@@ -1039,11 +1043,11 @@ foreach ($jobs as $j) {
                 '{days_overdue}' => (string)$daysOverdue,
             ]);
 
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $ok = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
             if (!$ok) {
-                throw new RuntimeException('Evolution HTTP ' . (string)($res['status'] ?? ''));
+                throw new RuntimeException('API do WhatsApp HTTP ' . (string)($res['status'] ?? ''));
             }
 
             $updRun->execute([
@@ -1061,7 +1065,7 @@ foreach ($jobs as $j) {
 
         // Zoho Forms (faturamento) → WhatsApp. Payload já vem com telefone
         // normalizado e mensagem montada pelo webhook; aqui só enviamos.
-        if ($provider === 'evolution' && $action === 'zoho_billing_notify') {
+        if ($provider === 'whatsapp' && $action === 'zoho_billing_notify') {
             if (!is_array($payload)) {
                 throw new RuntimeException('Payload inválido (esperado JSON).');
             }

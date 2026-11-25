@@ -23,23 +23,23 @@ try {
     // Verificar configurações antes de criar a API
     error_log("[GROUP_INVITE] Iniciando verificacao de configs");
     
-    $baseUrl = admin_setting_get('evolution.base_url');
-    $apiKey = admin_setting_get('evolution.api_key');
+    $baseUrl = wa_api_base_url();
+    $apiKey = wa_api_key();
     $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
     $_userInst = whatsapp_get_user_instance($_currentUserId);
-    $instance = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
+    $instance = $_userInst ? $_userInst['instance_name'] : wa_default_instance();
     
     error_log("[GROUP_INVITE] baseUrl='" . var_export($baseUrl, true) . "'");
     error_log("[GROUP_INVITE] apiKey='" . (empty($apiKey) ? 'VAZIO' : substr($apiKey, 0, 10) . '...') . "'");
     error_log("[GROUP_INVITE] instance='" . var_export($instance, true) . "'");
     
-    // Usar EvolutionApiV1 (mesma classe que funciona no envio de mensagens)
-    error_log("[GROUP_INVITE] Tentando criar EvolutionApiV1");
+    // Usar WhatsAppApi (mesma classe que funciona no envio de mensagens)
+    error_log("[GROUP_INVITE] Tentando criar WhatsAppApi");
     try {
-        $api = new EvolutionApiV1();
-        error_log("[GROUP_INVITE] EvolutionApiV1 criada com sucesso");
+        $api = new WhatsAppApi();
+        error_log("[GROUP_INVITE] WhatsAppApi criada com sucesso");
     } catch (RuntimeException $e) {
-        error_log("[GROUP_INVITE] ERRO ao criar EvolutionApiV1: " . $e->getMessage());
+        error_log("[GROUP_INVITE] ERRO ao criar WhatsAppApi: " . $e->getMessage());
         error_log("[GROUP_INVITE] Stack trace: " . $e->getTraceAsString());
         echo json_encode([
             'success' => false, 
@@ -81,7 +81,7 @@ try {
             echo json_encode([
                 'success' => false, 
                 'error' => 'Sem permissão para adicionar participantes',
-                'details' => 'A instância WhatsApp conectada precisa ser ADMINISTRADORA do grupo selecionado. Verifique se o número ' . admin_setting_get('evolution.instance') . ' é admin do grupo ou crie um novo grupo pelo sistema.'
+                'details' => 'A instância WhatsApp conectada precisa ser ADMINISTRADORA do grupo selecionado. Verifique se o número ' . wa_default_instance() . ' é admin do grupo ou crie um novo grupo pelo sistema.'
             ]);
         } else {
             echo json_encode([

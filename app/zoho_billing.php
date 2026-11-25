@@ -11,7 +11,7 @@ declare(strict_types=1);
  *   2. Extraímos os campos (nome do profissional, paciente, especialidade,
  *      nº de atendimentos e telefone com DDD).
  *   3. Montamos a mensagem a partir de um template configurável.
- *   4. Enviamos a mensagem via Evolution API para o telefone recebido.
+ *   4. Enviamos a mensagem via API do WhatsApp para o telefone recebido.
  *
  * Em "modo teste" o telefone recebido é IGNORADO e a mensagem é enviada para
  * um telefone de teste configurado nas settings — útil para o botão
@@ -380,12 +380,12 @@ function zoho_billing_enqueue(array $payload, bool $forceTest = false): array
         ];
     }
 
-    // Espaçar os envios para não estourar rate limits da Evolution quando
+    // Espaçar os envios para não estourar rate limits da API do WhatsApp quando
     // muitos webhooks chegam juntos: cada job novo roda alguns segundos após
     // o anterior enfileirado nos últimos instantes.
     $nextRunAt = zoho_billing_next_slot();
 
-    $jobId = integration_job_enqueue('evolution', 'zoho_billing_notify', [
+    $jobId = integration_job_enqueue('whatsapp', 'zoho_billing_notify', [
         'phone' => $phone,
         'message' => $prep['message_text'],
         'test_mode' => $testMode,
@@ -420,7 +420,7 @@ function zoho_billing_is_duplicate(string $phone, string $message): bool
         $since = (new DateTime('now'))->modify("-{$windowSeconds} seconds")->format('Y-m-d H:i:s');
         $stmt = db()->prepare(
             "SELECT COUNT(*) AS c FROM integration_jobs
-             WHERE provider = 'evolution' AND action = 'zoho_billing_notify'
+             WHERE provider IN ('whatsapp', 'evolution') AND action = 'zoho_billing_notify'
                AND created_at >= :since
                AND status IN ('pending','running','success')
                AND payload LIKE :needle"
@@ -438,7 +438,7 @@ function zoho_billing_is_duplicate(string $phone, string $message): bool
         // comparar a mensagem exata (evita falso positivo por telefones parecidos).
         $stmt2 = db()->prepare(
             "SELECT payload FROM integration_jobs
-             WHERE provider = 'evolution' AND action = 'zoho_billing_notify'
+             WHERE provider IN ('whatsapp', 'evolution') AND action = 'zoho_billing_notify'
                AND created_at >= :since
                AND status IN ('pending','running','success')
              ORDER BY id DESC LIMIT 50"
@@ -474,7 +474,7 @@ function zoho_billing_next_slot(): ?string
     try {
         $stmt = db()->prepare(
             "SELECT COUNT(*) AS c FROM integration_jobs
-             WHERE provider = 'evolution' AND action = 'zoho_billing_notify'
+             WHERE provider IN ('whatsapp', 'evolution') AND action = 'zoho_billing_notify'
                AND status IN ('pending','error','running')"
         );
         $stmt->execute();
@@ -496,7 +496,7 @@ function zoho_billing_next_slot(): ?string
 }
 
 /**
- * Verifica, EM TEMPO REAL na Evolution, se uma instância está conectada.
+ * Verifica, EM TEMPO REAL na API do WhatsApp, se uma instância está conectada.
  * Retorna true se o estado for "open"/"connected". Usa cache estático curto
  * para não repetir a chamada dentro do mesmo processo.
  */
@@ -514,10 +514,10 @@ function zoho_billing_instance_is_connected(string $instanceName): bool
 
     $connected = false;
     try {
-        $baseUrl = (string)admin_setting_get('evolution.base_url', '');
-        $apiKey = (string)admin_setting_get('evolution.api_key', '');
-        $evo = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
-        $res = $evo->connectionState($instanceName);
+        $baseUrl = (string)wa_api_base_url();
+        $apiKey = (string)wa_api_key();
+        $waApi = new WhatsAppApi($baseUrl, $apiKey, $instanceName);
+        $res = $waApi->connectionState($instanceName);
 
         $status = (int)($res['status'] ?? 0);
         if ($status >= 200 && $status < 300) {
@@ -706,14 +706,14 @@ function zoho_billing_send(string $phone, string $message, ?string $preferInstan
         throw new RuntimeException('A instância "' . $instance . '" (financeiro) está desconectada. Reconecte o WhatsApp para enviar os avisos do Zoho.');
     }
 
-    $baseUrl = (string)admin_setting_get('evolution.base_url', '');
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
-    $evo = new EvolutionApiV1($baseUrl, $apiKey, $instance);
-    $res = $evo->sendText($phone, $message);
+    $baseUrl = (string)wa_api_base_url();
+    $apiKey = (string)wa_api_key();
+    $waApi = new WhatsAppApi($baseUrl, $apiKey, $instance);
+    $res = $waApi->sendText($phone, $message);
     $status = (int)($res['status'] ?? 0);
     $ok = $status >= 200 && $status < 300;
     if (!$ok) {
-        throw new RuntimeException('Evolution HTTP ' . $status . ' (instância "' . $instance . '")');
+        throw new RuntimeException('API do WhatsApp HTTP ' . $status . ' (instância "' . $instance . '")');
     }
     return ['success' => true, 'http_status' => $status, 'instance' => $instance];
 }
@@ -753,7 +753,7 @@ function zoho_billing_process(array $payload, bool $forceTest = false): array
     } catch (Throwable $e) {
         return [
             'success' => false,
-            'message' => 'Erro ao enviar via Evolution API: ' . $e->getMessage(),
+            'message' => 'Erro ao enviar via API do WhatsApp: ' . $e->getMessage(),
             'fields' => $prep['fields'],
             'phone' => $phone,
             'test_mode' => $testMode,

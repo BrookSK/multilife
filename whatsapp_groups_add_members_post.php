@@ -53,7 +53,7 @@ if (empty($participants)) {
 }
 
 try {
-    $api = new EvolutionApiV1();
+    $api = new WhatsAppApi();
     $res = $api->updateGroupMembers($groupJid, 'add', $participants);
     $httpCode = (int)($res['status'] ?? 0);
     

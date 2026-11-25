@@ -6,17 +6,17 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 
-// Buscar configurações da Evolution API
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
+// Buscar configurações da API do WhatsApp
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $_userInst = whatsapp_get_user_instance($_currentUserId);
-$instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
+$instanceName = $_userInst ? $_userInst['instance_name'] : wa_default_instance();
 
 $success = '';
 $error = '';
 
-// SEMPRE sincronizar grupos da Evolution API
+// SEMPRE sincronizar grupos da API do WhatsApp
 if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         // Criar tabelas se não existirem

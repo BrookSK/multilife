@@ -7,20 +7,18 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
 
-// Verificar se Evolution API está configurada
-$baseUrl = admin_setting_get('evolution.base_url', '');
-$apiKey = admin_setting_get('evolution.api_key', '');
-$instance = admin_setting_get('evolution.instance', '');
+// Verificar se API do WhatsApp está configurada
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
+$instance = wa_default_instance();
 
 if ($baseUrl === '' || $apiKey === '' || $instance === '') {
-    flash_set('error', 'Evolution API não configurada. Configure em Configurações.');
+    flash_set('error', 'API do WhatsApp não configurada. Configure em Configurações.');
     header('Location: /admin_settings.php');
     exit;
 }
 
-require_once __DIR__ . '/app/evolution_api_v1.php';
-
-$api = new EvolutionApiV1();
+$api = new WhatsAppApi();
 $qrCode = null;
 $connectionStatus = null;
 $error = null;
@@ -207,7 +205,7 @@ if (!empty($debugInfo)) {
     // Se instância existe, mostrar mensagem positiva
     if ($instanceExists) {
         echo '<div style="margin-top:12px;padding:10px;background:hsla(var(--success)/.10);border:1px solid hsla(var(--success)/.20);border-radius:8px;color:hsl(var(--success))">';
-        echo '<strong>✓ Boa notícia!</strong> A instância "' . h($instance) . '" já existe na Evolution API.';
+        echo '<strong>✓ Boa notícia!</strong> A instância "' . h($instance) . '" já existe na API do WhatsApp.';
         echo '<br>Clique em "Gerar QR Code" abaixo para conectar.';
         echo '</div>';
     }
@@ -219,7 +217,7 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Instâncias WhatsApp</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Conecte e gerencie suas instâncias do WhatsApp via Evolution API.</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Conecte e gerencie suas instâncias do WhatsApp via API do WhatsApp.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/whatsapp_hub.php">Voltar</a>';
@@ -241,10 +239,9 @@ if ($error !== null) {
     echo '<strong>Erro:</strong> ' . h($error);
     echo '</div>';
     echo '<div style="margin-top:14px;padding:12px;background:hsla(var(--muted)/.25);border-radius:8px">';
-    echo '<strong>Solução:</strong> A instância "' . h($instance) . '" precisa ser criada manualmente na Evolution API.';
-    echo '<br><br>';
-    echo '<strong>Opção 1:</strong> Acesse o painel da Evolution API em: <a href="http://31.97.83.150:8080/manager/" target="_blank" style="color:hsl(var(--primary))">http://31.97.83.150:8080/manager/</a>';
-    echo '<br><strong>Opção 2:</strong> Use a página de administração: <a href="/admin_whatsapp_instances.php" class="btn" style="display:inline-flex;margin-top:8px">Gerenciar Instâncias</a>';
+    echo '<strong>Solução:</strong> confira se o serviço WhatsApp (Baileys) está no ar e se a URL e a API Key em Configurações estão certas. ';
+    echo 'Depois crie/conecte a instância "' . h($instance) . '" pela página de administração:';
+    echo '<br><a href="/admin_whatsapp_instances.php" class="btn" style="display:inline-flex;margin-top:8px">Gerenciar Instâncias</a>';
     echo '</div>';
     echo '</section>';
 }
@@ -258,7 +255,7 @@ if (!$instanceExists && $error === null) {
     echo '<div style="padding:12px;border-radius:10px;background:hsla(var(--warning)/.10);border:1px solid hsla(var(--warning)/.20);margin-bottom:14px">';
     echo '<div style="font-weight:700;color:hsl(var(--warning));margin-bottom:6px">⚠ Instância Não Encontrada</div>';
     echo '<div style="font-size:13px;color:hsl(var(--foreground))">';
-    echo 'A instância "' . h($instance) . '" não existe na Evolution API.<br>';
+    echo 'A instância "' . h($instance) . '" não existe na API do WhatsApp.<br>';
     echo 'Clique em "Gerar QR Code" abaixo para criar automaticamente.';
     echo '</div>';
     echo '</div>';

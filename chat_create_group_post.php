@@ -22,20 +22,20 @@ if (empty($participants) || !is_array($participants)) {
     exit;
 }
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $_userInst = whatsapp_get_user_instance($_currentUserId);
-$instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
+$instanceName = $_userInst ? $_userInst['instance_name'] : wa_default_instance();
 
 if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
-    flash_set('error', 'Evolution API não configurada.');
+    flash_set('error', 'API do WhatsApp não configurada.');
     header('Location: /chat_create_group.php');
     exit;
 }
 
 try {
-    // Formatar participantes para Evolution API
+    // Formatar participantes para API do WhatsApp
     $formattedParticipants = [];
     foreach ($participants as $phone) {
         $cleanPhone = preg_replace('/\D/', '', $phone);

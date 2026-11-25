@@ -110,7 +110,7 @@ function whatsapp_send_template(
     $message = whatsapp_process_variables($template['message_body'], $variables);
     
     // 3. Enviar mensagem de texto
-    $textResult = evolution_send_text($phone, $message);
+    $textResult = whatsapp_api_send_text($phone, $message);
     
     if (!$textResult['success']) {
         return [
@@ -134,7 +134,7 @@ function whatsapp_send_template(
         }
         
         // Enviar mídia
-        $mediaResult = evolution_send_media($phone, $filePath, $file['mime_type'], $file['file_name']);
+        $mediaResult = whatsapp_api_send_media($phone, $filePath, $file['mime_type'], $file['file_name']);
         
         if (!$mediaResult['success']) {
             $attachmentErrors[] = 'Erro ao enviar ' . $file['file_name'] . ': ' . $mediaResult['error'];
@@ -157,16 +157,16 @@ function whatsapp_send_template(
 }
 
 /**
- * Enviar texto via Evolution API
+ * Enviar texto via API do WhatsApp
  */
-function evolution_send_text(string $phone, string $message): array
+function whatsapp_api_send_text(string $phone, string $message): array
 {
-    $baseUrl = trim((string)admin_setting_get('evolution.base_url', ''));
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
-    $instance = trim((string)admin_setting_get('evolution.instance', 'multilife'));
+    $baseUrl = trim((string)wa_api_base_url());
+    $apiKey = (string)wa_api_key();
+    $instance = trim((string)wa_default_instance());
     
     if ($baseUrl === '' || $apiKey === '') {
-        return ['success' => false, 'error' => 'Evolution API não configurada'];
+        return ['success' => false, 'error' => 'API do WhatsApp não configurada'];
     }
     
     $url = rtrim($baseUrl, '/') . '/message/sendText/' . $instance;
@@ -200,16 +200,16 @@ function evolution_send_text(string $phone, string $message): array
 }
 
 /**
- * Enviar mídia via Evolution API
+ * Enviar mídia via API do WhatsApp
  */
-function evolution_send_media(string $phone, string $filePath, string $mimeType, string $fileName): array
+function whatsapp_api_send_media(string $phone, string $filePath, string $mimeType, string $fileName): array
 {
-    $baseUrl = trim((string)admin_setting_get('evolution.base_url', ''));
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
-    $instance = trim((string)admin_setting_get('evolution.instance', 'multilife'));
+    $baseUrl = trim((string)wa_api_base_url());
+    $apiKey = (string)wa_api_key();
+    $instance = trim((string)wa_default_instance());
     
     if ($baseUrl === '' || $apiKey === '') {
-        return ['success' => false, 'error' => 'Evolution API não configurada'];
+        return ['success' => false, 'error' => 'API do WhatsApp não configurada'];
     }
     
     $url = rtrim($baseUrl, '/') . '/message/sendMedia/' . $instance;

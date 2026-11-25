@@ -88,7 +88,7 @@ try {
         'login_url' => $loginUrl,
     ];
 
-    integration_job_enqueue('evolution', 'professional_onboarding_credentials', $payload, null);
+    integration_job_enqueue('whatsapp', 'professional_onboarding_credentials', $payload, null);
     integration_job_enqueue('smtp', 'professional_onboarding_email', $payload, null);
 
     // Envio síncrono WhatsApp (onboarding com credenciais)
@@ -110,7 +110,7 @@ try {
                 '{password}' => $tmpPassword,
                 '{login_url}' => $loginUrl,
             ]);
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         } catch (Throwable $e) {

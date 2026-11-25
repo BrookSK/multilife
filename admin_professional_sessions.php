@@ -224,9 +224,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
                 if (strlen($cleanPhone) >= 12) {
                     $api = null;
-                    $wBaseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-                    $wApiKey = (string)admin_setting_get('evolution.api_key', '');
-                    $wInstance = (string)admin_setting_get('evolution.instance', '');
+                    $wBaseUrl = rtrim((string)wa_api_base_url(), '/');
+                    $wApiKey = (string)wa_api_key();
+                    $wInstance = (string)wa_default_instance();
 
                     // Buscar instancia CONECTADA (nao confiar apenas na padrao)
                     try {
@@ -237,7 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                         foreach ($connectedInstances as $instName) {
                             if ((string)$instName === '' || $wBaseUrl === '' || $wApiKey === '') continue;
                             try {
-                                $tryApi = new EvolutionApiV1($wBaseUrl, $wApiKey, (string)$instName);
+                                $tryApi = new WhatsAppApi($wBaseUrl, $wApiKey, (string)$instName);
                                 $connRes = $tryApi->connectionState();
                                 $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
                                 if (in_array($state, ['open', 'connected'], true)) {
@@ -252,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     // Fallback: instancia padrao (pode falhar)
                     if ($api === null && $wBaseUrl !== '' && $wApiKey !== '' && $wInstance !== '') {
                         try {
-                            $api = new EvolutionApiV1($wBaseUrl, $wApiKey, $wInstance);
+                            $api = new WhatsAppApi($wBaseUrl, $wApiKey, $wInstance);
                             error_log("[ADMIN_SESSIONS] WhatsApp: fallback para instancia padrao '$wInstance'");
                         } catch (Throwable $e) {}
                     }

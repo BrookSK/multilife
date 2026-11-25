@@ -55,7 +55,7 @@ function chat_msg_find_by_external_id(string $externalId): int
 }
 
 /**
- * Grava a mídia ENVIADA pelo sistema (chat_send_media.php). A Evolution guarda a
+ * Grava a mídia ENVIADA pelo sistema (chat_send_media.php). A API do WhatsApp guarda a
  * mensagem antes de responder ao envio, então a sincronização ou o webhook podem
  * já ter criado a linha (sem o arquivo, mostrando só "[Imagem]"). Nesse caso a
  * linha existente é completada com o arquivo local, em vez de criar outra.
@@ -149,7 +149,7 @@ function chat_lid_lookup(string $lidJid): string
     }
 }
 
-/** LIDs conhecidos de um número (para buscar o histórico na Evolution). */
+/** LIDs conhecidos de um número (para buscar o histórico na API do WhatsApp). */
 function chat_lid_for_pn(string $pnJid): array
 {
     try {
@@ -207,22 +207,22 @@ function chat_lid_remember(string $lidJid, string $pnJid): void
 }
 
 /**
- * Descobre o número de um LID pelo histórico da Evolution: as mensagens
+ * Descobre o número de um LID pelo histórico da API do WhatsApp: as mensagens
  * RECEBIDAS desse contato trazem o número em senderPn/remoteJidAlt.
  */
-function chat_lid_resolve_via_evolution(string $lidJid, string $instanceName): string
+function chat_lid_resolve_via_api(string $lidJid, string $instanceName): string
 {
     if (substr($lidJid, -4) !== '@lid' || $instanceName === '') {
         return '';
     }
     try {
-        $api = new EvolutionApiV1(
-            (string)admin_setting_get('evolution.base_url'),
-            (string)admin_setting_get('evolution.api_key'),
+        $api = new WhatsAppApi(
+            (string)wa_api_base_url(),
+            (string)wa_api_key(),
             $instanceName
         );
         $res = $api->findRecentMessages($lidJid, 50, 6);
-        foreach (chat_evolution_records($res['json'] ?? null) as $rec) {
+        foreach (chat_wa_records($res['json'] ?? null) as $rec) {
             $key = is_array($rec['key'] ?? null) ? $rec['key'] : [];
             if ((string)($key['remoteJid'] ?? '') !== $lidJid) {
                 continue;
@@ -239,24 +239,24 @@ function chat_lid_resolve_via_evolution(string $lidJid, string $instanceName): s
             }
         }
     } catch (Throwable $e) {
-        error_log('[CHAT_STORE] erro ao resolver LID na Evolution: ' . $e->getMessage());
+        error_log('[CHAT_STORE] erro ao resolver LID na API do WhatsApp: ' . $e->getMessage());
     }
     return '';
 }
 
 /**
- * Baixa a mídia de uma mensagem pela Evolution (getBase64FromMediaMessage) e
+ * Baixa a mídia de uma mensagem pela API do WhatsApp (getBase64FromMediaMessage) e
  * grava em /uploads/chat_media/AAAA-MM/. Retorna ['url' => ..., 'mime' => ...] ou null.
  */
-function chat_evolution_fetch_media(array $rec, string $instanceName): ?array
+function chat_wa_fetch_media(array $rec, string $instanceName): ?array
 {
     if ($instanceName === '' || empty($rec['key']['id'])) {
         return null;
     }
     try {
-        $api = new EvolutionApiV1(
-            (string)admin_setting_get('evolution.base_url'),
-            (string)admin_setting_get('evolution.api_key'),
+        $api = new WhatsAppApi(
+            (string)wa_api_base_url(),
+            (string)wa_api_key(),
             $instanceName
         );
         $res = http_json_request(
@@ -294,13 +294,13 @@ function chat_evolution_fetch_media(array $rec, string $instanceName): ?array
         }
         return ['url' => '/uploads/chat_media/' . date('Y-m') . '/' . $name, 'mime' => $mime];
     } catch (Throwable $e) {
-        error_log('[CHAT_STORE] erro ao baixar mídia da Evolution: ' . $e->getMessage());
+        error_log('[CHAT_STORE] erro ao baixar mídia da API do WhatsApp: ' . $e->getMessage());
         return null;
     }
 }
 
-/** Horário (unix) de um registro da Evolution (número, string ou {low,high}). */
-function chat_evolution_record_ts(array $rec): int
+/** Horário (unix) de um registro da API do WhatsApp (número, string ou {low,high}). */
+function chat_wa_record_ts(array $rec): int
 {
     $raw = $rec['messageTimestamp'] ?? 0;
     if (is_array($raw)) {
@@ -310,7 +310,7 @@ function chat_evolution_record_ts(array $rec): int
 }
 
 /** Lista de mensagens da resposta do findMessages (formatos v1 e v2). */
-function chat_evolution_records($json): array
+function chat_wa_records($json): array
 {
     if (!is_array($json)) {
         return [];
@@ -320,17 +320,17 @@ function chat_evolution_records($json): array
 }
 
 // ---------------------------------------------------------------------------
-// Importação do histórico da Evolution (reserva quando o webhook não entrega)
+// Importação do histórico da API do WhatsApp (reserva quando o webhook não entrega)
 // ---------------------------------------------------------------------------
 
 /**
- * Grava uma mensagem vinda do findMessages da Evolution, se ainda não existir.
+ * Grava uma mensagem vinda do findMessages da API do WhatsApp, se ainda não existir.
  * Usada pela sincronização da conversa aberta: garante que respostas enviadas
  * pelo celular apareçam mesmo que o webhook falhe ou chegue com LID.
  *
  * @return int id da linha criada (0 se já existia ou foi ignorada)
  */
-function chat_import_evolution_record(array $rec, string $instanceName, string $conversationJid): int
+function chat_import_wa_record(array $rec, string $instanceName, string $conversationJid): int
 {
     $key = is_array($rec['key'] ?? null) ? $rec['key'] : [];
     $extId = (string)($key['id'] ?? '');
@@ -376,7 +376,7 @@ function chat_import_evolution_record(array $rec, string $instanceName, string $
     }
 
     $fromMe = !empty($key['fromMe']) ? 1 : 0;
-    $ts = chat_evolution_record_ts($rec);
+    $ts = chat_wa_record_ts($rec);
     if ($ts <= 0) {
         $ts = time();
     }
@@ -407,8 +407,8 @@ function chat_import_evolution_record(array $rec, string $instanceName, string $
             }
         }
         $senderName = (!$fromMe && !empty($rec['pushName'])) ? (string)$rec['pushName'] : null;
-        // Mídia: baixa o arquivo da Evolution (senão aparece só "[Imagem]")
-        $media = $type !== 'text' ? chat_evolution_fetch_media($rec, $instanceName) : null;
+        // Mídia: baixa o arquivo da API do WhatsApp (senão aparece só "[Imagem]")
+        $media = $type !== 'text' ? chat_wa_fetch_media($rec, $instanceName) : null;
         db()->prepare("INSERT INTO chat_messages
                 (remote_jid, instance_name, message_text, message_type, media_url, media_mime_type, media_filename, from_me, message_timestamp, sender_name, external_message_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")

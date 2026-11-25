@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 /**
- * Fila de entrada do webhook da Evolution (chat_webhook_inbox).
+ * Fila de entrada do webhook da API do WhatsApp (chat_webhook_inbox).
  *
  * O webhook grava o payload cru (arquivo em disco + linha na tabela), responde
- * 200 na hora e só depois processa. Assim a Evolution nunca espera o
+ * 200 na hora e só depois processa. Assim a API do WhatsApp nunca espera o
  * processamento (mídia grande, consultas, etc.).
  *
  *  - Payload: arquivo fora da pasta pública (ou storage/webhook_inbox, bloqueada
@@ -141,7 +141,7 @@ function wa_inbox_store(string $raw, array $payload): array
         }
     }
 
-    // Arquivo antes da linha: se o PHP cair entre os dois, a Evolution reenvia e
+    // Arquivo antes da linha: se o PHP cair entre os dois, a API do WhatsApp reenvia e
     // não há linha "sem arquivo" bloqueando a repetição.
     $sub = date('Y-m-d');
     if (!@is_dir($dir . '/' . $sub)) {

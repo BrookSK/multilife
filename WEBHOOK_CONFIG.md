@@ -1,69 +1,45 @@
-# Configuração do Webhook para Receber Mensagens
+# Webhook do WhatsApp (receber mensagens)
 
-## 1. URL do Webhook
+## 1. URL
 
-Configure o webhook na Evolution API para apontar para:
+O serviço WhatsApp (ml-baileys-service) entrega os eventos em:
 
 ```
 https://seu-dominio.com/chat_webhook.php
 ```
 
-## 2. Configurar na Evolution API
+Defina `app.public_base_url` em Configurações para o sistema montar essa URL.
 
-### Via API:
+## 2. Como fica configurado
 
-```bash
-curl -X POST https://sua-evolution-api.com/webhook/set/NOME_DA_INSTANCIA \
-  -H "apikey: SUA_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://seu-dominio.com/chat_webhook.php",
-    "webhook_by_events": true,
-    "events": [
-      "messages.upsert"
-    ]
-  }'
-```
+O sistema grava o webhook da instância sozinho ao conectar o número. Para
+conferir ou reaplicar: `/admin_webhook_debug.php` → "Configuração do webhook" →
+**Aplicar padrão**. Padrão: um único endereço, base64 ligado (a mídia vem junto)
+e os eventos `MESSAGES_UPSERT`, `SEND_MESSAGE`, `MESSAGES_DELETE`,
+`CONTACTS_UPSERT`, `CONNECTION_UPDATE`, `QRCODE_UPDATED`.
 
-### Via Interface da Evolution API:
-
-1. Acesse o painel da Evolution API
-2. Vá em **Configurações da Instância**
-3. Seção **Webhook**
-4. Configure:
-   - **URL**: `https://seu-dominio.com/chat_webhook.php`
-   - **Events**: Marque `messages.upsert`
-   - **Webhook by Events**: Ativado
-
-## 3. Testar Webhook
-
-Envie uma mensagem para o número do WhatsApp conectado e verifique:
-
-1. Logs do servidor (erro.log do Apache/Nginx)
-2. Banco de dados - tabela `chat_messages`
-3. Interface do chat - mensagem deve aparecer
-
-## 4. Verificar Logs
+Pela API do serviço (mesmo formato da Evolution v2):
 
 ```bash
-tail -f /var/log/apache2/error.log
-# ou
-tail -f /var/log/nginx/error.log
+curl -X POST http://IP-DO-SERVICO:8090/webhook/set/NOME_DA_INSTANCIA \
+  -H "apikey: SUA_API_KEY" -H "Content-Type: application/json" \
+  -d '{"webhook":{"enabled":true,"url":"https://seu-dominio.com/chat_webhook.php","byEvents":false,"base64":true,
+       "events":["MESSAGES_UPSERT","SEND_MESSAGE","MESSAGES_DELETE","CONTACTS_UPSERT","CONNECTION_UPDATE","QRCODE_UPDATED"]}}'
 ```
 
-Procure por:
-- `=== WEBHOOK CHAMADO ===`
-- `Mensagem recebida de:`
-- `Mensagem salva no banco com sucesso`
+Instância sem webhook próprio usa o `DEFAULT_WEBHOOK_URL` do `.env` do serviço.
 
-## 5. Troubleshooting
+## 3. Testar
 
-**Webhook não é chamado:**
-- Verifique se URL está acessível publicamente
-- Verifique firewall/SSL
-- Confirme configuração na Evolution API
+Envie uma mensagem para o número conectado e confira:
 
-**Mensagens não aparecem:**
-- Verifique logs do webhook
-- Confirme que tabela `chat_messages` existe
-- Verifique permissões do banco de dados
+1. `/admin_webhook_debug.php` → "Mensagens recebidas pelo webhook (rastreio)";
+2. tabela `chat_messages`;
+3. o chat do sistema.
+
+## 4. Se não chegar
+
+- URL pública acessível (SSL, firewall) e `post_max_size` ≥ 64M (`.user.ini`);
+- veredito do número em Configurações → WhatsApp Conexão → Instâncias;
+- logs do serviço na VPS: `pm2 logs ml-baileys` (linhas "webhook não entregue");
+- mensagens que chegaram ao serviço e não ao sistema: botão **Sincronizar**.

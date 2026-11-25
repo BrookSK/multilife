@@ -91,7 +91,7 @@ if ($profPhone !== '' && strlen($profPhone) >= 10) {
             . "Obrigado!\n"
             . "_Equipe MultiLife Care_";
         
-        $api = new EvolutionApiV1();
+        $api = new WhatsAppApi();
         $res = $api->sendText($profPhone, $whatsappMsg);
         $httpCode = (int)($res['status'] ?? 0);
         

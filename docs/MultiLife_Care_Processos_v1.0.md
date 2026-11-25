@@ -39,7 +39,7 @@ Automatizar e rastrear o ciclo completo de um atendimento domiciliar: desde o re
 |---|---|
 | PHP + JavaScript | Base da plataforma |
 | API OpenAI (ChatGPT) | Extração inteligente de dados de e-mails recebidos |
-| Evolution API (WhatsApp) | Disparo de mensagens em grupos, notificações e webhooks |
+| WhatsApp (Baileys) | Disparo de mensagens em grupos, notificações e webhooks |
 | ZapSign | Assinatura digital de documentos e contratos |
 | SMTP Interno | Recebimento e envio de e-mails transacionais |
 | Webhooks HTTP | Integração com sistemas externos e automações |
@@ -131,7 +131,7 @@ Um Captador acessa o card e clica em **"Assumir Demanda"**. A partir desse momen
 
 ### 3.5 Disparo nos Grupos de WhatsApp
 
-Dentro do card, o Captador clica em **"Realizar Captação"**. O sistema identifica automaticamente os grupos de WhatsApp cadastrados com correspondência de especialidade, cidade e estado, e dispara a mensagem via Evolution API.
+Dentro do card, o Captador clica em **"Realizar Captação"**. O sistema identifica automaticamente os grupos de WhatsApp cadastrados com correspondência de especialidade, cidade e estado, e dispara a mensagem via WhatsApp (Baileys).
 
 - Os grupos são previamente cadastrados pelo Admin com os atributos: nome, especialidade, cidade, estado.
 - O conteúdo da mensagem é configurável no painel do Admin.
@@ -229,7 +229,7 @@ Após o envio da ficha, o Admin recebe notificação de nova candidatura pendent
 Ao aprovar a candidatura, o sistema executa automaticamente:
 
 1. Criação da conta de acesso ao sistema com perfil "Profissional", gerenciada internamente pela plataforma.
-2. Envio de mensagem via WhatsApp (webhook Evolution API) com credenciais de acesso e instruções de uso da plataforma.
+2. Envio de mensagem via WhatsApp (WhatsApp Baileys) com credenciais de acesso e instruções de uso da plataforma.
 3. Envio de e-mail de boas-vindas com o link de acesso ao sistema.
 4. Criação da ficha do profissional com todos os dados cadastrais.
 5. Geração de pasta documental individual no módulo de gestão de documentos.
@@ -251,7 +251,7 @@ Após a realização de um atendimento, o profissional é responsável pelo regi
 
 O profissional tem até **48 horas** após a finalização do último atendimento de um ciclo para submeter o formulário. Para atendimentos recorrentes, o prazo também se aplica ao fechamento mensal.
 
-- Webhook via WhatsApp (Evolution API) com X dias de antecedência — configurável pelo Admin.
+- Webhook via WhatsApp (Baileys) com X dias de antecedência — configurável pelo Admin.
 - Se o formulário não for enviado: reenvio diário por até **7 dias consecutivos**.
 - Após 7 dias sem ação: criação de **pendência de revisão** no painel do Admin.
 
@@ -495,7 +495,7 @@ Documentos atualizados não substituem a versão anterior. O histórico de vers�
 - Tempo limite para resposta em chats (antes de gerar pendência).
 - Configurações de SMTP para e-mails.
 - Frequência do monitoramento de caixa de entrada.
-- Configurações das APIs OpenAI e Evolution.
+- Configurações das APIs OpenAI e WhatsApp (Baileys).
 
 ### 11.3 Recursos Humanos
 
@@ -511,7 +511,7 @@ O módulo de RH cobre o ciclo completo do colaborador interno:
 
 ### 11.4 Gestão de Grupos WhatsApp
 
-O Admin cria e gerencia grupos de WhatsApp diretamente pela plataforma via Evolution API. Cada grupo possui:
+O Admin cria e gerencia grupos de WhatsApp diretamente pela plataforma via WhatsApp (Baileys). Cada grupo possui:
 
 - Nome do grupo
 - Especialidade associada
@@ -525,11 +525,11 @@ O Admin cria e gerencia grupos de WhatsApp diretamente pela plataforma via Evolu
 
 | Integração | Gatilho | Payload Principal |
 |---|---|---|
-| **Evolution API — Grupos** | Captador clica em "Realizar Captação" | Mensagem de captação + dados do card |
-| **Evolution API — Profissional** | Aprovação de candidatura / onboarding | Credenciais + instruções de acesso |
-| **Evolution API — Paciente** | Confirmação de agendamento | Dados do profissional + data/hora + link de suporte |
-| **Evolution API — Lembrete** | X dias antes do prazo do formulário | Nome do paciente + prazo + link do formulário |
-| **Evolution API — Cobrança** | Formulário não enviado após prazo | Alerta de pendência + link direto |
+| **WhatsApp (Baileys) — Grupos** | Captador clica em "Realizar Captação" | Mensagem de captação + dados do card |
+| **WhatsApp (Baileys) — Profissional** | Aprovação de candidatura / onboarding | Credenciais + instruções de acesso |
+| **WhatsApp (Baileys) — Paciente** | Confirmação de agendamento | Dados do profissional + data/hora + link de suporte |
+| **WhatsApp (Baileys) — Lembrete** | X dias antes do prazo do formulário | Nome do paciente + prazo + link do formulário |
+| **WhatsApp (Baileys) — Cobrança** | Formulário não enviado após prazo | Alerta de pendência + link direto |
 | **OpenAI API** | E-mail recebido na caixa do sistema | Conteúdo do e-mail → card estruturado |
 | **ZapSign** | Criação de contrato RH ou documento admin | Documento PDF + dados do signatário |
 | **SMTP Saída** | Confirmação de agendamento ou admissão | E-mail ao paciente e/ou origem |

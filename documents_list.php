@@ -213,8 +213,8 @@ if ($tab === 'sent') {
                             if (strlen($cleanPhone) === 10 || strlen($cleanPhone) === 11) { $cleanPhone = '55' . $cleanPhone; }
                             if (strlen($cleanPhone) >= 12) {
                                 $wApi = null;
-                                $wBaseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-                                $wApiKey = (string)admin_setting_get('evolution.api_key', '');
+                                $wBaseUrl = rtrim((string)wa_api_base_url(), '/');
+                                $wApiKey = (string)wa_api_key();
                                 // Buscar instancia conectada
                                 try {
                                     $wInstStmt = db()->prepare("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC, id ASC LIMIT 5");
@@ -223,7 +223,7 @@ if ($tab === 'sent') {
                                     foreach ($wInstList as $wInstName) {
                                         if ((string)$wInstName === '' || $wBaseUrl === '' || $wApiKey === '') continue;
                                         try {
-                                            $tryApi = new EvolutionApiV1($wBaseUrl, $wApiKey, (string)$wInstName);
+                                            $tryApi = new WhatsAppApi($wBaseUrl, $wApiKey, (string)$wInstName);
                                             $connRes = $tryApi->connectionState();
                                             $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
                                             if (in_array($state, ['open', 'connected'], true)) {
@@ -234,8 +234,8 @@ if ($tab === 'sent') {
                                     }
                                 } catch (Throwable $e) {}
                                 if ($wApi === null && $wBaseUrl !== '' && $wApiKey !== '') {
-                                    $wDefInst = (string)admin_setting_get('evolution.instance', '');
-                                    if ($wDefInst !== '') { try { $wApi = new EvolutionApiV1($wBaseUrl, $wApiKey, $wDefInst); } catch (Throwable $e) {} }
+                                    $wDefInst = (string)wa_default_instance();
+                                    if ($wDefInst !== '') { try { $wApi = new WhatsAppApi($wBaseUrl, $wApiKey, $wDefInst); } catch (Throwable $e) {} }
                                 }
                                 if ($wApi !== null) {
                                     $whatsMsg = "📎 *Documento Complementar*\n\nOlá, " . $rn . "!\n\nA equipe MultiLife Care enviou um documento complementar:\n\n📄 *" . $fn . "*\n" . $baseUrl . $rp;

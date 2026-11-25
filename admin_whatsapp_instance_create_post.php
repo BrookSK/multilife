@@ -7,12 +7,12 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp.manage');
 
-// Verificar se Evolution API está configurada
-$baseUrl = admin_setting_get('evolution.base_url', '');
-$apiKey = admin_setting_get('evolution.api_key', '');
+// Verificar se API do WhatsApp está configurada
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 
 if ($baseUrl === '' || $apiKey === '') {
-    flash_set('error', 'Evolution API não configurada. Configure em Configurações.');
+    flash_set('error', 'API do WhatsApp não configurada. Configure em Configurações.');
     header('Location: /admin_settings.php');
     exit;
 }
@@ -59,8 +59,8 @@ if ($webhook !== '') {
     $payload['events'] = WHATSAPP_WEBHOOK_EVENTS;
 }
 
-$evo = new EvolutionApiV1();
-$res = $evo->createInstanceBasic($payload);
+$waApi = new WhatsAppApi();
+$res = $waApi->createInstanceBasic($payload);
 
 if ((int)$res['status'] < 200 || (int)$res['status'] >= 300) {
     flash_set('error', 'Falha ao criar instância.');

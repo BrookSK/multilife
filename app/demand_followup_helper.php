@@ -26,7 +26,7 @@ function demand_followup_interval_minutes(): int
     return $v > 0 ? $v : 5;
 }
 
-/** Delay por mensagem passado à Evolution (ms). */
+/** Delay por mensagem passado à API do WhatsApp (ms). */
 function demand_followup_per_message_delay_ms(): int
 {
     $v = (int)admin_setting_get('demand_followup.per_message_delay_ms', '1200');

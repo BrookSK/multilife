@@ -76,7 +76,7 @@ if ($appData) {
                 '{message}' => $reason,
                 '{application_id}' => (string)$id,
             ]);
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
         } catch (Throwable $e) {
@@ -111,7 +111,7 @@ if ($appData) {
 }
 
 if (!$whatsappSent) {
-    integration_job_enqueue('evolution', 'professional_application_notify', $payload, null);
+    integration_job_enqueue('whatsapp', 'professional_application_notify', $payload, null);
 }
 if (!$emailSent) {
     integration_job_enqueue('smtp', 'professional_application_notify_email', $payload, null);

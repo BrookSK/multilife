@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Monitor de conexão real do WhatsApp (watchdog da Evolution).
+ * Monitor de conexão real do WhatsApp (watchdog da API do WhatsApp).
  * Lê o veredito de cada instância, faz 1 reconexão automática quando a conexão
  * fica "zumbi" e avisa o time quando não resolve (ver app/whatsapp_watchdog.php).
  *

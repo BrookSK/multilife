@@ -33,7 +33,7 @@ echo '<div style="color:hsl(var(--muted-foreground));font-size:14px;line-height:
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/whatsapp_groups_list.php">Voltar</a>';
-echo '<a class="btn" href="/whatsapp_groups_members_evolution.php?id=' . (int)$g['id'] . '">Membros (Evolution)</a>';
+echo '<a class="btn" href="/whatsapp_groups_members_api.php?id=' . (int)$g['id'] . '">Membros (API do WhatsApp)</a>';
 echo '</div>';
 echo '</div>';
 
@@ -45,7 +45,7 @@ echo '<label>Nome<input name="name" required maxlength="160" value="' . h((strin
 
 echo '<div class="grid" style="gap:12px">';
 echo '<div class="col6">';
-echo '<label>Evolution Group JID (obrigatório)<input name="evolution_group_jid" required maxlength="120" value="' . h((string)($g['evolution_group_jid'] ?? '')) . '" placeholder="Ex: 1203xxxxxx@g.us"></label>';
+echo '<label>JID do grupo no WhatsApp (obrigatório)<input name="evolution_group_jid" required maxlength="120" value="' . h((string)($g['evolution_group_jid'] ?? '')) . '" placeholder="Ex: 1203xxxxxx@g.us"></label>';
 echo '</div>';
 echo '<div class="col6">';
 echo '<label>Número de contatos (opcional)<input type="number" name="contacts_count" min="0" value="' . h((string)($g['contacts_count'] ?? '')) . '" placeholder="Ex: 256"></label>';

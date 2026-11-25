@@ -20,7 +20,7 @@ if (!$old) {
 }
 
 $name = trim((string)($_POST['name'] ?? ''));
-$evolutionGroupJid = trim((string)($_POST['evolution_group_jid'] ?? ''));
+$groupJidInput = trim((string)($_POST['evolution_group_jid'] ?? ''));
 $contactsCountRaw = trim((string)($_POST['contacts_count'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
 $city = trim((string)($_POST['city'] ?? ''));
@@ -33,8 +33,8 @@ if ($name === '') {
     exit;
 }
 
-if ($evolutionGroupJid === '') {
-    flash_set('error', 'Informe o Evolution Group JID.');
+if ($groupJidInput === '') {
+    flash_set('error', 'Informe o API do WhatsApp Group JID.');
     header('Location: /whatsapp_groups_edit.php?id=' . $id);
     exit;
 }
@@ -61,7 +61,7 @@ if (!in_array($status, ['active','inactive'], true)) {
 $stmt = db()->prepare('UPDATE whatsapp_groups SET name = :n, evolution_group_jid = :jid, contacts_count = :cc, specialty = :sp, city = :c, state = :s, status = :st WHERE id = :id');
 $stmt->execute([
     'n' => $name,
-    'jid' => $evolutionGroupJid,
+    'jid' => $groupJidInput,
     'cc' => $contactsCount,
     'sp' => $specialty !== '' ? $specialty : null,
     'c' => $city !== '' ? $city : null,
@@ -70,7 +70,7 @@ $stmt->execute([
     'id' => $id,
 ]);
 
-audit_log('update', 'whatsapp_groups', (string)$id, $old, ['name' => $name, 'status' => $status, 'specialty' => $specialty, 'city' => $city, 'state' => $state, 'evolution_group_jid' => $evolutionGroupJid, 'contacts_count' => $contactsCount]);
+audit_log('update', 'whatsapp_groups', (string)$id, $old, ['name' => $name, 'status' => $status, 'specialty' => $specialty, 'city' => $city, 'state' => $state, 'evolution_group_jid' => $groupJidInput, 'contacts_count' => $contactsCount]);
 
 flash_set('success', 'Grupo atualizado.');
 header('Location: /whatsapp_groups_list.php');

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Sincroniza as últimas mensagens da conversa aberta direto da Evolution API.
+ * Sincroniza as últimas mensagens da conversa aberta direto da API do WhatsApp.
  *
  * Reserva para quando o webhook não entrega (ou entrega com LID) as mensagens
  * enviadas pelo celular: o chat chama este endpoint ao abrir a conversa e a cada
@@ -58,11 +58,11 @@ if ($requested !== '' && in_array($requested, $allowed, true)) {
 $instances = array_values(array_filter($instances, static fn($i) => $i !== ''));
 
 // Limite de frequência por conversa+instância (vários atendentes com a mesma
-// conversa aberta não multiplicam as chamadas à Evolution).
-// (a Evolution está processando com atraso; consultas frequentes só aumentam a fila dela)
+// conversa aberta não multiplicam as chamadas à API do WhatsApp).
+// (a API do WhatsApp está processando com atraso; consultas frequentes só aumentam a fila dela)
 $throttleSeconds = 25;
-$baseUrl = (string)admin_setting_get('evolution.base_url');
-$apiKey = (string)admin_setting_get('evolution.api_key');
+$baseUrl = (string)wa_api_base_url();
+$apiKey = (string)wa_api_key();
 $imported = 0;
 $errors = [];
 
@@ -75,7 +75,7 @@ foreach ($instances as $instanceName) {
     @file_put_contents($throttleFile, (string)time());
 
     try {
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $instanceName);
 
         // WhatsApp desconectado: não consulta (cada consulta presa ocupa o servidor).
         // Estado guardado por 2 minutos.
@@ -95,8 +95,8 @@ foreach ($instances as $instanceName) {
             continue;
         }
 
-        // Mensagens enviadas pelo celular podem estar na Evolution só com o LID do
-        // contato. Sem o LID conhecido, perguntamos à Evolution (whatsappNumbers)
+        // Mensagens enviadas pelo celular podem estar na API do WhatsApp só com o LID do
+        // contato. Sem o LID conhecido, perguntamos à API do WhatsApp (whatsappNumbers)
         // no máximo 1x por hora por contato.
         if (!chat_lid_for_pn($pnJid)) {
             $lidCheckFile = sys_get_temp_dir() . '/chat_lidchk_' . md5($instanceName . '|' . $pnJid);
@@ -131,7 +131,7 @@ foreach ($instances as $instanceName) {
                 $errors[] = $instanceName . ': HTTP ' . (int)($res['status'] ?? 0);
                 continue;
             }
-            foreach (chat_evolution_records($res['json'] ?? null) as $rec) {
+            foreach (chat_wa_records($res['json'] ?? null) as $rec) {
                 $key = is_array($rec['key'] ?? null) ? $rec['key'] : [];
                 $rj = (string)($key['remoteJid'] ?? '');
                 $alt = (string)($key['remoteJidAlt'] ?? '');
@@ -150,12 +150,12 @@ foreach ($instances as $instanceName) {
         }
         unset($records['']);
         // Grava da mais antiga para a mais nova (ids em ordem cronológica)
-        usort($records, static fn($a, $b) => chat_evolution_record_ts($a) <=> chat_evolution_record_ts($b));
+        usort($records, static fn($a, $b) => chat_wa_record_ts($a) <=> chat_wa_record_ts($b));
         foreach ($records as $rec) {
             // Recebidas dos últimos 20s ficam para o webhook (que também baixa a mídia).
-            // Depois disso importamos: o webhook da Evolution chega a atrasar horas.
+            // Depois disso importamos: o webhook da API do WhatsApp chega a atrasar horas.
             $recFromMe = !empty($rec['key']['fromMe']);
-            $recTs = chat_evolution_record_ts($rec);
+            $recTs = chat_wa_record_ts($rec);
             // Só as últimas 24h: histórico antigo pode ter linhas sem key.id que
             // virariam duplicadas.
             if ($recTs < time() - 86400) {
@@ -171,7 +171,7 @@ foreach ($instances as $instanceName) {
             if ($recFromMe && !$recIsText && $recTs > time() - 90) {
                 continue;
             }
-            if (chat_import_evolution_record($rec, $instanceName, $pnJid) > 0) {
+            if (chat_import_wa_record($rec, $instanceName, $pnJid) > 0) {
                 $imported++;
             }
         }
@@ -182,7 +182,7 @@ foreach ($instances as $instanceName) {
 }
 
 if ($imported > 0) {
-    error_log("[CHAT_SYNC] $imported mensagem(ns) importada(s) da Evolution para $pnJid");
+    error_log("[CHAT_SYNC] $imported mensagem(ns) importada(s) da API do WhatsApp para $pnJid");
 }
 
 echo json_encode(['ok' => true, 'imported' => $imported, 'errors' => $errors]);

@@ -14,11 +14,11 @@ if (empty($groupId)) {
     exit;
 }
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 $_userInst = whatsapp_get_user_instance($_currentUserId);
-$instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
+$instanceName = $_userInst ? $_userInst['instance_name'] : wa_default_instance();
 
 $groupData = null;
 $participants = [];
@@ -50,16 +50,16 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
 // ============================================================
 // DECODIFICAR @lid → número real + nome (item: resolver Linked IDs)
 // ============================================================
-// 1) Montar mapa LID → número real a partir dos contatos da Evolution.
+// 1) Montar mapa LID → número real a partir dos contatos da API do WhatsApp.
 $lidToPhone = [];
 if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $instanceName);
         $contactsRes = $api->findContacts();
         $contactsJson = $contactsRes['json'] ?? [];
         if (is_array($contactsJson)) {
             foreach ($contactsJson as $c) {
-                // A Evolution v2 pode trazer 'id' (jid real) e 'lid' no mesmo contato,
+                // A API do WhatsApp pode trazer 'id' (jid real) e 'lid' no mesmo contato,
                 // ou o remoteJid com o número e um campo separado de lid.
                 $cid = (string)($c['id'] ?? ($c['remoteJid'] ?? ''));
                 $clid = (string)($c['lid'] ?? '');

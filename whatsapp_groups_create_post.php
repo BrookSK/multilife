@@ -8,7 +8,7 @@ auth_require_login();
 rbac_require_permission('whatsapp_groups.manage');
 
 $name = trim((string)($_POST['name'] ?? ''));
-$evolutionGroupJid = trim((string)($_POST['evolution_group_jid'] ?? ''));
+$groupJidInput = trim((string)($_POST['evolution_group_jid'] ?? ''));
 $contactsCountRaw = trim((string)($_POST['contacts_count'] ?? ''));
 $specialty = trim((string)($_POST['specialty'] ?? ''));
 $city = trim((string)($_POST['city'] ?? ''));
@@ -21,8 +21,8 @@ if ($name === '') {
     exit;
 }
 
-if ($evolutionGroupJid === '') {
-    flash_set('error', 'Informe o Evolution Group JID.');
+if ($groupJidInput === '') {
+    flash_set('error', 'Informe o API do WhatsApp Group JID.');
     header('Location: /whatsapp_groups_create.php');
     exit;
 }
@@ -49,7 +49,7 @@ if (!in_array($status, ['active','inactive'], true)) {
 $stmt = db()->prepare('INSERT INTO whatsapp_groups (name, evolution_group_jid, contacts_count, specialty, city, state, status) VALUES (:n,:jid,:cc,:sp,:c,:s,:st)');
 $stmt->execute([
     'n' => $name,
-    'jid' => $evolutionGroupJid,
+    'jid' => $groupJidInput,
     'cc' => $contactsCount,
     'sp' => $specialty !== '' ? $specialty : null,
     'c' => $city !== '' ? $city : null,

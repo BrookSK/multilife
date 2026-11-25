@@ -126,20 +126,20 @@ $captadorInstanceName = (string)($captadorInstance['instance_name'] ?? '');
 
 $api = null;
 try {
-    $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
+    $baseUrl = rtrim((string)wa_api_base_url(), '/');
+    $apiKey = (string)wa_api_key();
     if ($baseUrl !== '' && $apiKey !== '' && $captadorInstanceName !== '') {
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $captadorInstanceName);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $captadorInstanceName);
     } elseif ($baseUrl !== '' && $apiKey !== '') {
         // Fallback: primeira instância conectada.
         $instStmt = db()->query("SELECT instance_name FROM whatsapp_instances WHERE status = 'active' AND connection_status = 'connected' ORDER BY is_default DESC, id ASC LIMIT 1");
         $instName = (string)($instStmt->fetchColumn() ?: '');
         if ($instName !== '') {
-            $api = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+            $api = new WhatsAppApi($baseUrl, $apiKey, $instName);
         }
     }
 } catch (Throwable $e) {
-    error_log('[RECAPTAR_SIGILOSO] Erro ao instanciar Evolution: ' . $e->getMessage());
+    error_log('[RECAPTAR_SIGILOSO] Erro ao instanciar API do WhatsApp: ' . $e->getMessage());
 }
 
 if ($api === null) {

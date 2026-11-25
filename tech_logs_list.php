@@ -43,7 +43,7 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Logs Técnicos</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Integrações (OpenAI/Evolution/ZapSign/SMTP/Webhooks).</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Integrações (OpenAI/API do WhatsApp/ZapSign/SMTP/Webhooks).</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/integration_jobs_list.php">Jobs</a>';

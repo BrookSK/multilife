@@ -31,8 +31,8 @@ function syncFinish(bool $success, string $message, string $requestedInstance, a
     exit;
 }
 
-$baseUrl = admin_setting_get('evolution.base_url');
-$apiKey = admin_setting_get('evolution.api_key');
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 $_currentUserId = (int)($_SESSION['auth_user_id'] ?? 0);
 
 // Instância a sincronizar: respeitar o filtro por WhatsApp, se veio na URL.
@@ -41,11 +41,11 @@ if ($requestedInstance !== '') {
     $instanceName = $requestedInstance;
 } else {
     $_userInst = whatsapp_get_user_instance($_currentUserId);
-    $instanceName = $_userInst ? $_userInst['instance_name'] : admin_setting_get('evolution.instance');
+    $instanceName = $_userInst ? $_userInst['instance_name'] : wa_default_instance();
 }
 
 if (empty($baseUrl) || empty($apiKey) || empty($instanceName)) {
-    syncFinish(false, 'Evolution API não configurada.', $requestedInstance);
+    syncFinish(false, 'API do WhatsApp não configurada.', $requestedInstance);
 }
 
 /**
@@ -61,7 +61,7 @@ function syncNormalizeJid(string $jid): string
 }
 
 /**
- * Extrai o texto de exibição de um objeto lastMessage da Evolution API,
+ * Extrai o texto de exibição de um objeto lastMessage da API do WhatsApp,
  * tentando os formatos mais comuns.
  */
 function syncExtractLastMessageText($lastMessage): string
@@ -126,7 +126,7 @@ try {
     }
 
     if (!is_array($chats)) {
-        syncFinish(false, 'Resposta inválida da Evolution API ao sincronizar conversas.', $requestedInstance);
+        syncFinish(false, 'Resposta inválida da API do WhatsApp ao sincronizar conversas.', $requestedInstance);
     }
 
     // Garantir que a tabela e as colunas necessárias existem

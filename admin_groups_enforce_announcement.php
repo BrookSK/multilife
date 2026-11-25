@@ -34,13 +34,13 @@ echo "Encontrados " . count($groups) . " grupo(s) ativo(s).\n\n";
 
 // Tentar descobrir endpoints disponíveis
 echo "=== VERIFICANDO ENDPOINTS DISPONÍVEIS ===\n";
-$baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-$apiKeyVal = (string)admin_setting_get('evolution.api_key', '');
-$instanceName = (string)admin_setting_get('evolution.instance', '');
+$baseUrl = rtrim((string)wa_api_base_url(), '/');
+$apiKeyVal = (string)wa_api_key();
+$instanceName = (string)wa_default_instance();
 echo "Base URL: $baseUrl\n";
 echo "Instance: $instanceName\n\n";
 
-$api = new EvolutionApiV1();
+$api = new WhatsAppApi();
 $updated = 0;
 $errors = 0;
 

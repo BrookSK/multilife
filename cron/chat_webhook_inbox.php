@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * CRON: fila de entrada do webhook da Evolution (chat_webhook_inbox).
+ * CRON: fila de entrada do webhook da API do WhatsApp (chat_webhook_inbox).
  *
  * O próprio webhook processa cada evento logo depois de responder 200. Este cron
  * reprocessa o que ficou para trás (PHP caiu no meio, tempo esgotado, banco fora)

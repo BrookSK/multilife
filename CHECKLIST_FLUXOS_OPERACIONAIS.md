@@ -104,7 +104,7 @@ Aguardando Captação → Em Captação → Admitido → Concluído
 
 | # | Etapa | Verificar |
 |---|-------|-----------|
-| ☐ | 5.1 | Mensagem recebida via WhatsApp (integração Evolution API) |
+| ☐ | 5.1 | Mensagem recebida via WhatsApp (integração WhatsApp (Baileys)) |
 | ☐ | 5.2 | Sistema registra e identifica o contato automaticamente |
 | ☐ | 5.3 | Aparece na lista de conversas com indicador de não lida |
 | ☐ | 5.4 | Operador aceita a conversa |
@@ -415,7 +415,7 @@ Pendente Formulário → Realizado → Ciclo Encerrado → Renovação de Ciclo
 | ☐ | 18.8 | Suspender e reativar contas |
 | ☐ | 18.9 | Login como outro usuário (suporte) |
 | ☐ | 18.10 | **Configurações do Sistema:** |
-| ☐ | 18.11 | → Integrações: WhatsApp (Evolution API), SMTP, OpenAI, ZapSign |
+| ☐ | 18.11 | → Integrações: WhatsApp (Baileys), SMTP, OpenAI, ZapSign |
 | ☐ | 18.12 | → Templates de e-mail e WhatsApp |
 | ☐ | 18.13 | → Especialidades e tipos de serviço |
 | ☐ | 18.14 | → Operadoras de saúde |

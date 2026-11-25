@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Helpers para multi-instância WhatsApp.
  * 
- * Cada usuário pode ter sua própria conexão WhatsApp (instância na Evolution API).
+ * Cada usuário pode ter sua própria conexão WhatsApp (instância na API do WhatsApp).
  * Se não tiver, usa a instância padrão da plataforma (is_default=1 ou admin_settings).
  * 
  * Na criação de grupos, TODOS os números conectados (de todas as instâncias ativas)
@@ -55,7 +55,7 @@ function whatsapp_get_all_connected_numbers(): array
     }
 
     // Fallback: incluir o número admin configurado nas settings (instância padrão)
-    $adminPhone = trim((string)admin_setting_get('evolution.admin_phone', ''));
+    $adminPhone = trim((string)wa_setting('admin_phone', ''));
     if ($adminPhone !== '') {
         $adminPhone = preg_replace('/\D+/', '', $adminPhone);
         if (strlen($adminPhone) === 10 || strlen($adminPhone) === 11) {
@@ -151,11 +151,11 @@ function whatsapp_get_user_instance(?int $userId = null): ?array
     }
 
     // Último fallback: usar admin_settings (compatibilidade com versão anterior)
-    $instanceName = (string)admin_setting_get('evolution.instance', '');
+    $instanceName = (string)wa_default_instance();
     if ($instanceName !== '') {
         return [
             'instance_name' => $instanceName,
-            'token' => (string)admin_setting_get('evolution.api_key', ''),
+            'token' => (string)wa_api_key(),
             'owner_number' => '',
             'is_default' => true,
         ];
@@ -266,31 +266,31 @@ function whatsapp_messages_instance_filter(int $userId, string $jid, string $onl
 }
 
 /**
- * Cria uma instância EvolutionApiV1 para o usuário (ou padrão se não tiver).
+ * Cria uma instância WhatsAppApi para o usuário (ou padrão se não tiver).
  *
  * @param int|null $userId ID do usuário
- * @return EvolutionApiV1
+ * @return WhatsAppApi
  * @throws RuntimeException se nenhuma instância disponível
  */
-function whatsapp_get_api_for_user(?int $userId = null): EvolutionApiV1
+function whatsapp_get_api_for_user(?int $userId = null): WhatsAppApi
 {
     $inst = whatsapp_get_user_instance($userId);
 
     if ($inst === null) {
         // Construtor padrão vai usar admin_settings
-        return new EvolutionApiV1();
+        return new WhatsAppApi();
     }
 
     // Se é a instância padrão, pode usar o construtor sem params (vai ler admin_settings)
     if ($inst['is_default']) {
-        return new EvolutionApiV1();
+        return new WhatsAppApi();
     }
 
     // Instância do usuário: usar os mesmos base_url e api_key, mas instance diferente
-    $baseUrl = (string)admin_setting_get('evolution.base_url', '');
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
+    $baseUrl = (string)wa_api_base_url();
+    $apiKey = (string)wa_api_key();
 
-    return new EvolutionApiV1($baseUrl, $apiKey, $inst['instance_name']);
+    return new WhatsAppApi($baseUrl, $apiKey, $inst['instance_name']);
 }
 
 /**

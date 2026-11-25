@@ -12,7 +12,7 @@ require_once __DIR__ . '/app/bootstrap.php';
  * em Configurações → Zoho Faturamento (setting: zoho_billing.webhook_token).
  *
  * Ao receber o webhook: extrai os campos, monta a mensagem e envia via
- * WhatsApp (Evolution API) para o telefone recebido. Em modo teste, o telefone
+ * WhatsApp (API do WhatsApp) para o telefone recebido. Em modo teste, o telefone
  * recebido é ignorado e usamos o telefone de teste configurado.
  */
 

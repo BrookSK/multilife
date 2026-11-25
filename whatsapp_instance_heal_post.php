@@ -5,10 +5,10 @@ declare(strict_types=1);
 /**
  * Botão "Reconectar" da suspeita de queda (veredito "silent" do watchdog).
  * Pede ao watchdog o restart da instância (refaz a conexão sem QR Code).
- * O token do watchdog fica só no servidor.
+ * A chave do serviço WhatsApp fica só no servidor.
  *
  * Quem pode: administrador de WhatsApp/configurações ou usuário vinculado à
- * instância. Só instâncias ativas do sistema (o watchdog atende outras empresas).
+ * instância. Só instâncias ativas do sistema.
  */
 
 require_once __DIR__ . '/app/bootstrap.php';
@@ -33,7 +33,7 @@ if ($instance === '' || !wa_watchdog_user_can_heal($userId, $instance)) {
     exit;
 }
 if (!wa_watchdog_enabled()) {
-    echo json_encode(['ok' => false, 'msg' => 'Monitor de conexão (watchdog) não configurado. Configure o token em Configurações → WhatsApp Conexão → Credenciais.']);
+    echo json_encode(['ok' => false, 'msg' => 'Serviço WhatsApp (Baileys) não configurado. Preencha a URL e a API Key em Configurações → WhatsApp Conexão → Credenciais.']);
     exit;
 }
 

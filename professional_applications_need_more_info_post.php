@@ -118,7 +118,7 @@ if ($appData) {
             if (trim($msg) === '') {
                 $msg = "Olá " . (string)($appData['full_name'] ?? '') . "!\n\nPrecisamos de complemento na sua candidatura:\n" . $message . "\n\nResponda aqui: " . $replyUrl;
             }
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
             $res = $api->sendText($digits, $msg);
             $whatsappSent = isset($res['status']) && (int)$res['status'] >= 200 && (int)$res['status'] < 300;
             if (!$whatsappSent) {
@@ -162,7 +162,7 @@ if ($appData) {
 
 // Enfileirar como backup caso envio síncrono tenha falhado
 if (!$whatsappSent) {
-    integration_job_enqueue('evolution', 'professional_application_notify', $payload, null);
+    integration_job_enqueue('whatsapp', 'professional_application_notify', $payload, null);
 }
 if (!$emailSent) {
     integration_job_enqueue('smtp', 'professional_application_notify_email', $payload, null);

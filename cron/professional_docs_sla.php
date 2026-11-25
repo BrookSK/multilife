@@ -41,7 +41,7 @@ if ($daysBefore > 0) {
             'due_at' => (string)$r['due_at'],
             'kind' => 'before_due',
         ];
-        integration_job_enqueue('evolution', 'professional_doc_reminder', $payload, null);
+        integration_job_enqueue('whatsapp', 'professional_doc_reminder', $payload, null);
         integration_job_enqueue('smtp', 'professional_doc_reminder_email', $payload, null);
     }
 }
@@ -116,7 +116,7 @@ foreach ($overdue as $r) {
         'kind' => 'overdue',
     ];
 
-    integration_job_enqueue('evolution', 'professional_doc_reminder', $payload, null);
+    integration_job_enqueue('whatsapp', 'professional_doc_reminder', $payload, null);
     integration_job_enqueue('smtp', 'professional_doc_reminder_email', $payload, null);
     $createdJobs++;
 

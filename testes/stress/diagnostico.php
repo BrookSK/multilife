@@ -8,8 +8,8 @@
  *
  * O que verifica (não envia WhatsApp, não envia e-mail, não altera dados):
  *   1. Banco: tabelas e colunas novas do fluxo revisado.
- *   2. WhatsApp: estado de cada instância na Evolution, consultado N vezes seguidas
- *      (detecta instância oscilando / em loop e tempo de resposta da Evolution).
+ *   2. WhatsApp: estado de cada instância na API do WhatsApp, consultado N vezes seguidas
+ *      (detecta instância oscilando / em loop e tempo de resposta da API do WhatsApp).
  *   3. Chat: para cada usuário com WhatsApp, quais WhatsApps ele vê e quantas
  *      conversas aparecem; roda a MESMA estrutura de consulta do chat_web.php para
  *      pegar erro de SQL/parâmetros.
@@ -106,30 +106,30 @@ if ($testMode) {
 }
 
 // ---------------------------------------------------------------- 2) WhatsApp
-$section('2) WHATSAPP (Evolution) — ' . ($skipWa ? 'pulado' : "$waRounds rodada(s)"));
+$section('2) WHATSAPP (API do WhatsApp) — ' . ($skipWa ? 'pulado' : "$waRounds rodada(s)"));
 try {
 $instances = whatsapp_list_all_instances();
-$baseUrl = (string)admin_setting_get('evolution.base_url', '');
-$apiKey = (string)admin_setting_get('evolution.api_key', '');
+$baseUrl = (string)wa_api_base_url();
+$apiKey = (string)wa_api_key();
 foreach ($instances as $i) {
     $out(sprintf('  - %s (apelido: %s) | status gravado: %s | padrão: %s | usuários: %s',
         $i['instance_name'], $i['display_name'] ?: '-', $i['connection_status'] ?: 'NULL',
         !empty($i['is_default']) ? 'sim' : 'não', $i['linked_user_names'] ?: ($i['user_name'] ?: '-')));
 }
-// WhatsApp "padrão" (admin_settings evolution.instance): usado pelas mensagens
+// WhatsApp "padrão" (admin_settings baileys.instance): usado pelas mensagens
 // automáticas (cron, aprovação de candidatura, "você foi selecionado", aviso de
 // captação finalizada no grupo...). Se ele estiver desconectado, essas falham.
-$defaultSetting = trim((string)admin_setting_get('evolution.instance', ''));
-$out('  WhatsApp padrão das mensagens automáticas (Configurações > evolution.instance): ' . ($defaultSetting ?: '(vazio)'));
+$defaultSetting = trim((string)wa_default_instance());
+$out('  WhatsApp padrão das mensagens automáticas (Configurações > baileys.instance): ' . ($defaultSetting ?: '(vazio)'));
 if (!$skipWa && $defaultSetting !== '' && $baseUrl !== '' && $apiKey !== '') {
     try {
-        $dRes = (new EvolutionApiV1($baseUrl, $apiKey, $defaultSetting))->connectionState(null, 10);
+        $dRes = (new WhatsAppApi($baseUrl, $apiKey, $defaultSetting))->connectionState(null, 10);
         $dState = (string)($dRes['json']['instance']['state'] ?? $dRes['json']['state'] ?? ('HTTP ' . ($dRes['status'] ?? 0)));
         $out("  Estado do WhatsApp padrão: $dState");
         if ($dState !== 'open') {
             $problems[] = "O WhatsApp padrão das mensagens automáticas ('$defaultSetting') está DESCONECTADO ($dState). "
                 . 'Mensagens automáticas (lembretes do cron, aprovação de candidatura, "você foi selecionado", "captação finalizada" no grupo) vão falhar. '
-                . 'Conecte esse número ou troque evolution.instance em Configurações para um WhatsApp conectado.';
+                . 'Conecte esse número ou troque baileys.instance em Configurações para um WhatsApp conectado.';
         }
     } catch (Throwable $e) {
         $problems[] = 'Não deu para consultar o WhatsApp padrão: ' . $e->getMessage();
@@ -138,7 +138,7 @@ if (!$skipWa && $defaultSetting !== '' && $baseUrl !== '' && $apiKey !== '') {
 if (!$skipWa && $baseUrl !== '' && $apiKey !== '') {
     foreach ($instances as $i) {
         $name = (string)$i['instance_name'];
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $name);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $name);
         $states = []; $times = []; $fails = 0;
         for ($r = 0; $r < $waRounds; $r++) {
             $s = microtime(true);
@@ -158,11 +158,11 @@ if (!$skipWa && $baseUrl !== '' && $apiKey !== '') {
         $out(sprintf('  %s: %s | resposta média %.0f ms, p95 %.0f ms', $name, json_encode($uniq), array_sum($times) / count($times), $p95));
         if (count($uniq) > 1) $problems[] = "WhatsApp '$name' oscilou entre estados: " . json_encode($uniq) . ' (possível loop de conexão).';
         elseif (!isset($uniq['open'])) $warnings[] = "WhatsApp '$name' não está conectado (estado: " . implode(',', array_keys($uniq)) . ').';
-        if ($p95 > 5000) $warnings[] = "Evolution lenta para '$name' (p95 " . round($p95) . ' ms).';
-        if ($fails > 0) $problems[] = "Falha ao consultar '$name' na Evolution ($fails de $waRounds).";
+        if ($p95 > 5000) $warnings[] = "API do WhatsApp lenta para '$name' (p95 " . round($p95) . ' ms).';
+        if ($fails > 0) $problems[] = "Falha ao consultar '$name' na API do WhatsApp ($fails de $waRounds).";
     }
 } elseif (!$skipWa) {
-    $problems[] = 'Evolution sem base_url/api_key configurados.';
+    $problems[] = 'API do WhatsApp sem base_url/api_key configurados.';
 }
 } catch (Throwable $e) {
     $problems[] = 'Seção WhatsApp falhou: ' . $e->getMessage();

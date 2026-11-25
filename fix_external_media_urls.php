@@ -12,7 +12,7 @@ set_time_limit(300); // 5 minutos
 header('Content-Type: text/html; charset=utf-8');
 
 echo '<h1>Corrigir URLs Externas de Mídia</h1>';
-echo '<p>Este script vai baixar todas as mídias que ainda têm URLs externas (WhatsApp, Evolution API, etc.)</p>';
+echo '<p>Este script vai baixar todas as mídias que ainda têm URLs externas (WhatsApp, API do WhatsApp, etc.)</p>';
 
 // Buscar mensagens com URLs externas
 $stmt = db()->prepare("

@@ -16,7 +16,7 @@ foreach ($rows as $r) {
 }
 
 view_header('Configurações');
-// Esta tela consulta a Evolution para cada instância (pode levar vários segundos);
+// Esta tela consulta a API do WhatsApp para cada instância (pode levar vários segundos);
 // libera a sessão para não travar as outras abas do usuário enquanto carrega.
 session_release();
 
@@ -104,9 +104,9 @@ $fields = [
     'openai.model' => 'OpenAI - Model',
     'openai.extract_prompt' => 'OpenAI - Prompt extração (e-mail → demanda)',
 
-    'evolution.base_url' => 'Evolution - Base URL',
-    'evolution.api_key' => 'Evolution - API Key',
-    'evolution.instance' => 'Evolution - Instance',
+    'baileys.base_url' => 'WhatsApp (Baileys) - URL do serviço',
+    'baileys.api_key' => 'WhatsApp (Baileys) - API Key',
+    'baileys.instance' => 'WhatsApp (Baileys) - Instância padrão',
 ];
 
 $fieldsAdded = ['zapsign.base_url' => 'ZapSign - Base URL', 'zapsign.api_token' => 'ZapSign - API Token'];
@@ -548,7 +548,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
         
         echo '<div style="padding:16px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
-        echo 'Integrações (OpenAI/Evolution/ZapSign/SMTP/Webhooks). Tamanho da tabela, prazos de retenção e limpeza: <a href="/tech_logs_list.php" style="font-weight:700">Logs Técnicos › Tamanho e limpeza</a>.';
+        echo 'Integrações (OpenAI/API do WhatsApp/ZapSign/SMTP/Webhooks). Tamanho da tabela, prazos de retenção e limpeza: <a href="/tech_logs_list.php" style="font-weight:700">Logs Técnicos › Tamanho e limpeza</a>.';
         echo '</div>';
         echo '</div>';
         
@@ -694,19 +694,19 @@ foreach ($sections as $sectionTitle => $sectionData) {
             ],
             
             '💬 4. CHAT E WHATSAPP' => [
-                '🎯 O QUE É' => 'Sistema de comunicação integrado com WhatsApp via Evolution API para envio/recebimento de mensagens.',
+                '🎯 O QUE É' => 'Sistema de comunicação integrado com WhatsApp via API do WhatsApp para envio/recebimento de mensagens.',
                 
-                '📱 Enviar Mensagem Texto' => 'AÇÃO: Acessar Chat, selecionar conversa, digitar mensagem, clicar em Enviar. RESULTADO: POST para Evolution API /message/sendText, salva em chat_messages com from_me=1. TESTE: Envie mensagem e verifique se chegou no WhatsApp.',
+                '📱 Enviar Mensagem Texto' => 'AÇÃO: Acessar Chat, selecionar conversa, digitar mensagem, clicar em Enviar. RESULTADO: POST para API do WhatsApp /message/sendText, salva em chat_messages com from_me=1. TESTE: Envie mensagem e verifique se chegou no WhatsApp.',
                 
-                '📎 Enviar Mídia' => 'AÇÃO: Clicar em ícone de anexo, selecionar arquivo (imagem/áudio/vídeo/PDF), enviar. RESULTADO: Upload para servidor, POST para Evolution API /message/sendMedia, salva em chat_messages. TESTE: Envie imagem e verifique se chegou.',
+                '📎 Enviar Mídia' => 'AÇÃO: Clicar em ícone de anexo, selecionar arquivo (imagem/áudio/vídeo/PDF), enviar. RESULTADO: Upload para servidor, POST para API do WhatsApp /message/sendMedia, salva em chat_messages. TESTE: Envie imagem e verifique se chegou.',
                 
-                '📥 Receber Mensagens' => 'AÇÃO: Webhook configurado em Evolution API aponta para /chat_webhook.php. RESULTADO: Ao receber mensagem, Evolution envia POST para webhook, sistema salva em chat_messages com from_me=0. TESTE: Envie mensagem do WhatsApp e verifique se aparece no chat.',
+                '📥 Receber Mensagens' => 'AÇÃO: Webhook configurado em API do WhatsApp aponta para /chat_webhook.php. RESULTADO: Ao receber mensagem, API do WhatsApp envia POST para webhook, sistema salva em chat_messages com from_me=0. TESTE: Envie mensagem do WhatsApp e verifique se aparece no chat.',
                 
-                '👥 Criar Grupo WhatsApp' => 'AÇÃO: Acessar Configurações → Evolution → Gerenciar Grupos → Criar Grupo, preencher especialidade/UF/cidade. RESULTADO: POST para Evolution API /group/create, salva em whatsapp_groups. TESTE: Crie grupo e verifique se foi criado no WhatsApp.',
+                '👥 Criar Grupo WhatsApp' => 'AÇÃO: Acessar Configurações → API do WhatsApp → Gerenciar Grupos → Criar Grupo, preencher especialidade/UF/cidade. RESULTADO: POST para API do WhatsApp /group/create, salva em whatsapp_groups. TESTE: Crie grupo e verifique se foi criado no WhatsApp.',
                 
                 '🔗 Vincular Contato' => 'AÇÃO: No chat, clicar em "Vincular Contato", selecionar tipo (paciente/profissional) e ID. RESULTADO: UPDATE chat_messages SET contact_kind e contact_ref_id. TESTE: Vincule contato e verifique se nome aparece no chat.',
                 
-                '🔍 COMO VALIDAR' => 'Teste completo: 1) Configure Evolution API → 2) Conecte instância via QR Code → 3) Envie mensagem texto → 4) Envie mídia → 5) Responda do WhatsApp → 6) Verifique se apareceu no chat.'
+                '🔍 COMO VALIDAR' => 'Teste completo: 1) Configure API do WhatsApp → 2) Conecte instância via QR Code → 3) Envie mensagem texto → 4) Envie mídia → 5) Responda do WhatsApp → 6) Verifique se apareceu no chat.'
             ],
             
             '👨‍⚕️ 5. GESTÃO DE PROFISSIONAIS' => [
@@ -776,9 +776,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
             ],
             
             '🔧 9. INTEGRAÇÕES' => [
-                '🎯 O QUE É' => 'Conexões com serviços externos: Evolution API (WhatsApp), OpenAI (IA), ZapSign (Assinatura Digital).',
+                '🎯 O QUE É' => 'Conexões com serviços externos: API do WhatsApp (WhatsApp), OpenAI (IA), ZapSign (Assinatura Digital).',
                 
-                '📱 Evolution API (WhatsApp)' => 'CONFIGURAR: Admin → Configurações → Evolution, preencher Base URL, API Key, Instance. TESTAR: Admin → Evolution → Console, enviar mensagem de teste. VALIDAR: Mensagem deve chegar no WhatsApp.',
+                '📱 API do WhatsApp (WhatsApp)' => 'CONFIGURAR: Admin → Configurações → API do WhatsApp, preencher Base URL, API Key, Instance. TESTAR: Admin → API do WhatsApp → Console, enviar mensagem de teste. VALIDAR: Mensagem deve chegar no WhatsApp.',
                 
                 '🤖 OpenAI (Inteligência Artificial)' => 'CONFIGURAR: Admin → Configurações → OpenAI, preencher API Key, Model, Prompt. TESTAR: Admin → OpenAI → Console, enviar texto para processar. VALIDAR: Deve retornar resposta da IA.',
                 
@@ -796,7 +796,7 @@ foreach ($sections as $sectionTitle => $sectionData) {
                 
                 '🧪 TESTE 3: Fluxo Completo de Profissional' => '1) Acesse link público de candidatura → 2) Preencha formulário → 3) Aprove no admin → 4) Verifique e-mail de boas-vindas → 5) Faça login como profissional → 6) Envie documentos → 7) Aprove documentos → 8) Verifique se profissional está ativo. RESULTADO ESPERADO: Profissional apto para receber demandas.',
                 
-                '🧪 TESTE 4: Fluxo Completo de Chat' => '1) Configure Evolution API → 2) Conecte via QR Code → 3) Envie mensagem texto → 4) Envie imagem → 5) Responda do WhatsApp → 6) Verifique se mensagens aparecem no chat → 7) Vincule contato. RESULTADO ESPERADO: Chat sincronizado.',
+                '🧪 TESTE 4: Fluxo Completo de Chat' => '1) Configure API do WhatsApp → 2) Conecte via QR Code → 3) Envie mensagem texto → 4) Envie imagem → 5) Responda do WhatsApp → 6) Verifique se mensagens aparecem no chat → 7) Vincule contato. RESULTADO ESPERADO: Chat sincronizado.',
                 
                 '🧪 TESTE 5: Fluxo Completo Financeiro' => '1) Aprove 3 atendimentos → 2) Verifique dashboard financeiro → 3) Acesse contas a receber → 4) Marque 1 como pago → 5) Acesse contas a pagar → 6) Marque 1 como pago → 7) Verifique se dashboard atualizou. RESULTADO ESPERADO: Valores corretos.',
                 
@@ -1124,9 +1124,9 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '</div>';
     } elseif ($sectionTitle === 'WhatsApp Conexão') {
         // Aba unificada: Conexão + Credenciais WhatsApp (sub-abas internas)
-        $instanceNameWA = admin_setting_get('evolution.instance', '');
-        $baseUrlWA = admin_setting_get('evolution.base_url', '');
-        $apiKeyWA = admin_setting_get('evolution.api_key', '');
+        $instanceNameWA = wa_default_instance();
+        $baseUrlWA = wa_api_base_url();
+        $apiKeyWA = wa_api_key();
         $configOk = !empty($baseUrlWA) && !empty($apiKeyWA) && !empty($instanceNameWA);
         echo wa_watchdog_heal_js(); // botão "Reconectar (sem QR)" desta aba
         
@@ -1227,7 +1227,7 @@ function waProvision(){
   if(waProvisioning) return;
   waProvisioning = true;
   document.getElementById("wa-status-area").innerHTML = htmlProvisioning;
-  fetch("/evolution_proxy.php?action=provision&instance=" + encodeURIComponent(waInstance))
+  fetch("/whatsapp_proxy.php?action=provision&instance=" + encodeURIComponent(waInstance))
   .then(function(r){ return r.json(); })
   .then(function(data){
     waProvisioning = false;
@@ -1244,7 +1244,7 @@ function waProvision(){
 }
 
 function waCheckStatus(){
-  fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
+  fetch("/whatsapp_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
   .then(function(r){ return r.json(); })
   .then(function(data){
     if(data.error === "instance_not_found" || data.code === 404){
@@ -1282,7 +1282,7 @@ window.waConnect = function(){
   document.getElementById("wa-qr-area").style.display = "block";
   document.getElementById("wa-qr-container").innerHTML = '<div style="color:#666;padding:40px">Gerando QR Code...</div>';
   document.getElementById("wa-qr-message").textContent = "";
-  fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(waInstance))
+  fetch("/whatsapp_proxy.php?action=connect&instance=" + encodeURIComponent(waInstance))
   .then(function(r){ return r.json(); })
   .then(function(data){
     var container = document.getElementById("wa-qr-container");
@@ -1300,7 +1300,7 @@ window.waConnect = function(){
       container.innerHTML = '<img src="' + qrImg + '" alt="QR Code" style="max-width:300px;width:100%">';
       document.getElementById("wa-qr-message").innerHTML = '<span style="color:#0ea5e9;font-weight:600">Escaneie o QR Code com seu WhatsApp</span>';
       waCheckInterval = setInterval(function(){
-        fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
+        fetch("/whatsapp_proxy.php?action=status&instance=" + encodeURIComponent(waInstance))
         .then(function(r){ return r.json(); })
         .then(function(d){
           if(d.duplicate && d.duplicate.message){ waShowDuplicate(d.duplicate.message); return; }
@@ -1324,7 +1324,7 @@ window.waConnect = function(){
 
 window.waDisconnect = function(){
   if(!confirm("Deseja realmente desconectar o WhatsApp?")) return;
-  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(waInstance))
+  fetch("/whatsapp_proxy.php?action=logout&instance=" + encodeURIComponent(waInstance))
   .then(function(r){ return r.json(); })
   .then(function(data){
     waShowDisconnected();
@@ -1346,65 +1346,61 @@ WAJS;
         // --- Sub-aba: Credenciais ---
         echo '<div class="waSubPanel" id="waCred">';
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Credenciais Evolution API</div>';
+        echo '<div class="formSectionTitle">Credenciais do serviço WhatsApp (Baileys)</div>';
         
         echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--primary));border-radius:8px;margin-bottom:16px">';
         echo '<div style="font-size:13px;color:hsl(var(--primary));line-height:1.6">';
         echo '<strong>ℹ️ Formato das Credenciais:</strong><br>';
-        echo '• <strong>Base URL:</strong> http://IP:PORTA (ex: http://177.104.185.7:8082)<br>';
-        echo '• <strong>Token (API Key):</strong> Chave de acesso da Evolution API<br>';
-        echo '• <strong>Instância:</strong> Nome da instância conectada ao WhatsApp';
+        echo '• <strong>Base URL:</strong> endereço do serviço ml-baileys-service, http://IP:PORTA (ex: http://177.104.185.7:8090)<br>';
+        echo '• <strong>Token (API Key):</strong> o valor de API_KEY do arquivo .env do serviço<br>';
+        echo '• <strong>Instância:</strong> WhatsApp padrão das mensagens automáticas (avisos, aprovações, cron)';
         echo '</div>';
         echo '</div>';
         
         echo '<div style="display:grid;gap:12px">';
         
-        $baseUrlVal = $settings['evolution.base_url'] ?? '';
-        $apiKeyVal = $settings['evolution.api_key'] ?? '';
-        $instanceVal = $settings['evolution.instance'] ?? '';
+        $baseUrlVal = $settings['baileys.base_url'] ?? '';
+        $apiKeyVal = $settings['baileys.api_key'] ?? '';
+        $instanceVal = $settings['baileys.instance'] ?? '';
         
-        echo '<label>Base URL<input name="settings[evolution.base_url]" value="' . h($baseUrlVal) . '" placeholder="http://177.104.185.7:8082"><span class="helpText">URL base da Evolution API (sem barra no final)</span></label>';
+        echo '<label>Base URL<input name="settings[baileys.base_url]" value="' . h($baseUrlVal) . '" placeholder="http://177.104.185.7:8090"><span class="helpText">URL do serviço WhatsApp (sem barra no final)</span></label>';
         
         $hasApiKey = !empty($apiKeyVal);
         echo '<label>Token (API Key)';
         echo '<div style="position:relative">';
-        echo '<input type="password" id="field_evo_apikey" name="settings[evolution.api_key]" value="' . h($apiKeyVal) . '" placeholder="' . ($hasApiKey ? str_repeat('•', 32) : 'Cole o token da Evolution API aqui') . '" style="padding-right:80px">';
+        echo '<input type="password" id="field_wa_apikey" name="settings[baileys.api_key]" value="' . h($apiKeyVal) . '" placeholder="' . ($hasApiKey ? str_repeat('•', 32) : 'Cole aqui a API_KEY do serviço WhatsApp') . '" style="padding-right:80px">';
         if ($hasApiKey) {
-            echo '<button type="button" onclick="togglePassword(\'field_evo_apikey\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:hsl(var(--primary));color:white;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Revelar</button>';
+            echo '<button type="button" onclick="togglePassword(\'field_wa_apikey\')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:hsl(var(--primary));color:white;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer">Revelar</button>';
         }
         echo '</div>';
         echo '<span class="helpText">Deixe vazio para manter o valor atual.</span>';
         echo '</label>';
         
-        echo '<label>Nome da Instância<input name="settings[evolution.instance]" value="' . h($instanceVal) . '" placeholder="multilife"><span class="helpText">Nome da instância WhatsApp configurada na Evolution API</span></label>';
+        $instanceShown = $instanceVal !== '' ? $instanceVal : wa_default_instance();
+        echo '<label>Nome da Instância<input name="settings[baileys.instance]" value="' . h($instanceShown) . '" placeholder="multilife"><span class="helpText">Nome da instância (WhatsApp) usada nas mensagens automáticas</span></label>';
         
         echo '</div>';
         echo '</div>';
 
-        // Monitor de conexão real (watchdog da Evolution) — app/whatsapp_watchdog.php
-        $wdUrlVal = (string)($settings['evolution.watchdog_url'] ?? '');
-        $wdHasToken = trim((string)($settings['evolution.watchdog_token'] ?? '')) !== '' || (getenv('EVO_WATCHDOG_TOKEN') ?: '') !== '';
-        $wdAutoHeal = (string)($settings['evolution.watchdog_auto_heal'] ?? '1') !== '0';
+        // Monitor de conexão real (dentro do serviço WhatsApp) — app/whatsapp_watchdog.php
+        $wdAutoHeal = wa_setting('watchdog_auto_heal', '1') !== '0';
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Monitor de conexão (watchdog)</div>';
+        echo '<div class="formSectionTitle">Monitor de conexão</div>';
         echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px;font-size:13px;line-height:1.6;color:hsl(var(--muted-foreground))">';
-        echo 'A Evolution pode mostrar "conectado" com a conexão quebrada (as mensagens somem). O watchdog observa os eventos reais de cada número: ';
-        echo 'sem eventos há mais de 30 min, o sistema mostra <strong>Suspeita de queda</strong>, tenta 1 reconexão automática (sem QR Code) e, se não resolver em 5 min, avisa os administradores e os usuários do número.';
+        echo 'Uma conexão pode aparecer como "conectada" e mesmo assim parar de receber mensagens. O serviço WhatsApp observa os eventos reais de cada número: ';
+        echo 'sem eventos há mais de 30 min, o sistema mostra <strong>Suspeita de queda</strong>, tenta 1 reconexão automática (sem QR Code) e, se não resolver em 5 min, avisa os administradores e os usuários do número. ';
+        echo 'O monitor usa a mesma URL e API Key acima; não há outra configuração. ';
+        echo '<a href="/admin_whatsapp_monitor.php">Ver o histórico de 72 h de cada número</a>.';
         echo '</div>';
         echo '<div style="display:grid;gap:12px">';
-        echo '<label>URL do watchdog<input name="settings[evolution.watchdog_url]" value="' . h($wdUrlVal) . '" placeholder="' . h(WA_WATCHDOG_DEFAULT_URL) . '"><span class="helpText">Vazio = ' . h(WA_WATCHDOG_DEFAULT_URL) . '</span></label>';
-        echo '<label>Token do watchdog (x-token)';
-        echo '<input type="password" name="settings[evolution.watchdog_token]" value="" autocomplete="new-password" placeholder="' . ($wdHasToken ? h(str_repeat('•', 24)) . ' (configurado)' : 'Cole aqui o token passado pela infraestrutura') . '">';
-        echo '<span class="helpText">' . ($wdHasToken ? 'Token já configurado. Deixe vazio para manter.' : 'Sem token o monitor fica desligado e o sistema segue como antes.') . ' O token fica só no servidor.</span>';
-        echo '</label>';
-        echo '<input type="hidden" name="settings[evolution.watchdog_auto_heal]" value="0">';
-        echo '<label style="display:flex;align-items:center;gap:8px;font-weight:600"><input type="checkbox" name="settings[evolution.watchdog_auto_heal]" value="1"' . ($wdAutoHeal ? ' checked' : '') . ' style="width:18px;height:18px"> Reconectar sozinho quando houver suspeita de queda (1 vez a cada 3 h por número)</label>';
-        if ($wdHasToken) {
+        echo '<input type="hidden" name="settings[baileys.watchdog_auto_heal]" value="0">';
+        echo '<label style="display:flex;align-items:center;gap:8px;font-weight:600"><input type="checkbox" name="settings[baileys.watchdog_auto_heal]" value="1"' . ($wdAutoHeal ? ' checked' : '') . ' style="width:18px;height:18px"> Reconectar sozinho quando houver suspeita de queda (1 vez a cada 3 h por número)</label>';
+        if (wa_watchdog_enabled()) {
             $wdGlobal = wa_monitor_row(WA_WATCHDOG_GLOBAL_ROW);
             $wdChecked = $wdGlobal && $wdGlobal['checked_at'] ? (string)$wdGlobal['checked_at'] : '';
             $wdDown = $wdGlobal && (string)$wdGlobal['verdict'] === 'down';
             echo '<div style="font-size:12px;color:' . ($wdDown ? '#b91c1c' : 'hsl(var(--muted-foreground))') . '">';
-            echo $wdDown ? '⚠️ Watchdog sem resposta desde ' . h(date('d/m H:i', strtotime((string)$wdGlobal['verdict_since']))) . '.' : 'Última leitura do watchdog: ' . ($wdChecked !== '' ? h(date('d/m H:i:s', strtotime($wdChecked))) : 'ainda não lido') . '.';
+            echo $wdDown ? '⚠️ Serviço WhatsApp sem resposta desde ' . h(date('d/m H:i', strtotime((string)$wdGlobal['verdict_since']))) . '.' : 'Última leitura do monitor: ' . ($wdChecked !== '' ? h(date('d/m H:i:s', strtotime($wdChecked))) : 'ainda não lido') . '.';
             echo '</div>';
         }
         echo '</div>';
@@ -1492,7 +1488,7 @@ WAJS;
         echo '  qrArea.style.display = "block";';
         echo '  qrContainer.innerHTML = \'<div style="color:#666;padding:20px">Criando instância...</div>\';';
         echo '  qrMsg.textContent = "";';
-        echo '  fetch("/evolution_proxy.php?action=provision&instance=" + encodeURIComponent(instanceName))';
+        echo '  fetch("/whatsapp_proxy.php?action=provision&instance=" + encodeURIComponent(instanceName))';
         echo '  .then(function(r){ return r.json(); })';
         echo '  .then(function(data){';
         echo '    if(!data.success){ qrContainer.innerHTML = \'<div style="color:#ef4444;padding:20px">Erro: \' + (data.error || "Falha ao criar") + \'</div>\'; return; }';
@@ -1501,7 +1497,7 @@ WAJS;
         echo '    formData.append("user_id", userId);';
         echo '    fetch("/admin_whatsapp_instance_link_post.php", {method:"POST", body: formData});';
         echo '    qrContainer.innerHTML = \'<div style="color:#666;padding:20px">Gerando QR Code...</div>\';';
-        echo '    fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))';
+        echo '    fetch("/whatsapp_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))';
         echo '    .then(function(r){ return r.json(); })';
         echo '    .then(function(connData){';
         echo '      if(connData.instance && connData.instance.state === "open"){ qrContainer.innerHTML = \'<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">Já conectado!</div>\'; setTimeout(function(){ location.reload(); }, 2000); return; }';
@@ -1516,7 +1512,7 @@ WAJS;
         echo 'function waInstPoll(instName){';
         echo '  if(waInstInterval) clearInterval(waInstInterval);';
         echo '  waInstInterval = setInterval(function(){';
-        echo '    fetch("/evolution_proxy.php?action=status&instance=" + encodeURIComponent(instName))';
+        echo '    fetch("/whatsapp_proxy.php?action=status&instance=" + encodeURIComponent(instName))';
         echo '    .then(function(r){ return r.json(); })';
         echo '    .then(function(d){';
         // Número já usado em outra instância: a conexão nova foi desfeita (app/whatsapp_watchdog.php)
@@ -1541,7 +1537,7 @@ WAJS;
         echo '';
         echo 'window.waInstRemove = function(instanceName, instanceId){';
         echo '  if(!confirm("Deseja remover a instância \'" + instanceName + "\'?\\n\\nIsso vai desconectar o WhatsApp e remover o vínculo com o usuário.")) return;';
-        echo '  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
+        echo '  fetch("/whatsapp_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
         echo '  .then(function(r){ return r.json(); })';
         echo '  .then(function(){';
         echo '    var formData = new FormData();';
@@ -1555,7 +1551,7 @@ WAJS;
         echo '';
         echo 'window.waInstDisconnect = function(instanceName){';
         echo '  if(!confirm("Desconectar a instância \'" + instanceName + "\'?\\n\\nO WhatsApp será deslogado, mas o vínculo com o(s) usuário(s) será mantido. Você poderá reconectar escaneando o QR Code.")) return;';
-        echo '  fetch("/evolution_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
+        echo '  fetch("/whatsapp_proxy.php?action=logout&instance=" + encodeURIComponent(instanceName))';
         echo '  .then(function(r){ return r.json().catch(function(){ return {success:true}; }); })';
         echo '  .then(function(){ location.reload(); })';
         echo '  .catch(function(e){ alert("Erro: " + e.message); location.reload(); });';
@@ -1569,7 +1565,7 @@ WAJS;
         echo '  if(qrArea){ qrArea.style.display = "block"; qrArea.scrollIntoView({behavior:"smooth", block:"center"}); }';
         echo '  qrContainer.innerHTML = \'<div style="color:#666;padding:20px">Reconectando \' + instanceName + \'...</div>\';';
         echo '  qrMsg.textContent = "";';
-        echo '  fetch("/evolution_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))';
+        echo '  fetch("/whatsapp_proxy.php?action=connect&instance=" + encodeURIComponent(instanceName))';
         echo '  .then(function(r){ return r.json(); })';
         echo '  .then(function(connData){';
         echo '    if(connData.instance && (connData.instance.state === "open" || connData.instance.state === "connected")){ qrContainer.innerHTML = \'<div style="color:hsl(142,76%,36%);padding:20px;font-weight:700">Já conectado!</div>\'; setTimeout(function(){ location.reload(); }, 1500); return; }';
@@ -1657,10 +1653,10 @@ WAJS;
                 $liId = (int)($li['id'] ?? 0);
                 $liWd = $liName !== '' ? wa_watchdog_get($liName) : null;
                 // O watchdog pode estar atrasado logo depois de ler o QR Code: se ele diz
-                // desconectada/aguardando QR, confere direto na Evolution antes de mostrar.
+                // desconectada/aguardando QR, confere direto na API do WhatsApp antes de mostrar.
                 if ($liWd && in_array($liWd['verdict'], ['dormant', 'awaiting_scan'], true)) {
                     try {
-                        $liProbe = (new EvolutionApiV1($baseUrlWA, $apiKeyWA, $liName))->connectionState();
+                        $liProbe = (new WhatsAppApi($baseUrlWA, $apiKeyWA, $liName))->connectionState();
                         $liProbeState = strtolower(trim((string)($liProbe['json']['instance']['state'] ?? ($liProbe['json']['state'] ?? ''))));
                         if (in_array($liProbeState, ['open', 'connected'], true)) {
                             $liWd['verdict'] = 'warming_up';
@@ -1670,19 +1666,19 @@ WAJS;
                             }
                         }
                     } catch (Throwable $e) {
-                        // Evolution não respondeu: mantém o veredito do watchdog
+                        // API do WhatsApp não respondeu: mantém o veredito do watchdog
                     }
                 }
                 if ($liWd) {
-                    // Watchdog já leu o estado real: não precisa consultar a Evolution linha a linha
+                    // Watchdog já leu o estado real: não precisa consultar a API do WhatsApp linha a linha
                     $liWdMap = ['open' => 'connected', 'connecting' => 'connecting'];
                     $liConnStatus = $liWdMap[$liWd['state']] ?? 'disconnected';
                 }
                 
-                // Verificar status REAL via Evolution API (atualiza banco se diferente)
+                // Verificar status REAL via API do WhatsApp (atualiza banco se diferente)
                 if ($liName !== '' && !$liWd) {
                     try {
-                        $liApi = new EvolutionApiV1($baseUrlWA, $apiKeyWA, $liName);
+                        $liApi = new WhatsAppApi($baseUrlWA, $apiKeyWA, $liName);
                         $liConnRes = $liApi->connectionState();
                         $liRealState = strtolower(trim((string)(
                             $liConnRes['json']['instance']['state'] 
@@ -1710,7 +1706,7 @@ WAJS;
                 }
                 
                 if ($liWd) {
-                    // Veredito do watchdog (eventos reais), no lugar do "open" da Evolution
+                    // Veredito do watchdog (eventos reais), no lugar do "open" da API do WhatsApp
                     $liV = wa_watchdog_verdict_view($liWd['verdict']);
                     $liAgo = wa_watchdog_ago($liWd['last_event_seconds']);
                     $statusBadge = '<span title="' . h($liV['hint']) . '" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap;background:' . $liV['bg'] . ';color:' . $liV['color'] . '"><span style="width:8px;height:8px;border-radius:50%;background:' . $liV['dot'] . '"></span>' . h($liV['label']) . '</span>';
@@ -1768,7 +1764,7 @@ WAJS;
                 // Botão Reconectar (para qualquer instância, inclusive a padrão)
                 echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="waInstReconnect(\'' . h($liName) . '\')">🔄 Reconectar</button>';
 
-                // Sincronizar: reenvia ao sistema o que ficou só na Evolution (watchdog
+                // Sincronizar: reenvia ao sistema o que ficou só na API do WhatsApp (watchdog
                 // /redispatch). Liberado 15 min depois da última reconexão/QR Code.
                 if (wa_watchdog_enabled()) {
                     $liSync = wa_redispatch_status($liName);
@@ -2212,7 +2208,7 @@ WAJS;
             if (!isset($fields[$key])) continue;
             $label = $fields[$key];
             $val = $settings[$key] ?? '';
-            $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'evolution.api_key', 'zapsign.api_token'], true);
+            $isSensitive = in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'openai.api_key', 'baileys.api_key', 'zapsign.api_token'], true);
             $isTemplate = str_contains($key, 'template') || $key === 'openai.extract_prompt';
             
             if ($isSensitive) {

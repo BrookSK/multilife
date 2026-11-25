@@ -26,7 +26,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 /**
  * Captação PARADA: sem nenhuma atualização de fase há muito tempo, o processo
- * morreu (servidor interrompeu a execução) ou a Evolution não respondeu. Antes o
+ * morreu (servidor interrompeu a execução) ou a API do WhatsApp não respondeu. Antes o
  * acompanhamento ficava "em andamento" para sempre; agora encerra com o motivo.
  */
 function dds_check_stale(array $run): array
@@ -63,7 +63,7 @@ function dds_check_stale(array $run): array
             . 'Verifique o cron "integration_jobs_run" e o token do cron em Configurações e tente novamente.';
     } elseif ($status === 'processing' && $idle > 300) {
         $where = $phase === 'creating_group' ? 'ao criar o grupo' : ($phase === 'adding_members' ? 'ao adicionar os profissionais' : ($phase === 'sending' ? 'ao enviar a mensagem' : 'no processamento'));
-        $msg = 'A captação parou ' . $where . ' (5 minutos sem resposta). Normalmente é o WhatsApp/Evolution travado ou em loop: '
+        $msg = 'A captação parou ' . $where . ' (5 minutos sem resposta). Normalmente é o WhatsApp/API do WhatsApp travado ou em loop: '
             . 'veja o aviso de WhatsApp no topo da tela e, se preciso, desconecte os aparelhos no celular, faça logout da instância e leia um QR novo. Depois clique em "Realizar Captação" de novo.';
     }
     if ($msg !== null) {

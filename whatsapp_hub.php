@@ -15,7 +15,7 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">WhatsApp - Central de Gerenciamento</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Gerencie instâncias, grupos e configurações do WhatsApp via Evolution API.</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Gerencie instâncias, grupos e configurações do WhatsApp via API do WhatsApp.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
@@ -65,12 +65,12 @@ echo '</div>';
 echo '</section>';
 
 // Informações da API
-$baseUrl = admin_setting_get('evolution.base_url', '');
-$apiKey = admin_setting_get('evolution.api_key', '');
-$instance = admin_setting_get('evolution.instance', '');
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
+$instance = wa_default_instance();
 
 echo '<section class="card col12">';
-echo '<div style="font-weight:900;margin-bottom:14px">Status da Conexão Evolution API</div>';
+echo '<div style="font-weight:900;margin-bottom:14px">Status da Conexão API do WhatsApp</div>';
 
 if ($baseUrl !== '' && $apiKey !== '' && $instance !== '') {
     echo '<div style="padding:12px;border-radius:10px;background:hsla(var(--success)/.10);border:1px solid hsla(var(--success)/.20)">';
@@ -83,7 +83,7 @@ if ($baseUrl !== '' && $apiKey !== '' && $instance !== '') {
 } else {
     echo '<div style="padding:12px;border-radius:10px;background:hsla(var(--warning)/.10);border:1px solid hsla(var(--warning)/.20)">';
     echo '<div style="font-weight:700;color:hsl(var(--warning));margin-bottom:6px">⚠ API Não Configurada</div>';
-    echo '<div style="font-size:13px;color:hsl(var(--foreground))">Configure a Evolution API em <a href="/admin_settings.php" style="color:hsl(var(--primary))">Configurações</a>.</div>';
+    echo '<div style="font-size:13px;color:hsl(var(--foreground))">Configure a API do WhatsApp em <a href="/admin_settings.php" style="color:hsl(var(--primary))">Configurações</a>.</div>';
     echo '</div>';
 }
 

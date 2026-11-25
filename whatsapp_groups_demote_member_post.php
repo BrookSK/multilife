@@ -27,7 +27,7 @@ if (!$groupJid) {
 }
 
 try {
-    $api = new EvolutionApiV1();
+    $api = new WhatsAppApi();
     $api->updateGroupParticipants($groupJid, 'demote', [$memberId]);
     
     flash_set('success', 'Privilégios de administrador removidos!');

@@ -5,10 +5,10 @@ declare(strict_types=1);
 /*
  * Log de integrações (tabela integration_logs).
  *
- * A tabela crescia sem limite: cada chamada à Evolution (inclusive as consultas de
+ * A tabela crescia sem limite: cada chamada à API do WhatsApp (inclusive as consultas de
  * status feitas o tempo todo) e cada webhook gravavam o request/response INTEIRO,
  * com mídia em base64. Agora:
- *   1. Consultas bem-sucedidas sem efeito (GET na Evolution, webhook ignorado) não
+ *   1. Consultas bem-sucedidas sem efeito (GET na API do WhatsApp, webhook ignorado) não
  *      são gravadas. Erros são sempre gravados.
  *   2. Payloads são enxugados (base64 omitido, textos longos cortados, limite de
  *      tamanho por registro).
@@ -100,11 +100,11 @@ function integration_log_should_skip(string $provider, string $action, string $s
         return false; // erro: sempre grava
     }
     // Webhook de conversa privada: só é ignorado por este endpoint (o chat_webhook trata).
-    if ($provider === 'evolution_webhook' && $action === 'inbound_non_group') {
+    if ($provider === 'whatsapp_groups_webhook' && $action === 'inbound_non_group') {
         return true;
     }
-    // Consultas à Evolution (status da conexão, participantes, instâncias...).
-    if ($provider === 'evolution' && strncmp($action, 'GET ', 4) === 0) {
+    // Consultas à API do WhatsApp (status da conexão, participantes, instâncias...).
+    if ($provider === 'whatsapp' && strncmp($action, 'GET ', 4) === 0) {
         static $logReads = null;
         if ($logReads === null) {
             try {

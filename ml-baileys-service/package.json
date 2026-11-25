@@ -1,0 +1,22 @@
+{
+  "name": "ml-baileys-service",
+  "version": "1.0.0",
+  "description": "Conector WhatsApp (Baileys) do Multilife Care com contrato de API compatível com a Evolution v2",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc.9",
+    "express": "^4.21.2",
+    "link-preview-js": "^3.0.13",
+    "mysql2": "^3.11.5",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}

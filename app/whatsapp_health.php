@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 /**
- * SAÚDE DAS INSTÂNCIAS DO WHATSAPP (Evolution).
+ * SAÚDE DAS INSTÂNCIAS DO WHATSAPP (API do WhatsApp).
  *
  * Problema real: depois de muitas conexões/desconexões a sessão fica em LOOP —
- * a Evolution responde "conectado" (connectionState = open), mas fica
+ * a API do WhatsApp responde "conectado" (connectionState = open), mas fica
  * reconectando sem parar, gerando QR novo, ou aceita o envio e a mensagem não
  * sai. Só olhar o connectionState não detecta isso.
  *
@@ -73,7 +73,7 @@ function whatsapp_health_record(string $instanceName, string $type, ?string $sta
     }
 }
 
-/** Normaliza o estado vindo da Evolution ('open','close','connecting','refused'...). */
+/** Normaliza o estado vindo da API do WhatsApp ('open','close','connecting','refused'...). */
 function whatsapp_health_normalize_state(string $state): string
 {
     $s = strtolower(trim($state));
@@ -84,7 +84,7 @@ function whatsapp_health_normalize_state(string $state): string
 }
 
 /**
- * Trata um evento de webhook da Evolution. Retorna true se era de conexão/QR.
+ * Trata um evento de webhook da API do WhatsApp. Retorna true se era de conexão/QR.
  * Também atualiza whatsapp_instances.connection_status.
  */
 function whatsapp_health_handle_webhook(string $event, string $instanceName, array $data): bool
@@ -190,8 +190,8 @@ function whatsapp_health_status(string $instanceName, int $windowMinutes = WHATS
     }
     if ($conflict) {
         return ['level' => 'conflict', 'title' => 'Conflito de sessão',
-            'message' => 'Outra sessão (outro WhatsApp Web ou outra instância da Evolution) está usando o mesmo número e derrubando esta conexão.',
-            'actions' => array_merge(['Feche o WhatsApp Web/Desktop e qualquer outra instância da Evolution com este número.'], $resetSteps), 'counts' => $c];
+            'message' => 'Outra sessão (outro WhatsApp Web ou outra instância da API do WhatsApp) está usando o mesmo número e derrubando esta conexão.',
+            'actions' => array_merge(['Feche o WhatsApp Web/Desktop e qualquer outra instância da API do WhatsApp com este número.'], $resetSteps), 'counts' => $c];
     }
     // Recuperada: está aberta e sem nenhuma troca de estado há 5+ minutos (ex.: depois do reset).
     $settled = $lastState === 'open' && $lastChangeAt > 0 && (time() - $lastChangeAt) >= 300;
@@ -202,7 +202,7 @@ function whatsapp_health_status(string $instanceName, int $windowMinutes = WHATS
     }
     if ($c['qrcode'] >= 5 && $c['open'] === 0) {
         return ['level' => 'looping', 'title' => 'QR Code em loop',
-            'message' => "A Evolution gerou {$c['qrcode']} QR Codes nos últimos $win sem conseguir conectar.",
+            'message' => "A API do WhatsApp gerou {$c['qrcode']} QR Codes nos últimos $win sem conseguir conectar.",
             'actions' => $resetSteps, 'counts' => $c];
     }
     if ($errorsSinceLastOk >= 3) {

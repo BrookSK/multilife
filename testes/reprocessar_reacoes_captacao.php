@@ -50,25 +50,25 @@ foreach ($reactions as &$rx) {
 }
 unset($rx);
 
-// 2a fonte: reações direto no WhatsApp (Evolution) dos grupos que receberam captação no
+// 2a fonte: reações direto no WhatsApp (API do WhatsApp) dos grupos que receberam captação no
 // período. Pega as reações que o sistema não recebeu (ex.: WhatsApp com "Suspeita de
 // queda": a reação acontece, mas o aviso não chega ao sistema).
 $seenReaction = [];
 foreach ($reactions as $rx) {
     $seenReaction[$rx['message_id'] . '|' . substr(preg_replace('/\D+/', '', (string)$rx['reactor_jid']), -8)] = true;
 }
-$evoGroups = db()->prepare("SELECT DISTINCT wg.evolution_group_jid, wg.instance_name, wg.name
+$waGroups = db()->prepare("SELECT DISTINCT wg.evolution_group_jid, wg.instance_name, wg.name
                             FROM demand_dispatch_logs dl
                             INNER JOIN whatsapp_groups wg ON wg.id = dl.group_id
                             WHERE dl.created_at >= DATE_SUB(NOW(), INTERVAL :dias2 DAY)
                               AND wg.evolution_group_jid LIKE '%@g.us'");
-$evoGroups->execute(['dias2' => $days]);
-$evoInfo = ['grupos' => 0, 'sem_resposta' => 0, 'reacoes' => 0];
-$evoBase = (string)admin_setting_get('evolution.base_url', '');
-$evoKey = (string)admin_setting_get('evolution.api_key', '');
+$waGroups->execute(['dias2' => $days]);
+$waInfo = ['grupos' => 0, 'sem_resposta' => 0, 'reacoes' => 0];
+$waBase = (string)wa_api_base_url();
+$waKey = (string)wa_api_key();
 $sinceTs = time() - $days * 86400;
-foreach ($evoGroups->fetchAll(PDO::FETCH_ASSOC) as $g) {
-    $evoInfo['grupos']++;
+foreach ($waGroups->fetchAll(PDO::FETCH_ASSOC) as $g) {
+    $waInfo['grupos']++;
     $gJid = (string)$g['evolution_group_jid'];
     // Instância dona do grupo primeiro; se não responder, as outras conectadas.
     $names = array_values(array_unique(array_filter(array_merge(
@@ -79,7 +79,7 @@ foreach ($evoGroups->fetchAll(PDO::FETCH_ASSOC) as $g) {
     $usedInst = '';
     foreach ($names as $inst) {
         try {
-            $res = (new EvolutionApiV1($evoBase, $evoKey, (string)$inst))->findRecentMessages($gJid, 200, 10);
+            $res = (new WhatsAppApi($waBase, $waKey, (string)$inst))->findRecentMessages($gJid, 200, 10);
         } catch (Throwable $e) {
             continue;
         }
@@ -92,7 +92,7 @@ foreach ($evoGroups->fetchAll(PDO::FETCH_ASSOC) as $g) {
         }
     }
     if ($records === null) {
-        $evoInfo['sem_resposta']++;
+        $waInfo['sem_resposta']++;
         continue;
     }
     foreach ($records as $rec) {
@@ -116,7 +116,7 @@ foreach ($evoGroups->fetchAll(PDO::FETCH_ASSOC) as $g) {
             continue;
         }
         $seenReaction[$seenKey] = true;
-        $evoInfo['reacoes']++;
+        $waInfo['reacoes']++;
         $reactions[] = ['remote_jid' => $gJid, 'message_id' => $targetId, 'reactor_jid' => $reactor, 'emoji' => $emoji,
                         'reaction_timestamp' => $ts > 0 ? $ts : time(), 'instance_name' => $usedInst,
                         'group_name' => (string)$g['name'], 'fonte' => 'WhatsApp', 'push_name' => (string)($rec['pushName'] ?? '')];
@@ -240,9 +240,9 @@ if ($apply) {
 }
 echo $count['ja_existe'] . ' já estavam registradas · ' . $count['nao_captacao'] . ' não são de captação · '
    . $count['encerrada'] . ' em card encerrado · ' . $count['whatsapp_sistema'] . ' do próprio WhatsApp do sistema.';
-echo '<br><small>Conferido direto no WhatsApp: ' . $evoInfo['grupos'] . ' grupo(s) com captação no período, '
-   . $evoInfo['reacoes'] . ' reação(ões) que o sistema não tinha recebido'
-   . ($evoInfo['sem_resposta'] > 0 ? ', ' . $evoInfo['sem_resposta'] . ' grupo(s) sem resposta do WhatsApp' : '') . '.</small>';
+echo '<br><small>Conferido direto no WhatsApp: ' . $waInfo['grupos'] . ' grupo(s) com captação no período, '
+   . $waInfo['reacoes'] . ' reação(ões) que o sistema não tinha recebido'
+   . ($waInfo['sem_resposta'] > 0 ? ', ' . $waInfo['sem_resposta'] . ' grupo(s) sem resposta do WhatsApp' : '') . '.</small>';
 echo '</div>';
 if (!$apply && $count['registrar'] > 0) {
     echo '<form method="post"><input type="hidden" name="nonce" value="' . h($nonce) . '"><input type="hidden" name="dias" value="' . $days . '">';

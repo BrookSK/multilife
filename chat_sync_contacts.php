@@ -10,7 +10,7 @@ rbac_require_permission('chat.manage');
 header('Content-Type: application/json');
 
 /**
- * Sincroniza nomes e fotos dos contatos do chat com a Evolution API.
+ * Sincroniza nomes e fotos dos contatos do chat com a API do WhatsApp.
  * - Busca pushName/profilePicture de cada contato
  * - Atualiza a tabela chat_contacts
  * - Remove contatos órfãos (sem mensagens)
@@ -19,9 +19,9 @@ header('Content-Type: application/json');
 $action = trim($_GET['action'] ?? 'sync_all');
 
 try {
-    $api = new EvolutionApiV1();
+    $api = new WhatsAppApi();
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'error' => 'Evolution API não configurada: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'API do WhatsApp não configurada: ' . $e->getMessage()]);
     exit;
 }
 
@@ -29,7 +29,7 @@ if ($action === 'sync_all') {
     $updated = 0;
     $errors = 0;
     
-    // 1. Buscar todos os contatos da Evolution API
+    // 1. Buscar todos os contatos da API do WhatsApp
     try {
         $res = $api->findContacts();
         $apiContacts = $res['json'] ?? [];

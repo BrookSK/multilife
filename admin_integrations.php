@@ -38,7 +38,7 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Integrações (Credenciais)</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Evolution v1, OpenAI e ZapSign (e outros stubs).</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">API do WhatsApp, OpenAI e ZapSign (e outros stubs).</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_integrations_hub.php">Hub</a>';
@@ -54,11 +54,11 @@ echo '</section>';
 echo '<section class="card col12">';
 echo '<form method="post" action="/admin_integrations_post.php" style="display:grid;gap:14px">';
 
-echo '<div style="font-weight:900">Evolution API (v1)</div>';
+echo '<div style="font-weight:900">WhatsApp (serviço Baileys)</div>';
 echo '<div class="grid">';
-echo '<div class="col6"><label>Base URL<input name="settings[evolution.base_url]" value="' . h(s($settings,'evolution.base_url')) . '" placeholder="https://seu-servidor"></label></div>';
-echo '<div class="col6"><label>API Key<input type="password" name="settings[evolution.api_key]" value="" placeholder="(mantém se vazio)"></label></div>';
-echo '<div class="col6"><label>Instance<input name="settings[evolution.instance]" value="' . h(s($settings,'evolution.instance')) . '" placeholder="nome-da-instancia"></label></div>';
+echo '<div class="col6"><label>Base URL<input name="settings[baileys.base_url]" value="' . h(s($settings,'baileys.base_url')) . '" placeholder="https://seu-servidor"></label></div>';
+echo '<div class="col6"><label>API Key<input type="password" name="settings[baileys.api_key]" value="" placeholder="(mantém se vazio)"></label></div>';
+echo '<div class="col6"><label>Instance<input name="settings[baileys.instance]" value="' . h(s($settings,'baileys.instance')) . '" placeholder="nome-da-instancia"></label></div>';
 echo '</div>';
 
 echo '<div style="font-weight:900;margin-top:8px">OpenAI</div>';

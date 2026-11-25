@@ -3,16 +3,16 @@
 declare(strict_types=1);
 
 /**
- * SINCRONIZAR WHATSAPP (redispatch do watchdog).
+ * SINCRONIZAR WHATSAPP (redispatch do serviço WhatsApp / Baileys).
  *
- * Pede ao monitor de conexão (watchdog, POST /redispatch/{instância}) que reenvie
- * ao webhook do sistema os eventos que JÁ ESTÃO salvos na Evolution e não chegaram
- * aqui (queda do webhook, sistema fora do ar, "Suspeita de queda"...). Eventos
- * que nunca chegaram à Evolution não existem para reenviar.
+ * Pede ao serviço WhatsApp (POST /redispatch/{instância}) que reenvie ao webhook
+ * do sistema as mensagens que ele JÁ RECEBEU e guardou (tabela baileys_messages,
+ * 15 dias) e que não chegaram aqui (queda do webhook, sistema fora do ar,
+ * "Suspeita de queda"...). O que nunca chegou ao serviço não existe para reenviar.
  *
  * Fluxo: escolhe a janela -> prévia (dryRun: quantos eventos) -> confirma -> reenvia.
  * Só libera WA_REDISPATCH_WAIT_SEC (15 min) depois da última reconexão/QR Code,
- * para o WhatsApp terminar de repor na Evolution o que ficou para trás.
+ * para o WhatsApp terminar de entregar ao serviço o que ficou para trás.
  * O webhook deduplica pelo id da mensagem (reenvio repetido não duplica nada).
  *
  * Quem pode: administrador de WhatsApp/configurações ou usuário vinculado à instância.
@@ -70,7 +70,7 @@ session_release();
 @set_time_limit(240);
 
 $status = wa_redispatch_status($instance);
-$blocked = !wa_watchdog_enabled() ? 'Monitor de conexão (watchdog) não configurado. Configure o token em Configurações → WhatsApp Conexão → Credenciais.'
+$blocked = !wa_watchdog_enabled() ? 'Serviço WhatsApp (Baileys) não configurado. Preencha a URL e a API Key em Configurações → WhatsApp Conexão → Credenciais.'
     : (!$status['connected'] || $status['wait_seconds'] > 0 ? $status['message'] : '');
 
 if ($action !== '' && $error === '') {

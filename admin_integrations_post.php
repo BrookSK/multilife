@@ -13,7 +13,7 @@ if (!is_array($settings)) {
 }
 
 $sensitiveKeys = [
-    'evolution.api_key',
+    'baileys.api_key',
     'openai.api_key',
     'zapsign.api_token',
 ];

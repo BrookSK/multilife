@@ -27,10 +27,10 @@ if (!$group) {
 
 $groupJid = (string)$group['evolution_group_jid'];
 
-// Buscar membros atuais do grupo via Evolution API
+// Buscar membros atuais do grupo via API do WhatsApp
 $members = [];
 try {
-    $api = new EvolutionApiV1();
+    $api = new WhatsAppApi();
     $response = $api->fetchGroupParticipants($groupJid);
     $members = $response['json']['participants'] ?? [];
 } catch (Exception $e) {

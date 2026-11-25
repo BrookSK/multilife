@@ -602,7 +602,7 @@ try {
             $dispatchedGroups = $grpStmt->fetchAll(PDO::FETCH_ASSOC);
             
             if (!empty($dispatchedGroups)) {
-                $api = new EvolutionApiV1();
+                $api = new WhatsAppApi();
                 $finalizationMsg = "✅ *[CAPTAÇÃO FINALIZADA]*\n\n"
                     . "A captação *#" . $demandId . "* foi concluída.\n"
                     . "📋 Especialidade: " . $specialty . "\n"

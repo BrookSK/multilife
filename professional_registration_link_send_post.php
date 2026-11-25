@@ -10,7 +10,7 @@ declare(strict_types=1);
  *
  * Reusa os helpers do projeto:
  *   - SmtpClient + email_base_layout() para o e-mail HTML;
- *   - EvolutionApiV1::sendText() para o WhatsApp (com a normalização padrão de telefone).
+ *   - WhatsAppApi::sendText() para o WhatsApp (com a normalização padrão de telefone).
  */
 
 require_once __DIR__ . '/app/bootstrap.php';
@@ -20,22 +20,22 @@ auth_require_login();
 rbac_require_permission('users.manage');
 
 /**
- * Retorna uma instância EvolutionApiV1 CONECTADA (ou null se nenhuma).
+ * Retorna uma instância WhatsAppApi CONECTADA (ou null se nenhuma).
  * Replica a seleção de instância do WhatsAppEventDispatcher: tenta a instância
  * padrão e, se não estiver conectada, procura outra ativa/conectada em
  * whatsapp_instances. Isso evita falha silenciosa quando a padrão está offline.
  */
-function reg_link_pick_connected_instance(): ?EvolutionApiV1
+function reg_link_pick_connected_instance(): ?WhatsAppApi
 {
-    $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
-    $defaultInstance = (string)admin_setting_get('evolution.instance', '');
+    $baseUrl = rtrim((string)wa_api_base_url(), '/');
+    $apiKey = (string)wa_api_key();
+    $defaultInstance = (string)wa_default_instance();
 
     if ($baseUrl === '' || $apiKey === '') {
         return null;
     }
 
-    $isConnected = function (EvolutionApiV1 $api): bool {
+    $isConnected = function (WhatsAppApi $api): bool {
         try {
             $res = $api->connectionState();
             $state = strtolower(trim((string)($res['json']['instance']['state'] ?? ($res['json']['state'] ?? ''))));
@@ -48,7 +48,7 @@ function reg_link_pick_connected_instance(): ?EvolutionApiV1
     // 1) Instância padrão.
     if ($defaultInstance !== '') {
         try {
-            $api = new EvolutionApiV1($baseUrl, $apiKey, $defaultInstance);
+            $api = new WhatsAppApi($baseUrl, $apiKey, $defaultInstance);
             if ($isConnected($api)) {
                 return $api;
             }
@@ -65,7 +65,7 @@ function reg_link_pick_connected_instance(): ?EvolutionApiV1
                 continue;
             }
             try {
-                $api = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+                $api = new WhatsAppApi($baseUrl, $apiKey, $instName);
                 if ($isConnected($api)) {
                     return $api;
                 }
@@ -78,7 +78,7 @@ function reg_link_pick_connected_instance(): ?EvolutionApiV1
     // 3) Último recurso: instância padrão sem checagem (pode falhar no envio).
     if ($defaultInstance !== '') {
         try {
-            return new EvolutionApiV1($baseUrl, $apiKey, $defaultInstance);
+            return new WhatsAppApi($baseUrl, $apiKey, $defaultInstance);
         } catch (Throwable $e) {
             return null;
         }
@@ -183,7 +183,7 @@ if ($emailIsReal) {
 }
 
 // ------------------------------------------------------------------
-// 2) WHATSAPP (mensagem de texto via Evolution API)
+// 2) WHATSAPP (mensagem de texto via API do WhatsApp)
 // ------------------------------------------------------------------
 $waOk = false;
 $waTried = false;
@@ -210,7 +210,7 @@ if ($rawPhone !== '') {
         $waMsg .= "Este link é pessoal e intransferível.\n\n";
         $waMsg .= "Obrigado!\nEquipe MultiLife Care";
 
-        // Seleciona uma instância Evolution CONECTADA (mesma lógica do WhatsAppEventDispatcher).
+        // Seleciona uma instância API do WhatsApp CONECTADA (mesma lógica do WhatsAppEventDispatcher).
         // Usar a instância padrão cegamente falha silenciosamente quando ela está desconectada.
         $wa = reg_link_pick_connected_instance();
         if ($wa === null) {

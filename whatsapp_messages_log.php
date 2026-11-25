@@ -10,7 +10,7 @@ rbac_require_permission('admin.settings.manage');
 // Buscar logs de integração WhatsApp
 $stmt = db()->query(
     "SELECT * FROM integration_logs 
-     WHERE provider = 'evolution' 
+     WHERE provider IN ('whatsapp', 'evolution') 
      ORDER BY created_at DESC 
      LIMIT 200"
 );
@@ -24,7 +24,7 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Histórico de Mensagens WhatsApp</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Logs de mensagens enviadas via Evolution API.</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px;line-height:1.6">Logs de mensagens enviadas via API do WhatsApp.</div>';
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/whatsapp_hub.php">Voltar</a>';

@@ -13,7 +13,7 @@ if (session_status() === PHP_SESSION_ACTIVE) {
     }
 }
 
-// RESPONDE JÁ para a Evolution, ANTES de ler e decodificar o corpo. A Evolution
+// RESPONDE JÁ para a API do WhatsApp, ANTES de ler e decodificar o corpo. A API do WhatsApp
 // espera a resposta de cada webhook e, se der erro/tempo esgotado, repete o mesmo
 // envio por ~25 min (10 tentativas) segurando a fila da instância inteira. Assim,
 // nem um payload grande (mídia em base64) nem um erro no processamento chegam a
@@ -47,7 +47,7 @@ if (!$data) {
 }
 
 $event = $data['event'] ?? '';
-// Normalizar: MESSAGES_UPSERT → messages.upsert (diferentes versões da Evolution API)
+// Normalizar: MESSAGES_UPSERT → messages.upsert (diferentes versões da API do WhatsApp)
 $event = strtolower(str_replace('_', '.', $event));
 error_log("[WEBHOOK] event:'$event' instance:'" . ($data['instance'] ?? '') . "'");
 
@@ -168,7 +168,7 @@ function normalizeJid(string $jid): string {
  * JID da CONVERSA (número real) a partir do key da mensagem.
  * - Recebida: senderPn/remoteJidAlt têm o número do contato.
  * - Enviada pelo celular (fromMe): senderPn é o NOSSO número, então usamos
- *   remoteJidAlt, o mapa LID -> número ou o histórico da Evolution. Sem isso a
+ *   remoteJidAlt, o mapa LID -> número ou o histórico da API do WhatsApp. Sem isso a
  *   mensagem ia para uma conversa "fantasma" (LID@s.whatsapp.net).
  * Funções chat_lid_* em app/chat_message_store.php.
  */
@@ -184,7 +184,7 @@ function resolveConversationJid(array $key, bool $fromMe): string {
     }
 
     // Aprender o par LID <-> número sempre que a mensagem trouxer os dois. A
-    // Evolution costuma mandar a RECEBIDA já com o número (remoteJid) e o LID em
+    // API do WhatsApp costuma mandar a RECEBIDA já com o número (remoteJid) e o LID em
     // remoteJidAlt/senderLid; a ENVIADA pelo celular vem só com o LID. Guardando o
     // par na recebida, a enviada passa a cair na conversa certa.
     $isPn = static fn(string $j): bool => strpos($j, '@s.whatsapp.net') !== false;
@@ -211,7 +211,7 @@ function resolveConversationJid(array $key, bool $fromMe): string {
     if ($pn !== '') {
         return $pn;
     }
-    $pn = chat_lid_resolve_via_evolution($remoteJid, (string)($GLOBALS['_webhookInstanceName'] ?? ''));
+    $pn = chat_lid_resolve_via_api($remoteJid, (string)($GLOBALS['_webhookInstanceName'] ?? ''));
     if ($pn !== '') {
         return $pn;
     }
@@ -428,20 +428,20 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
         $isRelativeUrl = (strpos($mediaUrl, '/') !== 0 && !$isExternalUrl);
         
         if ($isRelativeUrl) {
-            // URL relativa da Evolution API (ex: uploads/chat_media/...)
+            // URL relativa da API do WhatsApp (ex: uploads/chat_media/...)
             // Adicionar barra inicial para tornar absoluta
             error_log("[SAVE_MSG] URL relativa detectada, adicionando barra inicial: $mediaUrl");
             $mediaUrl = '/' . $mediaUrl;
         } elseif ($isExternalUrl) {
-            // URLs do WhatsApp (mmg.whatsapp.net) são criptografadas - usar Evolution API para descriptografar
+            // URLs do WhatsApp (mmg.whatsapp.net) são criptografadas - usar API do WhatsApp para descriptografar
             if (str_contains($mediaUrl, 'mmg.whatsapp.net') || str_contains($mediaUrl, '.enc')) {
-                error_log("[SAVE_MSG] URL criptografada do WhatsApp detectada, usando Evolution API...");
+                error_log("[SAVE_MSG] URL criptografada do WhatsApp detectada, usando API do WhatsApp...");
                 try {
                     // A mídia só pode ser baixada pela instância que RECEBEU a mensagem
                     // (antes usava a padrão: se ela estivesse desconectada, foto/áudio
                     // recebidos na Grace/Financeiro não apareciam no chat).
                     $whInst = trim((string)($GLOBALS['_webhookInstanceName'] ?? ''));
-                    $api = $whInst !== '' ? new EvolutionApiV1(null, null, $whInst) : new EvolutionApiV1();
+                    $api = $whInst !== '' ? new WhatsAppApi(null, null, $whInst) : new WhatsAppApi();
                     $mediaEndpoint = $api->getBaseUrl() . '/chat/getBase64FromMediaMessage/' . urlencode($api->getInstance());
                     
                     global $currentMessageData;
@@ -469,7 +469,7 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                                     $uniqueFilename = uniqid('chat_', true) . '.' . $ext;
                                     file_put_contents($uploadDir . '/' . $uniqueFilename, $binaryData);
                                     $mediaUrl = '/uploads/chat_media/' . date('Y-m') . '/' . $uniqueFilename;
-                                    error_log("[SAVE_MSG] ✅ Mídia descriptografada via Evolution API: $mediaUrl (" . strlen($binaryData) . " bytes)");
+                                    error_log("[SAVE_MSG] ✅ Mídia descriptografada via API do WhatsApp: $mediaUrl (" . strlen($binaryData) . " bytes)");
                                 } else {
                                     $mediaUrl = null;
                                     $messageText = $messageText ?: '[Mídia não disponível]';
@@ -479,7 +479,7 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                                 $messageText = $messageText ?: '[Mídia não disponível]';
                             }
                         } else {
-                            error_log("[SAVE_MSG] Evolution getBase64 falhou HTTP $mediaCode");
+                            error_log("[SAVE_MSG] API do WhatsApp getBase64 falhou HTTP $mediaCode");
                             $mediaUrl = null;
                             $messageText = $messageText ?: '[Mídia não disponível]';
                         }
@@ -488,7 +488,7 @@ function saveMessage(string $remoteJid, string $text, int $fromMe, int $timestam
                         $messageText = $messageText ?: '[Mídia não disponível]';
                     }
                 } catch (Throwable $e) {
-                    error_log("[SAVE_MSG] Erro Evolution API: " . $e->getMessage());
+                    error_log("[SAVE_MSG] Erro API do WhatsApp: " . $e->getMessage());
                     $mediaUrl = null;
                     $messageText = $messageText ?: '[Mídia não disponível]';
                 }
@@ -649,7 +649,7 @@ function isSystemText(string $text): bool {
 }
 
 // Processar mensagens recebidas
-// Evolution API V1: data.messages[] é um array de mensagens
+// API do WhatsApp V1: data.messages[] é um array de mensagens
 if ($event === 'messages.upsert') {
     $rawData = $data['data'] ?? [];
 

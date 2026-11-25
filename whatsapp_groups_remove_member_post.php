@@ -27,7 +27,7 @@ if (!$groupJid) {
 }
 
 try {
-    $api = new EvolutionApiV1();
+    $api = new WhatsAppApi();
     $api->updateGroupParticipants($groupJid, 'remove', [$memberId]);
     
     flash_set('success', 'Membro removido com sucesso!');

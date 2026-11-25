@@ -33,7 +33,7 @@ $currentUserId = (int)(auth_user_id() ?? 0);
 $userInstance = whatsapp_get_user_instance($currentUserId);
 $instanceName = is_array($userInstance) ? (string)($userInstance['instance_name'] ?? '') : '';
 if ($instanceName === '') {
-    $instanceName = (string)admin_setting_get('evolution.instance', '');
+    $instanceName = (string)wa_default_instance();
 }
 
 try {

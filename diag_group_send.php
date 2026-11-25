@@ -1,7 +1,7 @@
 <?php
 /**
  * DIAGNÓSTICO: por que a mensagem "enviada" não chega no grupo WhatsApp.
- * Mostra estado real de cada instância + resposta crua da Evolution ao enviar.
+ * Mostra estado real de cada instância + resposta crua da API do WhatsApp ao enviar.
  * Acesse logado como admin: /diag_group_send.php?jid=120363430130484913@g.us
  * DELETE após uso!
  */
@@ -17,13 +17,13 @@ $doSend = isset($_GET['send']) && $_GET['send'] === '1';
 
 echo "=== DIAGNÓSTICO DE ENVIO PARA GRUPO ===\n\n";
 
-$baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-$apiKey = (string)admin_setting_get('evolution.api_key', '');
+$baseUrl = rtrim((string)wa_api_base_url(), '/');
+$apiKey = (string)wa_api_key();
 echo "Base URL: " . ($baseUrl ?: '(vazio)') . "\n";
 echo "API Key configurada: " . ($apiKey !== '' ? 'sim' : 'NÃO') . "\n\n";
 
 // 1. Estado real de cada instância
-echo "--- INSTÂNCIAS (estado REAL na Evolution) ---\n";
+echo "--- INSTÂNCIAS (estado REAL na API do WhatsApp) ---\n";
 $insts = db()->query("SELECT instance_name, connection_status, is_default FROM whatsapp_instances WHERE status = 'active' ORDER BY is_default DESC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
 $connectedInstance = null;
 foreach ($insts as $inst) {
@@ -32,12 +32,12 @@ foreach ($insts as $inst) {
     $bancoStatus = (string)$inst['connection_status'];
     $realState = '?';
     try {
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $name);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $name);
         $cs = $api->connectionState();
         $json = $cs['json'] ?? [];
         $realState = (string)($json['instance']['state'] ?? ($json['state'] ?? 'desconhecido'));
         $httpCs = (int)($cs['status'] ?? 0);
-        echo "  • $name → banco='$bancoStatus' | Evolution='$realState' (HTTP $httpCs)\n";
+        echo "  • $name → banco='$bancoStatus' | API do WhatsApp='$realState' (HTTP $httpCs)\n";
         if (in_array(strtolower(trim($realState)), ['open', 'connected'], true) && $connectedInstance === null) {
             $connectedInstance = $name;
         }
@@ -48,7 +48,7 @@ foreach ($insts as $inst) {
 echo "\nInstância realmente conectada: " . ($connectedInstance ?: 'NENHUMA ⚠️') . "\n\n";
 
 if ($connectedInstance === null) {
-    echo "⚠️ CAUSA PROVÁVEL: nenhuma instância está REALMENTE conectada na Evolution,\n";
+    echo "⚠️ CAUSA PROVÁVEL: nenhuma instância está REALMENTE conectada na API do WhatsApp,\n";
     echo "   mesmo que o banco diga 'connected'. Reconecte escaneando o QR Code.\n";
     exit;
 }
@@ -60,7 +60,7 @@ if ($jid === '') {
 
 // 2. Verificar se o grupo existe NA instância conectada
 echo "--- VERIFICAÇÃO DO GRUPO $jid ---\n";
-$api = new EvolutionApiV1($baseUrl, $apiKey, $connectedInstance);
+$api = new WhatsAppApi($baseUrl, $apiKey, $connectedInstance);
 try {
     $groupsRes = $api->fetchAllGroups(false);
     $groupsJson = $groupsRes['json'] ?? [];

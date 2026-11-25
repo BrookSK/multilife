@@ -10,21 +10,21 @@ declare(strict_types=1);
  */
 class WhatsAppEventDispatcher
 {
-    private EvolutionApiV1 $api;
+    private WhatsAppApi $api;
     
     public function __construct()
     {
         // Tentar instancia padrao primeiro
-        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-        $apiKey = (string)admin_setting_get('evolution.api_key', '');
-        $defaultInstance = (string)admin_setting_get('evolution.instance', '');
+        $baseUrl = rtrim((string)wa_api_base_url(), '/');
+        $apiKey = (string)wa_api_key();
+        $defaultInstance = (string)wa_default_instance();
         
         $api = null;
         
         // Verificar se instancia padrao esta conectada
         if ($baseUrl !== '' && $apiKey !== '' && $defaultInstance !== '') {
             try {
-                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $defaultInstance);
+                $tryApi = new WhatsAppApi($baseUrl, $apiKey, $defaultInstance);
                 $connRes = $tryApi->connectionState();
                 $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
                 if (in_array($state, ['open', 'connected'], true)) {
@@ -42,7 +42,7 @@ class WhatsAppEventDispatcher
                 foreach ($instList as $instName) {
                     if ((string)$instName === '' || (string)$instName === $defaultInstance) continue;
                     try {
-                        $tryApi = new EvolutionApiV1($baseUrl, $apiKey, (string)$instName);
+                        $tryApi = new WhatsAppApi($baseUrl, $apiKey, (string)$instName);
                         $connRes = $tryApi->connectionState();
                         $state = strtolower(trim((string)($connRes['json']['instance']['state'] ?? ($connRes['json']['state'] ?? ''))));
                         if (in_array($state, ['open', 'connected'], true)) {
@@ -57,7 +57,7 @@ class WhatsAppEventDispatcher
         
         // Fallback: usar padrao mesmo sem verificar (pode falhar no envio)
         if ($api === null) {
-            $api = new EvolutionApiV1();
+            $api = new WhatsAppApi();
         }
         
         $this->api = $api;
@@ -392,7 +392,7 @@ class WhatsAppEventDispatcher
                 $phone = '55' . $phone;
             }
             
-            // Enviar mensagem via Evolution API
+            // Enviar mensagem via API do WhatsApp
             $result = $this->api->sendText($phone, $message);
             
             // Verificar sucesso pelo HTTP status
@@ -433,7 +433,7 @@ class WhatsAppEventDispatcher
      * Envia arquivos anexos do evento.
      *
      * O arquivo vai em BASE64 (igual ao chat). Antes ia o caminho do arquivo no
-     * servidor, que a Evolution API não consegue abrir: os anexos não chegavam.
+     * servidor, que a API do WhatsApp não consegue abrir: os anexos não chegavam.
      * Cada envio fica registrado em whatsapp_event_logs ("[Arquivo] nome").
      *
      * @return array{total:int, sent:int, failed:int}

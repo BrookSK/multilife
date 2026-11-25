@@ -23,7 +23,7 @@ if (!is_array($args)) {
     $args = [];
 }
 
-$evo = new EvolutionApiV1(null, null, $instance !== '' ? $instance : null);
+$waApi = new WhatsAppApi(null, null, $instance !== '' ? $instance : null);
 
 $resp = null;
 
@@ -31,62 +31,62 @@ try {
     switch ($method) {
         // Instance
         case 'fetchInstances':
-            $resp = $evo->fetchInstances(isset($args['instanceName']) ? (string)$args['instanceName'] : null);
+            $resp = $waApi->fetchInstances(isset($args['instanceName']) ? (string)$args['instanceName'] : null);
             break;
         case 'createInstanceBasic':
-            $resp = $evo->createInstanceBasic($args);
+            $resp = $waApi->createInstanceBasic($args);
             break;
         case 'connectInstance':
-            $resp = $evo->connectInstance($instance !== '' ? $instance : null, isset($args['number']) ? (string)$args['number'] : null);
+            $resp = $waApi->connectInstance($instance !== '' ? $instance : null, isset($args['number']) ? (string)$args['number'] : null);
             break;
         case 'connectionState':
-            $resp = $evo->connectionState($instance !== '' ? $instance : null);
+            $resp = $waApi->connectionState($instance !== '' ? $instance : null);
             break;
         case 'restartInstance':
-            $resp = $evo->restartInstance($instance !== '' ? $instance : null);
+            $resp = $waApi->restartInstance($instance !== '' ? $instance : null);
             break;
         case 'logoutInstance':
-            $resp = $evo->logoutInstance($instance !== '' ? $instance : null);
+            $resp = $waApi->logoutInstance($instance !== '' ? $instance : null);
             break;
         case 'deleteInstance':
-            $resp = $evo->deleteInstance($instance !== '' ? $instance : null);
+            $resp = $waApi->deleteInstance($instance !== '' ? $instance : null);
             break;
 
         // Chat
         case 'findChats':
-            $resp = $evo->findChats();
+            $resp = $waApi->findChats();
             break;
         case 'findMessages':
-            $resp = $evo->findMessages((string)($args['remoteJid'] ?? ''));
+            $resp = $waApi->findMessages((string)($args['remoteJid'] ?? ''));
             break;
         case 'archiveChat':
-            $resp = $evo->archiveChat((array)($args['lastMessageKey'] ?? []), (bool)($args['archive'] ?? true));
+            $resp = $waApi->archiveChat((array)($args['lastMessageKey'] ?? []), (bool)($args['archive'] ?? true));
             break;
         case 'checkIsWhatsapp':
-            $resp = $evo->checkIsWhatsapp((array)($args['numbers'] ?? []));
+            $resp = $waApi->checkIsWhatsapp((array)($args['numbers'] ?? []));
             break;
         case 'markMessageAsRead':
-            $resp = $evo->markMessageAsRead((array)($args['read_messages'] ?? []));
+            $resp = $waApi->markMessageAsRead((array)($args['read_messages'] ?? []));
             break;
         case 'deleteMessageForEveryone':
-            $resp = $evo->deleteMessageForEveryone((array)($args['key'] ?? $args));
+            $resp = $waApi->deleteMessageForEveryone((array)($args['key'] ?? $args));
             break;
         case 'updateMessage':
-            $resp = $evo->updateMessage((int)($args['number'] ?? 0), (string)($args['text'] ?? ''), (array)($args['key'] ?? []));
+            $resp = $waApi->updateMessage((int)($args['number'] ?? 0), (string)($args['text'] ?? ''), (array)($args['key'] ?? []));
             break;
         case 'findContacts':
-            $resp = $evo->findContacts(isset($args['id']) ? (string)$args['id'] : null);
+            $resp = $waApi->findContacts(isset($args['id']) ? (string)$args['id'] : null);
             break;
         case 'findStatusMessage':
-            $resp = $evo->findStatusMessage((array)($args['where'] ?? []), isset($args['limit']) ? (int)$args['limit'] : null);
+            $resp = $waApi->findStatusMessage((array)($args['where'] ?? []), isset($args['limit']) ? (int)$args['limit'] : null);
             break;
 
         // Message
         case 'sendText':
-            $resp = $evo->sendText((string)($args['number'] ?? ''), (string)($args['text'] ?? ''), (array)($args['options'] ?? []));
+            $resp = $waApi->sendText((string)($args['number'] ?? ''), (string)($args['text'] ?? ''), (array)($args['options'] ?? []));
             break;
         case 'sendMedia':
-            $resp = $evo->sendMedia(
+            $resp = $waApi->sendMedia(
                 (string)($args['number'] ?? ''),
                 (string)($args['mediaType'] ?? ''),
                 (string)($args['fileName'] ?? ''),
@@ -96,81 +96,81 @@ try {
             );
             break;
         case 'sendContact':
-            $resp = $evo->sendContact((string)($args['number'] ?? ''), (array)($args['contactMessage'] ?? []), (array)($args['options'] ?? []));
+            $resp = $waApi->sendContact((string)($args['number'] ?? ''), (array)($args['contactMessage'] ?? []), (array)($args['options'] ?? []));
             break;
         case 'sendWhatsAppAudio':
-            $resp = $evo->sendWhatsAppAudio((string)($args['number'] ?? ''), (string)($args['audio'] ?? ''), (array)($args['options'] ?? []));
+            $resp = $waApi->sendWhatsAppAudio((string)($args['number'] ?? ''), (string)($args['audio'] ?? ''), (array)($args['options'] ?? []));
             break;
         case 'sendTemplate':
-            $resp = $evo->sendTemplate((string)($args['number'] ?? ''), (array)($args['templateMessage'] ?? []));
+            $resp = $waApi->sendTemplate((string)($args['number'] ?? ''), (array)($args['templateMessage'] ?? []));
             break;
         case 'sendStatus':
-            $resp = $evo->sendStatus((array)($args['statusMessage'] ?? $args));
+            $resp = $waApi->sendStatus((array)($args['statusMessage'] ?? $args));
             break;
         case 'sendLocation':
-            $resp = $evo->sendLocation((string)($args['number'] ?? ''), (array)($args['locationMessage'] ?? []), (array)($args['options'] ?? []));
+            $resp = $waApi->sendLocation((string)($args['number'] ?? ''), (array)($args['locationMessage'] ?? []), (array)($args['options'] ?? []));
             break;
         case 'sendReaction':
-            $resp = $evo->sendReaction((array)($args['reactionMessage'] ?? $args));
+            $resp = $waApi->sendReaction((array)($args['reactionMessage'] ?? $args));
             break;
         case 'sendSticker':
-            $resp = $evo->sendSticker((string)($args['number'] ?? ''), (string)($args['image'] ?? ''), (array)($args['options'] ?? []));
+            $resp = $waApi->sendSticker((string)($args['number'] ?? ''), (string)($args['image'] ?? ''), (array)($args['options'] ?? []));
             break;
         case 'sendPoll':
-            $resp = $evo->sendPoll((string)($args['number'] ?? ''), (array)($args['pollMessage'] ?? []), (array)($args['options'] ?? []));
+            $resp = $waApi->sendPoll((string)($args['number'] ?? ''), (array)($args['pollMessage'] ?? []), (array)($args['options'] ?? []));
             break;
         case 'sendList':
-            $resp = $evo->sendList((string)($args['number'] ?? ''), (array)($args['listMessage'] ?? []), (array)($args['options'] ?? []));
+            $resp = $waApi->sendList((string)($args['number'] ?? ''), (array)($args['listMessage'] ?? []), (array)($args['options'] ?? []));
             break;
 
         // Group
         case 'fetchAllGroups':
-            $resp = $evo->fetchAllGroups((bool)($args['getMembers'] ?? false));
+            $resp = $waApi->fetchAllGroups((bool)($args['getMembers'] ?? false));
             break;
         case 'findGroupByJid':
-            $resp = $evo->findGroupByJid((string)($args['groupJid'] ?? ''));
+            $resp = $waApi->findGroupByJid((string)($args['groupJid'] ?? ''));
             break;
         case 'findGroupMembers':
-            $resp = $evo->findGroupMembers((string)($args['groupJid'] ?? ''));
+            $resp = $waApi->findGroupMembers((string)($args['groupJid'] ?? ''));
             break;
         case 'createGroup':
-            $resp = $evo->createGroup((string)($args['subject'] ?? ''), (array)($args['participants'] ?? []), isset($args['description']) ? (string)$args['description'] : null);
+            $resp = $waApi->createGroup((string)($args['subject'] ?? ''), (array)($args['participants'] ?? []), isset($args['description']) ? (string)$args['description'] : null);
             break;
         case 'updateGroupMembers':
-            $resp = $evo->updateGroupMembers((string)($args['groupJid'] ?? ''), (string)($args['action'] ?? ''), (array)($args['participants'] ?? []));
+            $resp = $waApi->updateGroupMembers((string)($args['groupJid'] ?? ''), (string)($args['action'] ?? ''), (array)($args['participants'] ?? []));
             break;
         case 'updateGroupSetting':
-            $resp = $evo->updateGroupSetting((string)($args['groupJid'] ?? ''), (string)($args['action'] ?? ''));
+            $resp = $waApi->updateGroupSetting((string)($args['groupJid'] ?? ''), (string)($args['action'] ?? ''));
             break;
         case 'updateGroupSubject':
-            $resp = $evo->updateGroupSubject((string)($args['groupJid'] ?? ''), (string)($args['subject'] ?? ''));
+            $resp = $waApi->updateGroupSubject((string)($args['groupJid'] ?? ''), (string)($args['subject'] ?? ''));
             break;
         case 'updateGroupDescription':
-            $resp = $evo->updateGroupDescription((string)($args['groupJid'] ?? ''), (string)($args['description'] ?? ''));
+            $resp = $waApi->updateGroupDescription((string)($args['groupJid'] ?? ''), (string)($args['description'] ?? ''));
             break;
         case 'updateGroupPicture':
-            $resp = $evo->updateGroupPicture((string)($args['groupJid'] ?? ''), (string)($args['imageUrl'] ?? ''));
+            $resp = $waApi->updateGroupPicture((string)($args['groupJid'] ?? ''), (string)($args['imageUrl'] ?? ''));
             break;
         case 'fetchInviteCode':
-            $resp = $evo->fetchInviteCode((string)($args['groupJid'] ?? ''));
+            $resp = $waApi->fetchInviteCode((string)($args['groupJid'] ?? ''));
             break;
         case 'acceptInviteCode':
-            $resp = $evo->acceptInviteCode((string)($args['inviteCode'] ?? ''));
+            $resp = $waApi->acceptInviteCode((string)($args['inviteCode'] ?? ''));
             break;
         case 'revokeInviteCode':
-            $resp = $evo->revokeInviteCode((string)($args['groupJid'] ?? ''));
+            $resp = $waApi->revokeInviteCode((string)($args['groupJid'] ?? ''));
             break;
         case 'sendGroupInvite':
-            $resp = $evo->sendGroupInvite((string)($args['groupJid'] ?? ''), (array)($args['numbers'] ?? []), (string)($args['description'] ?? ''));
+            $resp = $waApi->sendGroupInvite((string)($args['groupJid'] ?? ''), (array)($args['numbers'] ?? []), (string)($args['description'] ?? ''));
             break;
         case 'findGroupByInviteCode':
-            $resp = $evo->findGroupByInviteCode((string)($args['inviteCode'] ?? ''));
+            $resp = $waApi->findGroupByInviteCode((string)($args['inviteCode'] ?? ''));
             break;
         case 'leaveGroup':
-            $resp = $evo->leaveGroup((string)($args['groupJid'] ?? ''));
+            $resp = $waApi->leaveGroup((string)($args['groupJid'] ?? ''));
             break;
         case 'toggleEphemeral':
-            $resp = $evo->toggleEphemeral((string)($args['groupJid'] ?? ''), (int)($args['expiration'] ?? 0));
+            $resp = $waApi->toggleEphemeral((string)($args['groupJid'] ?? ''), (int)($args['expiration'] ?? 0));
             break;
 
         default:
@@ -196,7 +196,7 @@ echo '</div>';
 
 echo '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_whatsapp_console.php?instance=' . urlencode($instance) . '">Voltar console</a>';
-echo '<a class="btn" href="/tech_logs_list.php?provider=evolution">Ver Logs TI</a>';
+echo '<a class="btn" href="/tech_logs_list.php?provider=whatsapp">Ver Logs TI</a>';
 if ($instance !== '') {
     echo '<a class="btn" href="/admin_whatsapp_instance_view.php?instance=' . urlencode($instance) . '">Voltar instância</a>';
 }

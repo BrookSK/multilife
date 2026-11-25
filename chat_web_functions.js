@@ -279,7 +279,7 @@ function sendGroupInvite() {
 }
 
 // Outras funções auxiliares
-function syncEvolution() {
+function syncWhatsAppGroups() {
   const btn = document.getElementById("syncBtn");
   const icon = document.getElementById("syncIcon");
   btn.disabled = true;
@@ -290,7 +290,7 @@ function syncEvolution() {
   const instanceQS = instance ? ("&instance=" + encodeURIComponent(instance)) : "";
 
   // 1) Grupos
-  fetch("/chat_sync_evolution.php")
+  fetch("/chat_sync_groups.php")
     .then(r => r.json())
     .then(data => {
       // 2) Conversas/contatos existentes na instância (popula a lista)
@@ -1250,10 +1250,10 @@ function refreshChatList() {
     .finally(() => { _listRefreshing = false; });
 }
 
-// SINCRONIZAÇÃO DE RESERVA: busca na Evolution as últimas mensagens da conversa
+// SINCRONIZAÇÃO DE RESERVA: busca na API do WhatsApp as últimas mensagens da conversa
 // aberta e grava as que faltam (ex.: resposta enviada pelo celular que o webhook
 // não entregou). O polling mostra as novas em seguida.
-function syncOpenChatFromEvolution() {
+function syncOpenChatFromWhatsApp() {
   if (!window.chatId || window.chatId.indexOf('@g.us') !== -1 || document.hidden) return;
   const inst = chatCurrentInstance();
   fetch('/chat_sync_recent.php?chat_id=' + encodeURIComponent(window.chatId) + (inst ? '&instance=' + encodeURIComponent(inst) : ''), { credentials: 'same-origin', cache: 'no-store' })
@@ -1268,12 +1268,12 @@ function startChatPolling() {
     // A cada 2s (a consulta é leve: só mensagens com id maior que o último exibido)
     setInterval(checkForNewMessages, 2000);
     // Só ao abrir a conversa e ao voltar para a aba: a busca de mensagens na
-    // Evolution é pesada no banco dela (sem índice) e repetir a cada 30s por
+    // API do WhatsApp é pesada no banco dela (sem índice) e repetir a cada 30s por
     // conversa aberta somava carga justamente no que está lento.
-    setTimeout(syncOpenChatFromEvolution, 800);
+    setTimeout(syncOpenChatFromWhatsApp, 800);
     // Ao voltar para a aba do navegador, sincroniza na hora
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) { syncOpenChatFromEvolution(); checkForNewMessages(); refreshChatList(); }
+      if (!document.hidden) { syncOpenChatFromWhatsApp(); checkForNewMessages(); refreshChatList(); }
     });
     console.log("✅ Polling iniciado para chat:", window.chatId, "| lastTimestamp:", window.lastTimestamp);
   }

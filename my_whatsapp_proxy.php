@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/app/bootstrap.php';
 
-// Proxy Evolution para o USUÁRIO COMUM operar SOMENTE as instâncias vinculadas
-// a ele próprio (via vínculo N:N ou legado). Diferente de evolution_proxy.php,
+// Proxy API do WhatsApp para o USUÁRIO COMUM operar SOMENTE as instâncias vinculadas
+// a ele próprio (via vínculo N:N ou legado). Diferente de whatsapp_proxy.php,
 // que exige a permissão admin.settings.manage, aqui basta estar logado — mas
 // validamos que a instância solicitada pertence ao usuário.
 auth_require_login();
@@ -17,11 +17,11 @@ $instanceName = trim((string)($_GET['instance'] ?? ''));
 
 $userId = auth_user_id();
 
-$baseUrl = trim((string)admin_setting_get('evolution.base_url', ''));
-$apiKey = trim((string)admin_setting_get('evolution.api_key', ''));
+$baseUrl = trim((string)wa_api_base_url());
+$apiKey = trim((string)wa_api_key());
 
 if ($baseUrl === '' || $apiKey === '') {
-    echo json_encode(['error' => 'Evolution API não configurada']);
+    echo json_encode(['error' => 'API do WhatsApp não configurada']);
     exit;
 }
 if ($instanceName === '') {
@@ -51,7 +51,7 @@ if (!in_array($action, ['status', 'connect', 'logout'], true)) {
 }
 
 /**
- * Configura o webhook da instância (mesmo padrão do evolution_proxy.php),
+ * Configura o webhook da instância (mesmo padrão do whatsapp_proxy.php),
  * apontando para /chat_webhook.php.
  */
 function myWaConfigureWebhook(string $baseUrl, string $apiKey, string $instanceName): bool
@@ -182,7 +182,7 @@ try {
     } elseif ($httpCode === 404) {
         echo json_encode(['error' => 'instance_not_found', 'code' => 404, 'instance' => $instanceName]);
     } else {
-        echo json_encode(['error' => 'Erro na API Evolution. Código: ' . $httpCode, 'response' => $response]);
+        echo json_encode(['error' => 'Erro na API API do WhatsApp. Código: ' . $httpCode, 'response' => $response]);
     }
 } catch (Throwable $e) {
     echo json_encode(['error' => 'Erro: ' . $e->getMessage()]);

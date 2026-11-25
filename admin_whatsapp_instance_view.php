@@ -7,12 +7,12 @@ require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('whatsapp.manage');
 
-// Verificar se Evolution API está configurada
-$baseUrl = admin_setting_get('evolution.base_url', '');
-$apiKey = admin_setting_get('evolution.api_key', '');
+// Verificar se API do WhatsApp está configurada
+$baseUrl = wa_api_base_url();
+$apiKey = wa_api_key();
 
 if ($baseUrl === '' || $apiKey === '') {
-    flash_set('error', 'Evolution API não configurada. Configure em Configurações.');
+    flash_set('error', 'API do WhatsApp não configurada. Configure em Configurações.');
     header('Location: /admin_settings.php');
     exit;
 }
@@ -24,8 +24,8 @@ if ($instance === '') {
     exit;
 }
 
-$evo = new EvolutionApiV1();
-$stateRes = $evo->connectionState($instance);
+$waApi = new WhatsAppApi();
+$stateRes = $waApi->connectionState($instance);
 
 $state = '';
 if (is_array($stateRes['json']) && isset($stateRes['json']['instance']['state'])) {
@@ -44,7 +44,7 @@ echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14
 echo '</div>';
 echo '<div style="display:flex;gap:10px;flex-wrap:wrap">';
 echo '<a class="btn" href="/admin_whatsapp_console.php?instance=' . urlencode($instance) . '">Console</a>';
-echo '<a class="btn" href="/tech_logs_list.php?provider=evolution">Logs TI</a>';
+echo '<a class="btn" href="/tech_logs_list.php?provider=whatsapp">Logs TI</a>';
 echo '<a class="btn" href="/admin_whatsapp_instances.php">Voltar</a>';
 echo '</div>';
 echo '</div>';

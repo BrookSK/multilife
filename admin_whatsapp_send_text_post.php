@@ -17,8 +17,8 @@ if ($instance === '' || $number === '' || $text === '') {
     exit;
 }
 
-$evo = new EvolutionApiV1(null, null, $instance);
-$res = $evo->sendText($number, $text);
+$waApi = new WhatsAppApi(null, null, $instance);
+$res = $waApi->sendText($number, $text);
 
 if ((int)$res['status'] < 200 || (int)$res['status'] >= 300) {
     flash_set('error', 'Falha ao enviar mensagem.');

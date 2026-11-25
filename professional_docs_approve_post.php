@@ -127,7 +127,7 @@ try {
 $payload = [
     'documentation_id' => $id,
 ];
-integration_job_enqueue('evolution', 'professional_docs_approved_notify', $payload, null);
+integration_job_enqueue('whatsapp', 'professional_docs_approved_notify', $payload, null);
 integration_job_enqueue('smtp', 'professional_docs_approved_email', $payload, null);
 
 flash_set('success', 'Documentação aprovada.');

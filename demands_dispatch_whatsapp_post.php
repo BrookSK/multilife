@@ -136,14 +136,14 @@ if (!function_exists('dispatch_wants_json')) {
     }
 }
 
-if (!function_exists('dispatch_evolution_error_text')) {
+if (!function_exists('dispatch_api_error_text')) {
     /**
-     * Extrai a mensagem de erro REAL devolvida pela Evolution API.
-     * A Evolution embrulha erros do Baileys (ex.: instância não é membro do
+     * Extrai a mensagem de erro REAL devolvida pela API do WhatsApp.
+     * A API do WhatsApp embrulha erros do Baileys (ex.: instância não é membro do
      * grupo, "forbidden", "item-not-found", "exists:false") em HTTP 400 — sem
      * isto o log do disparo mostrava só "HTTP 400", sem o motivo.
      */
-    function dispatch_evolution_error_text(array $res): string
+    function dispatch_api_error_text(array $res): string
     {
         $status = (int)($res['status'] ?? 0);
         $json = $res['json'] ?? null;
@@ -170,12 +170,12 @@ if (!function_exists('dispatch_evolution_error_text')) {
 }
 
 if (!function_exists('dispatch_instance_state')) {
-    /** Estado normalizado da instância na Evolution ('open', 'close', 'connecting'...). */
-    function dispatch_instance_state(EvolutionApiV1 $api): string
+    /** Estado normalizado da instância na API do WhatsApp ('open', 'close', 'connecting'...). */
+    function dispatch_instance_state(WhatsAppApi $api): string
     {
         // Cache curto por instância: o disparo verificava o estado da MESMA instância
         // várias vezes (escolha do remetente, cada envio, cada adição) — com a
-        // Evolution lenta, isso somava minutos.
+        // API do WhatsApp lenta, isso somava minutos.
         static $cache = [];
         $instKey = method_exists($api, 'getInstance') ? (string)$api->getInstance() : '';
         if ($instKey !== '' && isset($cache[$instKey]) && (time() - $cache[$instKey][1]) < 20) {
@@ -209,14 +209,14 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
      * estado 'open' + enxerga o grupo via findGroupInfos (que consulta o
      * WhatsApp ao vivo, não o cache).
      *
-     * Por que isso é necessário: o cache de metadados de grupo da Evolution é
+     * Por que isso é necessário: o cache de metadados de grupo da API do WhatsApp é
      * global (chave = JID do grupo, compartilhado entre instâncias). Uma
      * instância desconectada/não autenticada passa pela checagem "Group not
      * found" usando o cache populado por OUTRA instância e quebra dentro do
      * Baileys em `authState.creds.me.id` -> "TypeError: Cannot read properties
      * of undefined (reading 'id')" (HTTP 400).
      *
-     * @return array{0: EvolutionApiV1, 1: string}|null
+     * @return array{0: WhatsAppApi, 1: string}|null
      */
     function dispatch_pick_sender_for_group(string $groupJid, ?string $preferred, array $instances, string $baseUrl, string $apiKey, array &$diag = []): ?array
     {
@@ -225,7 +225,7 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
         static $picked = [];
         if (isset($picked[$groupJid]) && (time() - $picked[$groupJid][1]) < 60) {
             $cachedName = $picked[$groupJid][0];
-            return [new EvolutionApiV1($baseUrl, $apiKey, $cachedName), $cachedName];
+            return [new WhatsAppApi($baseUrl, $apiKey, $cachedName), $cachedName];
         }
         $names = [];
         if ($preferred !== null && $preferred !== '') {
@@ -237,7 +237,7 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
                 $names[] = $n;
             }
         }
-        $def = (string)admin_setting_get('evolution.instance', '');
+        $def = (string)wa_default_instance();
         if ($def !== '') {
             $names[] = $def;
         }
@@ -253,7 +253,7 @@ if (!function_exists('dispatch_pick_sender_for_group')) {
                         continue;
                     }
                 }
-                $candidate = new EvolutionApiV1($baseUrl, $apiKey, $name);
+                $candidate = new WhatsAppApi($baseUrl, $apiKey, $name);
                 $state = dispatch_instance_state($candidate);
                 if (!in_array($state, ['open', 'connected'], true)) {
                     $diag[] = "$name: estado '" . ($state !== '' ? $state : '?') . "'";
@@ -301,10 +301,10 @@ if (!function_exists('dispatch_missing_members')) {
     /**
      * Filtra $jids deixando só quem AINDA NÃO está no grupo (e nunca o próprio
      * número da instância). Re-adicionar membros existentes / o próprio número
-     * derruba a sessão do WhatsApp na Evolution — por isso, se não der para ler
+     * derruba a sessão do WhatsApp na API do WhatsApp — por isso, se não der para ler
      * a lista de membros, retorna [] (não adiciona ninguém).
      */
-    function dispatch_missing_members(EvolutionApiV1 $api, string $groupJid, array $jids, string $selfNumber = ''): array
+    function dispatch_missing_members(WhatsAppApi $api, string $groupJid, array $jids, string $selfNumber = ''): array
     {
         $present = dispatch_group_member_keys($api, $groupJid);
         if ($present === null) {
@@ -324,13 +324,13 @@ if (!function_exists('dispatch_missing_members')) {
 
 if (!function_exists('dispatch_find_sent_by_token')) {
     /**
-     * Procura no histórico do grupo (Evolution) a mensagem com o token da
+     * Procura no histórico do grupo (API do WhatsApp) a mensagem com o token da
      * captação (#CAP...). Usado quando o envio deu timeout do nosso lado: a
-     * Evolution continua processando e a mensagem pode ter saído normalmente.
+     * API do WhatsApp continua processando e a mensagem pode ter saído normalmente.
      * Retorna o id da mensagem (key.id) se encontrada, '' se encontrada sem id,
      * ou null se não encontrada.
      */
-    function dispatch_find_sent_by_token(EvolutionApiV1 $api, string $groupJid, string $token): ?string
+    function dispatch_find_sent_by_token(WhatsAppApi $api, string $groupJid, string $token): ?string
     {
         if ($token === '') return null;
         $r = $api->findMessages($groupJid);
@@ -386,7 +386,7 @@ if (!function_exists('dispatch_abort')) {
 
 if ($DISPATCH_WORKER_MODE) {
     // ---- MODO WORKER (chamado pelo cron) ----
-    // O disparo é longo (chamadas HTTP à Evolution + eventuais reconexões).
+    // O disparo é longo (chamadas HTTP à API do WhatsApp + eventuais reconexões).
     // Sem isto, o PHP é morto por max_execution_time e o cron fetch-url do Plesk
     // derruba o processo ao desconectar — deixando o job preso em 'running' e o
     // run preso em 'sending'. Garante tempo e continuidade mesmo sem o cliente.
@@ -635,8 +635,8 @@ if (count($groups) === 0) {
     
     try {
         // MULTI-INSTÂNCIA: Encontrar uma instância conectada para criar o grupo
-        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $baseUrl = rtrim((string)wa_api_base_url(), '/');
+        $apiKey = (string)wa_api_key();
         $instanceName = '';
         
         // Buscar todas as instâncias ativas, priorizando as conectadas.
@@ -667,19 +667,19 @@ if (count($groups) === 0) {
             }
             demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'creating_group', "Nenhum grupo para $locationLabel — verificando o WhatsApp '$instCandidate'...");
             try {
-                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instCandidate);
+                $tryApi = new WhatsAppApi($baseUrl, $apiKey, $instCandidate);
                 try {
                     $connStateRes = $tryApi->connectionState();
                 } catch (Throwable $csErr) {
                     error_log("[DISPATCH] Instância '$instCandidate' não respondeu ao connectionState: " . $csErr->getMessage());
                     whatsapp_health_record($instCandidate, 'send_error', null, 'connectionState sem resposta: ' . $csErr->getMessage());
-                    $skippedUnhealthy[] = "$instCandidate: não respondeu (Evolution travada?)";
+                    $skippedUnhealthy[] = "$instCandidate: não respondeu (API do WhatsApp travada?)";
                     continue;
                 }
                 $connJson = $connStateRes['json'] ?? [];
                 $connHttpCode = (int)($connStateRes['status'] ?? 0);
                 
-                // Extrair estado da conexão - múltiplos formatos possíveis da Evolution API
+                // Extrair estado da conexão - múltiplos formatos possíveis da API do WhatsApp
                 $connInstanceState = '';
                 if (isset($connJson['instance']['state'])) {
                     $connInstanceState = (string)$connJson['instance']['state'];
@@ -770,10 +770,10 @@ if (count($groups) === 0) {
         }
         
         if ($baseUrl === '' || $apiKey === '') {
-            dispatch_abort('Evolution API não configurada (base_url/api_key). Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
+            dispatch_abort('API do WhatsApp não configurada (base_url/api_key). Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
         }
         
-        $api = new EvolutionApiV1($baseUrl, $apiKey, $instanceName);
+        $api = new WhatsAppApi($baseUrl, $apiKey, $instanceName);
         
         // Gerar nome do grupo: Especialidade - Cidade/UF[ - Zona] - N
         $location = $locationLabel;
@@ -793,7 +793,7 @@ if (count($groups) === 0) {
         $professionalPhones = array_values(array_diff($collected['phones'], $teamPhones));
         $allParticipants = array_values(array_unique(array_merge($collected['phones'], $teamPhones)));
         // O grupo é CRIADO com poucos participantes (equipe + até 20 profissionais):
-        // criar com centenas de números deixa a Evolution/WhatsApp muito lento e pode
+        // criar com centenas de números deixa a API do WhatsApp/WhatsApp muito lento e pode
         // falhar. O restante entra em lotes logo depois, ANTES do envio da mensagem.
         $participants = array_values(array_unique(array_merge(
             $teamPhones,
@@ -806,17 +806,17 @@ if (count($groups) === 0) {
             if ($captacaoTestMode) {
                 dispatch_abort('Modo de teste da captacao ligado, mas nenhum "profissional de teste" foi encontrado para esta especialidade. Marque ao menos um profissional como teste (ou desligue o modo de teste em Configuracoes > Funcionalidades).');
             }
-            $participants[] = preg_replace('/\D+/', '', (string)admin_setting_get('evolution.admin_phone', '5517991253062'));
+            $participants[] = preg_replace('/\D+/', '', (string)wa_setting('admin_phone', '5517991253062'));
         }
         
         error_log("[DISPATCH] Participantes para grupo: " . implode(', ', $participants));
         
         // Buscar credenciais base (NÃO sobrescrever $instanceName: manter a
         // instância conectada já escolhida acima, que prioriza a do captador).
-        $baseUrl = rtrim((string)admin_setting_get('evolution.base_url', ''), '/');
-        $apiKey = (string)admin_setting_get('evolution.api_key', '');
+        $baseUrl = rtrim((string)wa_api_base_url(), '/');
+        $apiKey = (string)wa_api_key();
         if ($instanceName === '') {
-            $instanceName = (string)admin_setting_get('evolution.instance', '');
+            $instanceName = (string)wa_default_instance();
         }
 
         // MULTI-INSTÂNCIA: ordem de tentativa — instância do captador primeiro,
@@ -834,7 +834,7 @@ if (count($groups) === 0) {
             if (whatsapp_health_is_blocking(whatsapp_health_status((string)$otherInst)['level'])) {
                 continue;
             }
-            if (!in_array(dispatch_instance_state(new EvolutionApiV1($baseUrl, $apiKey, (string)$otherInst)), ['open', 'connected'], true)) {
+            if (!in_array(dispatch_instance_state(new WhatsAppApi($baseUrl, $apiKey, (string)$otherInst)), ['open', 'connected'], true)) {
                 continue;
             }
             $instancesToTry[] = $otherInst;
@@ -849,7 +849,7 @@ if (count($groups) === 0) {
         // Primeiro, tentar buscar grupo existente com cada instância
         foreach ($instancesToTry as $tryInst) {
             try {
-                $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $tryInst);
+                $tryApi = new WhatsAppApi($baseUrl, $apiKey, $tryInst);
                 $fetchRes = $tryApi->fetchAllGroups(false);
                 $fetchCode = (int)($fetchRes['status'] ?? 0);
                 if ($fetchCode >= 200 && $fetchCode < 300) {
@@ -937,7 +937,7 @@ if (count($groups) === 0) {
                     
                     if ($createHttpCode >= 200 && $createHttpCode < 300) {
                         $usedInstanceName = $retryInst;
-                        $api = new EvolutionApiV1($baseUrl, $apiKey, $retryInst);
+                        $api = new WhatsAppApi($baseUrl, $apiKey, $retryInst);
                         error_log("[DISPATCH] ✅ Grupo criado com instância '$retryInst'!");
                         break;
                     }
@@ -1046,7 +1046,7 @@ if (count($groups) === 0) {
                 
                 error_log("[DISPATCH] ✅ Grupo criado automaticamente: '$groupName' (JID: $newGroupJid) com " . count($participants) . " participantes");
                 
-                // GARANTIA: algumas versões da Evolution ignoram 'participants' na
+                // GARANTIA: algumas versões da API do WhatsApp ignoram 'participants' na
                 // criação. Quem faltar é adicionado no bloco "ADICIONAR MEMBROS ANTES
                 // DO ENVIO" (mais abaixo), antes de a mensagem sair.
                 // Lista COMPLETA (a criação levou só uma parte).
@@ -1465,7 +1465,7 @@ try {
     throw $e;
 }
 
-// Envio via Evolution (fora da transação)
+// Envio via API do WhatsApp (fora da transação)
 // MULTI-INSTÂNCIA: Tentar todas as instâncias conectadas, não apenas a padrão
 $api = null;
 $apiInstanceName = null;
@@ -1504,8 +1504,8 @@ try {
     $allInstances->execute(['owner' => $ownerInstanceName, 'captador' => $captadorInstanceName]);
     $instances = $allInstances->fetchAll();
     
-    $baseUrl = (string)admin_setting_get('evolution.base_url', '');
-    $apiKey = (string)admin_setting_get('evolution.api_key', '');
+    $baseUrl = (string)wa_api_base_url();
+    $apiKey = (string)wa_api_key();
     
     // Tentar cada instância até encontrar uma conectada
     foreach ($instances as $inst) {
@@ -1517,7 +1517,7 @@ try {
         }
         
         try {
-            $tryApi = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+            $tryApi = new WhatsAppApi($baseUrl, $apiKey, $instName);
             $connState = $tryApi->connectionState();
             $connJson = $connState['json'] ?? [];
             
@@ -1585,10 +1585,10 @@ try {
     
     // Fallback: se nenhuma instância do banco funcionou, tentar a instância padrão das admin_settings
     if ($api === null) {
-        $defaultInstName = (string)admin_setting_get('evolution.instance', '');
+        $defaultInstName = (string)wa_default_instance();
         if ($defaultInstName !== '') {
             try {
-                $tryApi = new EvolutionApiV1();
+                $tryApi = new WhatsAppApi();
                 $connState = $tryApi->connectionState();
                 $connJson = $connState['json'] ?? [];
                 $connInstanceState = (string)($connJson['instance']['state'] ?? ($connJson['state'] ?? ''));
@@ -1610,7 +1610,7 @@ try {
                 $instConnStatus = (string)($inst['connection_status'] ?? '');
                 if ($instName !== '' && $instConnStatus === 'connected') {
                     try {
-                        $api = new EvolutionApiV1($baseUrl, $apiKey, $instName);
+                        $api = new WhatsAppApi($baseUrl, $apiKey, $instName);
                         $apiInstanceName = $instName;
                         error_log("[DISPATCH] Usando instância '$instName' baseado no connection_status do banco (API não confirmou)");
                         break;
@@ -1624,10 +1624,10 @@ try {
     
     // Se nenhuma instância está conectada, tentar usar a padrão sem verificar (fallback agressivo)
     if ($api === null) {
-        $defaultInstName = (string)admin_setting_get('evolution.instance', '');
+        $defaultInstName = (string)wa_default_instance();
         if ($defaultInstName !== '' && $baseUrl !== '' && $apiKey !== '') {
             error_log("[DISPATCH] FALLBACK: Nenhuma instância confirmada como conectada. Tentando usar instância padrão '$defaultInstName' sem verificação...");
-            $api = new EvolutionApiV1($baseUrl, $apiKey, $defaultInstName);
+            $api = new WhatsAppApi($baseUrl, $apiKey, $defaultInstName);
             $apiInstanceName = $defaultInstName;
         }
     }
@@ -1651,7 +1651,7 @@ try {
     }
     // registra erro em todos
     $upd = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = \'error\', error_message = :err WHERE demand_id = :did AND dispatch_status = \'queued\'');
-    $upd->execute(['err' => 'Evolution API não configurada: ' . mb_strimwidth($e->getMessage(), 0, 220, ''), 'did' => $id]);
+    $upd->execute(['err' => 'API do WhatsApp não configurada: ' . mb_strimwidth($e->getMessage(), 0, 220, ''), 'did' => $id]);
     dispatch_abort('WhatsApp não configurado. Configure em: Configurações → WhatsApp Conexão → aba Credenciais.');
 }
 
@@ -1665,7 +1665,7 @@ $toSend = $selLogs->fetchAll();
 // REMETENTE VERIFICADA: a instância escolhida acima pode ter vindo de um
 // fallback "sem verificação" (desconectada / não autenticada). Enviar por ela
 // gera "TypeError: Cannot read properties of undefined (reading 'id')" na
-// Evolution. Trocamos por uma instância 'open' que enxerga o grupo.
+// API do WhatsApp. Trocamos por uma instância 'open' que enxerga o grupo.
 // ============================================================================
 $firstGroupJid = '';
 foreach ($toSend as $tsRow) {
@@ -1691,7 +1691,7 @@ if ($firstGroupJid !== '') {
 // Ordem correta: (1) adiciona ao grupo quem ainda não está, (2) depois envia a
 // mensagem. Antes a mensagem saía primeiro e quem entrava depois não a recebia.
 // Só adiciona quem AINDA NÃO é membro (re-adicionar membros existentes ou o
-// próprio número derruba a sessão na Evolution). Lotes de 50 com pausa curta,
+// próprio número derruba a sessão na API do WhatsApp). Lotes de 50 com pausa curta,
 // no mesmo job (sem fila extra) — o worker não tem limite de tempo.
 // ============================================================================
 $addedTotal = 0;
@@ -1756,7 +1756,7 @@ foreach ($memberTargets as $addJid => $addList) {
                 $addedTotal += count($chunk);
             } else {
                 $addErrors += count($chunk);
-                error_log("[DISPATCH] $addJid: falha ao adicionar lote via '$addInstName': " . dispatch_evolution_error_text($addRes));
+                error_log("[DISPATCH] $addJid: falha ao adicionar lote via '$addInstName': " . dispatch_api_error_text($addRes));
             }
         }
         error_log("[DISPATCH] $addJid: $addedTotal novo(s) membro(s) adicionados antes do envio via '$addInstName'.");
@@ -1779,7 +1779,7 @@ $updOne = db()->prepare('UPDATE demand_dispatch_logs SET dispatch_status = :st, 
 // GARANTIR QUE A INSTÂNCIA REMETENTE SEJA ADMIN DO GRUPO
 // ----------------------------------------------------------------------------
 // Os grupos de captação são configurados como "announcement" (somente admins
-// publicam). Se a instância que vai ENVIAR não for admin do grupo, a Evolution
+// publicam). Se a instância que vai ENVIAR não for admin do grupo, a API do WhatsApp
 // aceita a requisição (HTTP 2xx) mas o WhatsApp DESCARTA a mensagem em silêncio
 // — foi exatamente o sintoma: "enviado" sem erro, mas nada chega no grupo.
 // Aqui garantimos que o número da instância remetente ($apiInstanceName) seja
@@ -1848,7 +1848,7 @@ foreach ($toSend as $row) {
 
     try {
         // Só envia por instância conectada E membro deste grupo (ver
-        // dispatch_pick_sender_for_group). Sem isso a Evolution responde
+        // dispatch_pick_sender_for_group). Sem isso a API do WhatsApp responde
         // "TypeError ... reading 'id'" quando a instância não está autenticada.
         $sendDiag = [];
         $pickedRow = dispatch_pick_sender_for_group($jid, $apiInstanceName, $instances ?? [], $baseUrl, $apiKey, $sendDiag);
@@ -1873,7 +1873,7 @@ foreach ($toSend as $row) {
         try {
             $res = $sendApi->sendTextToGroup($jid, $msgRow);
         } catch (Throwable $sendErr) {
-            // Timeout/erro de rede: a Evolution pode ter enviado mesmo assim.
+            // Timeout/erro de rede: a API do WhatsApp pode ter enviado mesmo assim.
             // NÃO reenvia (duplicaria); confere pelo token no histórico do grupo.
             error_log("[DISPATCH] Envio para $jid via '$sendInstName' sem resposta: " . $sendErr->getMessage() . " — verificando se a mensagem chegou...");
             $capToken = preg_match('/#CAP\d+-[A-F0-9]+/', $msgRow, $tm) ? $tm[0] : '';
@@ -1971,7 +1971,7 @@ foreach ($toSend as $row) {
                 }
             }
         } else {
-            $errText = "[instância '$sendInstName'] " . dispatch_evolution_error_text($res);
+            $errText = "[instância '$sendInstName'] " . dispatch_api_error_text($res);
             $lastDispatchError = $errText;
             error_log("[DISPATCH] Falha definitiva ao enviar para '$jid': $errText");
             $updOne->execute(['st' => 'error', 'err' => mb_strimwidth($errText, 0, 255, '...'), 'id' => $logId]);

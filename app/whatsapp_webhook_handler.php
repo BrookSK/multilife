@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 /**
- * Recebimento do webhook da Evolution (modelo do helpdeskON).
+ * Recebimento do webhook da API do WhatsApp (modelo do helpdeskON).
  *
  * Fluxo: o webhook decodifica o evento e chama wa_webhook_handle(). Cada mensagem
  * passa por UM processamento (wa_wh_process_message): identifica o tipo, grava a
  * mídia, deduplica pelo id da mensagem do WhatsApp e grava em chat_messages e
- * chat_contacts. Roda depois que o webhook já respondeu 200 à Evolution (fila
+ * chat_contacts. Roda depois que o webhook já respondeu 200 à API do WhatsApp (fila
  * em app/whatsapp_webhook_inbox.php).
  *
  * Particularidades do multilife mantidas:
@@ -82,7 +82,7 @@ function wa_wh_message_list($data): array
 
 /**
  * JID da conversa (número real). O WhatsApp pode identificar o contato por um
- * LID (@lid); a Evolution manda o número em remoteJidAlt/senderPn.
+ * LID (@lid); a API do WhatsApp manda o número em remoteJidAlt/senderPn.
  */
 function wa_wh_resolve_jid(array $key, bool $fromMe): string
 {
@@ -259,7 +259,7 @@ function wa_wh_context(array $m): array
     return $out;
 }
 
-/** Grava a mídia (base64 do payload, ou baixada pela Evolution). Retorna a URL local. */
+/** Grava a mídia (base64 do payload, ou baixada pela API do WhatsApp). Retorna a URL local. */
 function wa_wh_store_media(string $instance, array $msg, array $message, array $parsed): ?string
 {
     $b64 = (string)($message['base64'] ?? ($msg['message']['base64'] ?? ($msg['base64'] ?? '')));
@@ -277,8 +277,8 @@ function wa_wh_store_media(string $instance, array $msg, array $message, array $
             }
         }
     }
-    // Sem base64 no payload: pede o arquivo à Evolution
-    $fetched = chat_evolution_fetch_media($msg, $instance);
+    // Sem base64 no payload: pede o arquivo à API do WhatsApp
+    $fetched = chat_wa_fetch_media($msg, $instance);
     return $fetched['url'] ?? null;
 }
 
@@ -313,7 +313,7 @@ function wa_wh_process_message(string $instance, array $msg, string $event): voi
     }
 
     $message = wa_wh_unwrap(is_array($msg['message'] ?? null) ? $msg['message'] : []);
-    $ts = chat_evolution_record_ts($msg);
+    $ts = chat_wa_record_ts($msg);
     if ($ts <= 0) {
         $ts = time();
     }
@@ -463,9 +463,9 @@ function wa_wh_dispatch_by_token(string $text, string $targetId): ?array
  * Disparo de captação da mensagem reagida (id = key.id da mensagem), nesta ordem:
  *  1. id gravado no disparo (demand_dispatch_logs.external_message_id);
  *  2. texto da mensagem no chat do sistema, pelo token #CAP;
- *  3. GRUPO: texto da mensagem direto no WhatsApp (Evolution, últimas mensagens
+ *  3. GRUPO: texto da mensagem direto no WhatsApp (API do WhatsApp, últimas mensagens
  *     do grupo), pelo token #CAP. Cobre o disparo que ficou sem o id da mensagem
- *     (timeout da Evolution) e cuja cópia no chat também ficou sem o id: antes a
+ *     (timeout da API do WhatsApp) e cuja cópia no chat também ficou sem o id: antes a
  *     reação era gravada como "msg não é captação" e o interesse se perdia.
  */
 function wa_wh_find_dispatch_for_message(string $targetId, string $chatJid, string $instanceName): ?array
@@ -490,21 +490,21 @@ function wa_wh_find_dispatch_for_message(string $targetId, string $chatJid, stri
     if (strpos($chatJid, '@g.us') === false || $instanceName === '') {
         return null;
     }
-    // Só grupos que o sistema usa em captação (evita consultar a Evolution à toa).
+    // Só grupos que o sistema usa em captação (evita consultar a API do WhatsApp à toa).
     $stG = db()->prepare("SELECT 1 FROM whatsapp_groups WHERE evolution_group_jid = ? LIMIT 1");
     $stG->execute([$chatJid]);
     if (!$stG->fetchColumn()) {
         return null;
     }
     try {
-        $api = new EvolutionApiV1(
-            (string)admin_setting_get('evolution.base_url', ''),
-            (string)admin_setting_get('evolution.api_key', ''),
+        $api = new WhatsAppApi(
+            (string)wa_api_base_url(),
+            (string)wa_api_key(),
             $instanceName
         );
         $res = $api->findRecentMessages($chatJid, 60, 6);
     } catch (Throwable $e) {
-        error_log('[WEBHOOK] reação: falha ao buscar a mensagem na Evolution: ' . $e->getMessage());
+        error_log('[WEBHOOK] reação: falha ao buscar a mensagem na API do WhatsApp: ' . $e->getMessage());
         return null;
     }
     $j = is_array($res['json'] ?? null) ? $res['json'] : [];
@@ -562,7 +562,7 @@ function wa_wh_handle_reaction(string $rawJid, array $reaction, bool $fromMe, st
     $chatJid = chat_store_normalize_jid(strpos($reactedJid, '@g.us') !== false ? $reactedJid : $rawJid);
 
     // Eventos podem chegar de novo e fora de hora (botão "Sincronizar" reenvia o que
-    // ficou na Evolution): uma reação/remoção ANTIGA nunca desfaz uma mais nova.
+    // ficou na API do WhatsApp): uma reação/remoção ANTIGA nunca desfaz uma mais nova.
     if ($emoji === '') {
         db()->prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reactor_jid = ?
                        AND (reaction_timestamp IS NULL OR reaction_timestamp <= ?)')->execute([$targetId, $reactor, $ts]);

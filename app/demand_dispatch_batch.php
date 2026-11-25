@@ -36,9 +36,9 @@ function dispatch_member_key(string $jidOrPhone): string
  *
  * Usado para NUNCA re-adicionar quem já está no grupo: chamadas de "add" com
  * membros existentes (ou o próprio número da instância) derrubam a sessão do
- * WhatsApp na Evolution (instância vai para 'close').
+ * WhatsApp na API do WhatsApp (instância vai para 'close').
  */
-function dispatch_group_member_keys(EvolutionApiV1 $api, string $groupJid): ?array
+function dispatch_group_member_keys(WhatsAppApi $api, string $groupJid): ?array
 {
     $r = $api->findGroupMembers($groupJid);
     $code = (int)($r['status'] ?? 0);
@@ -131,7 +131,7 @@ function demand_dispatch_normalize_phone(string $phone): ?string
  * @param string $groupJid  JID do grupo (com @g.us)
  * @param int|null $groupDbId  id em whatsapp_groups
  * @param string[] $phones  telefones normalizados (55...)
- * @param string $instanceName  instância Evolution já resolvida (para não re-probing)
+ * @param string $instanceName  instância API do WhatsApp já resolvida (para não re-probing)
  * @param int|null $userId
  * @return array{run_id:int, total:int, jobs:int}
  */
@@ -190,7 +190,7 @@ function demand_dispatch_enqueue_members(
     $jobsCreated = 0;
     $chunks = array_chunk($pending, DEMAND_DISPATCH_BATCH_SIZE);
     foreach ($chunks as $chunk) {
-        integration_job_enqueue('evolution', 'demand_dispatch_add_members', [
+        integration_job_enqueue('whatsapp', 'demand_dispatch_add_members', [
             'run_id' => $runId,
             'demand_id' => $demandId,
             'group_jid' => $groupJid,
@@ -278,7 +278,7 @@ function demand_dispatch_enqueue_full(int $demandId, int $subRequestId, ?int $us
     ]);
     $runId = (int)db()->lastInsertId();
 
-    $jobId = integration_job_enqueue('evolution', 'demand_dispatch_run', [
+    $jobId = integration_job_enqueue('whatsapp', 'demand_dispatch_run', [
         'run_id' => $runId,
         'demand_id' => $demandId,
         'sub_request_id' => $subRequestId,
@@ -440,7 +440,7 @@ function authorization_requests_ensure_pending_patient_column(): void
 /**
  * CONFIRMAÇÃO DO ENVIO PELO WEBHOOK.
  *
- * Em grupo, a Evolution às vezes entrega a mensagem mas demora (ou nunca
+ * Em grupo, a API do WhatsApp às vezes entrega a mensagem mas demora (ou nunca
  * responde) à chamada de envio — o disparo ficava parado em "Enviando a
  * mensagem..." mesmo com a mensagem já no grupo. Quando o WhatsApp avisa pelo
  * webhook que a NOSSA mensagem (fromMe) com o token #CAP... chegou no grupo,
