@@ -1099,7 +1099,11 @@ function appendMessageToDOM(msg) {
     const docHref = msg.id ? ('/chat_media_download.php?id=' + encodeURIComponent(msg.id)) : mediaUrl;
     html += '<a href="' + escapeHtml(docHref) + '" download title="Baixar arquivo no computador" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.08);border-radius:10px;text-decoration:none;color:inherit;min-width:240px;max-width:320px">';
     html += '<div style="width:40px;height:40px;border-radius:8px;background:#dc3545;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg></div>';
-    html += '<div style="flex:1;min-width:0;overflow:hidden"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(docFilename) + '</div></div>';
+    const docSize = msg.media_size ? (Number(msg.media_size) / 1024).toFixed(1).replace('.', ',') + ' KB' : '';
+    html += '<div style="flex:1;min-width:0;overflow:hidden"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(docFilename) + '</div>'
+      + (docSize ? '<div style="font-size:11px;color:#667781;margin-top:2px">' + escapeHtml(docSize) + '</div>' : '') + '</div>';
+    // Mesmo ícone de download da página carregada
+    html += '<div style="flex-shrink:0;color:#667781"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>';
     html += '</a>';
   } else if (messageType === 'sticker' && mediaUrl) {
     html += '<div style="margin-bottom:4px"><img src="' + escapeHtml(mediaUrl) + '" alt="Sticker" style="max-width:150px;max-height:150px">' + downloadBtn + '</div>';

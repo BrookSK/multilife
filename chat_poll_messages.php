@@ -70,16 +70,10 @@ try {
     $stmt->execute(array_merge([$chatId], $cursorParams, $instParams));
     $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Converter URLs relativas para absolutas
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
-
-    foreach ($messages as &$msg) {
-        if (!empty($msg['media_url']) && $msg['media_url'][0] === '/' && strpos($msg['media_url'], 'http') !== 0) {
-            $msg['media_url'] = $protocol . '://' . $host . $msg['media_url'];
-        }
-    }
-    unset($msg);
+    // URL da mídia fica RELATIVA ("/uploads/..."), igual à da página: o navegador usa
+    // o mesmo protocolo e domínio da tela. Antes virava "http://..." quando o PHP
+    // estava atrás do proxy da hospedagem, e o navegador bloqueava a imagem numa
+    // página https (aparecia quebrada até dar F5).
 
     // Buscar reações para as mensagens retornadas
     $externalIds = array_filter(array_column($messages, 'external_message_id'));
