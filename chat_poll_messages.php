@@ -123,5 +123,10 @@ try {
     ]);
 } catch (Exception $e) {
     error_log('Erro no chat_poll_messages: ' . $e->getMessage());
+    wa_event_log('error', 'processamento', 'atualizacao_do_chat_falhou', [
+        'jid' => $chatId,
+        'summary' => 'A atualização automática da conversa aberta falhou (mensagens novas só aparecem com F5): ' . mb_substr($e->getMessage(), 0, 200),
+        'error' => $e,
+    ]);
     echo json_encode(['messages' => [], 'last_timestamp' => $since, 'last_id' => $lastId, 'error' => $e->getMessage()]);
 }

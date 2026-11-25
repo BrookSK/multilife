@@ -418,6 +418,16 @@ function chat_import_wa_record(array $rec, string $instanceName, string $convers
                 $fromMe, $ts, $senderName, $extId,
             ]);
         $newId = (int)db()->lastInsertId();
+        if (function_exists('wa_event_log')) {
+            // Mensagem que o webhook não tinha entregue até agora: o atraso fica visível no log
+            $lateSec = max(0, time() - $ts);
+            wa_event_log($lateSec > 60 ? 'warn' : 'info', 'processamento', 'importada_pela_sincronizacao', [
+                'instance' => $instanceName !== '' ? $instanceName : null, 'jid' => $jid, 'message_id' => $extId, 'status' => $type,
+                'summary' => 'Mensagem ' . ($fromMe ? 'enviada' : 'recebida') . ' NÃO tinha chegado pelo webhook: buscada no serviço ao abrir/atualizar a conversa, '
+                    . $lateSec . ' s depois de enviada',
+                'details' => ['atrasoSeg' => $lateSec, 'texto' => mb_substr($text, 0, 200), 'tela' => (string)($_SERVER['SCRIPT_NAME'] ?? '')],
+            ]);
+        }
 
         // Conversa sobe na lista (também quando a mensagem foi ENVIADA)
         db()->prepare("INSERT IGNORE INTO chat_contacts (remote_jid, instance_name, contact_name, is_group, last_message_timestamp)
