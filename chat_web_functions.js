@@ -871,12 +871,13 @@ async function sendMediaMessage() {
       window.location.reload();
     } else {
       console.error('Erro no upload:', data.error);
-      alert('Erro ao enviar mídia: ' + (data.error || 'Erro desconhecido'));
+      alert(data.error || 'Não foi possível enviar o arquivo.');
       loadingDiv.remove();
     }
   } catch (error) {
     console.error('Exception ao enviar mídia:', error);
-    alert('Erro ao enviar mídia: ' + error.message);
+    // Resposta que não é JSON (ex.: página de erro do servidor): mensagem simples
+    alert('Não foi possível enviar o arquivo. Tente de novo; se continuar, veja Configurações → Eventos do WhatsApp.');
     loadingDiv.remove();
   }
   

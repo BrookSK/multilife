@@ -11,6 +11,15 @@ import { ev } from './events.js';
 import { errText, requestWithRoute } from './net.js';
 import { nowIso, sleep } from './util.js';
 
+/** Tamanho máximo de corpo aceito por endereço (aprendido com HTTP 413): host -> bytes. */
+const bodyLimits = new Map();
+
+/** Cópia do evento sem o base64 da mídia (o sistema baixa pelo getBase64FromMediaMessage). */
+function withoutBase64(data) {
+  const { base64, ...message } = data.message ?? {};
+  return { ...data, message };
+}
+
 /** Eventos internos -> nome da Evolution usado na lista "events" do webhook. */
 export const EVENT_NAMES = {
   'application.startup': 'APPLICATION_STARTUP',
@@ -176,7 +185,18 @@ export class WebhookDispatcher {
     }
     let url = c.url;
     if (c.byEvents) url = url.replace(/\/+$/, '') + '/' + item.event.replace(/\./g, '-').toLowerCase();
-    const body = JSON.stringify(this.envelope(item.event, data, c.url));
+    const hostKey = (() => {
+      try { return new URL(url).host; } catch { return url; }
+    })();
+    let body = JSON.stringify(this.envelope(item.event, data, c.url));
+    // Limite de tamanho já aprendido (413) para este endereço: vai sem o arquivo
+    let strippedMedia = false;
+    const learned = bodyLimits.get(hostKey);
+    if (learned && body.length > learned && data?.message?.base64) {
+      data = withoutBase64(data);
+      body = JSON.stringify(this.envelope(item.event, data, c.url));
+      strippedMedia = true;
+    }
     let last = { ok: false, status: 0, error: '' };
     const t0 = Date.now();
     let attempts = 0;
@@ -199,6 +219,21 @@ export class WebhookDispatcher {
         if (!ok) last.bodyStart = res.body.toString('utf8', 0, 500);
         if (ok) break;
         errors.push(last.error);
+        // Corpo grande demais para a hospedagem do sistema: manda sem o arquivo
+        // (o sistema baixa a mídia do serviço depois) e lembra o limite
+        if (res.status === 413 && !strippedMedia && data?.message?.base64) {
+          bodyLimits.set(hostKey, Math.max(50000, body.length - 1));
+          ev('warn', 'midia', 'enviada_sem_arquivo_no_webhook', {
+            instance: this.instance.name, jid: jidOf(data), messageId: idOf(data), http: 413,
+            summary: `O sistema recusou o evento com a mídia junto (${Math.round(body.length / 1024)} KB, limite da hospedagem): reenviado sem o arquivo; o sistema baixa a mídia do serviço.`,
+            details: { kbRecusado: Math.round(body.length / 1024), host: hostKey },
+          });
+          data = withoutBase64(data);
+          body = JSON.stringify(this.envelope(item.event, data, c.url));
+          strippedMedia = true;
+          attempt--; // não conta como tentativa perdida
+          continue;
+        }
         // Redirecionamento: o endereço do webhook está errado (ex.: http -> https)
         if (res.status >= 300 && res.status < 400) break;
         // 4xx (fora 408/429) não melhora tentando de novo

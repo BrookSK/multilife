@@ -1459,6 +1459,12 @@ WAJS;
             . '<span class="helpText"><strong>0 = guardar para sempre</strong> (padrão: nenhuma mensagem é apagada). Com um número de dias, o serviço apaga as mensagens mais antigas que isso. '
             . 'As conversas do chat do sistema não são afetadas; isto vale para a cópia que o serviço usa para baixar mídia antiga e para o botão Sincronizar.</span></label>';
 
+        // Mídia grande vai por link (a hospedagem recusa pedidos grandes: HTTP 413)
+        $inlineKb = (string)($settings['baileys.inline_media_max_kb'] ?? '600');
+        echo '<label>Arquivos acima deste tamanho vão por link ao serviço (KB)'
+            . '<input type="number" min="0" step="50" name="settings[baileys.inline_media_max_kb]" value="' . h($inlineKb !== '' ? $inlineKb : '600') . '" style="max-width:160px">'
+            . '<span class="helpText">Padrão: 600. A hospedagem recusa pedidos com mais de ~1 MB (erro 413). Acima deste tamanho, o arquivo fica por instantes em uploads/wa_outbox e o serviço baixa pelo link. 0 = sempre mandar junto.</span></label>';
+
         // Log detalhado (/admin_whatsapp_eventos.php)
         $evRetVal = (string)($settings['baileys.event_log_retention_days'] ?? '90');
         echo '<label>Guardar o log de eventos do WhatsApp por (dias)'

@@ -33,6 +33,100 @@ function wa_service_embedded(): bool
     return is_file(wa_service_dir() . '/app.js');
 }
 
+/**
+ * Mídia grande não vai dentro do pedido ao serviço: a hospedagem recusa corpos
+ * acima de ~1 MB (HTTP 413 "Request Entity Too Large"). Acima deste tamanho de
+ * base64 (Configurações: baileys.inline_media_max_kb, padrão 600), o arquivo vai
+ * para uploads/wa_outbox/ com nome aleatório e o serviço recebe só o link (ele baixa).
+ * Devolve o próprio valor quando não precisa (pequeno, já é URL, ou falhou).
+ */
+function wa_media_for_api(string $media): string
+{
+    if ($media === '' || preg_match('#^https?://#i', $media)) {
+        return $media;
+    }
+    $limitRaw = wa_setting('inline_media_max_kb', '600');
+    $limitKb = is_numeric($limitRaw) ? (int)$limitRaw : 600; // 0 = sempre junto (desligado)
+    if ($limitKb <= 0 || strlen($media) <= $limitKb * 1024) {
+        return $media;
+    }
+    $public = wa_system_public_url();
+    if ($public === '') {
+        return $media;
+    }
+    $b64 = (string)preg_replace('#^data:[^;,]*;base64,#', '', $media);
+    $bin = base64_decode($b64, true);
+    if ($bin === false || $bin === '') {
+        return $media;
+    }
+    $dir = dirname(__DIR__) . '/uploads/wa_outbox';
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+        return $media;
+    }
+    // Pasta só de arquivos de passagem: nunca executa nada e não lista o conteúdo
+    if (!is_file($dir . '/.htaccess')) {
+        @file_put_contents($dir . '/.htaccess', "Options -Indexes -ExecCGI\n<IfModule mod_php.c>\nphp_flag engine off\n</IfModule>\nRemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8\nRemoveType .php .phtml\n");
+    }
+    // Limpeza: o serviço baixa na hora; nada aqui precisa durar mais de 1 dia
+    if (random_int(1, 20) === 1) {
+        foreach ((array)@glob($dir . '/*.bin') as $old) {
+            if (is_string($old) && @filemtime($old) < time() - 86400) {
+                @unlink($old);
+            }
+        }
+    }
+    $name = bin2hex(random_bytes(20)) . '.bin';
+    if (@file_put_contents($dir . '/' . $name, $bin, LOCK_EX) === false) {
+        return $media;
+    }
+    return $public . '/uploads/wa_outbox/' . $name;
+}
+
+/** Apaga o arquivo de passagem criado por wa_media_for_api() (o serviço já baixou). */
+function wa_media_outbox_release(string $value): void
+{
+    if (preg_match('#/uploads/wa_outbox/([a-f0-9]{40}\.bin)$#', $value, $m)) {
+        @unlink(dirname(__DIR__) . '/uploads/wa_outbox/' . $m[1]);
+    }
+}
+
+/**
+ * Erro da API do WhatsApp em texto que dá para ler (sem HTML da hospedagem).
+ * @param array $res retorno de WhatsAppApi::request()
+ */
+function wa_api_error_message(array $res): string
+{
+    $status = (int)($res['status'] ?? 0);
+    if ($status === 413) {
+        return 'o arquivo é grande demais para o servidor do WhatsApp (limite da hospedagem). Tente um arquivo menor.';
+    }
+    $j = is_array($res['json'] ?? null) ? $res['json'] : null;
+    if ($j) {
+        $m = $j['response']['message'] ?? ($j['message'] ?? ($j['error'] ?? null));
+        if (is_array($m)) {
+            $parts = [];
+            foreach ($m as $item) {
+                if (is_array($item) && array_key_exists('exists', $item) && !$item['exists']) {
+                    $parts[] = 'o número ' . ($item['number'] ?? '') . ' não tem WhatsApp';
+                } else {
+                    $parts[] = is_scalar($item) ? (string)$item : json_encode($item, JSON_UNESCAPED_UNICODE);
+                }
+            }
+            $m = implode('; ', $parts);
+        }
+        if (is_string($m) && trim($m) !== '') {
+            return trim($m);
+        }
+    }
+    $raw = trim((string)($res['body_raw'] ?? ''));
+    if ($raw !== '' && stripos($raw, '<html') !== false) {
+        // Página de erro da hospedagem: só o título
+        $raw = preg_match('#<title>(.*?)</title>#is', $raw, $t) ? trim(html_entity_decode(strip_tags($t[1]))) : trim(preg_replace('/\s+/', ' ', strip_tags($raw)));
+    }
+    $raw = mb_strimwidth((string)preg_replace('/\s+/', ' ', $raw), 0, 200, '…');
+    return $raw !== '' ? $raw . ($status ? ' (HTTP ' . $status . ')' : '') : ($status ? 'HTTP ' . $status : 'sem resposta do serviço WhatsApp');
+}
+
 /** Endereço público do sistema (sem barra no final), ou '' se não der para saber. */
 function wa_system_public_url(): string
 {
@@ -809,7 +903,7 @@ final class WhatsAppApi
             'number' => $number,
             'mediatype' => $mediaType,
             'fileName' => $fileName,
-            'media' => $media,
+            'media' => wa_media_for_api($media),
         ];
         if ($mimeType !== null && $mimeType !== '') {
             $body['mimetype'] = $mimeType;
@@ -822,7 +916,11 @@ final class WhatsAppApi
                 $body[$k] = $options[$k];
             }
         }
-        return $this->request('POST', '/message/sendMedia/' . $this->inst(), [], $body, 120);
+        try {
+            return $this->request('POST', '/message/sendMedia/' . $this->inst(), [], $body, 120);
+        } finally {
+            wa_media_outbox_release($body['media']);
+        }
     }
 
     public function sendContact(string $number, array $contactMessage, array $options = []): array
@@ -837,11 +935,15 @@ final class WhatsAppApi
     /** Nota de voz (o serviço converte para ogg/opus). */
     public function sendWhatsAppAudio(string $number, string $audio, array $options = []): array
     {
-        $body = ['number' => $number, 'audio' => $audio];
+        $body = ['number' => $number, 'audio' => wa_media_for_api($audio)];
         if (isset($options['delay'])) {
             $body['delay'] = $options['delay'];
         }
-        return $this->request('POST', '/message/sendWhatsAppAudio/' . $this->inst(), [], $body, 120);
+        try {
+            return $this->request('POST', '/message/sendWhatsAppAudio/' . $this->inst(), [], $body, 120);
+        } finally {
+            wa_media_outbox_release($body['audio']);
+        }
     }
 
     /** Modelos (templates) não existem no WhatsApp comum: o serviço responde 400. */
@@ -874,11 +976,16 @@ final class WhatsAppApi
 
     public function sendSticker(string $number, string $image, array $options = []): array
     {
-        return $this->request('POST', '/message/sendSticker/' . $this->inst(), [], [
-            'number' => $number,
-            'sticker' => $image,
-            'options' => (object)$options,
-        ]);
+        $sticker = wa_media_for_api($image);
+        try {
+            return $this->request('POST', '/message/sendSticker/' . $this->inst(), [], [
+                'number' => $number,
+                'sticker' => $sticker,
+                'options' => (object)$options,
+            ]);
+        } finally {
+            wa_media_outbox_release($sticker);
+        }
     }
 
     public function sendPoll(string $number, array $pollMessage, array $options = []): array

@@ -84,9 +84,9 @@ if ($mediaType === 'audio' && $audioBase64 !== '') {
             $response['message_id'] = $audioRowId;
             error_log("[$debugId] ✅ Áudio base64 enviado com sucesso");
         } else {
-            $errMsg = json_encode($res['json'] ?? $res['body_raw'] ?? '');
+            $errMsg = wa_api_error_message($res);
             error_log("[$debugId] ❌ Erro ao enviar áudio: HTTP $httpCode - $errMsg");
-            $response['error'] = 'Erro ao enviar mídia via WhatsApp: ' . $errMsg;
+            $response['error'] = 'Não foi possível enviar o áudio: ' . $errMsg;
         }
     } catch (Throwable $e) {
         error_log("[$debugId] ❌ Exceção: " . $e->getMessage());
@@ -289,7 +289,7 @@ try {
     
     if ($httpCode !== 200 && $httpCode !== 201) {
         error_log("[$debugId] ERRO: Falha ao enviar via API do WhatsApp");
-        throw new Exception('Erro ao enviar mídia via WhatsApp: ' . ($apiResponse['body_raw'] ?? 'Erro desconhecido'));
+        throw new Exception('Não foi possível enviar o arquivo: ' . wa_api_error_message(is_array($apiResponse) ? $apiResponse : []));
     }
     
     error_log("[$debugId] Mídia enviada com sucesso via API do WhatsApp");
