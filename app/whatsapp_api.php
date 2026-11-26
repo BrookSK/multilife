@@ -448,15 +448,24 @@ function wa_webhook_self_heal(bool $force = false): array
         if ($want === '' || !preg_match('#^https?://#i', $want)) {
             return $out;
         }
+        // Uma consulta só: os números que existem no serviço, já com o webhook de cada um
+        // (os que ainda não foram conectados no serviço ficam de fora, sem gerar erro)
+        $list = (new WhatsAppApi(null, null, wa_default_instance() !== '' ? wa_default_instance() : 'x'))->request('GET', '/instance/fetchInstances', [], null, 10);
+        $items = is_array($list['json'] ?? null) ? $list['json'] : [];
+        $system = [];
         foreach (whatsapp_list_all_instances() as $wi) {
-            $name = (string)($wi['instance_name'] ?? '');
-            if ($name === '') {
+            if ((string)($wi['instance_name'] ?? '') !== '') {
+                $system[(string)$wi['instance_name']] = true;
+            }
+        }
+        foreach ($items as $it) {
+            $it = is_array($it['instance'] ?? null) ? $it['instance'] : $it;
+            $name = (string)($it['name'] ?? ($it['instanceName'] ?? ''));
+            if ($name === '' || !isset($system[$name])) {
                 continue;
             }
-            $cur = whatsapp_webhook_find($name);
-            if (!$cur['ok']) {
-                continue; // número que ainda não existe no serviço
-            }
+            $wh = is_array($it['Webhook'] ?? null) ? $it['Webhook'] : [];
+            $cur = ['url' => (string)($wh['url'] ?? ''), 'enabled' => array_key_exists('enabled', $wh) ? (bool)$wh['enabled'] : null];
             $out['checked']++;
             if (rtrim($cur['url'], '/') === rtrim($want, '/') && $cur['enabled'] !== false) {
                 continue;
@@ -680,8 +689,9 @@ final class WhatsAppApi
                     $msg = json_encode($msg, JSON_UNESCAPED_UNICODE);
                 }
                 $msg = (string)$msg;
-                // 404 de instância na conexão é esperado: o cliente cria a instância e tenta de novo
-                $level = $status >= 500 ? 'error' : ($isSend ? 'error' : 'warn');
+                // Consulta de rotina (situação/webhook) a um número que não existe no serviço: só detalhe
+                $routine404 = $status === 404 && $method === 'GET' && preg_match('#^/?(instance/connectionState|webhook/find|settings/find|instance/fetchInstances)#', ltrim($path, '/'));
+                $level = $routine404 ? 'debug' : ($status >= 500 ? 'error' : ($isSend ? 'error' : 'warn'));
                 wa_event_log($level, $isSend ? 'enviada' : 'api', $isSend ? 'envio_recusado' : 'api_erro', $base + [
                     'summary' => ($isSend ? 'Envio NÃO feito' : 'Chamada ao serviço falhou') . ' (' . $route . ' → HTTP ' . $status . ')' . ($msg !== '' ? ': ' . mb_substr($msg, 0, 250) : ''),
                     'error' => $msg !== '' ? $msg : 'HTTP ' . $status,

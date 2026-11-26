@@ -76,7 +76,9 @@ function apiEventLog(req, res, next) {
     const b = req.body && typeof req.body === 'object' ? req.body : {};
     const number = b.number ?? b.groupJid ?? b.key?.remoteJid ?? b.remoteJid ?? req.query?.groupJid ?? null;
     const route = `${req.method} /${segs.slice(0, 2).join('/')}`;
-    const level = st === 503 ? 'warn' : st >= 500 ? 'error' : (st === 401 ? 'warn' : (st >= 400 ? 'warn' : (ACTION_PATHS.test(req.path) ? 'info' : 'debug')));
+    // Consulta de rotina a um número que não existe no serviço: só detalhe (o monitor pergunta toda hora)
+    const routine404 = quiet && st === 404;
+    const level = routine404 ? 'debug' : st === 503 ? 'warn' : st >= 500 ? 'error' : (st === 401 ? 'warn' : (st >= 400 ? 'warn' : (ACTION_PATHS.test(req.path) ? 'info' : 'debug')));
     const err = res.locals.errMsg ?? null;
     ev(level, st === 401 ? 'seguranca' : 'api', st === 401 ? 'chave_invalida' : (st >= 400 ? 'api_erro' : 'api_ok'), {
       instance: instName && manager.get(instName) ? instName : (instName ? String(instName).slice(0, 100) : null),
