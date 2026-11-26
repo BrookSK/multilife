@@ -132,13 +132,13 @@ $userInstanceNames = array_values(array_filter(array_map(
     $availableInstances
 ), static fn($n) => $n !== ''));
 $chatInstance = '';
-if ($instanceFilter !== '') {
+// ?ci= escolhido de propósito (ex.: Lista de Espera abre pelo WhatsApp que enviou a
+// captação, Nova Conversa pelo WhatsApp escolhido) vale mais que o filtro da lista.
+$ciParam = isset($_GET['ci']) ? trim((string)$_GET['ci']) : '';
+if ($ciParam !== '' && in_array($ciParam, $userInstanceNames, true)) {
+    $chatInstance = $ciParam;
+} elseif ($instanceFilter !== '') {
     $chatInstance = $instanceFilter;
-} else {
-    $ciParam = isset($_GET['ci']) ? trim((string)$_GET['ci']) : '';
-    if ($ciParam !== '' && in_array($ciParam, $userInstanceNames, true)) {
-        $chatInstance = $ciParam;
-    }
 }
 // Conversa privada aberta sem WhatsApp definido (link de outra tela): se o contato
 // tem mensagens em mais de um WhatsApp do usuário, abre no mais recente para não misturar.
@@ -289,6 +289,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // 2) Caso contrário, usa a instância do usuário logado (a conectada),
                 //    e só cai na instância padrão global se o usuário não tiver nenhuma.
                 // Sempre um WhatsApp DO USUÁRIO (o filtro, o da conversa ou o dele).
+                // WhatsApp escolhido na Nova Conversa vale primeiro (e a conversa abre nele)
+                $postedInstance = trim((string)($_POST['send_instance'] ?? ''));
+                if ($postedInstance !== '' && in_array($postedInstance, $userInstanceNames, true)) {
+                    $chatInstance = $postedInstance;
+                } elseif ($postedInstance !== '') {
+                    throw new Exception('O WhatsApp escolhido não está disponível para você.');
+                }
                 $sendInstance = whatsapp_chat_instance_for_user($currentUserId, $remoteJid, $chatInstance !== '' ? $chatInstance : $instanceFilter);
                 if ($sendInstance !== '') {
                     $api = new WhatsAppApi($baseUrl, $apiKey, $sendInstance);
@@ -1362,7 +1369,31 @@ echo '</div>';
 echo '<div style="flex:1;overflow-y:auto;padding:20px">';
 echo '<form method="post" action="/chat_web.php" id="newChatForm">';
 echo '<input type="hidden" name="action" value="send_message">';
-echo '<div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid #e0e0e0">';
+// De qual WhatsApp enviar: o usuário escolhe (nunca o sistema por conta própria)
+$newChatDefault = $chatInstance !== '' ? $chatInstance : ($instanceFilter !== '' ? $instanceFilter : (string)($userInstance['instance_name'] ?? ''));
+$newChatOptions = [];
+foreach ($availableInstances as $inst) {
+    $n = (string)($inst['instance_name'] ?? '');
+    if ($n === '') {
+        continue;
+    }
+    $connected = in_array(strtolower((string)($inst['connection_status'] ?? '')), ['connected', 'open'], true);
+    $newChatOptions[$n] = ($instanceLabels[$n] ?? $n) . ($connected ? '' : ' (desconectado)');
+}
+if (count($newChatOptions) > 1) {
+    echo '<label style="display:block;margin-bottom:8px;font-weight:600;color:#111b21">Enviar pelo WhatsApp:</label>';
+    echo '<select name="send_instance" required style="width:100%;padding:12px;border:1px solid #d1d7db;border-radius:8px;font-size:14px;margin-bottom:16px">';
+    echo '<option value="">-- Escolha o WhatsApp --</option>';
+    foreach ($newChatOptions as $n => $label) {
+        echo '<option value="' . h($n) . '"' . ($n === $newChatDefault ? ' selected' : '') . '>' . h($label) . '</option>';
+    }
+    echo '</select>';
+} elseif (count($newChatOptions) === 1) {
+    $only = (string)array_key_first($newChatOptions);
+    echo '<input type="hidden" name="send_instance" value="' . h($only) . '">';
+    echo '<div style="margin-bottom:16px;font-size:13px;color:#667781">Enviar pelo WhatsApp: <strong>' . h($newChatOptions[$only]) . '</strong></div>';
+}
+echo '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;border-bottom:1px solid #e0e0e0">';
 echo '<button type="button" onclick="switchTab(\'professionals\')" id="tabProfessionals" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid #00a884;color:#00a884;font-weight:600;cursor:pointer">Profissionais</button>';
 echo '<button type="button" onclick="switchTab(\'patients\')" id="tabPatients" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#54656f;cursor:pointer">Pacientes</button>';
 echo '<button type="button" onclick="switchTab(\'manual\')" id="tabManual" style="padding:12px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#54656f;cursor:pointer">Número Manual</button>';
@@ -2482,9 +2513,13 @@ if ($chatType === 'grupos') {
         $stmtWaitCount->execute($waitParams);
         $waitTotal = (int)$stmtWaitCount->fetchColumn();
 
+        // WhatsApp que enviou a captação: o do disparo; disparos antigos (sem a coluna
+        // preenchida) usam o WhatsApp registrado no grupo.
+        $dispatchInstSql = demand_dispatch_ensure_log_instance_column()
+            ? "COALESCE(NULLIF(dl.instance_name, ''), wg.instance_name)" : 'wg.instance_name';
         $stmtWait = db()->prepare("
             SELECT dip.*, d.title as demand_title, d.id as demand_id, d.specialty,
-                   dl.id as dispatch_id, wg.name as group_name
+                   dl.id as dispatch_id, wg.name as group_name, $dispatchInstSql AS dispatch_instance
             FROM demand_interested_professionals dip
             INNER JOIN demands d ON d.id = dip.demand_id
             LEFT JOIN demand_dispatch_logs dl ON dl.id = dip.dispatch_log_id
@@ -2577,13 +2612,19 @@ if ($chatType === 'grupos') {
                             $proJid = '';
                         }
                     }
-                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' . $instanceQS . $attendantQS : '#';
+                    // Abre a conversa pelo WhatsApp que enviou a captação (se for um dos do usuário)
+                    $proInst = (string)($pro['dispatch_instance'] ?? '');
+                    $proCiQS = ($proInst !== '' && in_array($proInst, $userInstanceNames, true)) ? '&ci=' . rawurlencode($proInst) : '';
+                    $linkHref = $proJid !== '' ? '/chat_web.php?chat=' . urlencode($proJid) . '&type=all' . $instanceQS . $attendantQS . $proCiQS : '#';
                     
-                    echo '<a href="' . $linkHref . '" class="whatsapp-chat-item">';
+                    echo '<a href="' . h($linkHref) . '" class="whatsapp-chat-item">';
                     echo '<div class="whatsapp-chat-avatar" style="background:#e8f5e9;color:#2e7d32;font-size:18px;display:flex;align-items:center;justify-content:center">' . $proEmoji . '</div>';
                     echo '<div class="whatsapp-chat-info">';
                     echo '<div class="whatsapp-chat-name">' . h($proName) . '</div>';
                     echo '<div class="whatsapp-chat-preview" style="font-size:12px;color:#667781">Reagiu em ' . h($proDate) . '</div>';
+                    if ($proInst !== '') {
+                        echo '<div class="whatsapp-chat-instance">📱 ' . h($instanceLabels[$proInst] ?? $proInst) . ($proCiQS === '' ? ' (não é um WhatsApp seu)' : '') . '</div>';
+                    }
                     echo '</div>';
                     echo '</a>';
                 }

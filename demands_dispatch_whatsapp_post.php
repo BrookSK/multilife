@@ -1952,6 +1952,12 @@ foreach ($toSend as $row) {
             }
             
             $updOne->execute(['st' => 'sent', 'err' => null, 'id' => $logId]);
+            // WhatsApp que enviou (a Lista de Espera abre a conversa por ele)
+            if (function_exists('demand_dispatch_ensure_log_instance_column') && demand_dispatch_ensure_log_instance_column()) {
+                try {
+                    db()->prepare('UPDATE demand_dispatch_logs SET instance_name = ? WHERE id = ?')->execute([(string)$sendInstName, $logId]);
+                } catch (Throwable $e) {}
+            }
             
             // Salvar external_message_id para vincular reações
             if ($externalMsgId) {

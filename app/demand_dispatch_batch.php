@@ -256,6 +256,28 @@ function demand_dispatch_ensure_run_columns(): void
 }
 
 /**
+ * Coluna demand_dispatch_logs.instance_name: o WhatsApp que enviou a captação ao
+ * grupo. A Lista de Espera abre a conversa com quem reagiu por esse mesmo número.
+ */
+function demand_dispatch_ensure_log_instance_column(): bool
+{
+    static $ok = null;
+    if ($ok !== null) {
+        return $ok;
+    }
+    try {
+        if (!db()->query("SHOW COLUMNS FROM demand_dispatch_logs LIKE 'instance_name'")->fetch()) {
+            db()->exec('ALTER TABLE demand_dispatch_logs ADD COLUMN instance_name VARCHAR(100) NULL');
+        }
+        $ok = true;
+    } catch (Throwable $e) {
+        error_log('[DISPATCH] coluna instance_name: ' . $e->getMessage());
+        $ok = false;
+    }
+    return $ok;
+}
+
+/**
  * Cria um "run" de disparo completo e enfileira o job que o executará no worker.
  *
  * @return int run_id criado
@@ -529,6 +551,12 @@ function demand_dispatch_confirm_from_webhook(string $event, array $data): void
         $upd->execute(['eid' => $externalId !== '' ? $externalId : null, 'tk' => $token]);
         if ($upd->rowCount() === 0) {
             return; // já estava confirmado
+        }
+        $confInst = trim((string)($data['instance'] ?? ($data['instanceName'] ?? '')));
+        if ($confInst !== '' && demand_dispatch_ensure_log_instance_column()) {
+            db()->prepare("UPDATE demand_dispatch_logs SET instance_name = :inst
+                           WHERE capture_token = :tk AND (instance_name IS NULL OR instance_name = '')")
+                ->execute(['inst' => $confInst, 'tk' => $token]);
         }
         if (function_exists('wa_event_log')) {
             wa_event_log('info', 'captacao', 'disparo_confirmado', [
