@@ -1064,6 +1064,13 @@ function wa_pairing_guard(string $instanceName, ?string $ownerNumber = null, ?ar
     }
 
     $where = implode(' e ', array_values($conflicts));
+    if (function_exists('wa_event_log')) {
+        wa_event_log('error', 'conexao', 'desconectado_numero_duplicado', [
+            'instance' => $instanceName,
+            'summary' => 'O SISTEMA desconectou este número porque o mesmo número ' . $display . ' está ' . $where,
+            'details' => ['conflitos' => array_keys($conflicts), 'numero' => $display],
+        ]);
+    }
     $message = 'O número ' . $display . ' já está ' . $where . '. Duas conexões com o mesmo número disputam a sessão e as mensagens somem, '
         . 'por isso esta conexão nova foi desfeita. '
         . ($inSystem

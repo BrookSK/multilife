@@ -798,6 +798,15 @@ final class WhatsAppApi
 
     public function logoutInstance(?string $instanceName = null): array
     {
+        if (function_exists('wa_event_log')) {
+            $caller = wa_event_log_caller();
+            wa_event_log('warn', 'conexao', 'logout_pedido_pelo_sistema', [
+                'instance' => (string)($instanceName ?? $this->instance),
+                'summary' => 'O sistema pediu para DESCONECTAR este número (' . $caller . ')',
+                'details' => ['quemChamou' => $caller, 'usuario' => function_exists('auth_user_id') ? auth_user_id() : null,
+                    'tela' => (string)($_SERVER['SCRIPT_NAME'] ?? '')],
+            ]);
+        }
         return $this->request('DELETE', '/instance/logout/' . $this->inst($instanceName), [], null, 20);
     }
 
