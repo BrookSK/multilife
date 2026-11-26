@@ -36,6 +36,12 @@ export const currentWaVersion = () => waVersionCache.v;
 export const warmWaVersion = () => waVersion();
 
 const RECONNECT_DELAYS = [2, 5, 10, 20, 30, 60];
+/** Pedidos ao WhatsApp sobre o mesmo grupo: no máximo 1 a cada 30 s. */
+const GROUP_REFRESH_MIN_MS = 30000;
+/** Lista de todos os grupos: no máximo 1 pedido a cada 2 min. */
+const ALL_GROUPS_TTL_MS = 120000;
+/** Pausa das ações de grupo depois de "rate-overlimit". */
+const GROUP_PAUSE_MS = 10 * 60000;
 const IGNORED_TYPES = new Set(['senderKeyDistributionMessage', 'messageContextInfo', 'unknown']);
 // protocolMessage que interessam ao PHP: apagar (REVOKE) e editar (MESSAGE_EDIT)
 const KEPT_PROTOCOL_TYPES = new Set(['REVOKE', 'MESSAGE_EDIT', 0, 14]);
@@ -83,6 +89,12 @@ export class Instance {
 
     this.apiSent = new TtlCache(10 * 60 * 1000, 5000);
     this.groupCache = new TtlCache(5 * 60 * 1000, 2000);
+    this.groupFetchedAt = new Map();
+    this.groupInflight = new Map();
+    this.groupBlockedUntil = 0;
+    this.groupOps = [];
+    /** Última lista de todos os grupos: {at, data, inflight} */
+    this.allGroups = { at: 0, data: null, inflight: null };
     this.waCache = new TtlCache(24 * 3600 * 1000, 20000);
     this.retryCache = new TtlCache(10 * 60 * 1000, 10000);
 
@@ -497,24 +509,37 @@ export class Instance {
 
     if (events['groups.upsert']) {
       activity = true;
+      this.invalidateGroups();
       for (const g of events['groups.upsert']) {
         this.groupCache.set(g.id, g);
+        this.groupFetchedAt.set(g.id, Date.now());
         this.ev('info', 'grupo', 'entrou_no_grupo', { jid: g.id, summary: `Número entrou/foi adicionado no grupo "${g.subject ?? ''}"`, details: { participantes: g.participants?.length ?? null } });
       }
       this.dispatcher.enqueue('groups.upsert', events['groups.upsert']);
     }
     if (events['groups.update']) {
       activity = true;
+      let fullCount = 0;
       for (const g of events['groups.update']) {
-        if (g.id) this.groupCache.del(g.id);
+        if (!g.id) continue;
+        // Lista completa vinda de uma consulta nossa (groupFetchAllParticipating
+        // devolve cada grupo como "update"): guarda, não é alteração de verdade
+        if (Array.isArray(g.participants) && g.subject !== undefined) {
+          this.groupCache.set(g.id, g);
+          this.groupFetchedAt.set(g.id, Date.now());
+          fullCount++;
+          continue;
+        }
+        this.invalidateGroups(g.id);
         this.ev('info', 'grupo', 'grupo_alterado', { jid: g.id, summary: 'Grupo alterado: ' + Object.keys(g).filter((k) => k !== 'id').join(', '), details: g });
       }
+      if (fullCount) this.ev('debug', 'grupo', 'lista_de_grupos', { summary: `Lista de ${fullCount} grupo(s) atualizada (consulta ao WhatsApp)` });
       this.dispatcher.enqueue('groups.update', events['groups.update']);
     }
     if (events['group-participants.update']) {
       activity = true;
       const u = events['group-participants.update'];
-      this.groupCache.del(u.id);
+      this.invalidateGroups(u.id);
       const nomes = { add: 'entraram', remove: 'saíram/foram removidos', promote: 'viraram admin', demote: 'deixaram de ser admin', modify: 'mudaram' };
       const ids = (u.participants ?? []).map((p) => (typeof p === 'string' ? p : (p.phoneNumber || p.id)));
       this.ev('info', 'grupo', 'participantes_' + u.action, {
@@ -638,7 +663,11 @@ export class Instance {
         http: Number.isFinite(code) ? code : undefined,
         summary: `Conexão fechada: ${disconnectReasonName(code)}${reason ? ' (motivo interno: ' + reason + ')' : ''}`,
         error: err?.message ?? null,
-        details: { codigo: code, motivo: reason, ficouConectadoSeg: openedFor, dados: err?.data ?? null },
+        details: {
+          codigo: code, motivo: reason, ficouConectadoSeg: openedFor, dados: err?.data ?? null,
+          acoesDeGrupo15min: this.groupOpsSummary(),
+          limitadoPeloWhatsApp: this.groupLimited(),
+        },
       });
     }
 
@@ -944,14 +973,171 @@ export class Instance {
     return out;
   }
 
+  /**
+   * Dados do grupo. Cada captação pede o mesmo grupo várias vezes seguidas
+   * (remetente, membros, admin): pedidos ao WhatsApp para o MESMO grupo ficam
+   * no máximo 1 a cada 30 s (mesmo com force) e pedidos simultâneos viram um só.
+   * Consulta demais ao WhatsApp gera "rate-overlimit" e pode derrubar o aparelho.
+   */
   async groupMeta(jid, force = false) {
-    if (!force) {
-      const c = this.groupCache.get(jid);
-      if (c) return c;
+    const cached = this.groupCache.get(jid);
+    const age = cached ? Date.now() - (this.groupFetchedAt.get(jid) ?? 0) : Infinity;
+    if (cached && (!force || age < GROUP_REFRESH_MIN_MS)) return cached;
+    if (this.groupInflight.has(jid)) return this.groupInflight.get(jid);
+    if (this.groupLimited()) {
+      if (cached) return cached;
+      throw this.groupLimitError();
     }
-    const meta = await this.ensureOpen().groupMetadata(jid);
-    this.groupCache.set(jid, meta);
-    return meta;
+    this.noteGroupOp('consultas');
+    const p = this.ensureOpen().groupMetadata(jid)
+      .then((meta) => {
+        this.groupCache.set(jid, meta);
+        this.groupFetchedAt.set(jid, Date.now());
+        return meta;
+      })
+      .catch((e) => {
+        this.noteGroupError(e, 'consultar o grupo', jid);
+        if (cached) return cached;
+        throw e;
+      })
+      .finally(() => this.groupInflight.delete(jid));
+    this.groupInflight.set(jid, p);
+    return p;
+  }
+
+  /** Conta ações de grupo feitas no WhatsApp (aparece na linha da queda, se houver). */
+  noteGroupOp(kind) {
+    const now = Date.now();
+    this.groupOps.push([now, kind]);
+    while (this.groupOps.length && now - this.groupOps[0][0] > 15 * 60000) this.groupOps.shift();
+  }
+
+  groupOpsSummary() {
+    const now = Date.now();
+    const out = {};
+    for (const [t, k] of this.groupOps) if (now - t <= 15 * 60000) out[k] = (out[k] ?? 0) + 1;
+    return out;
+  }
+
+  /** O WhatsApp limitou as ações de grupo deste número (rate-overlimit) há pouco? */
+  groupLimited() {
+    return Date.now() < this.groupBlockedUntil;
+  }
+
+  groupLimitError() {
+    const min = Math.max(1, Math.ceil((this.groupBlockedUntil - Date.now()) / 60000));
+    return new HttpError(429, `O WhatsApp limitou as ações de grupo deste número (rate-overlimit). Pausado por ${min} min para não derrubar a conexão.`);
+  }
+
+  /**
+   * Erro em ação de grupo: "rate-overlimit" pausa as ações de grupo deste número
+   * por GROUP_PAUSE_MS. Insistir nesse estado é o que leva o WhatsApp a
+   * desconectar o aparelho.
+   */
+  noteGroupError(e, what, jid = null) {
+    const msg = String(e?.message ?? e ?? '');
+    if (!/rate-overlimit|rate_overlimit|429/i.test(msg) && Number(e?.output?.statusCode) !== 429) return;
+    const first = !this.groupLimited();
+    this.groupBlockedUntil = Date.now() + GROUP_PAUSE_MS;
+    this.ev('error', 'grupo', 'limite_do_whatsapp', {
+      jid,
+      summary: `O WhatsApp respondeu "rate-overlimit" ao ${what}: ações de grupo deste número pausadas por ${Math.round(GROUP_PAUSE_MS / 60000)} min`
+        + (first ? '' : ' (de novo)') + '. Envios de mensagem continuam.',
+      error: msg,
+    });
+  }
+
+  /** Antes de uma ação de grupo que altera algo (criar, adicionar...). */
+  assertGroupAllowed() {
+    if (this.groupLimited()) throw this.groupLimitError();
+  }
+
+  /**
+   * Todos os grupos do número. É a consulta mais pesada para o WhatsApp: no
+   * máximo 1 a cada 2 min (cada captação pedia a lista inteira).
+   */
+  async allGroupsCached() {
+    const a = this.allGroups;
+    if (a.data && Date.now() - a.at < ALL_GROUPS_TTL_MS) return a.data;
+    if (a.inflight) return a.inflight;
+    if (this.groupLimited()) {
+      if (a.data) return a.data;
+      throw this.groupLimitError();
+    }
+    this.noteGroupOp('listasDeGrupos');
+    a.inflight = this.ensureOpen().groupFetchAllParticipating()
+      .then((all) => {
+        a.data = all ?? {};
+        a.at = Date.now();
+        for (const meta of Object.values(a.data)) {
+          this.groupCache.set(meta.id, meta);
+          this.groupFetchedAt.set(meta.id, a.at);
+        }
+        return a.data;
+      })
+      .catch((e) => {
+        this.noteGroupError(e, 'listar os grupos');
+        if (a.data) return a.data;
+        throw e;
+      })
+      .finally(() => {
+        a.inflight = null;
+      });
+    return a.inflight;
+  }
+
+  /** Grupo mudou (criado, saiu, participantes): a lista guardada não vale mais. */
+  invalidateGroups(jid = null) {
+    if (jid) {
+      this.groupCache.del(jid);
+      this.groupFetchedAt.delete(jid);
+    }
+    this.allGroups.at = 0;
+  }
+
+  /** Chaves de um participante para comparar: número e LID, sem o ":device". */
+  async participantKeys(p) {
+    const keys = new Set();
+    const add = (j) => {
+      if (typeof j === 'string' && j.includes('@')) keys.add(jidNormalizedUser(j));
+    };
+    add(p.id);
+    add(p.phoneNumber);
+    add(p.lid);
+    if (isLid(p.id) && !p.phoneNumber) add(await this.lidToPn(p.id).catch(() => null));
+    return keys;
+  }
+
+  /**
+   * Adicionar ao grupo SÓ quem ainda não está (nem o próprio número).
+   * Re-adicionar membros já presentes é o que o WhatsApp trata como abuso: era
+   * o caminho para o "rate-overlimit" e a queda do aparelho nas captações.
+   * @returns {Promise<{toAdd:string[], already:string[]}>}
+   */
+  async filterNewMembers(groupJid, jids) {
+    const meta = await this.groupMeta(groupJid, true);
+    const present = new Set();
+    for (const p of meta?.participants ?? []) for (const k of await this.participantKeys(p)) present.add(k);
+    const me = this.sock?.user;
+    const self = new Set([me?.id, me?.lid].filter(Boolean).map((j) => jidNormalizedUser(j)));
+    const toAdd = [];
+    const already = [];
+    for (const j of jids) {
+      const n = jidNormalizedUser(j);
+      let lid = null;
+      if (isPn(n)) {
+        try {
+          lid = (await this.sock?.signalRepository?.lidMapping?.getLIDForPN?.(n)) ?? null;
+        } catch {
+          lid = null;
+        }
+      }
+      const variants = [n, ...brVariants(onlyDigits(n.split('@')[0])).map((d) => d + '@s.whatsapp.net'), lid && jidNormalizedUser(lid)].filter(Boolean);
+      if (variants.some((v) => self.has(v))) continue;
+      if (variants.some((v) => present.has(v))) already.push(n);
+      else toAdd.push(n);
+    }
+    return { toAdd, already };
   }
 
   /** Mensagem citada (quoted da Evolution) -> WAMessage. */

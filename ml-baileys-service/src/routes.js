@@ -659,10 +659,20 @@ function groupRoutes(app) {
     const b = req.body ?? {};
     if (!b.subject) throw new HttpError(400, 'subject is required');
     const sock = inst.ensureOpen();
+    inst.assertGroupAllowed();
     const participants = await participantJids(inst, b.participants ?? []);
-    const meta = await sock.groupCreate(String(b.subject), participants);
+    let meta;
+    inst.noteGroupOp('gruposCriados');
+    try {
+      meta = await sock.groupCreate(String(b.subject), participants);
+    } catch (e) {
+      inst.noteGroupError(e, 'criar o grupo');
+      throw e;
+    }
     if (b.description) await sock.groupUpdateDescription(meta.id, String(b.description)).catch(() => {});
+    inst.invalidateGroups(meta.id);
     inst.groupCache.set(meta.id, meta);
+    inst.groupFetchedAt.set(meta.id, Date.now());
     return toEvolutionGroup(meta, true, lidFn(inst));
   }, 201));
 
@@ -670,7 +680,7 @@ function groupRoutes(app) {
     const inst = manager.must(req.params.instance);
     const jid = groupJidOf(req);
     await inst.ensureOpen().groupUpdateSubject(jid, String(param(req, 'subject') ?? ''));
-    inst.groupCache.del(jid);
+    inst.invalidateGroups(jid);
     return { update: 'success' };
   }, 201);
   app.put('/group/updateGroupSubject/:instance', updateSubject);
@@ -680,7 +690,7 @@ function groupRoutes(app) {
     const inst = manager.must(req.params.instance);
     const jid = groupJidOf(req);
     await inst.ensureOpen().groupUpdateDescription(jid, String(param(req, 'description') ?? ''));
-    inst.groupCache.del(jid);
+    inst.invalidateGroups(jid);
     return { update: 'success' };
   }, 201);
   app.put('/group/updateGroupDescription/:instance', updateDesc);
@@ -706,12 +716,10 @@ function groupRoutes(app) {
   app.get('/group/fetchAllGroups/:instance', wrap(async (req) => {
     const inst = manager.must(req.params.instance);
     const withParts = truthy(req.query.getParticipants ?? req.query.getMembers);
-    const all = await inst.ensureOpen().groupFetchAllParticipating();
+    inst.ensureOpen();
+    const all = await inst.allGroupsCached();
     const out = [];
-    for (const meta of Object.values(all ?? {})) {
-      inst.groupCache.set(meta.id, meta);
-      out.push(await toEvolutionGroup(meta, withParts, lidFn(inst)));
-    }
+    for (const meta of Object.values(all ?? {})) out.push(await toEvolutionGroup(meta, withParts, lidFn(inst)));
     return out;
   }));
 
@@ -773,9 +781,34 @@ function groupRoutes(app) {
     if (!['add', 'remove', 'promote', 'demote'].includes(action)) throw new HttpError(400, 'action inválida (add, remove, promote, demote)');
     const parts = await participantJids(inst, param(req, 'participants') ?? []);
     if (!parts.length) throw new HttpError(400, 'participants is required');
-    const res = await inst.ensureOpen().groupParticipantsUpdate(jid, parts, action);
-    inst.groupCache.del(jid);
-    return { updateParticipants: (res ?? []).map((r) => ({ status: String(r.status), jid: r.jid, content: r.content ?? null })) };
+    const sock = inst.ensureOpen();
+    inst.assertGroupAllowed();
+    let toChange = parts;
+    let already = [];
+    if (action === 'add') {
+      ({ toAdd: toChange, already } = await inst.filterNewMembers(jid, parts));
+      if (already.length) {
+        inst.ev('info', 'grupo', 'ja_eram_membros', {
+          jid,
+          summary: `${already.length} de ${parts.length} número(s) já estavam no grupo: NÃO foram adicionados de novo`,
+          details: { jaMembros: already.slice(0, 50), aAdicionar: toChange.slice(0, 50) },
+        });
+      }
+    }
+    const result = already.map((j) => ({ status: '409', jid: j, content: 'já é membro' }));
+    if (toChange.length) {
+      let res;
+      inst.noteGroupOp(action === 'add' ? 'adicoes' : 'alteracoesDeParticipantes');
+      try {
+        res = await sock.groupParticipantsUpdate(jid, toChange, action);
+      } catch (e) {
+        inst.noteGroupError(e, action === 'add' ? 'adicionar participantes' : 'alterar participantes', jid);
+        throw e;
+      }
+      inst.invalidateGroups(jid);
+      for (const x of res ?? []) result.push({ status: String(x.status), jid: x.jid, content: x.content ?? null });
+    }
+    return { updateParticipants: result };
   }, 201);
   for (const p of ['/group/updateParticipant/:instance', '/group/updateParticipant/:instance/:action']) {
     app.post(p, updateParticipant);
@@ -790,7 +823,7 @@ function groupRoutes(app) {
       throw new HttpError(400, 'action inválida (announcement, not_announcement, locked, unlocked)');
     }
     await inst.ensureOpen().groupSettingUpdate(jid, action);
-    inst.groupCache.del(jid);
+    inst.invalidateGroups(jid);
     return { updateSetting: true };
   }, 201);
   for (const p of ['/group/updateSetting/:instance', '/group/setting/:instance']) {
@@ -810,7 +843,7 @@ function groupRoutes(app) {
     const inst = manager.must(req.params.instance);
     const jid = groupJidOf(req);
     await inst.ensureOpen().groupLeave(jid);
-    inst.groupCache.del(jid);
+    inst.invalidateGroups(jid);
     return { groupJid: jid, leave: true };
   }));
 }

@@ -105,6 +105,12 @@ O que é registrado:
   Sem gravação parcial por chave, sem Redis, sem cache externo.
 - **Webhook desacoplado**: fila em memória, entrega em paralelo limitado
   (timeout 10 s, 5 tentativas com espera crescente). O WhatsApp nunca espera o webhook.
+- **Ações de grupo com freio** (`instance.js`): consulta ao mesmo grupo no máximo
+  1 a cada 30 s (pedidos simultâneos viram um), lista de todos os grupos no máximo
+  1 a cada 2 min, "adicionar" pula quem já é membro (por número, LID e nono
+  dígito) e o próprio número, e um `rate-overlimit` do WhatsApp pausa as ações de
+  grupo do número por 10 min (HTTP 429). Excesso de ações de grupo é o caminho
+  para o WhatsApp desconectar o aparelho (401).
 - **Sem logout automático em silêncio**: o monitor detecta e avisa; o `heal`
   só reinicia o socket (sem QR) e só quando a instância está `silent`.
 - Número brasileiro: o envio confirma no WhatsApp (`onWhatsApp`) o JID real,
