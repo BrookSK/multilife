@@ -869,6 +869,16 @@ function whatsapp_number_display(?string $raw): string
 }
 
 /**
+ * Número cadastrado na API oficial (Meta)? Ele não é uma conexão por QR Code:
+ * não disputa a sessão com o Baileys/Evolution, então não conta como "número
+ * duplicado" (contar fazia o sistema desfazer a conexão por QR do mesmo número).
+ */
+function wa_watchdog_is_cloud_row(string $instanceName): bool
+{
+    return function_exists('wa_cloud_instance') && wa_cloud_instance($instanceName) !== null;
+}
+
+/**
  * Outras instâncias ATIVAS do sistema com o mesmo número.
  *
  * @return array<int,array{instance:string,label:string}>
@@ -881,7 +891,7 @@ function whatsapp_instances_with_number(string $number, string $exceptInstance =
     }
     $out = [];
     foreach (wa_watchdog_system_instances() as $name => $row) {
-        if ($name === $exceptInstance) {
+        if ($name === $exceptInstance || wa_watchdog_is_cloud_row($name)) {
             continue;
         }
         $k1 = whatsapp_number_key((string)($row['owner_phone_formatted'] ?? ''));
@@ -902,6 +912,9 @@ function whatsapp_duplicate_number_map(): array
 {
     $byKey = [];
     foreach (wa_watchdog_system_instances() as $name => $row) {
+        if (wa_watchdog_is_cloud_row($name)) {
+            continue;
+        }
         $key = whatsapp_number_key((string)($row['owner_phone_formatted'] ?: ($row['owner_number'] ?? '')));
         if ($key !== '') {
             $byKey[$key][] = $name;
