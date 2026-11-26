@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 function http_json_request(string $method, string $url, array $headers = [], $body = null, int $timeoutSeconds = 30): array
 {
+    // API oficial do WhatsApp: "cloud-gateway://local/<rota>" é atendido aqui mesmo
+    // (app/whatsapp_cloud_gateway.php), sem passar pela rede.
+    if (str_starts_with($url, 'cloud-gateway://') && function_exists('wa_cloud_gateway')) {
+        $rest = (string)substr($url, strlen('cloud-gateway://'));
+        $slash = strpos($rest, '/');
+        $path = $slash === false ? '/' : substr($rest, $slash);
+        return wa_cloud_gateway($method, $path, [], $body, $timeoutSeconds);
+    }
+
     $ch = curl_init();
     if ($ch === false) {
         throw new RuntimeException('curl_init failed');

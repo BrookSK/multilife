@@ -103,6 +103,28 @@ function chat_store_sent_media(array $f): int
     }
 }
 
+/**
+ * Coluna chat_messages.send_error (motivo de "não entregue" informado pela API
+ * oficial). Criada sozinha na primeira vez; false se não deu para criar.
+ */
+function chat_send_error_column(): bool
+{
+    static $ok = null;
+    if ($ok !== null) {
+        return $ok;
+    }
+    try {
+        if (!db()->query("SHOW COLUMNS FROM chat_messages LIKE 'send_error'")->fetch()) {
+            db()->exec('ALTER TABLE chat_messages ADD COLUMN send_error VARCHAR(255) NULL');
+        }
+        $ok = true;
+    } catch (Throwable $e) {
+        error_log('[CHAT_STORE] send_error: ' . $e->getMessage());
+        $ok = false;
+    }
+    return $ok;
+}
+
 /** Mesmo formato usado no resto do chat: número@s.whatsapp.net ou id@g.us. */
 function chat_store_normalize_jid(string $jid): string
 {

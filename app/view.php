@@ -85,6 +85,8 @@ function view_header(string $title): void
             ['title' => 'RH', 'path' => '/hr_dashboard.php', 'perm' => 'hr.manage'],
             ['title' => 'Usuários', 'path' => '/users_list.php', 'perm' => 'users.manage'],
             ['title' => 'Chat ao Vivo', 'path' => '/chat_web.php', 'perm' => 'chat.manage'],
+            // Conversa entre a equipe, dentro do sistema (sem WhatsApp): app/internal_chat.php
+            ['title' => 'Chat Interno', 'path' => '/internal_chat.php', 'perm' => null],
             ['title' => 'Contatos', 'path' => '/imported_contacts_list.php', 'perm' => ['chat.manage', 'demands.manage']],
             // Cadastros básicos usados na captação (captador tem 'cadastros.manage').
             ['title' => 'Especialidades', 'path' => '/specialties_list.php', 'perm' => ['admin.settings.manage', 'cadastros.manage']],
@@ -125,8 +127,9 @@ function view_header(string $title): void
     echo '<html lang="pt-BR">';
     echo '<head>';
     echo '<meta charset="utf-8">';
-    echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">';
     echo '<title>' . h($title) . '</title>';
+    echo pwa_head_tags();
     echo '<style>';
     echo "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');";
     echo ':root{--background:0 0% 100%;--foreground:0 0% 0%;--card:0 0% 100%;--card-foreground:0 0% 0%;--popover:0 0% 100%;--popover-foreground:0 0% 0%;--primary:180 65% 46%;--primary-foreground:0 0% 100%;--primary-dark:180 71% 36%;--primary-darker:180 71% 28%;--secondary:216 33% 97%;--secondary-foreground:0 0% 0%;--muted:216 33% 97%;--muted-foreground:0 0% 35%;--accent:180 65% 95%;--accent-foreground:180 71% 28%;--destructive:0 65% 55%;--destructive-foreground:0 0% 100%;--warning:36 90% 55%;--warning-foreground:0 0% 100%;--info:210 70% 55%;--info-foreground:0 0% 100%;--success:180 65% 46%;--success-foreground:0 0% 100%;--border:216 20% 90%;--input:216 20% 90%;--ring:180 65% 46%;--radius:0.625rem;--shadow-card:0 1px 3px 0 rgba(0,0,0,.06),0 1px 2px -1px rgba(0,0,0,.06);--shadow-card-hover:0 4px 12px 0 rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.06);--shadow-elevated:0 10px 25px -5px rgba(0,0,0,.08),0 8px 10px -6px rgba(0,0,0,.04);--text:hsl(var(--foreground));--mutedText:hsl(var(--muted-foreground));--cardBorder:hsl(var(--border));}';
@@ -319,8 +322,77 @@ function view_header(string $title): void
     echo '@media(max-width:1280px){.kpiGrid{grid-template-columns:repeat(3,minmax(0,1fr))}}';
     echo '@media(max-width:780px){.kpiGrid{grid-template-columns:repeat(1,minmax(0,1fr))}}';
 
-    echo '@media(max-width:860px){.col6{grid-column:span 12}.col8{grid-column:span 12}.col4{grid-column:span 12}}';
-    echo '@media(max-width:980px){.sidebar{position:static;height:auto;width:100%}.mainCol{margin-left:0}.mainCol.isCollapsed{margin-left:0}.appShell{flex-direction:column}.collapseBtn{display:none}.topbar{position:static}}';
+    echo '@media(max-width:860px){.col3{grid-column:span 6}.col6{grid-column:span 12}.col8{grid-column:span 12}.col4{grid-column:span 12}}';
+    // Contador do Chat Interno no menu
+    echo '.navBadge{margin-left:auto;background:hsl(var(--destructive));color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}';
+    echo '.navItem.isActive .navBadge{background:#fff;color:hsl(var(--primary-darker))}';
+    echo '.sidebar.isCollapsed .navBadge{position:absolute;margin:0;left:40px;top:2px;min-width:16px;height:16px;font-size:10px}';
+    echo '.sidebar.isCollapsed .navItem{position:relative}';
+    echo '.mobileBar,.sidebarOverlay{display:none}';
+    echo '.pwaBanner{display:none}';
+    // ---- Celular e tablet: menu em gaveta, barra fixa no topo, conteúdo em uma coluna ----
+    echo '@media(max-width:980px){'
+        . '.appShell{display:block}'
+        . '.sidebar{position:fixed;left:0;top:0;bottom:0;height:100%;height:100dvh;width:min(300px,86vw) !important;transform:translateX(-105%);transition:transform .25s ease;z-index:10010;box-shadow:none;padding-bottom:env(safe-area-inset-bottom)}'
+        . '.sidebar.isOpen{transform:none;box-shadow:0 10px 40px rgba(0,0,0,.25)}'
+        . '.sidebar.isCollapsed .navText,.sidebar .navText{display:inline}'
+        . '.sidebarNav{padding-bottom:20px}'
+        . '.navItem{padding:12px 12px;font-size:16px}'
+        . '.navSubmenu{position:static;opacity:1;visibility:visible;display:none;box-shadow:none;border:0;padding:0 0 0 24px}'
+        . '.navItemWithSubmenu:hover .navSubmenu,.navItemWithSubmenu:focus-within .navSubmenu{display:block}'
+        . '.sidebarOverlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10005}'
+        . 'body.menuOpen .sidebarOverlay{display:block}'
+        . 'body.menuOpen{overflow:hidden}'
+        . '.collapseBtn{display:none}'
+        . '.mainCol,.mainCol.isCollapsed{margin-left:0}'
+        . '.mobileBar{display:flex;position:fixed;top:0;left:0;right:0;height:calc(56px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 150px 0 6px;align-items:center;gap:6px;background:hsl(var(--card));border-bottom:1px solid hsl(var(--border));z-index:9990}'
+        . '.mobileMenuBtn{width:44px;height:44px;border:0;background:transparent;border-radius:12px;display:flex;align-items:center;justify-content:center;color:hsl(var(--foreground));cursor:pointer;flex:0 0 auto}'
+        . '.mobileMenuBtn:active{background:hsl(var(--accent))}'
+        . '.mobileBarTitle{font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}'
+        . '.topActions{top:calc(6px + env(safe-area-inset-top)) !important;right:8px !important;gap:2px !important}'
+        . '.topActions .notifBell{padding:10px;background:transparent;border:0;box-shadow:none;color:hsl(var(--foreground))}'
+        . 'main.wrap{padding-top:calc(68px + env(safe-area-inset-top)) !important}'
+        . '.notifDropdown{position:fixed !important;top:60px !important;left:8px;right:8px !important;width:auto !important;max-height:70vh}'
+        . '.topbar{position:static}'
+        . '}';
+    echo '@media(max-width:760px){'
+        . 'body{font-size:16px}'
+        . '.wrap{padding:0 12px calc(20px + env(safe-area-inset-bottom))}'
+        . '.card{padding:14px;border-radius:14px}'
+        . '.grid{gap:12px}.col3{grid-column:span 12}'
+        . '.kpiGrid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:10px}'
+        . '.kpiValue{font-size:18px}'
+        // Tabelas largas rolam para o lado dentro do próprio quadro (a caixa é criada pelo script do rodapé)
+        . '.mlTableScroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}'
+        . 'th,td{padding:10px 8px;font-size:14px}'
+        . 'th{white-space:nowrap}'
+        . '.btn{min-height:42px;padding:10px 12px}'
+        . '.fab{right:16px;bottom:calc(16px + env(safe-area-inset-bottom))}'
+        . 'h1{font-size:22px}h2{font-size:19px}'
+        . 'img,video,iframe{max-width:100%}'
+        . 'pre{white-space:pre-wrap;word-break:break-word}'
+        . '.pageHistoryContent{width:100%;max-height:100dvh;border-radius:0}'
+        . '.formSection{padding:14px}'
+        // Abas das Configurações: uma linha que rola para o lado (em vez de ocupar meia tela)
+        . '.configTabs{display:flex !important;flex-wrap:nowrap !important;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:4px}'
+        . '.configTabs::-webkit-scrollbar{display:none}'
+        . '.configTab{flex:0 0 auto !important;white-space:nowrap}'
+        // Elementos com largura fixa no estilo da própria tela não passam da tela
+        . '[style*="min-width:1600px"]{min-width:1200px !important}'
+        // Campo que ocupa 2 colunas num formulário em grade: no celular ocupa a linha toda (não força 2 colunas)
+        . '[style*="grid-column:span 2"],[style*="grid-column: span 2"]{grid-column:1/-1 !important}'
+        . '[style*="width:380px"],[style*="width:400px"],[style*="width:420px"],[style*="width:450px"],[style*="width:500px"],[style*="width:600px"]{max-width:100% !important}'
+        . '}';
+    echo '@media(max-width:420px){.mobileBar{padding-right:140px}.kpiCard .kpiChange{display:none}}';
+    echo '@media(max-width:360px){.pwaSub{display:none}}';
+    // Celular estreito: formulários em grade automática viram uma coluna (evita colunas mínimas maiores que a tela)
+    echo '@media(max-width:480px){main.wrap [style*="grid-template-columns:repeat(auto-fit"],main.wrap [style*="grid-template-columns:repeat(auto-fill"]{grid-template-columns:minmax(0,1fr) !important}}';
+    // Aviso "Instalar o app" (celular)
+    echo '.pwaBanner{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:10000;background:#0f172a;color:#fff;border-radius:16px;padding:12px;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.3)}';
+    echo '.pwaBanner img{width:44px;height:44px;border-radius:12px;flex:0 0 auto}';
+    echo '.pwaBanner .pwaTxt{flex:1;min-width:0;font-size:14px;line-height:1.35}';
+    echo '.pwaBanner button{border:0;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer;font-size:14px}';
+    echo '.isStandalone .mobileBar{box-shadow:0 1px 0 hsl(var(--border))}';
     echo '</style>';
     echo '</head>';
     echo '<body>';
@@ -377,6 +449,7 @@ function view_header(string $title): void
             'RH' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>',
             'WhatsApp' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
             'Chat ao Vivo' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+            'Chat Interno' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2v-1"/><path d="M15 4H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l4-4h4a2 2 0 002-2V6a2 2 0 00-2-2z"/></svg>',
             'Contatos' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
             'Pendências' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
             'Integrações' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>',
@@ -399,6 +472,15 @@ function view_header(string $title): void
         }
 
         foreach ($menuItems as $it) {
+            // Chat Interno: só para a equipe, com o número de mensagens não lidas
+            $navBadge = '';
+            if ($it['path'] === '/internal_chat.php') {
+                if (!function_exists('ichat_user_allowed') || !ichat_user_allowed((int)$user['id'])) {
+                    continue;
+                }
+                $ichatUnread = ichat_unread_total((int)$user['id']);
+                $navBadge = '<span class="navBadge" id="navIchatBadge"' . ($ichatUnread > 0 ? '' : ' style="display:none"') . '>' . ($ichatUnread > 99 ? '99+' : $ichatUnread) . '</span>';
+            }
             if (strpos($it['path'], '?') !== false) {
                 // Para itens com query string, verificar se a URL começa com o path do item
                 $itemPath = $it['path'];
@@ -413,8 +495,14 @@ function view_header(string $title): void
             echo '<a class="' . $cls . '" href="' . h($it['path']) . '" title="' . h($it['title']) . '">';
             echo '<span class="navIcon" aria-hidden="true">' . $icon . '</span>';
             echo '<span class="navText">' . h($it['title']) . '</span>';
+            echo $navBadge;
             echo '</a>';
         }
+        // Instalar o app no celular/computador (PWA): aparece quando o navegador permite
+        echo '<a class="navItem" href="/app_instalar.php" data-pwa-install style="display:none" onclick="return mlPwaInstall()" title="Instalar o app">';
+        echo '<span class="navIcon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 7v7m-3-3l3 3 3-3"/></svg></span>';
+        echo '<span class="navText">Instalar app</span>';
+        echo '</a>';
         echo '</nav>';
 
         echo '<div class="sidebarUser">';
@@ -434,6 +522,11 @@ function view_header(string $title): void
         echo '</aside>';
 
         echo '<div class="mainCol" id="mainCol">';
+        // Celular/tablet: barra fixa com o botão do menu (o menu vira gaveta lateral)
+        echo '<header class="mobileBar"><button type="button" class="mobileMenuBtn" id="mobileMenuBtn" aria-label="Abrir menu" aria-controls="appSidebar" aria-expanded="false">'
+            . '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>'
+            . '<div class="mobileBarTitle">' . h($title) . '</div></header>';
+        echo '<div class="sidebarOverlay" id="sidebarOverlay"></div>';
         
         // Alerta quando admin está logado como outro usuário
         if (isset($_SESSION['original_admin_id'])) {
@@ -449,7 +542,7 @@ function view_header(string $title): void
         
         // Botões flutuantes no canto superior direito
         $topOffset = isset($_SESSION['original_admin_id']) ? '52px' : '12px';
-        echo '<div style="position:fixed;top:' . $topOffset . ';right:20px;z-index:9999;display:flex;align-items:center;gap:14px">';
+        echo '<div class="topActions" style="position:fixed;top:' . $topOffset . ';right:20px;z-index:9999;display:flex;align-items:center;gap:14px">';
         
         // Ícone de histórico da página
         echo '<button class="notifBell" id="pageHistoryBtn" onclick="openPageHistory()" title="Histórico desta página">';
@@ -651,6 +744,61 @@ function view_footer(): void
         echo '});';
         
         echo '</script>';
+
+        // Menu em gaveta no celular + contador do Chat Interno
+        echo <<<'MLJS'
+<script>
+(function () {
+  var sb = document.getElementById('appSidebar'), btn = document.getElementById('mobileMenuBtn'), ov = document.getElementById('sidebarOverlay');
+  if (sb && btn && ov) {
+    var setOpen = function (on) { sb.classList.toggle('isOpen', on); document.body.classList.toggle('menuOpen', on); btn.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+    btn.addEventListener('click', function () { setOpen(!sb.classList.contains('isOpen')); });
+    ov.addEventListener('click', function () { setOpen(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+    sb.addEventListener('click', function (e) { if (e.target.closest('a.navItem,a.navSubItem') && window.innerWidth <= 980) setOpen(false); });
+    // Arrastar para a esquerda fecha
+    var x0 = null;
+    sb.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+    sb.addEventListener('touchend', function (e) { if (x0 !== null && e.changedTouches[0].clientX - x0 < -60) setOpen(false); x0 = null; }, { passive: true });
+    var active = sb.querySelector('.navItem.isActive');
+    if (active && window.innerWidth <= 980) { active.scrollIntoView({ block: 'center' }); }
+  }
+  // Celular: tabela larga rola para o lado dentro de uma caixa própria (a página não estoura)
+  if (window.innerWidth <= 760) {
+    document.querySelectorAll('main.wrap table').forEach(function (t) {
+      var p = t.parentElement;
+      if (!p || p.classList.contains('mlTableScroll') || t.closest('.whatsapp-container')) return;
+      var ox = getComputedStyle(p).overflowX;
+      if (ox === 'auto' || ox === 'scroll') return;
+      var w = document.createElement('div');
+      w.className = 'mlTableScroll';
+      p.insertBefore(w, t);
+      w.appendChild(t);
+    });
+  }
+  var badge = document.getElementById('navIchatBadge');
+  window.mlSetInternalChatBadge = function (n) {
+    if (!badge) return;
+    badge.textContent = n > 99 ? '99+' : String(n);
+    badge.style.display = n > 0 ? '' : 'none';
+  };
+  if (badge && location.pathname !== '/internal_chat.php') {
+    setInterval(function () {
+      if (document.hidden) return;
+      fetch('/internal_chat_api.php?action=unread', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.json(); }).then(function (d) { if (d && d.ok) window.mlSetInternalChatBadge(d.unread); }).catch(function () {});
+    }, 20000);
+  }
+})();
+</script>
+MLJS;
+        echo '<div class="pwaBanner" id="pwaBanner" role="dialog" aria-label="Instalar o app">'
+            . '<img src="/pwa/icon-192.png" alt="">'
+            . '<div class="pwaTxt"><b>Instale o app MultiLife</b><span class="pwaSub"><br>Abra direto da tela inicial do celular, em tela cheia.</span></div>'
+            . '<button type="button" style="background:#1aa8a8;color:#fff" onclick="mlPwaInstall()">Instalar</button>'
+            . '<button type="button" style="background:transparent;color:#cbd5e1" onclick="mlPwaDismiss()" aria-label="Agora não">✕</button>'
+            . '</div>';
+        echo pwa_footer_js();
 
         // Acompanhamento global das captações em andamento (sobrevive a recarregar/trocar de página).
         if (function_exists('dispatch_tracker_render')) {

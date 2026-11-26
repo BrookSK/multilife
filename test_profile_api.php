@@ -2,6 +2,7 @@
 // Script de teste para verificar se a API de perfil está funcionando
 
 require_once __DIR__ . '/app/bootstrap.php';
+wa_cloud_page_guard('Este teste');
 
 $baseUrl = wa_api_base_url();
 $apiKey = wa_api_key();

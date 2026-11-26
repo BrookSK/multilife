@@ -6,6 +6,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
+wa_cloud_page_guard('A conferência de webhook do serviço');
 
 header('Content-Type: text/html; charset=utf-8');
 

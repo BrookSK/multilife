@@ -1192,6 +1192,47 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '.waSubPanel.waActive{display:block}';
         echo '</style>';
         
+        // ---- Integração em uso: Baileys / Evolution / API oficial (app/whatsapp_provider.php) ----
+        $waProv = wa_provider();
+        echo '<div class="formSection" id="waProviderBox">';
+        echo '<div class="formSectionTitle">Integração do WhatsApp</div>';
+        echo '<div style="font-size:13px;color:hsl(var(--muted-foreground));line-height:1.6;margin-bottom:12px">Escolha por onde o sistema envia e recebe as mensagens. A troca vale para tudo (chat, captação, avisos automáticos, grupos). '
+            . 'Os números de uma integração não passam para a outra: na API oficial eles são cadastrados na tela própria; no Baileys e na Evolution, conectados pelo QR Code.</div>';
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">';
+        $provHelp = [
+            'baileys' => 'Serviço próprio desta hospedagem (pasta ml-baileys-service). Conecta pelo QR Code. Grupos sem limite.',
+            'evolution' => 'Evolution API v2 num servidor seu. Conecta pelo QR Code. Mesmo funcionamento do Baileys.',
+            'cloud' => 'API oficial da Meta (Cloud API). Sem QR Code. Regras da Meta: janela de 24 h, modelos aprovados e grupos de até 8 pessoas por convite.',
+        ];
+        foreach (WA_PROVIDERS as $pk => $plabel) {
+            $on = $pk === $waProv;
+            echo '<label style="display:flex !important;gap:10px;align-items:flex-start;padding:12px;border:2px solid ' . ($on ? 'hsl(var(--primary))' : 'hsl(var(--border))') . ';border-radius:12px;cursor:pointer;font-weight:700 !important">';
+            echo '<input type="radio" name="settings[whatsapp.provider]" value="' . h($pk) . '"' . ($on ? ' checked' : '') . ' style="margin-top:3px">';
+            echo '<span>' . h($plabel) . '<span class="helpText" style="display:block;font-weight:400">' . h($provHelp[$pk]) . '</span></span></label>';
+        }
+        echo '</div>';
+        if ($waProv === 'evolution') {
+            $evoUrl = (string)($settings['evolution.base_url'] ?? '');
+            $evoHasKey = trim((string)($settings['evolution.api_key'] ?? '')) !== '';
+            echo '<div style="display:grid;gap:12px;margin-top:14px">';
+            echo '<label>Endereço da Evolution API<input name="settings[evolution.base_url]" value="' . h($evoUrl) . '" placeholder="https://evolution.seu-servidor.com.br"><span class="helpText">Endereço completo do servidor da Evolution API v2 (sem barra no final).</span></label>';
+            echo '<label>API Key global da Evolution<input type="password" name="settings[evolution.api_key]" value="" autocomplete="off" placeholder="' . ($evoHasKey ? '•••••••• (guardada — deixe vazio para manter)' : 'AUTHENTICATION_API_KEY do servidor') . '"></label>';
+            $evoH = wa_service_health(null, 5);
+            echo '<div style="padding:10px;border-radius:8px;font-size:13px;' . ($evoH['ok'] ? 'background:#f0fdf4;color:#166534;border:1px solid #bbf7d0' : 'background:#fef2f2;color:#991b1b;border:1px solid #fecaca') . '">'
+                . ($evoH['ok'] ? '✅ Evolution API respondeu' . (!empty($evoH['data']['version']) ? ' (versão ' . h((string)$evoH['data']['version']) . ')' : '') : '⚠️ Evolution API sem resposta: ' . h((string)$evoH['error'])) . '</div>';
+            echo '</div>';
+        }
+        if ($waProv === 'cloud') {
+            $cloudH = wa_cloud_configured() ? wa_cloud_health(6) : ['ok' => false, 'error' => 'credenciais não preenchidas'];
+            echo '<div style="margin-top:14px;padding:12px;border-radius:10px;font-size:14px;line-height:1.6;' . ($cloudH['ok'] ? 'background:#f0fdf4;color:#166534;border:1px solid #bbf7d0' : 'background:#fffbeb;color:#854d0e;border:1px solid #fde68a') . '">'
+                . ($cloudH['ok'] ? '✅ API oficial conectada à conta ' . h((string)($cloudH['data']['name'] ?? '')) . ' · ' . count(wa_cloud_instances()) . ' número(s) no sistema.' : '⚠️ API oficial: ' . h((string)$cloudH['error']) . '.')
+                . ' <a class="btn btnPrimary" style="margin-left:6px" href="/admin_whatsapp_cloud.php">Abrir a configuração da API oficial</a></div>';
+        } else {
+            echo '<div style="margin-top:10px;font-size:13px"><a href="/admin_whatsapp_cloud.php">Configurar a API oficial do WhatsApp (Meta) →</a></div>';
+        }
+        echo '<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btnPrimary" type="submit">Salvar integração</button></div>';
+        echo '</div>';
+
         echo '<div class="waSubTabs">';
         echo '<button type="button" class="waSubTab waActive" data-watab="waConn">📡 Conexão</button>';
         echo '<button type="button" class="waSubTab" data-watab="waCred">🔑 Credenciais</button>';
@@ -1203,7 +1244,30 @@ foreach ($sections as $sectionTitle => $sectionData) {
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Status da Conexão WhatsApp</div>';
         
-        if (!$configOk) {
+        if ($waProv === 'cloud') {
+            // API oficial: sem QR Code; situação de cada número na Meta
+            $cloudRows = wa_cloud_instances();
+            if (!$cloudRows) {
+                echo '<div style="padding:30px;text-align:center;color:hsl(var(--muted-foreground))"><div style="font-size:40px">📱</div>'
+                    . '<div style="font-weight:700;margin:8px 0">Nenhum número da API oficial cadastrado</div>'
+                    . '<a class="btn btnPrimary" href="/admin_whatsapp_cloud.php">Cadastrar número da Meta</a></div>';
+            } else {
+                echo '<div style="display:grid;gap:10px">';
+                foreach ($cloudRows as $cr) {
+                    $st = wa_cloud_gateway('GET', '/instance/connectionState/' . rawurlencode((string)$cr['instance_name']), [], null, 8);
+                    $open = (string)($st['json']['instance']['state'] ?? '') === 'open';
+                    $cinfo = is_array($st['json']['cloud'] ?? null) ? $st['json']['cloud'] : [];
+                    echo '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px;border:1px solid hsl(var(--border));border-radius:12px">';
+                    echo '<div style="font-size:26px">' . ($open ? '✅' : '⚠️') . '</div>';
+                    echo '<div style="flex:1;min-width:200px"><div style="font-weight:800">' . h((string)$cr['instance_name']) . ((string)$cr['instance_name'] === $instanceNameWA ? ' <span style="font-weight:400;color:hsl(var(--muted-foreground))">(padrão)</span>' : '') . '</div>'
+                        . '<div style="font-size:13px;color:hsl(var(--muted-foreground))">' . h((string)($cr['cloud_display_phone'] ?? '')) . ' · ' . h((string)($cr['cloud_verified_name'] ?? '')) . '</div></div>';
+                    echo '<div style="font-size:13px">' . ($open ? 'Ativo na Meta' : 'Com problema: ' . h((string)($st['json']['error_message'] ?? ($cinfo['status'] ?? '')))) . (!empty($cinfo['quality']) ? ' · qualidade ' . h((string)$cinfo['quality']) : '') . '</div>';
+                    echo '</div>';
+                }
+                echo '</div>';
+                echo '<div style="margin-top:12px"><a class="btn" href="/admin_whatsapp_cloud.php">Números, modelos e webhook da API oficial</a></div>';
+            }
+        } elseif (!$configOk) {
             echo '<div style="padding:40px;text-align:center;color:hsl(var(--muted-foreground))">';
             echo '<div style="font-size:48px;margin-bottom:12px">⚙️</div>';
             echo '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Credenciais não configuradas</div>';
@@ -1399,8 +1463,13 @@ WAJS;
         // --- Sub-aba: Credenciais ---
         echo '<div class="waSubPanel" id="waCred">';
         echo '<div class="formSection">';
-        echo '<div class="formSectionTitle">Credenciais do serviço WhatsApp (Baileys)</div>';
-        
+        echo '<div class="formSectionTitle">' . ($waProv === 'baileys' ? 'Credenciais do serviço WhatsApp (Baileys)' : 'Configurações gerais do WhatsApp') . '</div>';
+        if ($waProv !== 'baileys') {
+            echo '<div style="padding:12px;background:hsla(var(--primary)/.05);border:1px solid hsl(var(--border));border-radius:8px;margin-bottom:16px;font-size:13px;line-height:1.6;color:hsl(var(--muted-foreground))">'
+                . ($waProv === 'cloud' ? 'Token, conta e números da API oficial ficam em <a href="/admin_whatsapp_cloud.php">Configurações → API oficial</a>.' : 'Endereço e chave da Evolution API ficam no quadro "Integração do WhatsApp", acima.')
+                . ' Abaixo, só o que vale para qualquer integração.</div>';
+        }
+        if ($waProv === 'baileys'):
         // Situação do serviço (também grava a configuração dele e descobre a URL)
         wa_service_runtime_sync(true);
         $svcHealth = wa_service_keepalive() ?? wa_service_health(null, 4);
@@ -1421,9 +1490,11 @@ WAJS;
             echo '<br>' . h($svcHealth['error']) . '. Confira o guia <strong>CONFIGURAR_WHATSAPP_NA_HOSPEDAGEM.md</strong> (subdomínio "whatsapp" e app Node.js no painel da hospedagem).';
         }
         echo '</div>';
+        endif; // baileys
 
         echo '<div style="display:grid;gap:12px">';
         
+        if ($waProv === 'baileys'):
         $baseUrlVal = $settings['baileys.base_url'] ?? '';
         $apiKeyVal = $settings['baileys.api_key'] ?? '';
         $instanceVal = $settings['baileys.instance'] ?? '';
@@ -1449,10 +1520,12 @@ WAJS;
         echo '</div>';
         echo '<span class="helpText">' . (wa_service_embedded() ? 'Gerada automaticamente e entregue ao serviço sozinha. Só troque se o serviço estiver em outro servidor.' : 'Valor de API_KEY do serviço.') . ' Deixe vazio para manter o valor atual.</span>';
         echo '</label>';
+        endif; // baileys
         
-        $instanceShown = $instanceVal !== '' ? $instanceVal : wa_default_instance();
+        $instanceShown = (string)($settings['baileys.instance'] ?? '') !== '' ? (string)$settings['baileys.instance'] : wa_default_instance();
         echo '<label>Nome da Instância<input name="settings[baileys.instance]" value="' . h($instanceShown) . '" placeholder="multilife"><span class="helpText">Nome da instância (WhatsApp) usada nas mensagens automáticas</span></label>';
 
+        if ($waProv === 'baileys'):
         $retVal = (string)($settings['baileys.message_retention_days'] ?? '0');
         echo '<label>Guardar o histórico das mensagens no serviço por (dias)'
             . '<input type="number" min="0" step="1" name="settings[baileys.message_retention_days]" value="' . h($retVal !== '' ? $retVal : '0') . '" style="max-width:160px">'
@@ -1464,6 +1537,7 @@ WAJS;
         echo '<label>Arquivos acima deste tamanho vão por link ao serviço (KB)'
             . '<input type="number" min="0" step="50" name="settings[baileys.inline_media_max_kb]" value="' . h($inlineKb !== '' ? $inlineKb : '600') . '" style="max-width:160px">'
             . '<span class="helpText">Padrão: 600. A hospedagem recusa pedidos com mais de ~1 MB (erro 413). Acima deste tamanho, o arquivo fica por instantes em uploads/wa_outbox e o serviço baixa pelo link. 0 = sempre mandar junto.</span></label>';
+        endif; // baileys
 
         // Log detalhado (/admin_whatsapp_eventos.php)
         $evRetVal = (string)($settings['baileys.event_log_retention_days'] ?? '90');
@@ -1478,6 +1552,7 @@ WAJS;
         echo '</div>';
 
         // Serviço em outra assinatura/servidor: variáveis para o painel Node.js
+        if ($waProv === 'baileys'):
         $envCfg = require dirname(__FILE__) . '/config/config.php';
         $envDb = is_array($envCfg['db'] ?? null) ? $envCfg['db'] : [];
         echo '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:700;font-size:13px">O Node.js está em outra assinatura ou servidor? Variáveis para o painel</summary>';
@@ -1491,9 +1566,11 @@ WAJS;
             . 'DB_PASSWORD=(a mesma senha do banco deste sistema)')
             . '</pre>';
         echo '</details>';
+        endif; // baileys
         echo '</div>';
 
         // Monitor de conexão real (dentro do serviço WhatsApp) — app/whatsapp_watchdog.php
+        if ($waProv === 'baileys'):
         $wdAutoHeal = wa_setting('watchdog_auto_heal', '1') !== '0';
         echo '<div class="formSection">';
         echo '<div class="formSectionTitle">Monitor de conexão</div>';
@@ -1516,6 +1593,7 @@ WAJS;
         }
         echo '</div>';
         echo '</div>';
+        endif; // baileys (monitor)
         
         // Botão salvar
         echo '<div style="display:flex;justify-content:flex-end;margin-top:20px">';
@@ -1556,6 +1634,12 @@ WAJS;
         $availableUsers = $usersStmt->fetchAll();
         
         // --- Formulário: Criar nova instância para usuário ---
+        if ($waProv === 'cloud') {
+            echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:16px;margin-bottom:20px;font-size:13px;line-height:1.6">'
+                . '<strong>API oficial:</strong> os números são cadastrados em <a href="/admin_whatsapp_cloud.php">Configurações → API oficial</a> (sem QR Code). '
+                . 'Aqui você vincula cada número aos usuários e define o apelido.</div>';
+            echo '<div id="waInstQrArea" style="display:none"><div id="waInstQrContainer"></div><div id="waInstQrMsg"></div></div>';
+        } else {
         echo '<div style="border:1px solid hsl(var(--border));border-radius:8px;padding:16px;margin-bottom:20px">';
         echo '<div style="font-weight:700;margin-bottom:12px;font-size:14px">Conectar WhatsApp de um usuário</div>';
         echo '<form id="waInstCreateForm" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end">';
@@ -1577,6 +1661,7 @@ WAJS;
         echo '<div id="waInstQrMsg" style="margin-top:12px;font-size:13px;color:hsl(var(--muted-foreground))"></div>';
         echo '</div>';
         echo '</div>';
+        } // fim: formulário de QR (Baileys/Evolution)
         
         // Script para criação de instância + QR code
         $jsBaseUrl = json_encode($baseUrlWA);
@@ -1872,8 +1957,12 @@ WAJS;
                 echo '<td style="text-align:center">' . ($liIsDefault ? '⭐' : '-') . '</td>';
                 echo '<td style="text-align:right">';
                 
-                // Botão Reconectar (para qualquer instância, inclusive a padrão)
-                echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="waInstReconnect(\'' . h($liName) . '\')">🔄 Reconectar</button>';
+                // Botão Reconectar (para qualquer instância, inclusive a padrão) — só com QR Code
+                if ($waProv !== 'cloud') {
+                    echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px" onclick="waInstReconnect(\'' . h($liName) . '\')">🔄 Reconectar</button>';
+                } elseif (wa_cloud_instance($liName) === null) {
+                    echo '<span style="font-size:11px;color:hsl(var(--muted-foreground));margin-right:6px" title="Número conectado pelo QR Code (Baileys/Evolution): não envia pela API oficial">fora da API oficial</span>';
+                }
 
                 // Sincronizar: reenvia ao sistema o que ficou só na API do WhatsApp (watchdog
                 // /redispatch). Liberado 15 min depois da última reconexão/QR Code.
@@ -1887,8 +1976,8 @@ WAJS;
                     }
                 }
 
-                // Botão Desconectar (logout sem remover o vínculo) — só quando conectada
-                if ($liConnStatus === 'connected') {
+                // Botão Desconectar (logout sem remover o vínculo) — só quando conectada (não existe na API oficial)
+                if ($liConnStatus === 'connected' && $waProv !== 'cloud') {
                     echo '<button type="button" class="btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:#f59e0b;color:white;border:none" onclick="waInstDisconnect(\'' . h($liName) . '\')">⏸ Desconectar</button>';
                 }
 
@@ -2383,6 +2472,8 @@ view_footer();
       if(targetPanel){
         targetPanel.classList.add("isActive");
       }
+      // Celular: as abas rolam para o lado; deixa a escolhida à vista
+      try { this.scrollIntoView({inline: "nearest", block: "nearest"}); } catch (err) {}
     });
   });
 

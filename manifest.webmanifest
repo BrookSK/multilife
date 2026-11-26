@@ -1,0 +1,27 @@
+{
+  "name": "MultiLife Care",
+  "short_name": "MultiLife",
+  "description": "Sistema MultiLife Care: captação, atendimentos, chat e equipe.",
+  "id": "/dashboard.php",
+  "start_url": "/dashboard.php?app=1",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "background_color": "#ffffff",
+  "theme_color": "#1aa8a8",
+  "categories": ["business", "medical", "productivity"],
+  "icons": [
+    { "src": "/pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Chat Interno", "short_name": "Chat Interno", "url": "/internal_chat.php", "icons": [{ "src": "/pwa/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Chat ao Vivo (WhatsApp)", "short_name": "WhatsApp", "url": "/chat_web.php", "icons": [{ "src": "/pwa/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Captação", "short_name": "Captação", "url": "/demands_list.php", "icons": [{ "src": "/pwa/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -18,6 +18,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
+wa_cloud_page_guard('O monitor de conexão do serviço');
 session_release();
 
 $hoursOptions = [24 => '24 h', 72 => '72 h', 168 => '7 dias'];

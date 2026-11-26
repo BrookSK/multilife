@@ -26,15 +26,9 @@ $participants = [];
 if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
     try {
         // Buscar dados do grupo
-        $ch = curl_init($baseUrl . '/group/participants/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupId));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $rawRes = wa_raw_request('GET', $baseUrl . '/group/participants/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupId), null, 15);
+        $response = $rawRes['body'];
+        $httpCode = $rawRes['status'];
         
         if ($httpCode === 200) {
             $data = json_decode($response, true);
@@ -217,7 +211,8 @@ if (empty($participants)) {
 } else {
     foreach ($participants as $participant) {
         $participantId = $participant['id'] ?? '';
-        $isAdmin = isset($participant['admin']) && $participant['admin'] === 'admin';
+        $isAdmin = isset($participant['admin']) && in_array($participant['admin'], ['admin', 'superadmin'], true);
+        $isOwnNumber = ($participant['admin'] ?? '') === 'superadmin' && wa_is_cloud();
         $resolved = resolveParticipant($participant, $lidToPhone, $phoneToName);
         
         echo '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid hsl(var(--border))">';
@@ -230,8 +225,14 @@ if (empty($participants)) {
             echo '<div style="font-size:12px;color:hsl(var(--primary))">Administrador</div>';
         }
         echo '</div>';
-        echo '<div style="display:flex;gap:8px">';
-        if (!$isAdmin) {
+        echo '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+        if ($isOwnNumber) {
+            echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Número da empresa</span></div></div>';
+            continue;
+        }
+        if (!wa_provider_can('group_promote')) {
+            // API oficial: sem administradores além do número da empresa
+        } elseif (!$isAdmin) {
             echo '<form method="post" action="/chat_group_promote_member.php" style="display:inline">';
             echo '<input type="hidden" name="group_id" value="' . h($groupId) . '">';
             echo '<input type="hidden" name="participant_id" value="' . h($participantId) . '">';
@@ -257,7 +258,15 @@ echo '</div>';
 echo '</section>';
 
 echo '<section class="card col6">';
-echo '<h3>Adicionar Participantes</h3>';
+echo '<h3>' . (wa_provider_can('group_add_members') ? 'Adicionar Participantes' : 'Convidar participantes') . '</h3>';
+if (!wa_provider_can('group_add_members')) {
+    // API oficial: entra só quem aceitar o convite (máximo de participantes da Meta)
+    $inviteLink = function_exists('wa_cloud_group_link') ? wa_cloud_group_link($groupId) : '';
+    echo '<div style="padding:12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#854d0e;font-size:13px;line-height:1.55;margin-bottom:12px">'
+        . h(wa_provider_cannot_reason('group_add_members')) . ' Limite da Meta: ' . WA_CLOUD_GROUP_MAX_PARTICIPANTS . ' participantes por grupo.'
+        . ($inviteLink !== '' ? '<div style="margin-top:6px;word-break:break-all">Link do grupo: <a href="' . h($inviteLink) . '" target="_blank" rel="noopener">' . h($inviteLink) . '</a></div>' : '')
+        . '</div>';
+}
 
 // Barra de filtros (filtragem client-side, sem recarregar a página).
 // Os handlers são inline (oninput/onchange) para funcionar independentemente da ordem de carregamento.
@@ -418,7 +427,7 @@ foreach ($professionals as $prof) {
 }
 echo '<div id="semResultados" style="display:none;padding:20px;text-align:center;color:hsl(var(--muted-foreground))">Nenhum profissional encontrado com os filtros aplicados.</div>';
 echo '</div>';
-echo '<button type="submit" class="btn btnPrimary">Adicionar Selecionados</button>';
+echo '<button type="submit" class="btn btnPrimary">' . (wa_provider_can('group_add_members') ? 'Adicionar Selecionados' : 'Enviar convite aos selecionados') . '</button>';
 echo '</form>';
 echo '</section>';
 

@@ -41,26 +41,18 @@ try {
         'participants' => $formattedParticipants
     ];
     
-    $ch = curl_init($baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '/add');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'apikey: ' . $apiKey,
-        'Content-Type: application/json'
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $payload['action'] = 'add';
+    $payload['forceInvite'] = true; // API oficial: convite pedido de propósito sai mesmo se já foi enviado antes
+    $rawRes = wa_raw_request('POST', $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '/add', $payload, 90);
+    $httpCode = $rawRes['status'];
     
     if ($httpCode === 200 || $httpCode === 201) {
-        flash_set('success', 'Participantes adicionados com sucesso!');
+        flash_set('success', wa_provider_can('group_add_members')
+            ? 'Participantes adicionados com sucesso!'
+            : 'Convite com o link do grupo enviado para ' . (int)($rawRes['json']['invitesSent'] ?? count($formattedParticipants)) . ' pessoa(s). Elas entram no grupo ao tocar no link.');
         audit_log('update', 'chat_groups', $groupId, null, ['action' => 'add_members', 'participants' => $formattedParticipants]);
     } else {
-        flash_set('error', 'Erro ao adicionar participantes. Código: ' . $httpCode);
+        flash_set('error', 'Erro ao adicionar participantes: ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $rawRes['body'] !== '' ? $rawRes['body'] : $rawRes['error']]));
     }
 } catch (Exception $e) {
     flash_set('error', 'Erro: ' . $e->getMessage());

@@ -62,31 +62,18 @@ function myWaConfigureWebhook(string $baseUrl, string $apiKey, string $instanceN
     // Configuração única (modelo helpdeskON): app/whatsapp_webhook_config.php
     $payload = whatsapp_webhook_payload($webhookUrl);
 
-    $ch = curl_init($baseUrl . '/webhook/set/' . urlencode($instanceName));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $httpCode = wa_raw_request('POST', $baseUrl . '/webhook/set/' . urlencode($instanceName), $payload, 15)['status'];
 
     return ($httpCode >= 200 && $httpCode < 300);
 }
 
 try {
     if ($action === 'logout') {
-        $ch = curl_init($baseUrl . '/instance/logout/' . urlencode($instanceName));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (!wa_provider_can('logout')) {
+            echo json_encode(['success' => false, 'message' => wa_provider_cannot_reason('logout')], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $httpCode = wa_raw_request('DELETE', $baseUrl . '/instance/logout/' . urlencode($instanceName), null, 30)['status'];
 
         $ok = $httpCode >= 200 && $httpCode < 300;
         if ($ok) {
@@ -109,14 +96,9 @@ try {
         $url = $baseUrl . '/instance/connectionState/' . urlencode($instanceName);
     }
 
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $rawRes = wa_raw_request('GET', $url, null, 30);
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
 
     if ($httpCode >= 200 && $httpCode < 300) {
         if ($action === 'status') {

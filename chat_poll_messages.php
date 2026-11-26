@@ -60,7 +60,8 @@ try {
             mentioned_jids,
             sender_name,
             participant_jid,
-            external_message_id
+            external_message_id" . (chat_send_error_column() ? ",
+            send_error" : '') . "
         FROM chat_messages
         WHERE remote_jid = ?
           AND " . $cursorSql . $instSql . "
@@ -109,11 +110,27 @@ try {
         $lastIdOut = max($lastIdOut, (int)$m['id']);
     }
 
+    // API oficial: a falha de entrega chega segundos depois do envio, para mensagens
+    // que já estão na tela. Devolve as falhas recentes desta conversa.
+    $failed = [];
+    if (function_exists('wa_is_cloud') && wa_is_cloud() && chat_send_error_column()) {
+        try {
+            $stF = db()->prepare("SELECT id, external_message_id, send_error FROM chat_messages
+                                  WHERE remote_jid = ? AND from_me = 1 AND send_error IS NOT NULL AND message_timestamp > ?" . $instSql . "
+                                  ORDER BY id DESC LIMIT 30");
+            $stF->execute(array_merge([$chatId, time() - 3 * 86400], $instParams));
+            foreach ($stF->fetchAll(PDO::FETCH_ASSOC) as $f) {
+                $failed[] = ['key' => (string)($f['external_message_id'] ?: 'row-' . (int)$f['id']), 'row_id' => (int)$f['id'], 'error' => (string)$f['send_error']];
+            }
+        } catch (Throwable $e) {}
+    }
+
     echo json_encode([
         'messages'       => $messages,
         'count'          => count($messages),
         'last_timestamp' => $lastTimestamp,
         'last_id'        => $lastIdOut,
+        'failed'         => $failed,
     ]);
 } catch (Exception $e) {
     error_log('Erro no chat_poll_messages: ' . $e->getMessage());

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
+wa_cloud_page_guard('Este envio antigo');
 
 $chatId = trim($_POST['chat_id'] ?? '');
 $message = trim($_POST['message'] ?? '');

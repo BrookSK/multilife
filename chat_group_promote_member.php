@@ -33,26 +33,16 @@ try {
         'participants' => [$participantId]
     ];
     
-    $ch = curl_init($baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '/promote');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'apikey: ' . $apiKey,
-        'Content-Type: application/json'
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $payload['action'] = 'promote';
+    $rawRes = wa_raw_request('POST', $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '/promote', $payload, 60);
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
     
     if ($httpCode === 200 || $httpCode === 201) {
         flash_set('success', 'Participante promovido a administrador!');
         audit_log('update', 'chat_groups', $groupId, null, ['action' => 'promote_member', 'participant' => $participantId]);
     } else {
-        flash_set('error', 'Erro ao promover participante. Código: ' . $httpCode);
+        flash_set('error', 'Erro ao promover participante: ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $rawRes['body'] !== '' ? $rawRes['body'] : $rawRes['error']]));
     }
 } catch (Exception $e) {
     flash_set('error', 'Erro: ' . $e->getMessage());

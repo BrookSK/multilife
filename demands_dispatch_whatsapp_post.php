@@ -605,9 +605,16 @@ $memberStats = ['users' => 0, 'contacts' => 0, 'skipped_location' => 0, 'unknown
 // Profissionais (não equipe) deste disparo: nunca devem ser admin do grupo.
 $professionalPhones = [];
 
+// API OFICIAL (modo "direto", padrão): grupo da Meta tem no máximo 8 participantes
+// e ninguém entra sem aceitar o convite. A captação vai para cada profissional
+// numa conversa privada (app/demand_dispatch_direct.php); o bloco de grupo
+// abaixo (achar/criar grupo, adicionar membros) não roda.
+$cloudDirect = function_exists('wa_is_cloud') && wa_is_cloud() && wa_cloud_captacao_mode() === 'direct';
+
 // Buscar grupo compatível: especialidade + cidade + UF (+ zona). Nunca reaproveita
 // grupo de outra cidade.
 $groups = [];
+if (!$cloudDirect):
 $foundGroup = dispatch_find_group($specialty, $city, $state, $zone, $captadorInstanceName);
 if ($foundGroup === null) {
     // Ninguém cria o MESMO grupo ao mesmo tempo: duas captações simultâneas da mesma
@@ -893,20 +900,9 @@ if (count($groups) === 0) {
             
             error_log("[DISPATCH] Criando grupo via instância '$usedInstanceName'. URL: $createUrl");
             
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $createUrl,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 30,
-                CURLOPT_CUSTOMREQUEST => "POST",
-                CURLOPT_POSTFIELDS => $createPayload,
-                CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
-                CURLOPT_SSL_VERIFYPEER => false,
-            ]);
-            
-            $createResponse = curl_exec($ch);
-            $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $rawCreate = wa_raw_request('POST', $createUrl, $createPayload, 60);
+            $createResponse = $rawCreate['body'] !== '' ? $rawCreate['body'] : $rawCreate['error'];
+            $createHttpCode = $rawCreate['status'];
             
             error_log("[DISPATCH] Resposta criação (instância '$usedInstanceName'): HTTP $createHttpCode - " . substr($createResponse, 0, 500));
             
@@ -918,20 +914,9 @@ if (count($groups) === 0) {
                     $retryUrl = $baseUrl . '/group/create/' . urlencode($retryInst);
                     error_log("[DISPATCH] Tentando criar com instância alternativa: '$retryInst'");
                     
-                    $ch = curl_init();
-                    curl_setopt_array($ch, [
-                        CURLOPT_URL => $retryUrl,
-                        CURLOPT_RETURNTRANSFER => true,
-                        CURLOPT_TIMEOUT => 30,
-                        CURLOPT_CUSTOMREQUEST => "POST",
-                        CURLOPT_POSTFIELDS => $createPayload,
-                        CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
-                        CURLOPT_SSL_VERIFYPEER => false,
-                    ]);
-                    
-                    $createResponse = curl_exec($ch);
-                    $createHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
+                    $rawRetry = wa_raw_request('POST', $retryUrl, $createPayload, 60);
+                    $createResponse = $rawRetry['body'] !== '' ? $rawRetry['body'] : $rawRetry['error'];
+                    $createHttpCode = $rawRetry['status'];
                     
                     error_log("[DISPATCH] Resposta (instância '$retryInst'): HTTP $createHttpCode - " . substr($createResponse, 0, 300));
                     
@@ -1132,6 +1117,7 @@ if (count($groups) === 0) {
 }
 // Grupo criado e gravado em whatsapp_groups: libera as captações que estavam esperando.
 dispatch_group_lock_release();
+endif; // !$cloudDirect
 
 $tpl = trim((string)admin_setting_get(
     'demands.whatsapp_template',
@@ -1396,6 +1382,62 @@ if ($recentDispatch->fetch()) {
     // significa reprocessamento/retry do mesmo run — não é erro, apenas evita
     // enviar a captação em duplicidade. Encerra marcando o run como concluído.
     demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed', 'Captação já havia sido disparada há instantes (envio duplicado evitado).');
+    dispatch_stop();
+}
+
+// ====================================================================
+// API OFICIAL — ENVIO DIRETO: uma mensagem para cada profissional (com o botão
+// "Tenho interesse"); fora das 24 h sai pelo modelo aprovado "Captação".
+// ====================================================================
+if ($cloudDirect) {
+    demand_dispatch_run_set_phase($DISPATCH_RUN_ID, 'sending', 'Enviando a captação direto para ' . count($collected['phones']) . ' profissional(is) pela API oficial...');
+    $directToken = '#CAP' . (string)$id . '-' . strtoupper(substr(bin2hex(random_bytes(6)), 0, 10));
+    // Na conversa privada o interesse é pelo botão (ou reação)
+    $directMsg = str_replace(
+        'Reaja a esta mensagem com qualquer emoji para demonstrar interesse.',
+        'Toque em *Tenho interesse* (ou reaja a esta mensagem) para demonstrar interesse.',
+        $msg
+    ) . "\n\n" . $directToken;
+    $professionalPhones = array_values(array_diff($collected['phones'], dispatch_team_phones($captacaoTestMode, auth_user_id())));
+    $directResult = demand_dispatch_direct_execute([
+        'demand_id' => (int)$id,
+        'run_id' => $DISPATCH_RUN_ID,
+        'user_id' => auth_user_id(),
+        'message' => $directMsg,
+        'token' => $directToken,
+        'phones' => $professionalPhones ?: $collected['phones'],
+        'captador_instance' => $captadorInstanceName,
+        'vars' => [
+            'numero' => (string)$d['id'],
+            'titulo' => $titleForMsg,
+            'local' => $repl['{street_neighborhood_city}'] !== '' ? $repl['{street_neighborhood_city}'] : $locationLabel,
+            'especialidade' => $specialty,
+            'frequencia' => $freqDisplay !== '' ? $freqDisplay : 'a combinar',
+        ],
+    ]);
+    if ($directResult['sent'] > 0) {
+        if ((string)$d['status'] === 'aguardando_captacao') {
+            db()->prepare("UPDATE demands SET status = 'em_captacao', assumed_by_user_id = :uid, assumed_at = NOW() WHERE id = :id")
+                ->execute(['id' => $id, 'uid' => auth_user_id()]);
+            db()->prepare('INSERT INTO demand_status_logs (demand_id, old_status, new_status, user_id, note) VALUES (:did, :os, :ns, :uid, :note)')
+                ->execute(['did' => $id, 'os' => 'aguardando_captacao', 'ns' => 'em_captacao', 'uid' => auth_user_id(), 'note' => 'realizar captacao (API oficial, envio direto)']);
+        }
+        if ($subRequest !== null) {
+            db()->prepare("UPDATE demand_sub_requests SET status = 'em_captacao', dispatched_at = NOW() WHERE id = :id")->execute(['id' => $subRequestId]);
+        }
+        audit_log('create', 'demand_dispatch', (string)$id, null, ['direct' => true, 'sent' => $directResult['sent'], 'failed' => $directResult['failed']]);
+    }
+    $directSummary = ' Enviada direto para ' . $directResult['sent'] . ' de ' . count($professionalPhones ?: $collected['phones']) . ' profissional(is) de ' . $locationLabel
+        . ' pelo WhatsApp "' . $directResult['instance'] . '" (API oficial).'
+        . ($dispatchScope === 'state' ? ' Ampliada para os profissionais do estado ' . $state . '.' : '')
+        . ($directResult['failed'] > 0 ? ' ' . $directResult['failed'] . ' não receberam: ' . mb_strimwidth($directResult['last_error'], 0, 200, '…') : '');
+    if ($directResult['sent'] > 0 && $directResult['failed'] === 0) {
+        demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed', 'Captação enviada via WhatsApp.' . $directSummary, $directResult['sent'], 0);
+    } elseif ($directResult['sent'] > 0) {
+        demand_dispatch_run_finish($DISPATCH_RUN_ID, 'completed_with_errors', 'Captação enviada para parte dos profissionais.' . $directSummary, $directResult['sent'], $directResult['failed']);
+    } else {
+        demand_dispatch_run_finish($DISPATCH_RUN_ID, 'failed', 'Captação NÃO enviada: ' . ($directResult['last_error'] !== '' ? mb_strimwidth($directResult['last_error'], 0, 300, '…') : 'nenhum profissional recebeu.'), 0, $directResult['failed']);
+    }
     dispatch_stop();
 }
 

@@ -15,6 +15,12 @@ require_once __DIR__ . '/_bootstrap.php';
  * - Manutenção das reações disponíveis
  */
 
+// API oficial: não existe "somente administradores enviam"
+if (function_exists('wa_provider_can') && !wa_provider_can('group_announcement')) {
+    echo "API oficial em uso: sem modo anúncio nos grupos.\n";
+    return;
+}
+
 $db = db();
 
 // Buscar grupos ativos que ainda não foram marcados como announcement

@@ -179,21 +179,12 @@ function whatsapp_api_send_text(string $phone, string $message): array
         'textMessage' => ['text' => $message],
     ];
     
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'apikey: ' . $apiKey
-    ]);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $rawRes = wa_raw_request('POST', $url, $payload, 30);
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
     
     if ($httpCode !== 200 && $httpCode !== 201) {
-        return ['success' => false, 'error' => 'HTTP ' . $httpCode . ': ' . $response];
+        return ['success' => false, 'error' => 'HTTP ' . $httpCode . ': ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $response !== '' ? $response : $rawRes['error']])];
     }
     
     return ['success' => true, 'response' => $response];
@@ -230,22 +221,18 @@ function whatsapp_api_send_media(string $phone, string $filePath, string $mimeTy
         'media' => 'data:' . $mimeType . ';base64,' . $base64
     ];
     
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'apikey: ' . $apiKey
-    ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60); // Timeout maior para upload
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    // Arquivo grande vai por link (a hospedagem recusa pedidos acima de ~1 MB)
+    $payload['media'] = wa_media_for_api($payload['media']);
+    try {
+        $rawRes = wa_raw_request('POST', $url, $payload, 120);
+    } finally {
+        wa_media_outbox_release($payload['media']);
+    }
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
     
     if ($httpCode !== 200 && $httpCode !== 201) {
-        return ['success' => false, 'error' => 'HTTP ' . $httpCode . ': ' . $response];
+        return ['success' => false, 'error' => 'HTTP ' . $httpCode . ': ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $response !== '' ? $response : $rawRes['error']])];
     }
     
     return ['success' => true, 'response' => $response];

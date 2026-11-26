@@ -11,8 +11,9 @@ function h(string $value): string {
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Login · MultiLife Care</title>
+    <?php require_once __DIR__ . '/app/pwa.php'; echo pwa_head_tags(); ?>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -349,6 +350,25 @@ function h(string $value): string {
                 padding: 26px;
             }
         }
+
+        /* Celular: formulário primeiro, a tela rola, campos sem zoom automático */
+        @media (max-width: 640px) {
+            body {
+                overflow-y: auto;
+                place-items: start center;
+                padding: calc(16px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+            }
+            .wrap { gap: 14px; }
+            .card { order: -1; padding: 20px; }
+            .brand { padding: 18px; }
+            .brand h1 { font-size: 22px; margin: 4px 0 6px; }
+            .brand p { font-size: 14px; }
+            .tips { display: none; }
+            .logo { margin-bottom: 8px; }
+            input[type="email"], input[type="password"] { font-size: 16px; padding: 13px 12px; }
+            .btn { padding: 14px; font-size: 16px; }
+        }
+        .installApp { margin-top: 12px; width: 100%; padding: 12px; border-radius: 10px; border: 1px solid hsl(var(--border)); background: hsl(var(--card)); font-weight: 700; color: hsl(var(--foreground)); cursor: pointer; font-size: 15px; }
     </style>
 </head>
 <body>
@@ -477,6 +497,7 @@ function h(string $value): string {
                     Não tem acesso? <a href="/apply_professional.php">Cadastre-se como profissional</a>
                 </div>
             </form>
+            <button type="button" class="installApp" data-pwa-install style="display:none" onclick="return mlPwaInstall()">📲 Instalar o app no celular</button>
         </main>
     </div>
     <script>
@@ -496,5 +517,6 @@ function h(string $value): string {
         }
     }
     </script>
+    <?= pwa_footer_js() ?>
 </body>
 </html>

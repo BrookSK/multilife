@@ -36,6 +36,7 @@ foreach ($checkboxDefaults as $cbKey) {
 
 // Endereço do webhook antes de salvar (se mudar, os números conectados são avisados)
 $webhookBefore = function_exists('whatsapp_webhook_public_url') ? whatsapp_webhook_public_url() : '';
+$providerBefore = wa_provider();
 
 $db = db();
 $db->beginTransaction();
@@ -49,7 +50,10 @@ try {
             continue;
         }
 
-        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'baileys.api_key', 'council_provider.consultario.api_key', 'council_provider.infosimples.api_token'], true) && $val === '') {
+        if (in_array($key, ['cron.token', 'smtp.in.password', 'smtp.out.password', 'baileys.api_key', 'evolution.api_key', 'council_provider.consultario.api_key', 'council_provider.infosimples.api_token'], true) && $val === '') {
+            continue;
+        }
+        if ($key === 'whatsapp.provider' && !isset(WA_PROVIDERS[$val])) {
             continue;
         }
         $stmt->execute(['k' => $key, 'v' => $val, 'uid' => auth_user_id()]);
@@ -61,6 +65,16 @@ try {
 } catch (Throwable $e) {
     $db->rollBack();
     throw $e;
+}
+
+// Integração do WhatsApp pode ter mudado (Baileys / Evolution / API oficial)
+wa_provider_reset_cache();
+if (isset($settings['whatsapp.provider']) && wa_provider() !== $providerBefore) {
+    audit_log('update', 'admin_settings', 'whatsapp.provider', ['provider' => $providerBefore], ['provider' => wa_provider()]);
+    flash_set('success', 'Configurações salvas. Integração do WhatsApp agora: ' . wa_provider_label() . '.'
+        . (wa_provider() === 'cloud' ? ' Confira os números e modelos em Configurações → API oficial.' : ''));
+    header('Location: /admin_settings.php');
+    exit;
 }
 
 // Serviço WhatsApp lê chave, URL e retenção do runtime-config.php

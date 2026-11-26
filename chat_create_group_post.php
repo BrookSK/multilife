@@ -56,37 +56,36 @@ try {
         'participants' => $formattedParticipants
     ];
     
-    $ch = curl_init($baseUrl . '/group/create/' . urlencode($instanceName));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'apikey: ' . $apiKey,
-        'Content-Type: application/json'
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $rawRes = wa_raw_request('POST', $baseUrl . '/group/create/' . urlencode($instanceName), $payload, 60);
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
     
     if ($httpCode === 200 || $httpCode === 201) {
-        flash_set('success', 'Grupo criado com sucesso!');
+        $newJid = (string)($rawRes['json']['id'] ?? '');
+        flash_set('success', wa_provider_can('group_add_members')
+            ? 'Grupo criado com sucesso!'
+            : 'Grupo criado na API oficial. Os participantes escolhidos receberam o link de convite (entram ao tocar nele; máximo ' . WA_CLOUD_GROUP_MAX_PARTICIPANTS . ').');
         audit_log('whatsapp_group_created', 'Grupo WhatsApp criado: ' . $groupName);
         
         // Salvar no banco de dados
-        $stmt = db()->prepare(
-            "INSERT INTO whatsapp_groups (name, description, status, created_by_user_id, created_at)
-            VALUES (:name, :desc, 'active', :uid, NOW())"
-        );
-        $stmt->execute([
-            'name' => $groupName,
-            'desc' => $description,
-            'uid' => auth_user_id()
-        ]);
+        try { db()->exec("ALTER TABLE whatsapp_groups ADD COLUMN instance_name VARCHAR(100) NULL"); } catch (Throwable $e) {}
+        try {
+            $stmt = db()->prepare(
+                "INSERT INTO whatsapp_groups (name, description, evolution_group_jid, instance_name, status, created_by_user_id, created_at)
+                VALUES (:name, :desc, :jid, :inst, 'active', :uid, NOW())"
+            );
+            $stmt->execute([
+                'name' => $groupName,
+                'desc' => $description,
+                'jid' => $newJid !== '' ? $newJid : null,
+                'inst' => $instanceName,
+                'uid' => auth_user_id()
+            ]);
+        } catch (Throwable $e) {
+            error_log('[CHAT_CREATE_GROUP] ' . $e->getMessage());
+        }
     } else {
-        flash_set('error', 'Erro ao criar grupo. Código: ' . $httpCode);
+        flash_set('error', 'Erro ao criar grupo: ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $response !== '' ? $response : $rawRes['error']]));
     }
 } catch (Exception $e) {
     flash_set('error', 'Erro ao criar grupo: ' . $e->getMessage());

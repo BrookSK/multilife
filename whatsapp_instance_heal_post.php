@@ -14,6 +14,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
+wa_cloud_page_guard('A reconexão sem QR Code');
 session_release();
 
 header('Content-Type: application/json; charset=utf-8');

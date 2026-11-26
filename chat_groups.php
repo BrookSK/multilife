@@ -40,17 +40,10 @@ if (!empty($baseUrl) && !empty($apiKey) && !empty($instanceName)) {
         
         // Buscar grupos da API (getParticipants=false evita 404 em algumas versões)
         $groupsUrl = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=false';
-        $ch = curl_init($groupsUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        
-        $groupsResponse = curl_exec($ch);
-        $groupsHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $groupsCurlError = curl_error($ch);
-        curl_close($ch);
+        $rawGroups = wa_raw_request('GET', $groupsUrl, null, 20);
+        $groupsResponse = $rawGroups['body'];
+        $groupsHttpCode = $rawGroups['status'];
+        $groupsCurlError = $rawGroups['error'];
         
         if ($groupsHttpCode === 200 && $groupsResponse) {
             $groupsData = json_decode($groupsResponse, true);
@@ -120,25 +113,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'participants' => [$participantPhone]
             ]);
             
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'apikey: ' . $apiKey,
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $rawRes = wa_raw_request('POST', $url, $payload, 60);
+            $response = $rawRes['body'];
+            $httpCode = $rawRes['status'];
             
             if ($httpCode === 200 || $httpCode === 201) {
-                $success = 'Participante adicionado com sucesso!';
+                $success = wa_provider_can('group_add_members') ? 'Participante adicionado com sucesso!' : 'Convite com o link do grupo enviado (a pessoa entra ao tocar no link).';
             } else {
-                $error = 'Erro ao adicionar participante. HTTP Code: ' . $httpCode;
+                $error = 'Erro ao adicionar participante: ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $response !== '' ? $response : $rawRes['error']]);
             }
         }
     } elseif ($action === 'remove_participant') {
@@ -149,29 +131,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($groupJid) && !empty($participantJid)) {
             $url = $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
             $payload = json_encode([
+                'groupJid' => $groupJid,
                 'action' => 'remove',
                 'participants' => [$participantJid]
             ]);
             
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'apikey: ' . $apiKey,
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $rawRes = wa_raw_request('POST', $url, $payload, 30);
+            $response = $rawRes['body'];
+            $httpCode = $rawRes['status'];
             
             if ($httpCode === 200 || $httpCode === 201) {
                 $success = 'Participante removido com sucesso!';
             } else {
-                $error = 'Erro ao remover participante. HTTP Code: ' . $httpCode;
+                $error = 'Erro ao remover participante: ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $response !== '' ? $response : $rawRes['error']]);
             }
         }
     }

@@ -29,6 +29,14 @@ function wa_webhook_handle(array $payload): void
     // Usado pelos helpers (rastreio, mídia, LID)
     $GLOBALS['_webhookInstanceName'] = $instance !== '' ? $instance : null;
 
+    // API oficial: situação de envio, grupos, modelos e avisos da conta (app/whatsapp_cloud_inbound.php)
+    if (str_starts_with($event, 'cloud.')) {
+        if (function_exists('wa_cloud_handle_event')) {
+            wa_cloud_handle_event($event, $payload);
+        }
+        return;
+    }
+
     // Saúde da conexão (connection.update / qrcode.updated)
     if (function_exists('whatsapp_health_handle_webhook')
         && whatsapp_health_handle_webhook($event, $instance, $payload)) {
@@ -543,6 +551,14 @@ function wa_wh_find_dispatch_for_message(string $targetId, string $chatJid, stri
     $dispatch = $st->fetch(PDO::FETCH_ASSOC);
     if ($dispatch) {
         return $dispatch;
+    }
+
+    // Captação enviada direto ao profissional (API oficial): resposta "Tenho interesse" ou reação
+    if (function_exists('demand_dispatch_direct_find')) {
+        $dispatch = demand_dispatch_direct_find($targetId);
+        if ($dispatch) {
+            return $dispatch;
+        }
     }
 
     $stM = db()->prepare('SELECT message_text FROM chat_messages WHERE external_message_id = ? LIMIT 1');

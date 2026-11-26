@@ -6,6 +6,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
+wa_cloud_page_guard('A exclusão de instância do serviço');
 
 $instanceName = trim($_GET['instance'] ?? '');
 

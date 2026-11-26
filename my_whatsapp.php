@@ -23,7 +23,9 @@ echo '<section class="card col12">';
 echo '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">';
 echo '<div>';
 echo '<div style="font-size:22px;font-weight:900">Meu WhatsApp</div>';
-echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">Veja o status das suas conexões de WhatsApp e reconecte quando alguma estiver desconectada.</div>';
+echo '<div style="margin-top:6px;color:hsl(var(--muted-foreground));font-size:14px">' . (wa_is_cloud()
+    ? 'Os números da empresa usam a API oficial do WhatsApp (Meta): ficam sempre conectados e não usam QR Code. Se algum aparecer com problema, avise o administrador.'
+    : 'Veja o status das suas conexões de WhatsApp e reconecte quando alguma estiver desconectada.') . '</div>';
 echo '</div>';
 echo '<a class="btn" href="/dashboard.php">Voltar</a>';
 echo '</div>';
@@ -89,10 +91,14 @@ foreach ($instances as $inst) {
     echo '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
     // Badge de status (preenchido via JS)
     echo '<span class="waBadge waStatusBadge" data-instance="' . h($instName) . '" style="background:#f1f5f9;color:#64748b"><span class="waDot" style="background:#94a3b8"></span>Verificando...</span>';
-    // Botões (habilitados conforme status via JS)
-    echo '<button type="button" class="btn waBtnHeal" data-instance="' . h($instName) . '" style="display:none;background:#f97316;color:#fff;border:none" title="Refaz a conexão sem QR Code" onclick=\'mlWaHeal(' . $jsName . ', this)\'>🔄 Reconectar (sem QR)</button>';
-    echo '<button type="button" class="btn btnPrimary waBtnReconnect" data-instance="' . h($instName) . '" style="display:none" onclick=\'myWaReconnect(' . $jsName . ')\'>Reconectar</button>';
-    echo '<button type="button" class="btn waBtnDisconnect" data-instance="' . h($instName) . '" style="display:none;background:#fee2e2;color:#dc2626;border-color:#fca5a5" onclick=\'myWaDisconnect(' . $jsName . ')\'>Desconectar</button>';
+    // Botões (habilitados conforme status via JS). API oficial: sem QR Code nem desconexão.
+    if (wa_provider_uses_qr()) {
+        echo '<button type="button" class="btn waBtnHeal" data-instance="' . h($instName) . '" style="display:none;background:#f97316;color:#fff;border:none" title="Refaz a conexão sem QR Code" onclick=\'mlWaHeal(' . $jsName . ', this)\'>🔄 Reconectar (sem QR)</button>';
+        echo '<button type="button" class="btn btnPrimary waBtnReconnect" data-instance="' . h($instName) . '" style="display:none" onclick=\'myWaReconnect(' . $jsName . ')\'>Reconectar</button>';
+        echo '<button type="button" class="btn waBtnDisconnect" data-instance="' . h($instName) . '" style="display:none;background:#fee2e2;color:#dc2626;border-color:#fca5a5" onclick=\'myWaDisconnect(' . $jsName . ')\'>Desconectar</button>';
+    } elseif (wa_cloud_instance($instName) === null) {
+        echo '<span style="font-size:12px;color:hsl(var(--muted-foreground))">Número do QR Code: não envia pela API oficial</span>';
+    }
     echo '</div>';
     echo '</div>';
 }

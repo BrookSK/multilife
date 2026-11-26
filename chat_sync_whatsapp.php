@@ -93,19 +93,17 @@ function syncExtractLastMessageText($lastMessage): string
     return '';
 }
 
+// API oficial: não existe lista de conversas do celular; tudo chega pelo webhook
+if (!wa_provider_can('history_sync')) {
+    syncFinish(true, 'Na API oficial as conversas entram sozinhas pelo webhook: ' . wa_provider_cannot_reason('history_sync'), $requestedInstance);
+}
+
 try {
     // Sincronizar conversas via findChats
-    $ch = curl_init($baseUrl . '/chat/findChats/' . urlencode($instanceName));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
+    $rawChats = wa_raw_request('POST', $baseUrl . '/chat/findChats/' . urlencode($instanceName), new stdClass(), 60);
+    $response = $rawChats['body'];
+    $httpCode = $rawChats['status'];
+    $curlError = $rawChats['error'];
 
     if ($httpCode !== 200) {
         $msg = ($httpCode === 404)

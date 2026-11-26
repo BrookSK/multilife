@@ -426,20 +426,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                                     $profileUrl = $baseUrl . '/chat/fetchProfile/' . urlencode($instanceName);
                                     $profilePayload = json_encode(['number' => $remoteJid]);
                                     
-                                    $ch = curl_init($profileUrl);
-                                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                                    curl_setopt($ch, CURLOPT_POST, true);
-                                    curl_setopt($ch, CURLOPT_POSTFIELDS, $profilePayload);
-                                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                                        'apikey: ' . $apiKey,
-                                        'Content-Type: application/json'
-                                    ]);
-                                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                                    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-                                    
-                                    $profileResponse = curl_exec($ch);
-                                    $profileHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                                    curl_close($ch);
+                                    $rawProfile = wa_raw_request('POST', $profileUrl, $profilePayload, 5);
+                                    $profileResponse = $rawProfile['body'];
+                                    $profileHttpCode = $rawProfile['status'];
                                     
                                     if ($profileHttpCode === 200 && $profileResponse) {
                                         $profileData = json_decode($profileResponse, true);
@@ -567,7 +556,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $payload = json_encode([
                 'subject' => $groupName,
                 'description' => 'Grupo criado pelo sistema MultiLife',
-                'participants' => ['5517991253062']
+                // API oficial: ninguém é adicionado na criação (só por link de convite)
+                'participants' => wa_is_cloud() ? [] : ['5517991253062']
             ]);
             
             
@@ -579,28 +569,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
                 
-                $ch = curl_init();
-                curl_setopt_array($ch, [
-                    CURLOPT_URL => $url,
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_ENCODING => "",
-                    CURLOPT_MAXREDIRS => 10,
-                    CURLOPT_TIMEOUT => 30,
-                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                    CURLOPT_CUSTOMREQUEST => "POST",
-                    CURLOPT_POSTFIELDS => $payload,
-                    CURLOPT_HTTPHEADER => [
-                        "Content-Type: application/json",
-                        "apikey: " . $apiKey
-                    ],
-                    CURLOPT_SSL_VERIFYPEER => false,
-                    CURLOPT_SSL_VERIFYHOST => false
-                ]);
-                
-                $response = curl_exec($ch);
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $curlError = curl_error($ch);
-                curl_close($ch);
+                $rawCreate = wa_raw_request('POST', $url, $payload, 60);
+                $response = $rawCreate['body'];
+                $httpCode = $rawCreate['status'];
+                $curlError = $rawCreate['error'];
                 
                 
                 // Se sucesso ou erro que não seja 1006, parar tentativas
@@ -615,7 +587,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $responseArr = json_decode($response, true);
                 $msgs = $responseArr['response']['message'] ?? [];
                 $isRetryable = false;
-                foreach ($msgs as $m) {
+                foreach ((array)$msgs as $m) {
                     if (strpos((string)$m, 'Error creating group') !== false || strpos((string)$m, 'Connection Closed') !== false) {
                         $isRetryable = true;
                         break;
@@ -663,24 +635,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         audit_log('create', 'chat_groups', $groupJid, null, ['group_name' => $groupName, 'specialty' => $specialty, 'region' => $location]);
                         
                         // Configurar grupo para apenas admins enviarem mensagens
-                        try {
+                        if (wa_provider_can('group_announcement')) {
                             $settingsUrl = $baseUrl . '/group/updateSetting/' . urlencode($instanceName);
-                            $settingsPayload = json_encode(['groupJid' => $groupJid, 'action' => 'announcement']);
-                            $chSettings = curl_init();
-                            curl_setopt_array($chSettings, [
-                                CURLOPT_URL => $settingsUrl,
-                                CURLOPT_RETURNTRANSFER => true,
-                                CURLOPT_TIMEOUT => 15,
-                                CURLOPT_CUSTOMREQUEST => "PUT",
-                                CURLOPT_POSTFIELDS => $settingsPayload,
-                                CURLOPT_HTTPHEADER => ["Content-Type: application/json", "apikey: " . $apiKey],
-                                CURLOPT_SSL_VERIFYPEER => false,
-                            ]);
-                            curl_exec($chSettings);
-                            curl_close($chSettings);
-                        } catch (Exception $e) {}
+                            wa_raw_request('POST', $settingsUrl, ['groupJid' => $groupJid, 'action' => 'announcement'], 15);
+                        }
                         
-                        $success = '✅ Grupo criado com sucesso: ' . $groupName . '. Apenas admins podem enviar mensagens.';
+                        $success = wa_provider_can('group_announcement')
+                            ? '✅ Grupo criado com sucesso: ' . $groupName . '. Apenas admins podem enviar mensagens.'
+                            : '✅ Grupo criado na API oficial: ' . $groupName . '. Para colocar pessoas, use "Gerenciar grupo" → Convidar (a pessoa entra pelo link; máximo ' . WA_CLOUD_GROUP_MAX_PARTICIPANTS . ' participantes).';
                         $debugConsole[] = 'console.log("✅ GRUPO CRIADO - Nome: ' . addslashes($groupName) . ' | JID: ' . addslashes($groupJid) . '")';
                     } catch (Exception $e) {
                         error_log("Erro ao salvar grupo no banco: " . $e->getMessage());
@@ -1030,7 +992,8 @@ if (!empty($selectedChat) && !$chatListOnly) {
                 mentioned_jids as mentionedJids,
                 sender_name as senderName,
                 participant_jid as participantJid,
-                external_message_id as externalMessageId
+                external_message_id as externalMessageId" . (chat_send_error_column() ? ",
+                send_error as sendError" : '') . "
             FROM chat_messages
             WHERE remote_jid = ?" . $msgInstSql . "
             ORDER BY message_timestamp ASC
@@ -1235,24 +1198,10 @@ if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($in
         error_log("Payload: " . $requestJson);
         
         // Usar endpoint /chat/findMessages com POST e ordenação
-        $ch = curl_init($baseUrl . '/chat/findMessages/' . urlencode($instanceName));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'apikey: ' . $apiKey,
-            'Content-Type: application/json',
-            'Cache-Control: no-cache, no-store, must-revalidate',
-            'Pragma: no-cache'
-        ]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $requestJson);
-        curl_setopt($ch, CURLOPT_FRESH_CONNECT, true);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
+        $rawFind = wa_raw_request('POST', $baseUrl . '/chat/findMessages/' . urlencode($instanceName), $requestJson, 15);
+        $response = $rawFind['body'];
+        $httpCode = $rawFind['status'];
+        $curlError = $rawFind['error'];
         
         // Log da resposta
         $debugLogs[] = "HTTP Code: " . $httpCode;
@@ -1311,19 +1260,9 @@ if (false && $isPrivateChat && !empty($baseUrl) && !empty($apiKey) && !empty($in
                 if (!strpos($selectedChat, '@g.us')) {
                     try {
                         $number = str_replace('@s.whatsapp.net', '', $selectedChat);
-                        $chProfile = curl_init($baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode($number));
-                        curl_setopt($chProfile, CURLOPT_RETURNTRANSFER, true);
-                        curl_setopt($chProfile, CURLOPT_HTTPHEADER, [
-                            'apikey: ' . $apiKey,
-                            'Cache-Control: no-cache'
-                        ]);
-                        curl_setopt($chProfile, CURLOPT_SSL_VERIFYPEER, false);
-                        curl_setopt($chProfile, CURLOPT_TIMEOUT, 5);
-                        curl_setopt($chProfile, CURLOPT_FRESH_CONNECT, true);
-                        
-                        $profileResponse = curl_exec($chProfile);
-                        $profileHttpCode = curl_getinfo($chProfile, CURLINFO_HTTP_CODE);
-                        curl_close($chProfile);
+                        $rawProf = wa_raw_request('GET', $baseUrl . '/chat/fetchProfile/' . urlencode($instanceName) . '?number=' . urlencode($number), null, 5);
+                        $profileResponse = $rawProf['body'];
+                        $profileHttpCode = $rawProf['status'];
                         
                         if ($profileHttpCode === 200) {
                             $profileData = json_decode($profileResponse, true);
@@ -2185,6 +2124,9 @@ echo '.whatsapp-message.in{justify-content:flex-start}';
 echo '.whatsapp-message-bubble{max-width:65%;padding:8px 12px;border-radius:8px;position:relative}';
 echo '.whatsapp-message.out .whatsapp-message-bubble{background:#d9fdd3;border-bottom-right-radius:0}';
 echo '.whatsapp-message.in .whatsapp-message-bubble{background:#fff;border-bottom-left-radius:0;box-shadow:0 1px 0.5px rgba(0,0,0,.13)}';
+echo '.whatsapp-system-msg{text-align:center;margin:8px 0}.whatsapp-system-msg span{display:inline-block;background:#fff3c4;color:#54656f;font-size:12px;padding:4px 12px;border-radius:8px;max-width:90%}';
+echo '.whatsapp-send-error{margin-top:4px;font-size:11.5px;line-height:1.35;color:#b91c1c;background:#fee2e2;border-radius:6px;padding:4px 6px}';
+echo '.whatsapp-window-bar{font-size:12.5px;line-height:1.4;padding:6px 12px;border-top:1px solid #e9edef}.wa-win-open{background:#f0fdf4;color:#166534}.wa-win-closed{background:#fff7ed;color:#9a3412}';
 echo '.whatsapp-message-text{font-size:14px;color:#111b21;line-height:1.5;word-wrap:break-word}';
 // Formatação do WhatsApp e botão de download de mídia
 echo '.whatsapp-message-text code.wa-code,.whatsapp-message-text code.wa-code-block{font-family:Consolas,Menlo,monospace;font-size:13px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px}';
@@ -2263,6 +2205,70 @@ echo '.whatsapp-sync-btn:hover{background:hsl(var(--primary-dark))}';
 echo '.whatsapp-sync-btn:disabled{background:#d1d7db;cursor:not-allowed}';
 echo '@keyframes rotate{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
 echo '.rotating{animation:rotate 1s linear infinite}';
+echo '.wa-mobile-back{display:none}';
+// Tablet: lista + conversa lado a lado; detalhes abrem como gaveta à direita
+echo '@media(min-width:761px) and (max-width:980px){'
+    . '#waTopBar{flex-wrap:nowrap !important;overflow-x:auto;scrollbar-width:none}'
+    . '#waTopBar h2{display:none}'
+    . '#waTopBar>button,#waTopBar>a{flex:0 0 auto;white-space:nowrap}'
+    . '.whatsapp-header{display:none}'
+    . '.whatsapp-container{height:calc(100dvh - 140px - env(safe-area-inset-top))}'
+    . '.whatsapp-sidebar{width:300px;flex:0 0 auto}'
+    . '.whatsapp-main{min-width:0}'
+    . '.whatsapp-info-panel{display:none}'
+    . '.whatsapp-container.info-open-m .whatsapp-info-panel{display:flex;position:fixed;top:calc(56px + env(safe-area-inset-top));right:0;bottom:0;width:min(380px,90vw);z-index:9980;box-shadow:-10px 0 40px rgba(0,0,0,.2)}'
+    . '.whatsapp-message-bubble{max-width:80%}'
+    . '}';
+// Celular: uma coluna por vez (lista OU conversa), detalhes por cima da conversa
+echo '@media(max-width:760px){'
+    . 'main.wrap{padding:calc(56px + env(safe-area-inset-top)) 0 0 !important}'
+    . '#waTopBar{padding:8px 10px !important;gap:6px !important;flex-wrap:nowrap !important;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}'
+    . '#waTopBar::-webkit-scrollbar{display:none}'
+    . '#waTopBar h2{display:none}'
+    . '#waTopBar>button,#waTopBar>a{padding:8px 12px !important;font-size:13px !important;flex:0 0 auto;white-space:nowrap;border-radius:18px !important;gap:6px !important}'
+    . '#waTopBar svg{width:16px;height:16px}'
+    . '.whatsapp-container{height:calc(100dvh - 108px - env(safe-area-inset-top));position:relative}'
+    . '.whatsapp-container.has-chat{height:calc(100dvh - 56px - env(safe-area-inset-top))}'
+    . '#waTopBar.wa-topbar-chat{display:none !important}'
+    . '.whatsapp-sidebar{width:100%;border-right:0}'
+    . '.whatsapp-main{display:none;min-width:0}'
+    . '.whatsapp-container.has-chat .whatsapp-sidebar{display:none}'
+    . '.whatsapp-container.has-chat .whatsapp-main{display:flex}'
+    . '.whatsapp-header{display:none}'
+    . '.whatsapp-tab{padding:12px 10px}'
+    . '.whatsapp-chat-item{padding:10px 12px}'
+    . '.whatsapp-chat-header{padding:6px 6px;position:relative;gap:4px}'
+    . '.wa-source-tag{display:none}'
+    . '.wa-mobile-back{display:flex;align-items:center;justify-content:center;width:36px;height:40px;color:#54656f;flex:0 0 auto;text-decoration:none;border-radius:50%}'
+    . '.wa-mobile-back:active{background:#f0f2f5}'
+    . '.whatsapp-chat-header-info{gap:8px;min-width:0;flex:1}'
+    . '.whatsapp-chat-header-info .whatsapp-chat-avatar{width:38px;height:38px;font-size:14px}'
+    . '.whatsapp-chat-header-info>div:last-child{min-width:0}'
+    . '.whatsapp-chat-header-info>div:last-child>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    . '.whatsapp-chat-header-actions{gap:0;flex:0 0 auto}'
+    . '.whatsapp-action-btn{width:36px;height:40px}'
+    . '.whatsapp-action-btn svg{width:21px;height:21px}'
+    . '.whatsapp-messages{padding:12px 10px}'
+    . '.whatsapp-message-bubble{max-width:85%}'
+    . '.whatsapp-input-area{padding:8px;gap:6px;padding-bottom:calc(8px + env(safe-area-inset-bottom))}'
+    . '.whatsapp-input{font-size:16px}'
+    . '.whatsapp-send-btn{width:44px;height:44px;flex:0 0 auto}'
+    // Composer em 2 linhas: [anexos + assinatura/demanda] e [campo + respostas rápidas + enviar]
+    . '#sendMessageForm{gap:6px !important;align-items:center !important}'
+    . '.wa-attach{order:-2;gap:0 !important}'
+    . '.wa-attach .whatsapp-action-btn{width:38px;height:38px}'
+    . '.wa-composer-tools{order:-1;width:auto;flex:1 1 auto;min-width:0;justify-content:flex-end}'
+    . '.wa-composer-tools select{max-width:100%;flex:1 1 140px}'
+    . '#sendMessageForm>div[style*="flex:1"]{flex:1 1 calc(100% - 100px) !important;min-width:0}'
+    . '#chatMessageInput{background:#f0f2f5;border-radius:20px;padding:10px 14px;min-height:44px}'
+    . '.whatsapp-info-panel{display:none}'
+    . '.whatsapp-container.info-open-m .whatsapp-info-panel{display:flex;position:fixed;top:calc(56px + env(safe-area-inset-top));left:0;right:0;bottom:0;width:100%;z-index:9980;border-left:0;padding-bottom:env(safe-area-inset-bottom)}'
+    . '.whatsapp-info-header{position:sticky;top:0;z-index:2}'
+    . '.whatsapp-empty svg{width:200px;height:200px}'
+    . '.whatsapp-empty h2{font-size:24px}'
+    . '.whatsapp-dropdown{max-width:calc(100vw - 16px)}'
+    . '.quick-replies-dropdown{max-height:45vh}'
+    . '}';
 echo '</style>';
 
 // Exibir logs de debug no topo da página
@@ -2275,7 +2281,7 @@ if (!empty($debugLogs)) {
     echo '</div>';
 }
 
-echo '<div style="padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+echo '<div id="waTopBar"' . (!empty($selectedChat) ? ' class="wa-topbar-chat"' : '') . ' style="padding:12px 16px;background:#ffffff;border-bottom:1px solid #d1d7db;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
 echo '<h2 style="margin:0;flex:1;font-size:18px;color:#111b21">Chat WhatsApp</h2>';
 echo '<button onclick="syncWhatsAppGroups()" id="syncBtn" class="whatsapp-sync-btn">';
 echo '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="syncIcon"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>';
@@ -2299,7 +2305,7 @@ echo 'QR Code';
 echo '</a>';
 echo '</div>';
 
-echo '<div class="whatsapp-container" id="whatsappContainer">';
+echo '<div class="whatsapp-container' . (!empty($selectedChat) ? ' has-chat' : '') . '" id="whatsappContainer">';
 // Aplica já a preferência "painel de detalhes oculto" (evita o painel piscar)
 echo '<script>try{if(localStorage.getItem("chatInfoPanelHidden")==="1"){document.getElementById("whatsappContainer").classList.add("info-hidden");}}catch(e){}</script>';
 
@@ -2545,7 +2551,8 @@ if ($chatType === 'grupos') {
         // Agrupar por grupo primeiro, depois por demanda
         $byGroup = [];
         foreach ($waitingPros as $wp) {
-            $groupKey = $wp['group_name'] ?? 'Sem grupo';
+            // Captação da API oficial vai direto no privado (disparo sem grupo)
+            $groupKey = $wp['group_name'] ?? (!empty($wp['dispatch_id']) ? 'Enviada direto no privado (API oficial)' : 'Sem grupo');
             $demandKey = $wp['demand_id'];
             $byGroup[$groupKey][$demandKey][] = $wp;
         }
@@ -2923,7 +2930,14 @@ if (empty($selectedChat)) {
     echo '<div class="whatsapp-chat-header">';
     echo '<div class="whatsapp-chat-header-info">';
     // Indicador de fonte de dados
-    echo '<div style="position:absolute;top:4px;right:4px;font-size:9px;color:#00a884;background:#e7f8f4;padding:2px 6px;border-radius:4px;font-weight:600">WHATSAPP</div>';
+    echo '<div class="wa-source-tag" style="position:absolute;top:4px;right:4px;font-size:9px;color:#00a884;background:#e7f8f4;padding:2px 6px;border-radius:4px;font-weight:600">WHATSAPP</div>';
+    // Voltar para a lista de conversas (só aparece no celular, onde a tela mostra uma coisa por vez)
+    $backParams = [];
+    if (!empty($chatType)) { $backParams['type'] = (string)$chatType; }
+    if ($instanceFilter !== '') { $backParams['instance'] = (string)$instanceFilter; }
+    if ($attendantFilter > 0) { $backParams['attendant'] = (int)$attendantFilter; }
+    $backHref = '/chat_web.php' . ($backParams ? ('?' . http_build_query($backParams)) : '');
+    echo '<a class="wa-mobile-back" href="' . h($backHref) . '" aria-label="Voltar para as conversas" title="Voltar"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></a>';
     $initials = strtoupper(substr($chatName, 0, 2));
     if (!empty($profilePic)) {
         echo '<div class="whatsapp-chat-avatar" style="background-image:url(' . h($profilePic) . ');background-size:cover;background-position:center"></div>';
@@ -3041,6 +3055,11 @@ if (empty($selectedChat)) {
             
             // Mesma chave usada pelo polling (external_message_id ou "row-<id>") para não duplicar
             $domMsgKey = !empty($msg['externalMessageId']) ? (string)$msg['externalMessageId'] : (!empty($msg['id']) ? 'row-' . (int)$msg['id'] : '');
+            // Aviso do próprio WhatsApp no grupo (entrou/saiu pelo link): centralizado, sem balão
+            if ($messageType === 'system') {
+                echo '<div class="whatsapp-system-msg"' . ($domMsgKey !== '' ? ' data-msg-id="' . h($domMsgKey) . '"' : '') . (!empty($msg['id']) ? ' data-row-id="' . (int)$msg['id'] . '"' : '') . '><span>' . h((string)$messageText) . ($timestamp !== '' ? ' · ' . h($timestamp) : '') . '</span></div>';
+                continue;
+            }
             echo '<div class="whatsapp-message ' . $messageClass . '"' . ($domMsgKey !== '' ? ' data-msg-id="' . h($domMsgKey) . '"' : '') . (!empty($msg['id']) ? ' data-row-id="' . (int)$msg['id'] . '"' : '') . '>';
             echo '<div class="whatsapp-message-bubble">';
             
@@ -3243,6 +3262,10 @@ if (empty($selectedChat)) {
             }
             
             echo '<div class="whatsapp-message-time">' . h($timestamp) . '</div>';
+            // API oficial: a Meta avisou que não entregou (ex.: fora das 24 h, número sem WhatsApp)
+            if ($isFromMe && !empty($msg['sendError'])) {
+                echo '<div class="whatsapp-send-error">⚠️ Não entregue: ' . h((string)$msg['sendError']) . '</div>';
+            }
             echo '</div>';
             echo '</div>';
         }
@@ -3258,6 +3281,16 @@ if (empty($selectedChat)) {
     //     echo '</script>';
     // }
     
+    // API oficial: janela de 24 h da conversa privada (mensagem livre x modelo aprovado)
+    if (wa_is_cloud() && strpos($selectedChat, '@g.us') === false && wa_cloud_instance($instanceName) !== null) {
+        $winLeft = wa_cloud_window_remaining($instanceName, $selectedChat);
+        if ($winLeft > WA_CLOUD_WINDOW_MARGIN) {
+            echo '<div class="whatsapp-window-bar wa-win-open">🟢 Conversa aberta pela API oficial até ' . h(date('d/m H:i', time() + $winLeft)) . ' (24 h depois da última mensagem do contato).</div>';
+        } else {
+            echo '<div class="whatsapp-window-bar wa-win-closed">🟠 Fora da janela de 24 h: o texto sai pelo modelo de aviso aprovado; arquivos e áudios só depois que a pessoa responder.</div>';
+        }
+    }
+
     // Formulário de envio
     echo '<div class="whatsapp-input-area">';
     echo '<form method="post" action="' . h('/chat_web.php?chat=' . urlencode($selectedChat) . $chatFilterQS) . '" style="display:flex;gap:8px;align-items:flex-end;width:100%" id="sendMessageForm">';
@@ -3265,7 +3298,7 @@ if (empty($selectedChat)) {
     echo '<input type="hidden" name="phone_number" value="' . h($selectedChat) . '">';
     
     // Botões de anexo de mídia
-    echo '<div style="display:flex;gap:4px;align-items:center">';
+    echo '<div class="wa-attach" style="display:flex;gap:4px;align-items:center">';
     
     // Botão de áudio (gravação direta)
     echo '<script>
@@ -3343,6 +3376,8 @@ function toggleRec(){
     echo '<div style="flex:1;position:relative">';
     echo '<div id="quickRepliesDropdown" class="quick-replies-dropdown" style="display:none"></div>';
     echo '<textarea id="chatMessageInput" class="whatsapp-input" name="message" placeholder="Digite uma mensagem (use / para respostas rápidas)" rows="1" required style="width:100%"></textarea>';
+    // Celular: dica curta para o campo não ocupar 3 linhas
+    echo '<script>try{if(window.matchMedia("(max-width: 760px)").matches){document.getElementById("chatMessageInput").placeholder="Mensagem";}}catch(e){}</script>';
     echo '</div>';
 
     // Referenciar uma demanda: escolhe o card e o início da mensagem vem pronto

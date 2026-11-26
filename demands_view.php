@@ -518,6 +518,14 @@ echo '<th>Quando</th><th>Usuário</th><th>Grupo</th><th>Status</th><th>Erro</th>
 echo '</tr></thead><tbody>';
 foreach ($dispatchLogs as $l) {
     $g = $l['group_name'] ? (string)$l['group_name'] : '-';
+    if (!$l['group_name'] && function_exists('demand_dispatch_direct_counts')) {
+        // Captação pela API oficial: enviada direto para cada profissional
+        $dc = demand_dispatch_direct_counts((int)$l['id']);
+        if ($dc['total'] > 0) {
+            $g = 'Envio direto a ' . $dc['total'] . ' profissional(is): ' . ($dc['sent'] + $dc['delivered'] + $dc['read']) . ' enviada(s), '
+                . ($dc['delivered'] + $dc['read']) . ' entregue(s), ' . $dc['read'] . ' lida(s)' . ($dc['failed'] ? ', ' . $dc['failed'] . ' falha(s)' : '');
+        }
+    }
     echo '<tr>';
     echo '<td>' . h((string)$l['created_at']) . '</td>';
     echo '<td>' . h((string)($l['dispatched_by_name'] ?? '-')) . '</td>';

@@ -7,6 +7,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
+wa_cloud_page_guard('Este teste');
 
 header('Content-Type: text/plain; charset=utf-8');
 

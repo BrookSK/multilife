@@ -9,6 +9,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 auth_require_login();
 rbac_require_permission('demands.manage');
+wa_cloud_page_guard('Este diagnóstico');
 
 header('Content-Type: text/plain; charset=utf-8');
 

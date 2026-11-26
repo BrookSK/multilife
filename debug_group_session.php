@@ -12,6 +12,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
 rbac_require_permission('admin.settings.manage');
+wa_cloud_page_guard('Este diagnóstico');
 
 @set_time_limit(400);
 header('Content-Type: text/html; charset=utf-8');

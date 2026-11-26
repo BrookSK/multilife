@@ -30,15 +30,10 @@ try {
     // Tentar primeiro com getParticipants que retorna números reais
     $url = $baseUrl . '/group/fetchAllGroups/' . urlencode($instanceName) . '?getParticipants=true';
     
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    // API oficial: a lista de todos os grupos com participantes custa uma consulta por grupo; vai direto ao grupo
+    $raw1 = wa_is_cloud() ? ['body' => '', 'status' => 0] : wa_raw_request('GET', $url, null, 15);
+    $response = $raw1['body'];
+    $httpCode = $raw1['status'];
     
     $participants = [];
     
@@ -60,15 +55,9 @@ try {
     if (empty($participants)) {
         $url2 = $baseUrl . '/group/participants/' . urlencode($instanceName) . '?groupJid=' . urlencode($groupJid);
         
-        $ch2 = curl_init($url2);
-        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch2, CURLOPT_TIMEOUT, 15);
-        
-        $response2 = curl_exec($ch2);
-        $httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-        curl_close($ch2);
+        $raw2 = wa_raw_request('GET', $url2, null, 15);
+        $response2 = $raw2['body'];
+        $httpCode2 = $raw2['status'];
         
         if ($httpCode2 === 200 && $response2) {
             $data = json_decode($response2, true);

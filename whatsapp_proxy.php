@@ -38,16 +38,7 @@ function configureWebhook(string $baseUrl, string $apiKey, string $instanceName)
     $payload = whatsapp_webhook_payload($webhookUrl);
 
     $url = $baseUrl . '/webhook/set/' . urlencode($instanceName);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $httpCode = wa_raw_request('POST', $url, $payload, 15)['status'];
 
     return ($httpCode >= 200 && $httpCode < 300);
 }
@@ -69,16 +60,14 @@ try {
             break;
 
         case 'logout':
+            if (!wa_provider_can('logout')) {
+                echo json_encode(['success' => false, 'message' => wa_provider_cannot_reason('logout')], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
             $url = $baseUrl . '/instance/logout/' . urlencode($instanceName);
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $rawRes = wa_raw_request('DELETE', $url, null, 30);
+            $response = $rawRes['body'];
+            $httpCode = $rawRes['status'];
             
             // Atualizar status na tabela
             if ($httpCode >= 200 && $httpCode < 300) {
@@ -93,21 +82,18 @@ try {
 
         case 'provision':
             // 1. Criar instância
+            if (wa_is_cloud()) {
+                echo json_encode(['success' => false, 'error' => 'Na API oficial o número é cadastrado em Configurações → WhatsApp → API oficial (sem QR Code).'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
             $createPayload = [
                 'instanceName' => $instanceName,
                 'qrcode' => true,
                 'integration' => 'WHATSAPP-BAILEYS',
             ];
-            $ch = curl_init($baseUrl . '/instance/create');
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($createPayload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $rawRes = wa_raw_request('POST', $baseUrl . '/instance/create', $createPayload, 30);
+            $response = $rawRes['body'];
+            $httpCode = $rawRes['status'];
 
             if ($httpCode < 200 || $httpCode >= 300) {
                 // Se 403 ou 409 = instância já existe na API do WhatsApp (foi removida do sistema mas não da API)
@@ -169,27 +155,15 @@ try {
 
             // POST /webhook/set/{instance} com wrapper
             $testUrl = $baseUrl . '/webhook/set/' . urlencode($instanceName);
-            $ch = curl_init($testUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey, 'Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            $r1 = curl_exec($ch);
-            $c1 = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $raw1 = wa_raw_request('POST', $testUrl, $payload, 10);
+            $r1 = $raw1['body'];
+            $c1 = $raw1['status'];
 
             // GET /webhook/find/{instance} (ver webhook atual)
             $findUrl = $baseUrl . '/webhook/find/' . urlencode($instanceName);
-            $ch2 = curl_init($findUrl);
-            curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch2, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-            curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch2, CURLOPT_TIMEOUT, 10);
-            $r2 = curl_exec($ch2);
-            $c2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-            curl_close($ch2);
+            $raw2 = wa_raw_request('GET', $findUrl, null, 10);
+            $r2 = $raw2['body'];
+            $c2 = $raw2['status'];
 
             echo json_encode([
                 'webhook_url' => $whUrl,
@@ -204,15 +178,9 @@ try {
     }
 
     // Executar request para connect/status
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $rawRes = wa_raw_request('GET', $url, null, 30);
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
 
     if ($httpCode >= 200 && $httpCode < 300) {
         if ($action === 'status') {
@@ -252,14 +220,9 @@ try {
                 // Se não veio na resposta do connectionState, tentar buscar via fetchInstances
                 if ($ownerNumber === '') {
                     $fetchUrl = $baseUrl . '/instance/fetchInstances?instanceName=' . urlencode($instanceName);
-                    $chFetch = curl_init($fetchUrl);
-                    curl_setopt($chFetch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($chFetch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-                    curl_setopt($chFetch, CURLOPT_SSL_VERIFYPEER, false);
-                    curl_setopt($chFetch, CURLOPT_TIMEOUT, 10);
-                    $fetchResp = curl_exec($chFetch);
-                    $fetchCode = curl_getinfo($chFetch, CURLINFO_HTTP_CODE);
-                    curl_close($chFetch);
+                    $rawFetch = wa_raw_request('GET', $fetchUrl, null, 10);
+                    $fetchResp = $rawFetch['body'];
+                    $fetchCode = $rawFetch['status'];
                     
                     if ($fetchCode >= 200 && $fetchCode < 300) {
                         $fetchData = json_decode($fetchResp, true);

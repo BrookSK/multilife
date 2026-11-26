@@ -21,6 +21,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
 auth_require_login();
+wa_cloud_page_guard('A sincronização pelo serviço');
 
 $userId = (int)auth_user_id();
 $instance = trim((string)($_POST['instance'] ?? ($_GET['instance'] ?? '')));

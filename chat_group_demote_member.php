@@ -33,26 +33,16 @@ try {
         'participants' => [$participantId]
     ];
     
-    $ch = curl_init($baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '/demote');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'apikey: ' . $apiKey,
-        'Content-Type: application/json'
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $payload['action'] = 'demote';
+    $rawRes = wa_raw_request('POST', $baseUrl . '/group/updateParticipant/' . urlencode($instanceName) . '/demote', $payload, 60);
+    $response = $rawRes['body'];
+    $httpCode = $rawRes['status'];
     
     if ($httpCode === 200 || $httpCode === 201) {
         flash_set('success', 'Participante rebaixado de administrador!');
         audit_log('update', 'chat_groups', $groupId, null, ['action' => 'demote_member', 'participant' => $participantId]);
     } else {
-        flash_set('error', 'Erro ao rebaixar participante. Código: ' . $httpCode);
+        flash_set('error', 'Erro ao rebaixar participante: ' . wa_api_error_message(['status' => $httpCode, 'json' => $rawRes['json'], 'body_raw' => $rawRes['body'] !== '' ? $rawRes['body'] : $rawRes['error']]));
     }
 } catch (Exception $e) {
     flash_set('error', 'Erro: ' . $e->getMessage());

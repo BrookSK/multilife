@@ -38,18 +38,10 @@ try {
     $groupsUrl = '';
     
     foreach ($endpoints as $url) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        
-        $resp = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err = curl_error($ch);
-        curl_close($ch);
+        $rawG = wa_raw_request('GET', $url, null, 30);
+        $resp = $rawG['body'];
+        $code = $rawG['status'];
+        $err = $rawG['error'];
         
         if ($code === 200 && !empty($resp) && $resp !== '[]' && $resp !== 'null' && $resp !== '""') {
             $response = $resp;
@@ -69,14 +61,7 @@ try {
     // Se todos falharam, tentar buscar instâncias disponíveis para sugerir o nome correto
     if ($httpCode !== 200) {
         $instancesUrl = $baseUrl . '/instance/fetchInstances';
-        $ch = curl_init($instancesUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['apikey: ' . $apiKey]);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        $instancesResp = curl_exec($ch);
-        curl_close($ch);
+        $instancesResp = wa_raw_request('GET', $instancesUrl, null, 10)['body'];
         
         $availableInstances = [];
         if ($instancesResp) {

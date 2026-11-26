@@ -45,6 +45,10 @@ function wa_media_for_api(string $media): string
     if ($media === '' || preg_match('#^https?://#i', $media)) {
         return $media;
     }
+    // API oficial: o arquivo não passa pela hospedagem (o próprio PHP envia à Meta)
+    if (function_exists('wa_is_cloud') && wa_is_cloud()) {
+        return $media;
+    }
     $limitRaw = wa_setting('inline_media_max_kb', '600');
     $limitKb = is_numeric($limitRaw) ? (int)$limitRaw : 600; // 0 = sempre junto (desligado)
     if ($limitKb <= 0 || strlen($media) <= $limitKb * 1024) {
@@ -172,6 +176,14 @@ function wa_service_candidate_urls(): array
  */
 function wa_api_base_url(): string
 {
+    // API oficial: as chamadas são atendidas aqui mesmo (app/whatsapp_cloud_gateway.php)
+    if (wa_provider() === 'cloud') {
+        return WA_CLOUD_BASE;
+    }
+    // Evolution API num servidor próprio (mesmas rotas do Baileys)
+    if (wa_provider() === 'evolution') {
+        return rtrim(trim((string)admin_setting_get('evolution.base_url', '')), '/');
+    }
     $set = rtrim(trim((string)admin_setting_get('baileys.base_url', '')), '/');
     if ($set !== '') {
         return $set;
@@ -186,6 +198,9 @@ function wa_api_base_url(): string
 /** A URL veio de Configurações (e não da detecção automática)? */
 function wa_api_base_url_is_manual(): bool
 {
+    if (wa_provider() !== 'baileys') {
+        return true;
+    }
     return trim((string)admin_setting_get('baileys.base_url', '')) !== '';
 }
 
@@ -202,6 +217,12 @@ function wa_setting_save(string $key, string $value): void
  */
 function wa_api_key(): string
 {
+    if (wa_provider() === 'cloud') {
+        return 'cloud-api'; // o token da Meta fica em cloud.access_token
+    }
+    if (wa_provider() === 'evolution') {
+        return trim((string)admin_setting_get('evolution.api_key', ''));
+    }
     static $cache = null;
     if ($cache !== null && $cache !== '') {
         return $cache;
@@ -262,7 +283,7 @@ function wa_service_runtime_payload(): array
 function wa_service_runtime_sync(bool $force = false): bool
 {
     static $done = false;
-    if (!wa_service_embedded() || ($done && !$force)) {
+    if (!wa_service_embedded() || ($done && !$force) || !wa_provider_uses_service()) {
         return false;
     }
     $done = true;
@@ -334,6 +355,27 @@ function wa_service_runtime_read(): array
  */
 function wa_service_health(?string $url = null, int $timeoutSeconds = 6): array
 {
+    if (wa_provider() === 'cloud') {
+        $h = wa_cloud_health($timeoutSeconds);
+        $h['data'] = ['ready' => $h['ok'], 'phase' => $h['ok'] ? 'pronto' : $h['error'], 'clientName' => 'cloud-api', 'instances' => count(wa_cloud_instances())];
+        return $h;
+    }
+    if (wa_provider() === 'evolution') {
+        // Evolution v2: "GET /" responde {status:200, message:"Welcome to the Evolution API", version}
+        $url = rtrim($url ?? wa_api_base_url(), '/');
+        if ($url === '') {
+            return ['ok' => false, 'url' => '', 'http' => 0, 'data' => null, 'error' => 'endereço da Evolution API não configurado'];
+        }
+        try {
+            $res = http_json_request('GET', $url . '/', ['apikey' => wa_api_key()], null, $timeoutSeconds);
+            $j = is_array($res['json'] ?? null) ? $res['json'] : null;
+            $ok = (int)$res['status'] === 200;
+            return ['ok' => $ok, 'url' => $url, 'http' => (int)$res['status'], 'data' => ($j ?? []) + ['ready' => $ok, 'phase' => $ok ? 'pronto' : 'sem resposta'],
+                'error' => $ok ? '' : 'HTTP ' . (int)$res['status']];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'url' => $url, 'http' => 0, 'data' => null, 'error' => $e->getMessage()];
+        }
+    }
     $url = rtrim($url ?? wa_api_base_url(), '/');
     if ($url === '') {
         return ['ok' => false, 'url' => '', 'http' => 0, 'data' => null, 'error' => 'endereço do serviço desconhecido'];
@@ -366,6 +408,27 @@ function wa_service_keepalive(bool $force = false): ?array
         return null;
     }
     $ran = true;
+    if (wa_provider() === 'cloud') {
+        return null; // nada para manter ligado: a Meta é quem hospeda
+    }
+    if (wa_provider() === 'evolution') {
+        // Só confere os webhooks dos números (a Evolution roda em servidor próprio)
+        try {
+            $last = (int)admin_setting_get('baileys.keepalive_at', '0');
+            if (!$force && time() - $last < 50) {
+                return null;
+            }
+            wa_setting_save('baileys.keepalive_at', (string)time());
+        } catch (Throwable $e) {
+            return null;
+        }
+        $h = wa_service_health(null, 6);
+        wa_service_keepalive_log($h);
+        if ($h['ok']) {
+            wa_webhook_self_heal();
+        }
+        return $h;
+    }
     wa_system_local_ip_remember();
     try {
         $last = (int)admin_setting_get('baileys.keepalive_at', '0');
@@ -435,8 +498,8 @@ function wa_system_local_ip_remember(): void
 function wa_webhook_self_heal(bool $force = false): array
 {
     $out = ['checked' => 0, 'fixed' => 0, 'failed' => 0];
-    if (!function_exists('whatsapp_webhook_public_url') || !function_exists('whatsapp_list_all_instances')) {
-        return $out;
+    if (!function_exists('whatsapp_webhook_public_url') || !function_exists('whatsapp_list_all_instances') || wa_provider() === 'cloud') {
+        return $out; // API oficial: o webhook é configurado no app da Meta
     }
     try {
         $last = (int)admin_setting_get('baileys.webhook_check_at', '0');
@@ -558,6 +621,9 @@ function wa_default_instance(): string
 /** Serviço configurado (URL + chave)? */
 function wa_api_configured(): bool
 {
+    if (wa_provider() === 'cloud') {
+        return wa_cloud_configured();
+    }
     return wa_api_base_url() !== '' && wa_api_key() !== '';
 }
 
@@ -573,6 +639,56 @@ function wa_api_headers(): array
     return ['apikey' => wa_api_key()];
 }
 
+/**
+ * Chamada "crua" a uma rota do WhatsApp por URL completa (telas antigas que
+ * montavam o cURL na mão). Funciona com as três integrações: na API oficial a
+ * URL "cloud-gateway://local/..." é atendida aqui mesmo, sem rede.
+ *
+ * @param mixed $body array/objeto (vira JSON), string JSON ou null
+ * @return array{status:int, body:string, json:mixed, error:string}
+ */
+function wa_raw_request(string $method, string $url, $body = null, int $timeoutSeconds = 30): array
+{
+    try {
+        if (is_string($body) && $body !== '') {
+            $decoded = json_decode($body, true);
+            $body = is_array($decoded) ? $decoded : $body;
+        }
+        $res = http_json_request($method, $url, ['apikey' => wa_api_key()], $body === '' ? null : $body, $timeoutSeconds);
+        return ['status' => (int)$res['status'], 'body' => (string)$res['body_raw'], 'json' => $res['json'], 'error' => ''];
+    } catch (Throwable $e) {
+        return ['status' => 0, 'body' => '', 'json' => null, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Telas de diagnóstico do Baileys/Evolution (QR Code, serviço, webhook do
+ * serviço) não se aplicam à API oficial: mostra o aviso e para.
+ */
+function wa_cloud_page_guard(string $what = 'Esta ferramenta'): void
+{
+    if (!function_exists('wa_is_cloud') || !wa_is_cloud()) {
+        return;
+    }
+    $msg = $what . ' é do Baileys/Evolution (QR Code e serviço próprio) e não se aplica à API oficial do WhatsApp, que está em uso. Use Configurações → WhatsApp → API oficial.';
+    $wantsJson = stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'json') !== false
+        || strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+        || str_contains((string)($_SERVER['SCRIPT_NAME'] ?? ''), '_post') || str_contains((string)($_SERVER['SCRIPT_NAME'] ?? ''), 'proxy');
+    if ($wantsJson) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'error' => $msg, 'cloud' => true], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (function_exists('view_header')) {
+        view_header('API oficial do WhatsApp');
+        echo '<div class="card" style="max-width:720px;margin:20px auto;line-height:1.6"><div style="font-size:40px">ℹ️</div><p>' . h($msg) . '</p><a class="btn btnPrimary" href="/admin_whatsapp_cloud.php">Abrir a API oficial</a> <a class="btn" href="javascript:history.back()">Voltar</a></div>';
+        view_footer();
+        exit;
+    }
+    echo $msg;
+    exit;
+}
+
 final class WhatsAppApi
 {
     private $baseUrl;
@@ -586,8 +702,18 @@ final class WhatsAppApi
         $this->instance = (string)($instance !== null && $instance !== '' ? $instance : wa_default_instance());
 
         if ($this->baseUrl === '' || $this->apiKey === '' || $this->instance === '') {
-            throw new RuntimeException('Serviço WhatsApp (Baileys) não configurado: confira Configurações → WhatsApp Conexão (endereço do serviço e WhatsApp padrão).');
+            $what = [
+                'cloud' => 'API oficial do WhatsApp não configurada: confira Configurações → WhatsApp → API oficial (token, conta e número padrão).',
+                'evolution' => 'Evolution API não configurada: confira Configurações → WhatsApp Conexão (endereço, API Key e WhatsApp padrão).',
+            ][wa_provider()] ?? 'Serviço WhatsApp (Baileys) não configurado: confira Configurações → WhatsApp Conexão (endereço do serviço e WhatsApp padrão).';
+            throw new RuntimeException($what);
         }
+    }
+
+    /** Chamadas desta instância vão para a API oficial (sem rede até o gateway)? */
+    private function isCloud(): bool
+    {
+        return str_starts_with($this->baseUrl, WA_CLOUD_BASE);
     }
 
     private function url(string $path): string
@@ -616,6 +742,20 @@ final class WhatsAppApi
             $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
         }
         $t0 = microtime(true);
+
+        if ($this->isCloud()) {
+            try {
+                $res = wa_cloud_gateway($method, $path, $query, $body, $timeoutSeconds);
+            } catch (Throwable $e) {
+                $this->logEvent($method, $path, $body, null, $t0, $e);
+                throw $e;
+            }
+            $okC = $res['status'] >= 200 && $res['status'] < 300;
+            $this->logEvent($method, $path, $body, $res, $t0, null);
+            integration_log('whatsapp', $method . ' ' . $path, $okC ? 'success' : 'error', (int)$res['status'],
+                ['query' => $query, 'body' => $body], $res['json'] ?? $res['body_raw'], $okC ? null : 'HTTP ' . (string)$res['status'], 1);
+            return $res;
+        }
 
         try {
             $res = http_json_request($method, $url, ['apikey' => $this->apiKey], $body, $timeoutSeconds);

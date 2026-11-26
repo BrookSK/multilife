@@ -80,6 +80,13 @@ function closeInfoPanel() {
 function toggleInfoPanel(show) {
   var container = document.getElementById('whatsappContainer');
   if (!container) return;
+  // Celular: os detalhes abrem por cima da conversa (tela cheia) e não mexem na preferência do computador
+  if (window.matchMedia && window.matchMedia('(max-width: 980px)').matches) {
+    var open = (typeof show === 'boolean') ? show : !container.classList.contains('info-open-m');
+    container.classList.toggle('info-open-m', open);
+    document.body.style.overflow = open ? 'hidden' : '';
+    return;
+  }
   var hide = (typeof show === 'boolean') ? !show : !container.classList.contains('info-hidden');
   container.classList.toggle('info-hidden', hide);
   try { localStorage.setItem('chatInfoPanelHidden', hide ? '1' : '0'); } catch (e) {}
@@ -975,6 +982,10 @@ function checkForNewMessages() {
     .then(data => {
       isPolling = false;
       if (abortTimer) clearTimeout(abortTimer);
+      // API oficial: falha de entrega avisada depois do envio (mensagem já na tela)
+      if (Array.isArray(data.failed) && data.failed.length) {
+        chatMarkFailed(data.failed);
+      }
       if (data.messages && data.messages.length > 0) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
@@ -1053,6 +1064,11 @@ function appendMessageToDOM(msg) {
   const messageClass = isFromMe ? 'out' : 'in';
   const timestamp = msg.message_timestamp ? formatTimestamp(msg.message_timestamp) : '';
   const messageType = msg.message_type || 'text';
+  // Aviso do WhatsApp no grupo (entrou/saiu pelo link): igual ao PHP de chat_web.php
+  if (messageType === 'system') {
+    container.insertAdjacentHTML('beforeend', '<div class="whatsapp-system-msg"' + (dedupKey ? ' data-msg-id="' + escapeHtml(dedupKey) + '"' : '') + (msg.id ? ' data-row-id="' + escapeHtml(String(msg.id)) + '"' : '') + '><span>' + escapeHtml(msg.message_text || '') + (timestamp ? ' · ' + escapeHtml(timestamp) : '') + '</span></div>');
+    return;
+  }
   const text = msg.message_text || '';
   const mediaUrl = msg.media_url || '';
   const quotedText = msg.quoted_message_text || '';
@@ -1124,6 +1140,9 @@ function appendMessageToDOM(msg) {
   }
   
   html += '<div class="whatsapp-message-time">' + escapeHtml(timestamp) + '</div>';
+  if (isFromMe && msg.send_error) {
+    html += '<div class="whatsapp-send-error">⚠️ Não entregue: ' + escapeHtml(msg.send_error) + '</div>';
+  }
   html += '</div></div>';
   
   // Remover mensagem de "chat vazio" se existir
@@ -1131,6 +1150,20 @@ function appendMessageToDOM(msg) {
   if (emptyChat) emptyChat.remove();
   
   container.insertAdjacentHTML('beforeend', html);
+}
+
+// Marca como "não entregue" as bolhas que a API oficial avisou depois do envio
+function chatMarkFailed(list) {
+  const container = document.getElementById('messagesContainer');
+  if (!container) return;
+  var cssEsc = function (v) { return (window.CSS && CSS.escape) ? CSS.escape(String(v)) : String(v); };
+  list.forEach(function (f) {
+    var el = container.querySelector('[data-msg-id="' + cssEsc(f.key) + '"]') || (f.row_id ? container.querySelector('[data-row-id="' + cssEsc(f.row_id) + '"]') : null);
+    if (!el) return;
+    var bubble = el.querySelector('.whatsapp-message-bubble');
+    if (!bubble || bubble.querySelector('.whatsapp-send-error')) return;
+    bubble.insertAdjacentHTML('beforeend', '<div class="whatsapp-send-error">⚠️ Não entregue: ' + escapeHtml(f.error) + '</div>');
+  });
 }
 
 function formatTimestamp(unixTs) {

@@ -6,6 +6,15 @@ php_value memory_limit 256M
 php_value max_execution_time 120
 php_value max_input_time 120
 
+# App instalável (PWA): tipo do manifesto e service worker sempre atualizado
+AddType application/manifest+json .webmanifest
+<IfModule mod_headers.c>
+    <FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+        Header set Cache-Control "no-cache, must-revalidate"
+        Header set Service-Worker-Allowed "/"
+    </FilesMatch>
+</IfModule>
+
 # ============================================================================
 # Rotas limpas (URLs sem ".php")
 # Ex.: /monitoramento  ->  serve /monitoramento.php

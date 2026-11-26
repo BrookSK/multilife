@@ -79,6 +79,10 @@ function wa_watchdog_config(): array
 /** Monitor disponível (serviço WhatsApp configurado)? */
 function wa_watchdog_enabled(): bool
 {
+    // O monitor é o /status do serviço Baileys; Evolution e API oficial não têm
+    if (function_exists('wa_provider_uses_service') && !wa_provider_uses_service()) {
+        return false;
+    }
     $cfg = wa_watchdog_config();
     return $cfg['token'] !== '' && $cfg['url'] !== '';
 }
